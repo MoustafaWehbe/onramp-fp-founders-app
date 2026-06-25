@@ -1,14 +1,27 @@
 {
-  "extends": "../shared/config/tsconfig.base.json",
+  "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "lib": ["ES2022"],
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "allowSyntheticDefaultImports": true,
+    "noUncheckedIndexedAccess": false,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "useDefineForClassFields": false,
     "rootDir": "./",
     "outDir": "./dist",
-    "baseUrl": ".",
-    "paths": {
-      "@starter-kit/shared": ["../shared/src/index.ts"],
-      "@starter-kit/shared/*": ["../shared/src/*"]
-    }
+    "baseUrl": "."
   },
-  "include": ["src/**/*", "app.ts", "server.ts"],
+  "include": ["src/**/*", "app.ts", "server.ts", "worker.ts"],
   "exclude": ["node_modules", "dist", "tests"]
 }

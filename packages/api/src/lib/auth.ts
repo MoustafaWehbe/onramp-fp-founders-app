@@ -1,5 +1,16 @@
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import type { JwtPayload, TokenPair } from "./types";
+import type { JwtPayload, TokenPair } from "../types";
+
+const SALT_ROUNDS = 12;
+
+export async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, SALT_ROUNDS);
+}
+
+export async function verifyPassword(password: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(password, hash);
+}
 
 function getSecret(envKey: string, fallback: string): string {
   const value = process.env[envKey];

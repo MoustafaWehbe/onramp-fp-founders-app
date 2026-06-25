@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import type { UserRole } from "@starter-kit/shared";
+import type { UserRole } from "../types";
 
 export function authorize(...roles: UserRole[]) {
   return (req: Request, res: Response, next: NextFunction): void => {

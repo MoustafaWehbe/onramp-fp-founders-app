@@ -1,23 +1,24 @@
 import path from "path";
 import dotenv from "dotenv";
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
-import { createWorkers } from "./src/queues";
-import { initializeDatabase } from "./src/lib/db";
+
+import { prisma } from "./src/lib/prisma";
+import { startWorkers } from "./src/jobs/queue";
 
 async function main(): Promise<void> {
   console.info("Starting workers...");
 
-  await initializeDatabase();
-  const workers = createWorkers();
+  await prisma.$connect();
+  const workers = startWorkers();
 
   console.info(
     `Started ${workers.length} worker(s): ${workers.map((w) => w.name).join(", ")}`,
   );
 
-  // Graceful shutdown
   const shutdown = async (signal: string): Promise<void> => {
-    console.info(`\nReceived ${signal}, shutting down workers...`);
+    console.info(`\nReceived ${signal}, shutting down...`);
     await Promise.all(workers.map((w) => w.close()));
+    await prisma.$disconnect();
     process.exit(0);
   };
 

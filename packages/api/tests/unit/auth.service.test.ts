@@ -1,5 +1,4 @@
-import { hashPassword, verifyPassword } from "../../../shared/auth/password";
-import { signAccessToken, verifyAccessToken } from "../../../shared/auth/jwt";
+import { hashPassword, verifyPassword, signAccessToken, verifyAccessToken } from "../../src/lib/auth";
 
 // ─── Password utilities ───────────────────────────────────────────────────────
 
