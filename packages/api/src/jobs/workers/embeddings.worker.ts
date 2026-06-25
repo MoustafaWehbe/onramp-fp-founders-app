@@ -1,5 +1,5 @@
 import type { Job } from "bullmq";
-import { generateEmbedding } from "../utils/ai";
+import { generateEmbedding } from "../../utils/ai";
 
 export interface EmbeddingsJobData {
   entityId: string;
