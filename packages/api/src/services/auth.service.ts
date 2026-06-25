@@ -4,9 +4,9 @@ import {
   verifyPassword,
   generateTokenPair,
   verifyRefreshToken,
-} from "../lib/auth";
-import { prisma } from "../lib/prisma";
-import { createError } from "../middleware/error-handler";
+} from "../utils/auth";
+import { prisma } from "../utils/prisma";
+import { createError } from "../utils/errors";
 
 interface RegisterInput {
   email: string;

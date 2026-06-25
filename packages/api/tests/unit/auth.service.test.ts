@@ -1,4 +1,4 @@
-import { hashPassword, verifyPassword, signAccessToken, verifyAccessToken } from "../../src/lib/auth";
+import { hashPassword, verifyPassword, signAccessToken, verifyAccessToken } from "../../src/utils/auth";
 
 // ─── Password utilities ───────────────────────────────────────────────────────
 

@@ -3,7 +3,7 @@ import dotenv from "dotenv";
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 import { app } from "./app";
-import { prisma } from "./src/lib/prisma";
+import { prisma } from "./src/utils/prisma";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
 

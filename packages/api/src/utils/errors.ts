@@ -1,4 +1,4 @@
-import type { Request, Response, NextFunction } from "express";
+import type { Request, Response, NextFunction, RequestHandler } from "express";
 
 export interface AppError extends Error {
   statusCode?: number;
@@ -10,6 +10,12 @@ export function createError(message: string, statusCode = 500): AppError {
   error.statusCode = statusCode;
   error.isOperational = true;
   return error;
+}
+
+type AsyncFn = (req: Request, res: Response, next: NextFunction) => Promise<void>;
+
+export function asyncHandler(fn: AsyncFn): RequestHandler {
+  return (req, res, next) => fn(req, res, next).catch(next);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

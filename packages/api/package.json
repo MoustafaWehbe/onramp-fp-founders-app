@@ -19,8 +19,8 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@asteasolutions/zod-to-openapi": "^7.3.4",
     "@prisma/client": "^5.22.0",
+    "joi": "^17.13.0",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.12.0",
     "cookie-parser": "^1.4.7",
@@ -34,8 +34,7 @@
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "openai": "^4.67.0",
-    "swagger-ui-express": "^5.0.1",
-    "zod": "^3.23.0"
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
