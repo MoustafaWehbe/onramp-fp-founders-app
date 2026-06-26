@@ -1,57 +1,510 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
 }
 
+// ─── CORE ─────────────────────────────────────────────────────────────────────
+
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  passwordHash  String         @map("password_hash")
-  name          String
-  role          UserRole       @default(user)
-  emailVerified Boolean        @default(false) @map("email_verified")
-  createdAt     DateTime       @default(now()) @map("created_at")
-  updatedAt     DateTime       @updatedAt @map("updated_at")
-  sessions      Session[]
-  refreshTokens RefreshToken[]
+  id                  String    @id @default(uuid())
+  firstName           String    @map("first_name")
+  lastName            String    @map("last_name")
+  email               String    @unique
+  passwordHash        String?   @map("password_hash")
+  avatarUrl           String?   @map("avatar_url")
+  authProvider        String    @default("local") @map("auth_provider")
+  googleId            String?   @unique @map("google_id")
+  emailVerifiedAt     DateTime? @map("email_verified_at")
+  lastActiveStartupId String?   @map("last_active_startup_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  lastActiveStartup    Startup?             @relation("LastActiveStartup", fields: [lastActiveStartupId], references: [id])
+  createdStartups      Startup[]            @relation("CreatedStartups")
+  memberships          StartupMember[]      @relation("MemberUser")
+  sentInvites          StartupMember[]      @relation("InvitedBy")
+  refreshTokens        RefreshToken[]
+  passwordResets       PasswordReset[]
+  reviewerInvitations  ReviewerInvitation[]
+  interactionLogs      InteractionLog[]
+  createdDocuments     Document[]
+  uploadedVersions     DocumentVersion[]
+  aiChatSessions       AiChatSession[]
 
   @@map("users")
 }
 
-model Session {
-  id            String         @id @default(uuid())
-  userId        String         @map("user_id")
-  userAgent     String?        @map("user_agent")
-  ipAddress     String?        @map("ip_address")
-  expiresAt     DateTime       @map("expires_at")
-  createdAt     DateTime       @default(now()) @map("created_at")
-  updatedAt     DateTime       @updatedAt @map("updated_at")
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  refreshTokens RefreshToken[]
+model Startup {
+  id           String   @id @default(uuid())
+  name         String
+  description  String?
+  industry     String?
+  website      String?
+  fundingStage String?  @map("funding_stage")
+  createdBy    String   @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  @@map("sessions")
+  creator             User                 @relation("CreatedStartups", fields: [createdBy], references: [id])
+  lastActiveUsers     User[]               @relation("LastActiveStartup")
+  members             StartupMember[]
+  roles               Role[]
+  startupInvestors    StartupInvestor[]
+  pipeline            Pipeline[]
+  fundraisingRounds   FundraisingRound[]
+  commitments         Commitment[]
+  documents           Document[]
+  aiAnalyses          AiAnalysis[]
+  aiChatSessions      AiChatSession[]
+  reviewerInvitations ReviewerInvitation[]
+  reviewerComments    ReviewerComment[]
+
+  @@map("startups")
+}
+
+model StartupMember {
+  id              String    @id @default(uuid())
+  startupId       String    @map("startup_id")
+  userId          String?   @map("user_id")
+  roleId          String    @map("role_id")
+  status          String    @default("pending")
+  invitedEmail    String?   @map("invited_email")
+  inviteTokenHash String?   @map("invite_token_hash")
+  inviteExpiresAt DateTime? @map("invite_expires_at")
+  invitedBy       String?   @map("invited_by")
+  joinedAt        DateTime? @map("joined_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  startup Startup @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  user    User?   @relation("MemberUser", fields: [userId], references: [id])
+  role    Role    @relation(fields: [roleId], references: [id])
+  inviter User?   @relation("InvitedBy", fields: [invitedBy], references: [id])
+
+  @@unique([startupId, userId])
+  @@map("startup_members")
+}
+
+// ─── AUTH ─────────────────────────────────────────────────────────────────────
+
+model PendingRegistration {
+  id           String   @id @default(uuid())
+  firstName    String   @map("first_name")
+  lastName     String   @map("last_name")
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  otpHash      String   @map("otp_hash")
+  otpExpiresAt DateTime @map("otp_expires_at")
+  attempts     Int      @default(0)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("pending_registrations")
 }
 
 model RefreshToken {
-  id        String    @id @default(uuid())
-  userId    String    @map("user_id")
-  sessionId String    @map("session_id")
-  tokenHash String    @unique @map("token_hash")
-  expiresAt DateTime  @map("expires_at")
-  revokedAt DateTime? @map("revoked_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  session   Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  tokenHash    String    @unique @map("token_hash")
+  familyId     String?   @map("family_id")
+  replacedById String?   @map("replaced_by_id")
+  deviceInfo   String?   @map("device_info")
+  ipAddress    String?   @map("ip_address")
+  expiresAt    DateTime  @map("expires_at")
+  revokedAt    DateTime? @map("revoked_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy     RefreshToken?  @relation("TokenRotation", fields: [replacedById], references: [id])
+  replacedTokens RefreshToken[] @relation("TokenRotation")
 
   @@map("refresh_tokens")
 }
 
-enum UserRole {
-  admin
-  user
+model PasswordReset {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_resets")
+}
+
+// ─── RBAC ─────────────────────────────────────────────────────────────────────
+
+model Role {
+  id           String   @id @default(uuid())
+  startupId    String   @map("startup_id")
+  name         String
+  description  String?
+  isSystemRole Boolean  @default(false) @map("is_system_role")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  startup         Startup          @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  members         StartupMember[]
+  rolePermissions RolePermission[]
+
+  @@unique([startupId, name])
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id @default(uuid())
+  resource    String
+  action      String
+  description String?
+
+  rolePermissions RolePermission[]
+
+  @@unique([resource, action])
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String @id @default(uuid())
+  roleId       String @map("role_id")
+  permissionId String @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ─── REVIEWER SYSTEM ──────────────────────────────────────────────────────────
+
+model ReviewerInvitation {
+  id                String   @id @default(uuid())
+  startupId         String   @map("startup_id")
+  startupInvestorId String?  @map("startup_investor_id")
+  reviewerName      String?  @map("reviewer_name")
+  email             String
+  tokenHash         String   @unique @map("token_hash")
+  status            String   @default("pending")
+  expiresAt         DateTime @map("expires_at")
+  createdBy         String   @map("created_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  startup         Startup                      @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  startupInvestor StartupInvestor?             @relation(fields: [startupInvestorId], references: [id])
+  creator         User                         @relation(fields: [createdBy], references: [id])
+  documents       ReviewerInvitationDocument[]
+  sessions        ReviewerSession[]
+
+  @@map("reviewer_invitations")
+}
+
+model ReviewerInvitationDocument {
+  id           String @id @default(uuid())
+  invitationId String @map("invitation_id")
+  documentId   String @map("document_id")
+
+  invitation ReviewerInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  document   Document           @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([invitationId, documentId])
+  @@map("reviewer_invitation_documents")
+}
+
+model ReviewerSession {
+  id                    String    @id @default(uuid())
+  invitationId          String    @map("invitation_id")
+  verificationCodeHash  String?   @map("verification_code_hash")
+  verificationExpiresAt DateTime? @map("verification_expires_at")
+  verifiedAt            DateTime? @map("verified_at")
+  accessedAt            DateTime? @map("accessed_at")
+  ipAddress             String?   @map("ip_address")
+  userAgent             String?   @map("user_agent")
+
+  invitation ReviewerInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  comments   ReviewerComment[]
+
+  @@map("reviewer_sessions")
+}
+
+model ReviewerComment {
+  id          String   @id @default(uuid())
+  sessionId   String   @map("session_id")
+  startupId   String   @map("startup_id")
+  targetType  String   @map("target_type")
+  targetId    String   @map("target_id")
+  commentText String   @map("comment_text")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  session ReviewerSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  startup Startup         @relation(fields: [startupId], references: [id], onDelete: Cascade)
+
+  @@map("reviewer_comments")
+}
+
+// ─── CRM ──────────────────────────────────────────────────────────────────────
+
+model Investor {
+  id                        String   @id @default(uuid())
+  fullName                  String   @map("full_name")
+  email                     String   @unique
+  ventureFirm               String?  @map("venture_firm")
+  sectorFocus               String?  @map("sector_focus")
+  investmentStagePreference String?  @map("investment_stage_preference")
+  linkedinUrl               String?  @map("linkedin_url")
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+
+  startupInvestors StartupInvestor[]
+
+  @@map("investors")
+}
+
+model StartupInvestor {
+  id         String   @id @default(uuid())
+  startupId  String   @map("startup_id")
+  investorId String   @map("investor_id")
+  notes      String?
+  source     String?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  startup             Startup              @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  investor            Investor             @relation(fields: [investorId], references: [id])
+  pipeline            Pipeline[]
+  interactionLogs     InteractionLog[]
+  commitments         Commitment[]
+  reviewerInvitations ReviewerInvitation[]
+
+  @@unique([startupId, investorId])
+  @@map("startup_investors")
+}
+
+model Pipeline {
+  id                    String   @id @default(uuid())
+  startupId             String   @map("startup_id")
+  startupInvestorId     String   @map("startup_investor_id")
+  stage                 String   @default("prospect")
+  expectedAmount        Decimal? @map("expected_amount")
+  probabilityPercentage Int?     @map("probability_percentage")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  startup         Startup         @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  startupInvestor StartupInvestor @relation(fields: [startupInvestorId], references: [id], onDelete: Cascade)
+  interactionLogs InteractionLog[]
+  commitments     Commitment[]
+
+  @@unique([startupId, startupInvestorId])
+  @@map("pipeline")
+}
+
+model InteractionLog {
+  id                String    @id @default(uuid())
+  startupInvestorId String    @map("startup_investor_id")
+  pipelineId        String?   @map("pipeline_id")
+  createdBy         String    @map("created_by")
+  type              String
+  subject           String?
+  description       String?
+  interactionDate   DateTime? @map("interaction_date")
+  nextFollowupDate  DateTime? @map("next_followup_date")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  startupInvestor StartupInvestor @relation(fields: [startupInvestorId], references: [id], onDelete: Cascade)
+  pipeline        Pipeline?       @relation(fields: [pipelineId], references: [id])
+  creator         User            @relation(fields: [createdBy], references: [id])
+
+  @@map("interaction_logs")
+}
+
+// ─── FINANCIAL ────────────────────────────────────────────────────────────────
+
+model FundraisingRound {
+  id                      String   @id @default(uuid())
+  startupId               String   @map("startup_id")
+  roundName               String   @map("round_name")
+  targetAmount            Decimal? @map("target_amount")
+  minimumTicketSize       Decimal? @map("minimum_ticket_size")
+  equityOfferedPercentage Decimal? @map("equity_offered_percentage")
+  currency                String   @default("USD")
+  status                  String   @default("active")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  startup     Startup      @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  commitments Commitment[]
+
+  @@map("fundraising_rounds")
+}
+
+model Commitment {
+  id                String    @id @default(uuid())
+  startupId         String    @map("startup_id")
+  startupInvestorId String    @map("startup_investor_id")
+  pipelineId        String    @map("pipeline_id")
+  roundId           String    @map("round_id")
+  amount            Decimal?
+  status            String    @default("negotiating")
+  expectedCloseDate DateTime? @map("expected_close_date")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  startup         Startup          @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  startupInvestor StartupInvestor  @relation(fields: [startupInvestorId], references: [id], onDelete: Cascade)
+  pipeline        Pipeline         @relation(fields: [pipelineId], references: [id])
+  round           FundraisingRound @relation(fields: [roundId], references: [id])
+
+  @@map("commitments")
+}
+
+// ─── DOCUMENT VAULT ───────────────────────────────────────────────────────────
+
+model Document {
+  id               String   @id @default(uuid())
+  startupId        String   @map("startup_id")
+  title            String
+  documentType     String   @map("document_type")
+  currentVersionId String?  @map("current_version_id")
+  createdBy        String   @map("created_by")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  startup        Startup                      @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  creator        User                         @relation(fields: [createdBy], references: [id])
+  currentVersion DocumentVersion?             @relation("CurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  versions       DocumentVersion[]            @relation("DocumentVersions")
+  reviewerDocs   ReviewerInvitationDocument[]
+  aiChatSessions AiChatSession[]
+
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id            String   @id @default(uuid())
+  documentId    String   @map("document_id")
+  versionNumber Int      @map("version_number")
+  fileUrl       String   @map("file_url")
+  fileSize      Int?     @map("file_size")
+  summary       String?
+  uploadedBy    String   @map("uploaded_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  document       Document        @relation("DocumentVersions", fields: [documentId], references: [id], onDelete: Cascade)
+  uploader       User            @relation(fields: [uploadedBy], references: [id])
+  chunks         DocumentChunk[]
+  currentForDocs Document[]      @relation("CurrentVersion")
+  aiAnalyses     AiAnalysis[]
+
+  @@map("document_versions")
+}
+
+model DocumentChunk {
+  id                String                       @id @default(uuid())
+  documentVersionId String                       @map("document_version_id")
+  chunkIndex        Int                          @map("chunk_index")
+  content           String
+  embedding         Unsupported("vector(1536)")?
+  tokenCount        Int?                         @map("token_count")
+  pageNumber        Int?                         @map("page_number")
+  sectionLabel      String?                      @map("section_label")
+  createdAt         DateTime                     @default(now()) @map("created_at")
+
+  documentVersion DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+
+  @@map("document_chunks")
+}
+
+// ─── AI INSIGHTS ──────────────────────────────────────────────────────────────
+
+model AiAnalysis {
+  id                    String   @id @default(uuid())
+  startupId             String   @map("startup_id")
+  documentVersionId     String   @map("document_version_id")
+  overallScore          Int?     @map("overall_score")
+  narrativeScore        Int?     @map("narrative_score")
+  marketValidationScore Int?     @map("market_validation_score")
+  financialScore        Int?     @map("financial_score")
+  summaryReport         String?  @map("summary_report")
+  status                String   @default("processing")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  startup         Startup           @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  documentVersion DocumentVersion   @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+  gapAnalyses     AiGapAnalysis[]
+  personas        InvestorPersona[]
+  aiChatSessions  AiChatSession[]
+
+  @@map("ai_analyses")
+}
+
+model AiGapAnalysis {
+  id             String  @id @default(uuid())
+  analysisId     String  @map("analysis_id")
+  sectionName    String? @map("section_name")
+  status         String
+  issue          String?
+  recommendation String?
+  severity       String?
+
+  analysis AiAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@map("ai_gap_analysis")
+}
+
+model InvestorPersona {
+  id          String  @id @default(uuid())
+  analysisId  String  @map("analysis_id")
+  personaName String? @map("persona_name")
+  description String?
+
+  analysis  AiAnalysis        @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  questions PersonaQuestion[]
+
+  @@map("investor_personas")
+}
+
+model PersonaQuestion {
+  id           String  @id @default(uuid())
+  personaId    String  @map("persona_id")
+  questionText String? @map("question_text")
+
+  persona InvestorPersona @relation(fields: [personaId], references: [id], onDelete: Cascade)
+
+  @@map("persona_questions")
+}
+
+// ─── AI CHAT ──────────────────────────────────────────────────────────────────
+
+model AiChatSession {
+  id         String   @id @default(uuid())
+  startupId  String   @map("startup_id")
+  userId     String   @map("user_id")
+  documentId String?  @map("document_id")
+  analysisId String?  @map("analysis_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  startup  Startup        @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  user     User           @relation(fields: [userId], references: [id])
+  document Document?      @relation(fields: [documentId], references: [id])
+  analysis AiAnalysis?    @relation(fields: [analysisId], references: [id])
+  messages AiChatMessage[]
+
+  @@map("ai_chat_sessions")
+}
+
+model AiChatMessage {
+  id        String   @id @default(uuid())
+  sessionId String   @map("session_id")
+  role      String
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  session AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("ai_chat_messages")
 }
