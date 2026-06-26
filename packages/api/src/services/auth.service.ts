@@ -4,15 +4,17 @@ import {
   verifyPassword,
   generateAccessToken,
   generateRefreshToken,
+  generateOTP,
   verifyRefreshToken,
   hashToken,
 } from "../utils/auth";
+import { sendOTP } from "./email.service";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
 
-interface RegisterInput {
-  firstName: string;
-  lastName: string;
+interface RegisterInitiateInput {
+  first_name: string;
+  last_name: string;
   email: string;
   password: string;
 }
@@ -24,23 +26,124 @@ interface LoginInput {
   ipAddress?: string;
 }
 
+const OTP_TTL_MS = 10 * 60 * 1_000;
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1_000;
+const MAX_OTP_ATTEMPTS = 5;
 
 export class AuthService {
-  async register(input: RegisterInput) {
-    const existing = await prisma.user.findUnique({ where: { email: input.email } });
-    if (existing) throw createError("Email already in use", 409);
+  async registerVerify(
+    input: { email: string; otp: string },
+    meta: { userAgent?: string; ipAddress?: string },
+  ) {
+    const pending = await prisma.pendingRegistration.findUnique({ where: { email: input.email } });
+    if (!pending) throw createError("No pending registration found for this email", 404, "NOT_FOUND");
 
-    const passwordHash = await hashPassword(input.password);
-    return prisma.user.create({
+    if (pending.attempts >= MAX_OTP_ATTEMPTS) {
+      throw createError("Too many failed attempts. Please register again.", 429, "TOO_MANY_ATTEMPTS");
+    }
+
+    if (pending.otpExpiresAt < new Date()) {
+      throw createError("Verification code has expired", 410, "OTP_EXPIRED");
+    }
+
+    if (hashToken(input.otp) !== pending.otpHash) {
+      await prisma.pendingRegistration.update({
+        where: { email: input.email },
+        data: { attempts: { increment: 1 } },
+      });
+      throw createError("Invalid verification code", 400, "INVALID_OTP");
+    }
+
+    const [user] = await prisma.$transaction([
+      prisma.user.create({
+        data: {
+          firstName: pending.firstName,
+          lastName: pending.lastName,
+          email: pending.email,
+          passwordHash: pending.passwordHash,
+          authProvider: "local",
+          emailVerifiedAt: new Date(),
+        },
+        select: { id: true, email: true, firstName: true, lastName: true },
+      }),
+      prisma.pendingRegistration.delete({ where: { email: input.email } }),
+    ]);
+
+    const familyId = crypto.randomUUID();
+    const { raw: rawRefresh, hash: refreshHash } = generateRefreshToken();
+    const accessToken = generateAccessToken(user.id, familyId, user.email);
+
+    await prisma.refreshToken.create({
       data: {
+        userId: user.id,
+        tokenHash: refreshHash,
+        familyId,
+        deviceInfo: meta.userAgent ?? null,
+        ipAddress: meta.ipAddress ?? null,
+        expiresAt: new Date(Date.now() + THIRTY_DAYS_MS),
+      },
+    });
+
+    return { user, accessToken, refreshToken: rawRefresh };
+  }
+
+  async registerResend(email: string) {
+    const pending = await prisma.pendingRegistration.findUnique({ where: { email } });
+    if (!pending) throw createError("No pending registration found for this email", 404, "NOT_FOUND");
+
+    if (pending.attempts >= MAX_OTP_ATTEMPTS) {
+      throw createError("Too many failed attempts. Please register again.", 429, "TOO_MANY_ATTEMPTS");
+    }
+
+    const { raw: rawOtp, hash: otpHash } = generateOTP();
+
+    await prisma.pendingRegistration.update({
+      where: { email },
+      data: {
+        otpHash,
+        otpExpiresAt: new Date(Date.now() + OTP_TTL_MS),
+        attempts: 0,
+      },
+    });
+
+    await sendOTP(email, pending.firstName, rawOtp);
+
+    return {
+      message: `Verification code sent to ${email}`,
+      email,
+      expires_in_seconds: OTP_TTL_MS / 1_000,
+    };
+  }
+
+  async registerInitiate(input: RegisterInitiateInput) {
+    const existing = await prisma.user.findUnique({ where: { email: input.email } });
+    if (existing) throw createError("Email already in use", 409, "EMAIL_ALREADY_EXISTS");
+
+    await prisma.pendingRegistration.deleteMany({ where: { email: input.email } });
+
+    const [passwordHash, { raw: rawOtp, hash: otpHash }] = await Promise.all([
+      hashPassword(input.password),
+      Promise.resolve(generateOTP()),
+    ]);
+
+    await prisma.pendingRegistration.create({
+      data: {
+        firstName: input.first_name,
+        lastName: input.last_name,
         email: input.email,
         passwordHash,
-        firstName: input.firstName,
-        lastName: input.lastName,
+        otpHash,
+        otpExpiresAt: new Date(Date.now() + OTP_TTL_MS),
       },
-      select: { id: true, email: true, firstName: true, lastName: true },
     });
+
+    await sendOTP(input.email, input.first_name, rawOtp);
+
+    return {
+      message: `Verification code sent to ${input.email}`,
+      email: input.email,
+      expires_in_seconds: OTP_TTL_MS / 1_000,
+    };
   }
 
   async login(input: LoginInput) {

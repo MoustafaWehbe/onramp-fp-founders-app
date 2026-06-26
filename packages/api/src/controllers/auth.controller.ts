@@ -28,9 +28,23 @@ function clearAuthCookies(res: Response): void {
 }
 
 export const authController = {
-  register: asyncHandler(async (req, res) => {
-    const user = await authService.register(req.body);
-    res.status(201).json({ data: user });
+  registerInitiate: asyncHandler(async (req, res) => {
+    const result = await authService.registerInitiate(req.body);
+    res.json({ data: result });
+  }),
+
+  registerResend: asyncHandler(async (req, res) => {
+    const result = await authService.registerResend(req.body.email);
+    res.json({ data: result });
+  }),
+
+  registerVerify: asyncHandler(async (req, res) => {
+    const { user, accessToken, refreshToken } = await authService.registerVerify(req.body, {
+      userAgent: req.headers["user-agent"],
+      ipAddress: req.ip,
+    });
+    setAuthCookies(res, accessToken, refreshToken);
+    res.status(201).json({ data: { user } });
   }),
 
   login: asyncHandler(async (req, res) => {

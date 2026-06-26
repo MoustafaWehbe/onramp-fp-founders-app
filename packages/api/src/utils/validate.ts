@@ -12,7 +12,7 @@ export function validate(schema: ZodSchema, target: Target = "body") {
         field: e.path.join("."),
         message: e.message,
       }));
-      res.status(422).json({ error: "Validation failed", errors });
+      res.status(400).json({ code: "VALIDATION_ERROR", error: "Validation failed", errors });
       return;
     }
 
