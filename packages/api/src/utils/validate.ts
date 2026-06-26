@@ -1,25 +1,22 @@
 import type { Request, Response, NextFunction } from "express";
-import Joi from "joi";
+import { type ZodSchema, ZodError } from "zod";
 
 type Target = "body" | "params" | "query";
 
-export function validate(schema: Joi.Schema, target: Target = "body") {
+export function validate(schema: ZodSchema, target: Target = "body") {
   return (req: Request, res: Response, next: NextFunction): void => {
-    const { error, value } = schema.validate(req[target], {
-      abortEarly: false,
-      stripUnknown: true,
-    });
+    const result = schema.safeParse(req[target]);
 
-    if (error) {
-      const errors = error.details.map((d: Joi.ValidationErrorItem) => ({
-        field: d.path.join("."),
-        message: d.message.replace(/['"]/g, ""),
+    if (!result.success) {
+      const errors = result.error.errors.map((e) => ({
+        field: e.path.join("."),
+        message: e.message,
       }));
       res.status(422).json({ error: "Validation failed", errors });
       return;
     }
 
-    (req as unknown as Record<string, unknown>)[target] = value;
+    (req as unknown as Record<string, unknown>)[target] = result.data;
     next();
   };
 }

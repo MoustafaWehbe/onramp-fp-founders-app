@@ -5,7 +5,7 @@ import {
   generateTokenPair,
   verifyRefreshToken,
 } from "../utils/auth";
-import { prisma } from "../utils/prisma";
+import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
 
 interface RegisterInput {

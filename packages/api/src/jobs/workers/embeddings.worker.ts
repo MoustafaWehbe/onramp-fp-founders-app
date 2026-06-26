@@ -1,5 +1,24 @@
 import type { Job } from "bullmq";
-import { generateEmbedding } from "../../utils/ai";
+import OpenAI from "openai";
+
+let openai: OpenAI | null = null;
+
+function getOpenAI(): OpenAI {
+  if (!openai) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) throw new Error("OPENAI_API_KEY is not configured");
+    openai = new OpenAI({ apiKey });
+  }
+  return openai;
+}
+
+async function generateEmbedding(text: string): Promise<number[]> {
+  const response = await getOpenAI().embeddings.create({
+    model: "text-embedding-3-small",
+    input: text,
+  });
+  return response.data[0]?.embedding ?? [];
+}
 
 export interface EmbeddingsJobData {
   entityId: string;
