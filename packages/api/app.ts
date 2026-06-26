@@ -7,7 +7,7 @@ import swaggerUi from "swagger-ui-express";
 import yaml from "js-yaml";
 import fs from "fs";
 import path from "path";
-import { errorHandler } from "./src/middleware/error-handler";
+import { errorHandler } from "./src/utils/errors";
 import { rateLimiter } from "./src/middleware/rate-limiter";
 import { router } from "./src/routes";
 
