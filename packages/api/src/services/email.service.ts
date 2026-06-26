@@ -1,9 +1,9 @@
-import { transporter } from "../config/email";
+import { resend } from "../config/email";
 
-const FROM = `"FP Founders" <${process.env.SMTP_FROM ?? process.env.SMTP_USER}>`;
+const FROM = process.env.RESEND_FROM ?? "FP Founders <noreply@fpfounders.com>";
 
 export async function sendOTP(to: string, firstName: string, otp: string): Promise<void> {
-  await transporter.sendMail({
+  const { error } = await resend.emails.send({
     from: FROM,
     to,
     subject: "Your verification code",
@@ -21,4 +21,6 @@ export async function sendOTP(to: string, firstName: string, otp: string): Promi
       </div>
     `,
   });
+
+  if (error) throw new Error(`Failed to send email: ${error.message}`);
 }

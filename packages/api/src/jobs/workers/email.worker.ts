@@ -1,5 +1,5 @@
 import type { Job } from "bullmq";
-import { transporter } from "../../config/email";
+import { resend } from "../../config/email";
 import type { EmailJobData, EmailJobResult } from "../../types";
 
 export const emailJob = {
@@ -9,13 +9,15 @@ export const emailJob = {
   async process(job: Job<EmailJobData, EmailJobResult>): Promise<EmailJobResult> {
     const { to, subject, html } = job.data;
 
-    const info = await transporter.sendMail({
-      from: `"FP Founders" <${process.env.SMTP_FROM ?? process.env.SMTP_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from: process.env.RESEND_FROM ?? "FP Founders <noreply@fpfounders.com>",
       to,
       subject,
       html,
     });
 
-    return { messageId: info.messageId };
+    if (error) throw new Error(`Failed to send email: ${error.message}`);
+
+    return { messageId: data!.id };
   },
 };
