@@ -2,6 +2,9 @@ import path from "path";
 import dotenv from "dotenv";
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 
+import { validateEnv } from "./src/config/env";
+validateEnv();
+
 import { app } from "./app";
 import { prisma } from "./src/db/prisma";
 import { startWorkers } from "./src/jobs/workers/index";

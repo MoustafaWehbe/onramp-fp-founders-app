@@ -1,12 +1,9 @@
-// ─── Auth ─────────────────────────────────────────────────────────────────────
-
-export type UserRole = "admin" | "user";
+// Auth
 
 export interface JwtPayload {
   userId: string;
   email: string;
-  role: UserRole;
-  sessionId: string;
+  sessionId: string; // maps to familyId on RefreshToken
 }
 
 export interface TokenPair {
@@ -14,10 +11,14 @@ export interface TokenPair {
   refreshToken: string;
 }
 
-export interface AuthUser {
-  id: string;
-  email: string;
-  name: string;
-  role: UserRole;
+// Jobs
+
+export interface EmailJobData {
+  to: string;
+  subject: string;
+  html: string;
 }
 
+export interface EmailJobResult {
+  messageId: string;
+}

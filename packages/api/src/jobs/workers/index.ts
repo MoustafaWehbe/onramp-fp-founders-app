@@ -2,12 +2,18 @@ import path from "path";
 import dotenv from "dotenv";
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
-import { Worker } from "bullmq";
+import { Worker, type Processor } from "bullmq";
 import { getRedis } from "../queue";
 import { emailJob } from "./email.worker";
 import { embeddingsJob } from "./embeddings.worker";
 
-const JOBS = [emailJob, embeddingsJob];
+interface WorkerDef {
+  name: string;
+  concurrency: number;
+  process: Processor;
+}
+
+const JOBS: WorkerDef[] = [emailJob, embeddingsJob];
 
 export function startWorkers(): Worker[] {
   const conn = getRedis();
@@ -23,13 +29,13 @@ export function startWorkers(): Worker[] {
     w.on("error", (err) => console.error(`[${w.name}] error:`, err));
   });
 
+  console.info(`Workers running: ${workers.map((w) => w.name).join(", ")}`);
   return workers;
 }
 
 // Entry point — only runs when executed directly
 if (require.main === module) {
   const workers = startWorkers();
-  console.info(`Workers running: ${workers.map((w) => w.name).join(", ")}`);
 
   async function shutdown(signal: string): Promise<void> {
     console.info(`\nReceived ${signal}, shutting down...`);

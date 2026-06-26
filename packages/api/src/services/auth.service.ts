@@ -2,16 +2,19 @@ import crypto from "crypto";
 import {
   hashPassword,
   verifyPassword,
-  generateTokenPair,
+  generateAccessToken,
+  generateRefreshToken,
   verifyRefreshToken,
+  hashToken,
 } from "../utils/auth";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
 
 interface RegisterInput {
+  firstName: string;
+  lastName: string;
   email: string;
   password: string;
-  name: string;
 }
 
 interface LoginInput {
@@ -21,11 +24,7 @@ interface LoginInput {
   ipAddress?: string;
 }
 
-const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1_000;
-
-function sha256(value: string): string {
-  return crypto.createHash("sha256").update(value).digest("hex");
-}
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1_000;
 
 export class AuthService {
   async register(input: RegisterInput) {
@@ -34,53 +33,49 @@ export class AuthService {
 
     const passwordHash = await hashPassword(input.password);
     return prisma.user.create({
-      data: { email: input.email, passwordHash, name: input.name },
-      select: { id: true, email: true, name: true, role: true },
+      data: {
+        email: input.email,
+        passwordHash,
+        firstName: input.firstName,
+        lastName: input.lastName,
+      },
+      select: { id: true, email: true, firstName: true, lastName: true },
     });
   }
 
   async login(input: LoginInput) {
     const user = await prisma.user.findUnique({ where: { email: input.email } });
     if (!user) throw createError("Invalid credentials", 401);
+    if (!user.passwordHash) throw createError("Invalid credentials", 401);
 
     const valid = await verifyPassword(input.password, user.passwordHash);
     if (!valid) throw createError("Invalid credentials", 401);
 
-    const expiresAt = new Date(Date.now() + SEVEN_DAYS_MS);
-
-    const session = await prisma.session.create({
-      data: {
-        userId: user.id,
-        userAgent: input.userAgent,
-        ipAddress: input.ipAddress,
-        expiresAt,
-      },
-    });
-
-    const tokens = generateTokenPair({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-      sessionId: session.id,
-    });
+    const familyId = crypto.randomUUID();
+    const { raw: rawRefresh, hash: refreshHash } = generateRefreshToken();
+    const accessToken = generateAccessToken(user.id, familyId, user.email);
+    const expiresAt = new Date(Date.now() + THIRTY_DAYS_MS);
 
     await prisma.refreshToken.create({
       data: {
         userId: user.id,
-        sessionId: session.id,
-        tokenHash: sha256(tokens.refreshToken),
+        tokenHash: refreshHash,
+        familyId,
+        deviceInfo: input.userAgent ?? null,
+        ipAddress: input.ipAddress ?? null,
         expiresAt,
       },
     });
 
     return {
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
-      ...tokens,
+      user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName },
+      accessToken,
+      refreshToken: rawRefresh,
     };
   }
 
   async refresh(rawToken: string) {
-    const tokenHash = sha256(rawToken);
+    const tokenHash = hashToken(rawToken);
     const now = new Date();
 
     const stored = await prisma.refreshToken.findUnique({ where: { tokenHash } });
@@ -90,22 +85,13 @@ export class AuthService {
 
     const payload = verifyRefreshToken(rawToken);
 
-    const [user, session] = await Promise.all([
-      prisma.user.findUnique({ where: { id: payload.userId } }),
-      prisma.session.findUnique({ where: { id: stored.sessionId } }),
-    ]);
-
+    const user = await prisma.user.findUnique({ where: { id: payload.userId } });
     if (!user) throw createError("User not found", 404);
-    if (!session) throw createError("Session not found", 401);
 
-    const tokens = generateTokenPair({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-      sessionId: session.id,
-    });
-
-    const expiresAt = new Date(Date.now() + SEVEN_DAYS_MS);
+    const familyId = stored.familyId ?? crypto.randomUUID();
+    const { raw: rawRefresh, hash: refreshHash } = generateRefreshToken();
+    const accessToken = generateAccessToken(user.id, familyId, user.email);
+    const expiresAt = new Date(Date.now() + THIRTY_DAYS_MS);
 
     await prisma.$transaction([
       prisma.refreshToken.update({
@@ -115,19 +101,23 @@ export class AuthService {
       prisma.refreshToken.create({
         data: {
           userId: user.id,
-          sessionId: session.id,
-          tokenHash: sha256(tokens.refreshToken),
+          tokenHash: refreshHash,
+          familyId,
+          deviceInfo: stored.deviceInfo,
+          ipAddress: stored.ipAddress,
           expiresAt,
         },
       }),
     ]);
 
-    return tokens;
+    return { accessToken, refreshToken: rawRefresh };
   }
 
-  async logout(sessionId: string) {
-    // Cascade delete on Session removes all RefreshTokens automatically
-    await prisma.session.delete({ where: { id: sessionId } });
+  async logout(familyId: string) {
+    await prisma.refreshToken.updateMany({
+      where: { familyId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
 
   async getProfile(userId: string) {
@@ -136,9 +126,10 @@ export class AuthService {
       select: {
         id: true,
         email: true,
-        name: true,
-        role: true,
-        emailVerified: true,
+        firstName: true,
+        lastName: true,
+        avatarUrl: true,
+        emailVerifiedAt: true,
         createdAt: true,
       },
     });

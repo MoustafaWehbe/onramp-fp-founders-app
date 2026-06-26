@@ -1,0 +1,14 @@
+{
+  "version": "0.2",
+  "words": [
+    "uuidv",
+    "bcryptjs",
+    "bullmq",
+    "expiresAt",
+    "prisma",
+    "pgvector",
+    "dotenv",
+    "zod"
+  ],
+  "ignorePaths": ["node_modules", "dist", "*.lock"]
+}

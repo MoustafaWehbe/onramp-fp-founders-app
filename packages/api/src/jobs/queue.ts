@@ -1,9 +1,10 @@
 import { Queue } from "bullmq";
 import IORedis from "ioredis";
-import { emailJob, type EmailJobData } from "./workers/email.worker";
+import { emailJob } from "./workers/email.worker";
+import type { EmailJobData } from "../types";
 import { embeddingsJob, type EmbeddingsJobData } from "./workers/embeddings.worker";
 
-// ─── Redis singleton (shared with workers) ────────────────────────────────────
+// Redis singleton (shared with workers)
 
 let redis: IORedis | null = null;
 
@@ -16,7 +17,7 @@ export function getRedis(): IORedis {
   return redis;
 }
 
-// ─── Queue factory ────────────────────────────────────────────────────────────
+// Queue factory
 
 function makeQueue<T>(name: string): Queue<T> {
   return new Queue<T>(name, {
@@ -30,7 +31,6 @@ function makeQueue<T>(name: string): Queue<T> {
   });
 }
 
-// ─── Queue instances (import these in routes/services to enqueue jobs) ────────
 
 export const emailQueue = makeQueue<EmailJobData>(emailJob.name);
 export const embeddingsQueue = makeQueue<EmbeddingsJobData>(embeddingsJob.name);
