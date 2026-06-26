@@ -58,15 +58,11 @@ async function main() {
   });
 
   // 3. Permissions (all resource × action combinations)
-  for (const resource of RESOURCES) {
-    for (const action of ACTIONS) {
-      await prisma.permission.upsert({
-        where: { resource_action: { resource, action } },
-        update: {},
-        create: { resource, action, description: `${action} ${resource}` },
-      });
-    }
-  }
+  const permissionData = RESOURCES.flatMap((resource) =>
+    ACTIONS.map((action) => ({ resource, action, description: `${action} ${resource}` })),
+  );
+
+  await prisma.permission.createMany({ data: permissionData, skipDuplicates: true });
 
   const allPermissions = await prisma.permission.findMany();
 
