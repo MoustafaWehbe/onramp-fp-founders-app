@@ -1,9 +1,9 @@
 openapi: 3.1.0
 
 info:
-  title: Starter Kit API
+  title: Fundraising SaaS API
   version: 1.0.0
-  description: REST API for the Starter Kit application
+  description: REST API for the Fundraising SaaS application (Auth, RBAC, CRM, Financial, Documents, Reviewer Portal)
 
 servers:
   - url: /api
@@ -12,6 +12,36 @@ servers:
 tags:
   - name: Auth
     description: Authentication and session management
+  - name: Users
+    description: Current user profile management
+  - name: Startups
+    description: Startup workspace management
+  - name: Startup Members
+    description: Team membership and invitations within a startup
+  - name: Roles
+    description: Custom and system roles (RBAC)
+  - name: Permissions
+    description: Available permission catalog (RBAC)
+  - name: Investors
+    description: Investor CRM records
+  - name: Pipeline
+    description: Investor pipeline / deal stages
+  - name: Interaction Logs
+    description: Logged interactions with investors
+  - name: Fundraising Rounds
+    description: Fundraising round management
+  - name: Commitments
+    description: Investor commitments against fundraising rounds
+  - name: Documents
+    description: Document vault
+  - name: Document Versions
+    description: Versioned files within a document
+  - name: Reviewer Invitations
+    description: Invitations granting external reviewers access to documents
+  - name: Reviewer Portal
+    description: Public-facing endpoints used by external reviewers (token + OTP based, no cookieAuth)
+  - name: Reviewer Comments
+    description: Comments left by reviewers on documents/sections
 
 # ─── Reusable components ───────────────────────────────────────────────────────
 components:
@@ -22,82 +52,42 @@ components:
       name: accessToken
       description: HttpOnly access token cookie set on login
 
+    reviewerSessionAuth:
+      type: apiKey
+      in: cookie
+      name: reviewerSessionToken
+      description: >
+        HttpOnly session cookie set after a reviewer completes token + OTP
+        verification via POST /reviewer-portal/verify. Required for all
+        subsequent Reviewer Portal calls.
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: Page number (1-indexed)
+    LimitParam:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Number of items per page
+
   schemas:
-    RegisterBody:
-      type: object
-      required: [email, password, name]
-      properties:
-        email:
-          type: string
-          format: email
-          example: user@example.com
-        password:
-          type: string
-          minLength: 8
-          description: Must contain at least one uppercase letter and one number
-          example: Password1
-        name:
-          type: string
-          minLength: 2
-          maxLength: 100
-          example: Jane Doe
-
-    LoginBody:
-      type: object
-      required: [email, password]
-      properties:
-        email:
-          type: string
-          format: email
-          example: user@example.com
-        password:
-          type: string
-          minLength: 1
-          example: Password1
-
-    User:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-          example: 123e4567-e89b-12d3-a456-426614174000
-        email:
-          type: string
-          format: email
-          example: user@example.com
-        name:
-          type: string
-          example: Jane Doe
-        role:
-          type: string
-          enum: [user, admin]
-          example: user
-        createdAt:
-          type: string
-          format: date-time
-          example: "2024-01-01T00:00:00.000Z"
-        updatedAt:
-          type: string
-          format: date-time
-          example: "2024-01-01T00:00:00.000Z"
-
+    # ── Shared / generic ─────────────────────────────────────────────
     ErrorResponse:
       type: object
       properties:
         error:
           type: string
           example: Invalid credentials
-
-    MessageResponse:
-      type: object
-      properties:
-        data:
-          type: object
-          properties:
-            message:
-              type: string
-              example: Success
 
     ValidationErrorResponse:
       type: object
@@ -117,8 +107,1064 @@ components:
                 type: string
                 example: Invalid email address
 
+    MessageResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            message:
+              type: string
+              example: Success
+
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 134
+        totalPages:
+          type: integer
+          example: 7
+
+    # ── Auth ──────────────────────────────────────────────────────────
+    RegisterBody:
+      type: object
+      required: [email, password, firstName, lastName]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          minLength: 8
+          description: Must contain at least one uppercase letter and one number
+          example: Password1
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Jane
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Doe
+
+    LoginBody:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          minLength: 1
+          example: Password1
+
+    ForgotPasswordBody:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+
+    ResetPasswordBody:
+      type: object
+      required: [tokenHash, password]
+      properties:
+        tokenHash:
+          type: string
+          description: Raw reset token received via email (hashed server-side for lookup)
+          example: 8f14e45fceea167a5a36dedd4bea2543
+        password:
+          type: string
+          minLength: 8
+          example: NewPassword1
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 123e4567-e89b-12d3-a456-426614174000
+        firstName:
+          type: string
+          example: Jane
+        lastName:
+          type: string
+          example: Doe
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+          example: https://cdn.example.com/avatars/123.png
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00.000Z"
+
+    UpdateUserBody:
+      type: object
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        avatarUrl:
+          type: string
+          format: uri
+
+    ChangePasswordBody:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword:
+          type: string
+          example: Password1
+        newPassword:
+          type: string
+          minLength: 8
+          example: NewPassword1
+
+    # ── Startups ──────────────────────────────────────────────────────
+    FundingStage:
+      type: string
+      enum: [pre_seed, seed, series_a, series_b, series_c, growth, other]
+      example: seed
+
+    Startup:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Acme Inc.
+        description:
+          type: string
+          nullable: true
+        industry:
+          type: string
+          nullable: true
+          example: Fintech
+        website:
+          type: string
+          format: uri
+          nullable: true
+        fundingStage:
+          $ref: "#/components/schemas/FundingStage"
+        createdBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateStartupBody:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 150
+          example: Acme Inc.
+        description:
+          type: string
+        industry:
+          type: string
+          example: Fintech
+        website:
+          type: string
+          format: uri
+        fundingStage:
+          $ref: "#/components/schemas/FundingStage"
+
+    UpdateStartupBody:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 150
+        description:
+          type: string
+        industry:
+          type: string
+        website:
+          type: string
+          format: uri
+        fundingStage:
+          $ref: "#/components/schemas/FundingStage"
+
+    # ── RBAC ──────────────────────────────────────────────────────────
+    Permission:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        resource:
+          type: string
+          example: documents
+        action:
+          type: string
+          example: delete
+        description:
+          type: string
+          nullable: true
+
+    Role:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        startupId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Finance Lead
+        description:
+          type: string
+          nullable: true
+        isSystemRole:
+          type: boolean
+          example: false
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Permission"
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateRoleBody:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: Finance Lead
+        description:
+          type: string
+        permissionIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    UpdateRoleBody:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        description:
+          type: string
+
+    SetRolePermissionsBody:
+      type: object
+      required: [permissionIds]
+      properties:
+        permissionIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Full replacement set of permission IDs for this role
+
+    # ── Startup Members ───────────────────────────────────────────────
+    MemberStatus:
+      type: string
+      enum: [invited, active, suspended]
+      example: active
+
+    StartupMember:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        startupId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+          nullable: true
+        invitedEmail:
+          type: string
+          format: email
+          nullable: true
+          description: Set when invited before the user has an account; cleared once accepted
+        role:
+          $ref: "#/components/schemas/Role"
+        status:
+          $ref: "#/components/schemas/MemberStatus"
+        invitedBy:
+          type: string
+          format: uuid
+          nullable: true
+        joinedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    InviteMemberBody:
+      type: object
+      required: [email, roleId]
+      properties:
+        email:
+          type: string
+          format: email
+          example: newmember@example.com
+        roleId:
+          type: string
+          format: uuid
+
+    UpdateMemberBody:
+      type: object
+      properties:
+        roleId:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/MemberStatus"
+
+    AcceptInviteBody:
+      type: object
+      required: [inviteTokenHash]
+      properties:
+        inviteTokenHash:
+          type: string
+          description: Raw invite token from the email link
+          example: 7c6a180b36896a0a8c02787eeafb0e4c
+        password:
+          type: string
+          minLength: 8
+          description: Required only if the invited person does not yet have an account
+          example: Password1
+        firstName:
+          type: string
+          description: Required only if the invited person does not yet have an account
+        lastName:
+          type: string
+          description: Required only if the invited person does not yet have an account
+
+    # ── CRM: Investors ────────────────────────────────────────────────
+    Investor:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        startupId:
+          type: string
+          format: uuid
+        fullName:
+          type: string
+          example: John Smith
+        email:
+          type: string
+          format: email
+          nullable: true
+        ventureFirm:
+          type: string
+          nullable: true
+          example: Acme Ventures
+        sectorFocus:
+          type: string
+          nullable: true
+          example: Fintech, SaaS
+        investmentStagePreference:
+          type: string
+          nullable: true
+          example: Seed, Series A
+        linkedinUrl:
+          type: string
+          format: uri
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateInvestorBody:
+      type: object
+      required: [fullName]
+      properties:
+        fullName:
+          type: string
+          minLength: 2
+          maxLength: 150
+        email:
+          type: string
+          format: email
+        ventureFirm:
+          type: string
+        sectorFocus:
+          type: string
+        investmentStagePreference:
+          type: string
+        linkedinUrl:
+          type: string
+          format: uri
+        notes:
+          type: string
+
+    UpdateInvestorBody:
+      type: object
+      properties:
+        fullName:
+          type: string
+          minLength: 2
+          maxLength: 150
+        email:
+          type: string
+          format: email
+        ventureFirm:
+          type: string
+        sectorFocus:
+          type: string
+        investmentStagePreference:
+          type: string
+        linkedinUrl:
+          type: string
+          format: uri
+        notes:
+          type: string
+
+    # ── CRM: Pipeline ─────────────────────────────────────────────────
+    PipelineStage:
+      type: string
+      enum: [sourced, contacted, meeting_scheduled, due_diligence, term_sheet, committed, passed]
+      example: meeting_scheduled
+
+    PipelineEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        startupId:
+          type: string
+          format: uuid
+        investorId:
+          type: string
+          format: uuid
+        investor:
+          $ref: "#/components/schemas/Investor"
+        stage:
+          $ref: "#/components/schemas/PipelineStage"
+        expectedAmount:
+          type: number
+          format: double
+          nullable: true
+          example: 250000
+        probabilityPercentage:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+          example: 60
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreatePipelineEntryBody:
+      type: object
+      required: [investorId, stage]
+      properties:
+        investorId:
+          type: string
+          format: uuid
+        stage:
+          $ref: "#/components/schemas/PipelineStage"
+        expectedAmount:
+          type: number
+          format: double
+        probabilityPercentage:
+          type: integer
+          minimum: 0
+          maximum: 100
+
+    UpdatePipelineEntryBody:
+      type: object
+      properties:
+        stage:
+          $ref: "#/components/schemas/PipelineStage"
+        expectedAmount:
+          type: number
+          format: double
+        probabilityPercentage:
+          type: integer
+          minimum: 0
+          maximum: 100
+
+    # ── CRM: Interaction Logs ─────────────────────────────────────────
+    InteractionType:
+      type: string
+      enum: [call, email, meeting, note, other]
+      example: meeting
+
+    InteractionLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        investorId:
+          type: string
+          format: uuid
+        pipelineId:
+          type: string
+          format: uuid
+          nullable: true
+        createdBy:
+          type: string
+          format: uuid
+        type:
+          $ref: "#/components/schemas/InteractionType"
+        subject:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        interactionDate:
+          type: string
+          format: date-time
+        nextFollowupDate:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateInteractionLogBody:
+      type: object
+      required: [investorId, type, interactionDate]
+      properties:
+        investorId:
+          type: string
+          format: uuid
+        pipelineId:
+          type: string
+          format: uuid
+        type:
+          $ref: "#/components/schemas/InteractionType"
+        subject:
+          type: string
+        description:
+          type: string
+        interactionDate:
+          type: string
+          format: date-time
+        nextFollowupDate:
+          type: string
+          format: date-time
+
+    UpdateInteractionLogBody:
+      type: object
+      properties:
+        type:
+          $ref: "#/components/schemas/InteractionType"
+        subject:
+          type: string
+        description:
+          type: string
+        interactionDate:
+          type: string
+          format: date-time
+        nextFollowupDate:
+          type: string
+          format: date-time
+
+    # ── Financial: Fundraising Rounds ─────────────────────────────────
+    RoundStatus:
+      type: string
+      enum: [draft, open, closed, cancelled]
+      example: open
+
+    FundraisingRound:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        startupId:
+          type: string
+          format: uuid
+        roundName:
+          type: string
+          example: Seed Round
+        targetAmount:
+          type: number
+          format: double
+          example: 1500000
+        minimumTicketSize:
+          type: number
+          format: double
+          nullable: true
+          example: 25000
+        equityOfferedPercentage:
+          type: number
+          format: double
+          nullable: true
+          example: 12.5
+        currency:
+          type: string
+          example: USD
+        status:
+          $ref: "#/components/schemas/RoundStatus"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateFundraisingRoundBody:
+      type: object
+      required: [roundName, targetAmount, currency]
+      properties:
+        roundName:
+          type: string
+          minLength: 2
+          maxLength: 150
+        targetAmount:
+          type: number
+          format: double
+          minimum: 0
+        minimumTicketSize:
+          type: number
+          format: double
+          minimum: 0
+        equityOfferedPercentage:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+        currency:
+          type: string
+          example: USD
+        status:
+          $ref: "#/components/schemas/RoundStatus"
+
+    UpdateFundraisingRoundBody:
+      type: object
+      properties:
+        roundName:
+          type: string
+          minLength: 2
+          maxLength: 150
+        targetAmount:
+          type: number
+          format: double
+          minimum: 0
+        minimumTicketSize:
+          type: number
+          format: double
+          minimum: 0
+        equityOfferedPercentage:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+        currency:
+          type: string
+        status:
+          $ref: "#/components/schemas/RoundStatus"
+
+    # ── Financial: Commitments ────────────────────────────────────────
+    CommitmentStatus:
+      type: string
+      enum: [pending, negotiating, confirmed, funded, withdrawn]
+      example: pending
+
+    Commitment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        startupId:
+          type: string
+          format: uuid
+        investorId:
+          type: string
+          format: uuid
+        investor:
+          $ref: "#/components/schemas/Investor"
+        pipelineId:
+          type: string
+          format: uuid
+          nullable: true
+        roundId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: double
+          example: 50000
+        status:
+          $ref: "#/components/schemas/CommitmentStatus"
+        expectedCloseDate:
+          type: string
+          format: date
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateCommitmentBody:
+      type: object
+      required: [investorId, roundId, amount]
+      properties:
+        investorId:
+          type: string
+          format: uuid
+        pipelineId:
+          type: string
+          format: uuid
+        roundId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: double
+          minimum: 0
+        status:
+          $ref: "#/components/schemas/CommitmentStatus"
+        expectedCloseDate:
+          type: string
+          format: date
+
+    UpdateCommitmentBody:
+      type: object
+      properties:
+        amount:
+          type: number
+          format: double
+          minimum: 0
+        status:
+          $ref: "#/components/schemas/CommitmentStatus"
+        expectedCloseDate:
+          type: string
+          format: date
+
+    # ── Documents ───────────────────────────────────────────────────
+    DocumentType:
+      type: string
+      enum: [pitch_deck, financial_model, cap_table, term_sheet, data_room, other]
+      example: pitch_deck
+
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        startupId:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: Series A Pitch Deck
+        documentType:
+          $ref: "#/components/schemas/DocumentType"
+        currentVersionId:
+          type: string
+          format: uuid
+          nullable: true
+        currentVersion:
+          $ref: "#/components/schemas/DocumentVersion"
+        createdBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateDocumentBody:
+      type: object
+      required: [title, documentType]
+      properties:
+        title:
+          type: string
+          minLength: 2
+          maxLength: 200
+        documentType:
+          $ref: "#/components/schemas/DocumentType"
+
+    UpdateDocumentBody:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 2
+          maxLength: 200
+        documentType:
+          $ref: "#/components/schemas/DocumentType"
+
+    DocumentVersion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        versionNumber:
+          type: integer
+          example: 3
+        fileUrl:
+          type: string
+          format: uri
+        fileSize:
+          type: integer
+          description: File size in bytes
+          example: 2485760
+        summary:
+          type: string
+          nullable: true
+          description: Description of what changed in this version
+        uploadedBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateDocumentVersionBody:
+      type: object
+      required: [fileUrl, fileSize]
+      properties:
+        fileUrl:
+          type: string
+          format: uri
+        fileSize:
+          type: integer
+          minimum: 0
+        summary:
+          type: string
+
+    # ── Reviewer ──────────────────────────────────────────────────────
+    ReviewerInvitationStatus:
+      type: string
+      enum: [pending, accessed, expired, revoked]
+      example: pending
+
+    ReviewerInvitation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        startupId:
+          type: string
+          format: uuid
+        investorId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Set when the reviewer is a known investor from the CRM
+        email:
+          type: string
+          format: email
+        status:
+          $ref: "#/components/schemas/ReviewerInvitationStatus"
+        documentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Documents this invitation grants access to
+        expiresAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateReviewerInvitationBody:
+      type: object
+      required: [email, documentIds]
+      properties:
+        email:
+          type: string
+          format: email
+        investorId:
+          type: string
+          format: uuid
+          description: Optional — link to an existing CRM investor record
+        documentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+        expiresAt:
+          type: string
+          format: date-time
+          description: Defaults to 14 days from creation if omitted
+
+    UpdateReviewerInvitationBody:
+      type: object
+      properties:
+        documentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+        expiresAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [revoked]
+          description: Owners may only transition status to "revoked" via this endpoint
+
+    # ── Reviewer Portal (public, token + OTP) ──────────────────────────
+    ReviewerPortalAccessBody:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: Raw invitation token from the emailed link
+          example: 3a7bd3e2360a3d29eea436fcfb7e44542f4e4cd2e3e4a3c
+
+    ReviewerPortalVerifyBody:
+      type: object
+      required: [token, code]
+      properties:
+        token:
+          type: string
+          example: 3a7bd3e2360a3d29eea436fcfb7e44542f4e4cd2e3e4a3c
+        code:
+          type: string
+          minLength: 6
+          maxLength: 6
+          description: 6-digit OTP code emailed to the invitation address
+          example: "482913"
+
+    ReviewerPortalSession:
+      type: object
+      properties:
+        invitation:
+          $ref: "#/components/schemas/ReviewerInvitation"
+        startup:
+          $ref: "#/components/schemas/Startup"
+        documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/Document"
+
+    # ── Reviewer Comments ─────────────────────────────────────────────
+    ReviewerCommentTargetType:
+      type: string
+      enum: [document, document_version, section]
+      example: document_version
+
+    ReviewerComment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        invitationId:
+          type: string
+          format: uuid
+        startupId:
+          type: string
+          format: uuid
+        targetType:
+          $ref: "#/components/schemas/ReviewerCommentTargetType"
+        targetId:
+          type: string
+          format: uuid
+        commentText:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateReviewerCommentBody:
+      type: object
+      required: [targetType, targetId, commentText]
+      properties:
+        targetType:
+          $ref: "#/components/schemas/ReviewerCommentTargetType"
+        targetId:
+          type: string
+          format: uuid
+        commentText:
+          type: string
+          minLength: 1
+
 # ─── Paths ─────────────────────────────────────────────────────────────────────
 paths:
+  # ════════════════════════════════════════════════════════════════
+  #  AUTH
+  # ════════════════════════════════════════════════════════════════
   /auth/register:
     post:
       tags: [Auth]
@@ -258,6 +1304,2673 @@ paths:
                     $ref: "#/components/schemas/User"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Request a password reset email
+      operationId: forgotPassword
+      description: >
+        Always returns 200 regardless of whether the email exists, to avoid
+        leaking which addresses are registered. If found, an email is sent
+        with a single-use token (10-minute family rotation tracked server-side).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForgotPasswordBody"
+      responses:
+        "200":
+          description: Reset email sent if the account exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Reset password using a token from the reset email
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordBody"
+      responses:
+        "200":
+          description: Password reset successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: Token expired or already used
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  # ════════════════════════════════════════════════════════════════
+  #  USERS (current user profile)
+  # ════════════════════════════════════════════════════════════════
+  /users/me:
+    patch:
+      tags: [Users]
+      summary: Update the current user's profile
+      operationId: updateMe
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserBody"
+      responses:
+        "200":
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  # ════════════════════════════════════════════════════════════════
+  #  STARTUPS
+  # ════════════════════════════════════════════════════════════════
+  /startups:
+    get:
+      tags: [Startups]
+      summary: List startups the current user belongs to
+      operationId: listStartups
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: List of startups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Startup"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags: [Startups]
+      summary: Create a new startup
+      operationId: createStartup
+      description: The creator automatically becomes a member with the default "Owner" system role.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStartupBody"
+      responses:
+        "201":
+          description: Startup created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Startup"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /startups/{startupId}:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Startups]
+      summary: Get a startup by ID
+      operationId: getStartup
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Startup details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Startup"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not a member of this startup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Startup not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [Startups]
+      summary: Update a startup
+      operationId: updateStartup
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStartupBody"
+      responses:
+        "200":
+          description: Startup updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Startup"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Startup not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+    delete:
+      tags: [Startups]
+      summary: Delete a startup
+      operationId: deleteStartup
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Startup deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Startup not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/me/password:
+    patch:
+      tags: [Users]
+      summary: Change the current user's password
+      operationId: changePassword
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordBody"
+      responses:
+        "200":
+          description: Password changed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "401":
+          description: Unauthorized or current password incorrect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  # ════════════════════════════════════════════════════════════════
+  #  STARTUP MEMBERS
+  # ════════════════════════════════════════════════════════════════
+  /startup-members:
+    get:
+      tags: [Startup Members]
+      summary: List members of the current startup
+      operationId: listStartupMembers
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/MemberStatus"
+      responses:
+        "200":
+          description: List of startup members
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StartupMember"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /startup-members/invite:
+    post:
+      tags: [Startup Members]
+      summary: Invite a person to join the current startup
+      operationId: inviteStartupMember
+      description: >
+        Creates a member record with status "invited". If the email does not
+        match an existing user, `invitedEmail` is set and `userId` remains null
+        until the invite is accepted. Sends an email with a time-limited invite link.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteMemberBody"
+      responses:
+        "201":
+          description: Invitation created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/StartupMember"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Person is already a member or has a pending invite
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /startup-members/accept-invite:
+    post:
+      tags: [Startup Members]
+      summary: Accept a startup membership invitation
+      operationId: acceptStartupInvite
+      description: >
+        Public endpoint (no cookieAuth required). If the invited person has no
+        account yet, `firstName`, `lastName`, and `password` must be provided to
+        create one. On success the member status becomes "active" and auth
+        cookies are set, logging the person in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptInviteBody"
+      responses:
+        "200":
+          description: Invitation accepted
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: accessToken=...; HttpOnly; Path=/api
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: "#/components/schemas/User"
+                      member:
+                        $ref: "#/components/schemas/StartupMember"
+        "400":
+          description: Invite token expired or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /startup-members/{memberId}:
+    parameters:
+      - name: memberId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: [Startup Members]
+      summary: Update a member's role or status
+      operationId: updateStartupMember
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMemberBody"
+      responses:
+        "200":
+          description: Member updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/StartupMember"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Member not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+    delete:
+      tags: [Startup Members]
+      summary: Remove a member from the startup
+      operationId: removeStartupMember
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Member removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Member not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ════════════════════════════════════════════════════════════════
+  #  ROLES (RBAC)
+  # ════════════════════════════════════════════════════════════════
+  /roles:
+    get:
+      tags: [Roles]
+      summary: List roles for the current startup
+      operationId: listRoles
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: List of roles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Role"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags: [Roles]
+      summary: Create a custom role
+      operationId: createRole
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRoleBody"
+      responses:
+        "201":
+          description: Role created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Role"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: A role with this name already exists for this startup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /roles/{roleId}:
+    parameters:
+      - name: roleId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Roles]
+      summary: Get a role by ID
+      operationId: getRole
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Role details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Role"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Role not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [Roles]
+      summary: Update a role's name or description
+      operationId: updateRole
+      description: System roles cannot be renamed; returns 403 if attempted.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRoleBody"
+      responses:
+        "200":
+          description: Role updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Role"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient permissions or attempting to modify a system role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Role not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+    delete:
+      tags: [Roles]
+      summary: Delete a custom role
+      operationId: deleteRole
+      description: System roles cannot be deleted; returns 403 if attempted.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Role deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient permissions or attempting to delete a system role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Role not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Role is still assigned to one or more members
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /roles/{roleId}/permissions:
+    parameters:
+      - name: roleId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [Roles]
+      summary: Replace the full set of permissions assigned to a role
+      operationId: setRolePermissions
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetRolePermissionsBody"
+      responses:
+        "200":
+          description: Permissions updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Role"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Role not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  # ════════════════════════════════════════════════════════════════
+  #  PERMISSIONS (RBAC catalog — global, read-only)
+  # ════════════════════════════════════════════════════════════════
+  /permissions:
+    get:
+      tags: [Permissions]
+      summary: List all available permissions in the system
+      operationId: listPermissions
+      description: Global, non-tenant-scoped catalog used when building or editing roles.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: List of permissions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Permission"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ════════════════════════════════════════════════════════════════
+  #  INVESTORS (CRM)
+  # ════════════════════════════════════════════════════════════════
+  /investors:
+    get:
+      tags: [Investors]
+      summary: List investors for the current startup
+      operationId: listInvestors
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Free-text search across fullName, email, ventureFirm
+      responses:
+        "200":
+          description: List of investors
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Investor"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags: [Investors]
+      summary: Create an investor record
+      operationId: createInvestor
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInvestorBody"
+      responses:
+        "201":
+          description: Investor created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Investor"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /investors/{investorId}:
+    parameters:
+      - name: investorId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Investors]
+      summary: Get an investor by ID
+      operationId: getInvestor
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Investor details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Investor"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Investor not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [Investors]
+      summary: Update an investor record
+      operationId: updateInvestor
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateInvestorBody"
+      responses:
+        "200":
+          description: Investor updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Investor"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Investor not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+    delete:
+      tags: [Investors]
+      summary: Delete an investor record
+      operationId: deleteInvestor
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Investor deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Investor not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Investor has related pipeline entries or commitments and cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /investors/{investorId}/interaction-logs:
+    parameters:
+      - name: investorId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Interaction Logs]
+      summary: List interaction logs for a specific investor
+      operationId: listInvestorInteractionLogs
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: List of interaction logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/InteractionLog"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Investor not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ════════════════════════════════════════════════════════════════
+  #  PIPELINE (CRM)
+  # ════════════════════════════════════════════════════════════════
+  /pipeline:
+    get:
+      tags: [Pipeline]
+      summary: List pipeline entries for the current startup
+      operationId: listPipelineEntries
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - name: stage
+          in: query
+          schema:
+            $ref: "#/components/schemas/PipelineStage"
+      responses:
+        "200":
+          description: List of pipeline entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PipelineEntry"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags: [Pipeline]
+      summary: Add an investor to the pipeline
+      operationId: createPipelineEntry
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePipelineEntryBody"
+      responses:
+        "201":
+          description: Pipeline entry created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PipelineEntry"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Investor not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: This investor already has a pipeline entry for this startup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /pipeline/{pipelineId}:
+    parameters:
+      - name: pipelineId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Pipeline]
+      summary: Get a pipeline entry by ID
+      operationId: getPipelineEntry
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Pipeline entry details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PipelineEntry"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pipeline entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [Pipeline]
+      summary: Update a pipeline entry (e.g. move stage)
+      operationId: updatePipelineEntry
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePipelineEntryBody"
+      responses:
+        "200":
+          description: Pipeline entry updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PipelineEntry"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pipeline entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+    delete:
+      tags: [Pipeline]
+      summary: Remove a pipeline entry
+      operationId: deletePipelineEntry
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Pipeline entry removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pipeline entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Pipeline entry has related commitments and cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /pipeline/{pipelineId}/interaction-logs:
+    parameters:
+      - name: pipelineId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Interaction Logs]
+      summary: List interaction logs linked to a pipeline entry
+      operationId: listPipelineInteractionLogs
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: List of interaction logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/InteractionLog"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pipeline entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ════════════════════════════════════════════════════════════════
+  #  INTERACTION LOGS (CRM)
+  # ════════════════════════════════════════════════════════════════
+  /interaction-logs:
+    post:
+      tags: [Interaction Logs]
+      summary: Log an interaction with an investor
+      operationId: createInteractionLog
+      description: >
+        `pipelineId` is optional, allowing interactions to be logged before an
+        investor formally enters the pipeline.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInteractionLogBody"
+      responses:
+        "201":
+          description: Interaction log created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/InteractionLog"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Investor or pipeline entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /interaction-logs/{logId}:
+    parameters:
+      - name: logId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Interaction Logs]
+      summary: Get an interaction log by ID
+      operationId: getInteractionLog
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Interaction log details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/InteractionLog"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Interaction log not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [Interaction Logs]
+      summary: Update an interaction log
+      operationId: updateInteractionLog
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateInteractionLogBody"
+      responses:
+        "200":
+          description: Interaction log updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/InteractionLog"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Interaction log not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+    delete:
+      tags: [Interaction Logs]
+      summary: Delete an interaction log
+      operationId: deleteInteractionLog
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Interaction log deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Interaction log not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ════════════════════════════════════════════════════════════════
+  #  FUNDRAISING ROUNDS (Financial)
+  # ════════════════════════════════════════════════════════════════
+  /fundraising-rounds:
+    get:
+      tags: [Fundraising Rounds]
+      summary: List fundraising rounds for the current startup
+      operationId: listFundraisingRounds
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/RoundStatus"
+      responses:
+        "200":
+          description: List of fundraising rounds
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FundraisingRound"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags: [Fundraising Rounds]
+      summary: Create a fundraising round
+      operationId: createFundraisingRound
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFundraisingRoundBody"
+      responses:
+        "201":
+          description: Fundraising round created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/FundraisingRound"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /fundraising-rounds/{roundId}:
+    parameters:
+      - name: roundId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Fundraising Rounds]
+      summary: Get a fundraising round by ID
+      operationId: getFundraisingRound
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Fundraising round details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/FundraisingRound"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Fundraising round not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [Fundraising Rounds]
+      summary: Update a fundraising round
+      operationId: updateFundraisingRound
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFundraisingRoundBody"
+      responses:
+        "200":
+          description: Fundraising round updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/FundraisingRound"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Fundraising round not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+    delete:
+      tags: [Fundraising Rounds]
+      summary: Delete a fundraising round
+      operationId: deleteFundraisingRound
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Fundraising round deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Fundraising round not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Round has related commitments and cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /fundraising-rounds/{roundId}/commitments:
+    parameters:
+      - name: roundId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Commitments]
+      summary: List commitments for a specific fundraising round
+      operationId: listRoundCommitments
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: List of commitments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Commitment"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Fundraising round not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ════════════════════════════════════════════════════════════════
+  #  COMMITMENTS (Financial)
+  # ════════════════════════════════════════════════════════════════
+  /commitments:
+    get:
+      tags: [Commitments]
+      summary: List commitments for the current startup
+      operationId: listCommitments
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/CommitmentStatus"
+      responses:
+        "200":
+          description: List of commitments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Commitment"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags: [Commitments]
+      summary: Create a commitment
+      operationId: createCommitment
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCommitmentBody"
+      responses:
+        "201":
+          description: Commitment created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Commitment"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Investor or fundraising round not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /commitments/{commitmentId}:
+    parameters:
+      - name: commitmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Commitments]
+      summary: Get a commitment by ID
+      operationId: getCommitment
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Commitment details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Commitment"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Commitment not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [Commitments]
+      summary: Update a commitment
+      operationId: updateCommitment
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCommitmentBody"
+      responses:
+        "200":
+          description: Commitment updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Commitment"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Commitment not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+    delete:
+      tags: [Commitments]
+      summary: Delete a commitment
+      operationId: deleteCommitment
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Commitment deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Commitment not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ════════════════════════════════════════════════════════════════
+  #  DOCUMENTS (Document Vault)
+  # ════════════════════════════════════════════════════════════════
+  /documents:
+    get:
+      tags: [Documents]
+      summary: List documents for the current startup
+      operationId: listDocuments
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - name: documentType
+          in: query
+          schema:
+            $ref: "#/components/schemas/DocumentType"
+      responses:
+        "200":
+          description: List of documents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Document"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags: [Documents]
+      summary: Create a new document
+      operationId: createDocument
+      description: Creates the document record only. Upload the first file via POST /documents/{documentId}/versions.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDocumentBody"
+      responses:
+        "201":
+          description: Document created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Document"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /documents/{documentId}:
+    parameters:
+      - name: documentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Documents]
+      summary: Get a document by ID
+      operationId: getDocument
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Document details, including its current version
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Document"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Document not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [Documents]
+      summary: Update a document's title or type
+      operationId: updateDocument
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDocumentBody"
+      responses:
+        "200":
+          description: Document updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Document"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Document not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+    delete:
+      tags: [Documents]
+      summary: Delete a document and all of its versions
+      operationId: deleteDocument
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Document deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Document not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Document is referenced by an active reviewer invitation and cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ════════════════════════════════════════════════════════════════
+  #  DOCUMENT VERSIONS
+  # ════════════════════════════════════════════════════════════════
+  /documents/{documentId}/versions:
+    parameters:
+      - name: documentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Document Versions]
+      summary: List all versions of a document
+      operationId: listDocumentVersions
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: List of document versions, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DocumentVersion"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Document not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags: [Document Versions]
+      summary: Upload a new version of a document
+      operationId: createDocumentVersion
+      description: >
+        Creates a new version and sets it as the document's `currentVersionId`.
+        `fileUrl` should point to the already-uploaded file in object storage.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDocumentVersionBody"
+      responses:
+        "201":
+          description: Document version created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/DocumentVersion"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Document not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /documents/{documentId}/versions/{versionId}:
+    parameters:
+      - name: documentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: versionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Document Versions]
+      summary: Get a specific document version
+      operationId: getDocumentVersion
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Document version details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/DocumentVersion"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Document or version not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [Document Versions]
+      summary: Delete a specific document version
+      operationId: deleteDocumentVersion
+      description: >
+        Cannot delete the version currently set as `currentVersionId` unless it
+        is the document's only version (in which case the document is also deleted).
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Document version deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Document or version not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Cannot delete the current version while other versions exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ════════════════════════════════════════════════════════════════
+  #  REVIEWER INVITATIONS (owner-side management)
+  # ════════════════════════════════════════════════════════════════
+  /reviewer-invitations:
+    get:
+      tags: [Reviewer Invitations]
+      summary: List reviewer invitations issued by the current startup
+      operationId: listReviewerInvitations
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ReviewerInvitationStatus"
+      responses:
+        "200":
+          description: List of reviewer invitations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ReviewerInvitation"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags: [Reviewer Invitations]
+      summary: Create a reviewer invitation
+      operationId: createReviewerInvitation
+      description: >
+        Sends an email containing a link with the invitation token plus a
+        separate 6-digit OTP. Optionally linked to an existing `investorId`
+        from the CRM so engagement (views, comments) shows on their timeline.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReviewerInvitationBody"
+      responses:
+        "201":
+          description: Reviewer invitation created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ReviewerInvitation"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: One or more documentIds (or investorId) not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /reviewer-invitations/{invitationId}:
+    parameters:
+      - name: invitationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Reviewer Invitations]
+      summary: Get a reviewer invitation by ID
+      operationId: getReviewerInvitation
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Reviewer invitation details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ReviewerInvitation"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Reviewer invitation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [Reviewer Invitations]
+      summary: Update a reviewer invitation's scope, expiry, or revoke it
+      operationId: updateReviewerInvitation
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateReviewerInvitationBody"
+      responses:
+        "200":
+          description: Reviewer invitation updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ReviewerInvitation"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Reviewer invitation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+    delete:
+      tags: [Reviewer Invitations]
+      summary: Permanently delete a reviewer invitation
+      operationId: deleteReviewerInvitation
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Reviewer invitation deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Reviewer invitation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /reviewer-invitations/{invitationId}/comments:
+    parameters:
+      - name: invitationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Reviewer Comments]
+      summary: List comments left under a specific reviewer invitation
+      operationId: listReviewerInvitationComments
+      description: Owner-side view of feedback left by an external reviewer.
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: List of reviewer comments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ReviewerComment"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Reviewer invitation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ════════════════════════════════════════════════════════════════
+  #  REVIEWER PORTAL (public — token + OTP, no cookieAuth)
+  # ════════════════════════════════════════════════════════════════
+  /reviewer-portal/access:
+    post:
+      tags: [Reviewer Portal]
+      summary: Start access with an invitation token (triggers OTP email)
+      operationId: reviewerPortalAccess
+      description: >
+        Validates the token and, if valid and not expired/revoked, emails a
+        fresh 6-digit OTP (10-minute TTL) to the invitation's address. Does
+        NOT grant access by itself — call POST /reviewer-portal/verify next.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewerPortalAccessBody"
+      responses:
+        "200":
+          description: OTP sent to the invitation email
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: Token invalid, expired, or revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /reviewer-portal/verify:
+    post:
+      tags: [Reviewer Portal]
+      summary: Verify the OTP and establish a reviewer session
+      operationId: reviewerPortalVerify
+      description: >
+        On success, sets an HttpOnly `reviewerSessionToken` cookie. All further
+        Reviewer Portal calls require this cookie instead of the token/code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewerPortalVerifyBody"
+      responses:
+        "200":
+          description: Verified — reviewer session established
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: reviewerSessionToken=...; HttpOnly; Path=/api/reviewer-portal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ReviewerPortalSession"
+        "400":
+          description: Code incorrect, expired, or token invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /reviewer-portal/me:
+    get:
+      tags: [Reviewer Portal]
+      summary: Get the current reviewer session, startup, and accessible documents
+      operationId: getReviewerPortalSession
+      security:
+        - reviewerSessionAuth: []
+      responses:
+        "200":
+          description: Current reviewer session details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ReviewerPortalSession"
+        "401":
+          description: No active reviewer session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /reviewer-portal/documents/{documentId}:
+    parameters:
+      - name: documentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Reviewer Portal]
+      summary: Get a document (with its current version) the reviewer is scoped to
+      operationId: getReviewerPortalDocument
+      security:
+        - reviewerSessionAuth: []
+      responses:
+        "200":
+          description: Document details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Document"
+        "401":
+          description: No active reviewer session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: This invitation does not grant access to this document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Document not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /reviewer-portal/comments:
+    post:
+      tags: [Reviewer Comments]
+      summary: Leave a comment as the authenticated reviewer
+      operationId: createReviewerPortalComment
+      security:
+        - reviewerSessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReviewerCommentBody"
+      responses:
+        "201":
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ReviewerComment"
+        "401":
+          description: No active reviewer session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Target is outside this invitation's document scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /reviewer-portal/comments/{commentId}:
+    parameters:
+      - name: commentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Reviewer Comments]
+      summary: Delete a comment the reviewer authored
+      operationId: deleteReviewerPortalComment
+      security:
+        - reviewerSessionAuth: []
+      responses:
+        "200":
+          description: Comment deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "401":
+          description: No active reviewer session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Cannot delete a comment authored by another reviewer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Comment not found
           content:
             application/json:
               schema:
