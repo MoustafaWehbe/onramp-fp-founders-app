@@ -202,7 +202,7 @@ async function main() {
   });
 
   console.info("─── Seed complete ───────────────────────────────────────");
-  console.info(`  Founder:      founder@example.com  /  Founder1234!`);
+  console.info("  Founder:      founder@example.com");
   console.info(`  Startup:      ${startup.name}`);
   console.info(`  Roles:        owner · collaborator · viewer`);
   console.info(`  Permissions:  ${RESOURCES.length * ACTIONS.length} entries (${RESOURCES.join(", ")})`);
