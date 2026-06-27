@@ -356,6 +356,40 @@ describe("POST /api/v1/auth/google", () => {
     expect(res.status).toBe(401);
     expect(res.body.code).toBe("EMAIL_NOT_VERIFIED");
   });
+
+  it("returns 409 ACCOUNT_CONFLICT when email is linked to a different Google account", async () => {
+    mock.googleAuth.mockRejectedValue(
+      Object.assign(new Error("This email is already linked to a different Google account"), {
+        statusCode: 409,
+        code: "ACCOUNT_CONFLICT",
+      }),
+    );
+
+    const res = await request(app)
+      .post("/api/v1/auth/google")
+      .send({ id_token: "conflicting.token" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("ACCOUNT_CONFLICT");
+  });
+
+  it("returns 200 with is_new_user false when existing local user links Google account", async () => {
+    mock.googleAuth.mockResolvedValue({
+      user: { id: "uuid-3", email: "local@example.com", firstName: "Local", lastName: "User" },
+      accessToken: "access.token",
+      refreshToken: "refresh.token",
+      isNewUser: false,
+    });
+
+    const res = await request(app)
+      .post("/api/v1/auth/google")
+      .send({ id_token: "valid.google.token" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.is_new_user).toBe(false);
+    const cookies = res.headers["set-cookie"] as unknown as string[];
+    expect(cookies.some((c: string) => c.startsWith("accessToken="))).toBe(true);
+  });
 });
 
 // POST /api/v1/auth/logout

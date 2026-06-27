@@ -9,10 +9,6 @@ export const emailJob = {
   async process(job: Job<EmailJobData, EmailJobResult>): Promise<EmailJobResult> {
     const { to, subject, html } = job.data;
 
-    if (!resend) {
-      throw new Error("RESEND_API_KEY is not configured. Email sending is disabled.");
-    }
-
     const { data, error } = await resend.emails.send({
       from: process.env.RESEND_FROM ?? "FP Founders <noreply@fpfounders.com>",
       to,

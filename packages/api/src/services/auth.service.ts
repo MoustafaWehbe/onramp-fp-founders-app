@@ -11,7 +11,7 @@ import {
 } from "../utils/auth";
 import { sendOTP } from "./email.service";
 import { prisma } from "../db/prisma";
-import { createError } from "../utils/errors";
+import { createError, type AppError } from "../utils/errors";
 
 const USER_SELECT = { id: true, email: true, firstName: true, lastName: true } as const;
 
@@ -243,7 +243,6 @@ export class AuthService {
 
   async googleAuth(input: { idToken: string; userAgent?: string; ipAddress?: string }) {
     const clientId = process.env.GOOGLE_CLIENT_ID;
-    if (!clientId) throw createError("Google sign-in is not configured", 503);
 
     const client = new OAuth2Client(clientId);
     let payload;
@@ -253,7 +252,7 @@ export class AuthService {
       payload = ticket.getPayload();
       if (!payload?.email) throw createError("Invalid or expired Google token", 401, "INVALID_GOOGLE_TOKEN");
     } catch (err) {
-      if ((err as { code?: string }).code) throw err;
+      if ((err as AppError).isOperational) throw err;
       throw createError("Invalid or expired Google token", 401, "INVALID_GOOGLE_TOKEN");
     }
 
@@ -272,7 +271,7 @@ export class AuthService {
       const byEmail = await prisma.user.findUnique({ where: { email: payload.email } });
       if (byEmail) {
         if (byEmail.googleId) {
-          throw createError("Invalid or expired Google token", 401, "INVALID_GOOGLE_TOKEN");
+          throw createError("This email is already linked to a different Google account", 409, "ACCOUNT_CONFLICT");
         }
         user = await prisma.user.update({
           where: { id: byEmail.id },

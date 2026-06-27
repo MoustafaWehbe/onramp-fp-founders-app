@@ -5,6 +5,7 @@ const REQUIRED: Record<string, string[]> = {
     "JWT_ACCESS_SECRET",
     "JWT_REFRESH_SECRET",
     "OTP_HMAC_SECRET",
+    "GOOGLE_CLIENT_ID",
   ],
   production: [
     "RESEND_API_KEY",
