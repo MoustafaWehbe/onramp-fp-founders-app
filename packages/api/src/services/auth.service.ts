@@ -287,12 +287,12 @@ export class AuthService {
         const firstName = payload.given_name ?? payload.email.split("@")[0] ?? "User";
         const lastName = payload.family_name ?? "";
 
-        const pendingInvites = await prisma.startupMember.findMany({
-          where: { invitedEmail: payload.email, status: "pending", userId: null },
-          orderBy: { createdAt: "asc" },
-        });
-
         user = await prisma.$transaction(async (tx) => {
+          const pendingInvites = await tx.startupMember.findMany({
+            where: { invitedEmail: payload.email, status: "pending", userId: null },
+            orderBy: { createdAt: "asc" },
+          });
+
           const created = await tx.user.create({
             data: {
               firstName,
@@ -312,7 +312,11 @@ export class AuthService {
 
           if (pendingInvites.length > 0) {
             await tx.startupMember.updateMany({
-              where: { id: { in: pendingInvites.map((i) => i.id) } },
+              where: {
+                id: { in: pendingInvites.map((i) => i.id) },
+                status: "pending",
+                userId: null,
+              },
               data: { userId: created.id, status: "active", joinedAt: new Date() },
             });
           }
