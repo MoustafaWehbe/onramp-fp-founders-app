@@ -1,9 +1,21 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Settings } from "lucide-react";
+import {
+  LayoutDashboard,
+  Settings,
+  Briefcase,
+  FileText,
+  Sparkles,
+  Users,
+} from "lucide-react";
 import { cn } from "../../lib/utils";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/pipeline", label: "Pipeline", icon: Briefcase },
+  { to: "/investors", label: "Investors", icon: Users },
+  { to: "/documents", label: "Documents", icon: FileText },
+  { to: "/ai-insights", label: "AI Insights", icon: Sparkles },
+  { to: "/team", label: "Team", icon: Users },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
