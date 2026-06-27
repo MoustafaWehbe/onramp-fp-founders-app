@@ -146,9 +146,6 @@ describe("AuthService.googleAuth", () => {
   it("creates new user and accepts pending invites", async () => {
     mockGoogleVerify();
     mockPrisma.user.findUnique.mockResolvedValue(null);
-    mockPrisma.startupMember.findMany.mockResolvedValue([
-      { id: "invite-1", startupId: "startup-1" },
-    ] as never);
     mockPrisma.$transaction.mockImplementation(async (fn) =>
       fn({
         user: {
@@ -159,7 +156,10 @@ describe("AuthService.googleAuth", () => {
             lastName: "User",
           }),
         },
-        startupMember: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+        startupMember: {
+          findMany: jest.fn().mockResolvedValue([{ id: "invite-1", startupId: "startup-1" }]),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
       }),
     );
 
