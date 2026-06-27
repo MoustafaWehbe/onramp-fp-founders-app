@@ -13,9 +13,7 @@ import { Team } from "../pages/dashboard/Team/Team";
 import { Settings } from "../pages/dashboard/Settings";
 import { NotFound } from "../pages/NotFound";
 
-// NOTE
-// These routes reflect the dashboard section structure from the Lovable UI:
-// Pipeline, Investors, Documents, AI Insights, Team, and Settings.
+
 
 export function AppRoutes() {
   return (
