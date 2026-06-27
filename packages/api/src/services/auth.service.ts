@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { OAuth2Client } from "google-auth-library";
 import {
   hashPassword,
   verifyPassword,
@@ -11,6 +12,8 @@ import {
 import { sendOTP } from "./email.service";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
+
+const USER_SELECT = { id: true, email: true, firstName: true, lastName: true } as const;
 
 interface RegisterInitiateInput {
   first_name: string;
@@ -163,11 +166,20 @@ export class AuthService {
 
   async login(input: LoginInput) {
     const user = await prisma.user.findUnique({ where: { email: input.email } });
-    if (!user) throw createError("Invalid credentials", 401);
-    if (!user.passwordHash) throw createError("Invalid credentials", 401);
+    if (!user) throw createError("Invalid credentials", 401, "INVALID_CREDENTIALS");
+
+    if (user.authProvider === "google" && !user.passwordHash) {
+      throw createError(
+        "This account uses Google sign-in. Please continue with Google.",
+        400,
+        "GOOGLE_ACCOUNT",
+      );
+    }
+
+    if (!user.passwordHash) throw createError("Invalid credentials", 401, "INVALID_CREDENTIALS");
 
     const valid = await verifyPassword(input.password, user.passwordHash);
-    if (!valid) throw createError("Invalid credentials", 401);
+    if (!valid) throw createError("Invalid credentials", 401, "INVALID_CREDENTIALS");
 
     const familyId = crypto.randomUUID();
     const { raw: rawRefresh, hash: refreshHash } = generateRefreshToken();
@@ -227,6 +239,108 @@ export class AuthService {
     ]);
 
     return { accessToken, refreshToken: rawRefresh };
+  }
+
+  async googleAuth(input: { idToken: string; userAgent?: string; ipAddress?: string }) {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) throw createError("Google sign-in is not configured", 503);
+
+    const client = new OAuth2Client(clientId);
+    let payload;
+
+    try {
+      const ticket = await client.verifyIdToken({ idToken: input.idToken, audience: clientId });
+      payload = ticket.getPayload();
+      if (!payload?.email) throw createError("Invalid or expired Google token", 401, "INVALID_GOOGLE_TOKEN");
+    } catch (err) {
+      if ((err as { code?: string }).code) throw err;
+      throw createError("Invalid or expired Google token", 401, "INVALID_GOOGLE_TOKEN");
+    }
+
+    if (payload.email_verified !== true) {
+      throw createError("Google email not verified", 401, "EMAIL_NOT_VERIFIED");
+    }
+
+    let isNewUser = false;
+    type AuthUser = { id: string; email: string; firstName: string; lastName: string };
+    let user: AuthUser | null = await prisma.user.findUnique({
+      where: { googleId: payload.sub },
+      select: USER_SELECT,
+    });
+
+    if (!user) {
+      const byEmail = await prisma.user.findUnique({ where: { email: payload.email } });
+      if (byEmail) {
+        if (byEmail.googleId) {
+          throw createError("Invalid or expired Google token", 401, "INVALID_GOOGLE_TOKEN");
+        }
+        user = await prisma.user.update({
+          where: { id: byEmail.id },
+          data: {
+            googleId: payload.sub,
+            avatarUrl: byEmail.avatarUrl || payload.picture || null,
+            authProvider: "both",
+          },
+          select: USER_SELECT,
+        });
+      } else {
+        isNewUser = true;
+        const firstName = payload.given_name ?? payload.email.split("@")[0] ?? "User";
+        const lastName = payload.family_name ?? "";
+
+        const pendingInvites = await prisma.startupMember.findMany({
+          where: { invitedEmail: payload.email, status: "pending", userId: null },
+          orderBy: { createdAt: "asc" },
+        });
+
+        user = await prisma.$transaction(async (tx) => {
+          const created = await tx.user.create({
+            data: {
+              firstName,
+              lastName,
+              email: payload.email!,
+              authProvider: "google",
+              googleId: payload.sub,
+              passwordHash: null,
+              emailVerifiedAt: new Date(),
+              avatarUrl: payload.picture ?? null,
+              ...(pendingInvites.length > 0 && {
+                lastActiveStartupId: pendingInvites[0].startupId,
+              }),
+            },
+            select: USER_SELECT,
+          });
+
+          if (pendingInvites.length > 0) {
+            await tx.startupMember.updateMany({
+              where: { id: { in: pendingInvites.map((i) => i.id) } },
+              data: { userId: created.id, status: "active", joinedAt: new Date() },
+            });
+          }
+
+          return created;
+        });
+      }
+    }
+
+    if (!user) throw createError("Invalid or expired Google token", 401, "INVALID_GOOGLE_TOKEN");
+
+    const familyId = crypto.randomUUID();
+    const { raw: rawRefresh, hash: refreshHash } = generateRefreshToken();
+    const accessToken = generateAccessToken(user.id, familyId, user.email);
+
+    await prisma.refreshToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: refreshHash,
+        familyId,
+        deviceInfo: input.userAgent ?? null,
+        ipAddress: input.ipAddress ?? null,
+        expiresAt: new Date(Date.now() + THIRTY_DAYS_MS),
+      },
+    });
+
+    return { user, accessToken, refreshToken: rawRefresh, isNewUser };
   }
 
   async logout(familyId: string) {

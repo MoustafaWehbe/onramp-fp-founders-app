@@ -3,7 +3,7 @@ import { authController } from "../controllers/auth.controller";
 import { validate } from "../utils/validate";
 import { authenticate } from "../middleware/auth";
 import { authRateLimiter } from "../middleware/rate-limiter";
-import { registerInitiateSchema, registerResendSchema, registerVerifySchema, loginSchema } from "../validators/auth.schemas";
+import { registerInitiateSchema, registerResendSchema, registerVerifySchema, loginSchema, googleAuthSchema } from "../validators/auth.schemas";
 
 const router = Router();
 
@@ -26,8 +26,9 @@ router.post(
   authController.registerVerify,
 );
 router.post("/login", authRateLimiter, validate(loginSchema), authController.login);
+router.post("/google", authRateLimiter, validate(googleAuthSchema), authController.googleAuth);
 router.post("/refresh", authController.refresh);
-router.post("/logout", authenticate, authController.logout);
+router.post("/logout", authRateLimiter, authenticate, authController.logout);
 router.get("/me", authenticate, authController.me);
 
 export { router as authRouter };

@@ -58,6 +58,16 @@ export const authController = {
     res.json({ data: { user } });
   }),
 
+  googleAuth: asyncHandler(async (req, res) => {
+    const { user, accessToken, refreshToken, isNewUser } = await authService.googleAuth({
+      idToken: req.body.id_token,
+      userAgent: req.headers["user-agent"],
+      ipAddress: req.ip,
+    });
+    setAuthCookies(res, accessToken, refreshToken);
+    res.status(isNewUser ? 201 : 200).json({ data: { user, is_new_user: isNewUser } });
+  }),
+
   refresh: asyncHandler(async (req, res) => {
     const token = (req.cookies?.refreshToken ?? req.body?.refreshToken) as string | undefined;
     if (!token) throw createError("Missing refresh token", 401);
