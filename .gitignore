@@ -2,7 +2,7 @@
 node_modules/
 .pnp
 .pnp.js
-
+postman
 # ─── Build outputs ────────────────────────────────────────────────────────────
 dist/
 build/

@@ -14,6 +14,7 @@ jest.mock("../../src/services/auth.service", () => ({
     registerResend: jest.fn(),
     registerVerify: jest.fn(),
     login: jest.fn(),
+    googleAuth: jest.fn(),
     refresh: jest.fn(),
     logout: jest.fn(),
     getProfile: jest.fn(),
@@ -252,13 +253,170 @@ describe("POST /api/v1/auth/login", () => {
 
   it("returns 401 on invalid credentials", async () => {
     mock.login.mockRejectedValue(
-      Object.assign(new Error("Invalid credentials"), { statusCode: 401 }),
+      Object.assign(new Error("Invalid credentials"), { statusCode: 401, code: "INVALID_CREDENTIALS" }),
     );
 
     const res = await request(app)
       .post("/api/v1/auth/login")
       .send({ email: "alice@example.com", password: "WrongPass1" });
 
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("INVALID_CREDENTIALS");
+  });
+
+  it("returns 400 GOOGLE_ACCOUNT for Google-only users", async () => {
+    mock.login.mockRejectedValue(
+      Object.assign(new Error("This account uses Google sign-in. Please continue with Google."), {
+        statusCode: 400,
+        code: "GOOGLE_ACCOUNT",
+      }),
+    );
+
+    const res = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ email: "google@example.com", password: "SecurePass1" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("GOOGLE_ACCOUNT");
+  });
+});
+
+// POST /api/v1/auth/google
+
+describe("POST /api/v1/auth/google", () => {
+  it("returns 200 with user and sets cookies for returning users", async () => {
+    mock.googleAuth.mockResolvedValue({
+      user: { id: "uuid-1", email: "google@example.com", firstName: "Google", lastName: "User" },
+      accessToken: "access.token",
+      refreshToken: "refresh.token",
+      isNewUser: false,
+    });
+
+    const res = await request(app)
+      .post("/api/v1/auth/google")
+      .send({ id_token: "valid.google.token" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.user.email).toBe("google@example.com");
+    expect(res.body.data.is_new_user).toBe(false);
+    const cookies = res.headers["set-cookie"] as unknown as string[];
+    expect(cookies.some((c: string) => c.startsWith("accessToken="))).toBe(true);
+  });
+
+  it("returns 201 with is_new_user true for new Google users", async () => {
+    mock.googleAuth.mockResolvedValue({
+      user: { id: "uuid-2", email: "new@example.com", firstName: "New", lastName: "User" },
+      accessToken: "access.token",
+      refreshToken: "refresh.token",
+      isNewUser: true,
+    });
+
+    const res = await request(app)
+      .post("/api/v1/auth/google")
+      .send({ id_token: "valid.google.token" });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.is_new_user).toBe(true);
+  });
+
+  it("returns 400 when id_token is missing", async () => {
+    const res = await request(app).post("/api/v1/auth/google").send({});
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("returns 401 INVALID_GOOGLE_TOKEN on bad token", async () => {
+    mock.googleAuth.mockRejectedValue(
+      Object.assign(new Error("Invalid or expired Google token"), {
+        statusCode: 401,
+        code: "INVALID_GOOGLE_TOKEN",
+      }),
+    );
+
+    const res = await request(app)
+      .post("/api/v1/auth/google")
+      .send({ id_token: "bad.token" });
+
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("INVALID_GOOGLE_TOKEN");
+  });
+
+  it("returns 401 EMAIL_NOT_VERIFIED when Google email is unverified", async () => {
+    mock.googleAuth.mockRejectedValue(
+      Object.assign(new Error("Google email not verified"), {
+        statusCode: 401,
+        code: "EMAIL_NOT_VERIFIED",
+      }),
+    );
+
+    const res = await request(app)
+      .post("/api/v1/auth/google")
+      .send({ id_token: "unverified.token" });
+
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("EMAIL_NOT_VERIFIED");
+  });
+
+  it("returns 409 ACCOUNT_CONFLICT when email is linked to a different Google account", async () => {
+    mock.googleAuth.mockRejectedValue(
+      Object.assign(new Error("This email is already linked to a different Google account"), {
+        statusCode: 409,
+        code: "ACCOUNT_CONFLICT",
+      }),
+    );
+
+    const res = await request(app)
+      .post("/api/v1/auth/google")
+      .send({ id_token: "conflicting.token" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("ACCOUNT_CONFLICT");
+  });
+
+  it("returns 200 with is_new_user false when existing local user links Google account", async () => {
+    mock.googleAuth.mockResolvedValue({
+      user: { id: "uuid-3", email: "local@example.com", firstName: "Local", lastName: "User" },
+      accessToken: "access.token",
+      refreshToken: "refresh.token",
+      isNewUser: false,
+    });
+
+    const res = await request(app)
+      .post("/api/v1/auth/google")
+      .send({ id_token: "valid.google.token" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.is_new_user).toBe(false);
+    const cookies = res.headers["set-cookie"] as unknown as string[];
+    expect(cookies.some((c: string) => c.startsWith("accessToken="))).toBe(true);
+  });
+});
+
+// POST /api/v1/auth/logout
+
+describe("POST /api/v1/auth/logout", () => {
+  it("returns 200 and clears cookies when authenticated", async () => {
+    mock.logout.mockResolvedValue(undefined);
+    const jwt = require("jsonwebtoken");
+    const accessToken = jwt.sign(
+      { sub: "uuid-1", type: "access", sessionId: "session-1", email: "alice@example.com" },
+      process.env.JWT_ACCESS_SECRET!,
+      { expiresIn: "15m" },
+    );
+
+    const res = await request(app)
+      .post("/api/v1/auth/logout")
+      .set("Cookie", [`accessToken=${accessToken}`]);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.message).toBe("Logged out successfully");
+    expect(mock.logout).toHaveBeenCalledWith("session-1");
+    const cookies = res.headers["set-cookie"] as unknown as string[];
+    expect(cookies.some((c: string) => c.startsWith("accessToken=;"))).toBe(true);
+  });
+
+  it("returns 401 without access token cookie", async () => {
+    const res = await request(app).post("/api/v1/auth/logout");
     expect(res.status).toBe(401);
   });
 });
