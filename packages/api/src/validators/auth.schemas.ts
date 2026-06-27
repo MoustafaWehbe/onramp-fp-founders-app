@@ -3,18 +3,19 @@ import { z } from "zod";
 export const registerInitiateSchema = z.object({
   first_name: z
     .string()
+    .trim()
     .min(2, "First name must be at least 2 characters")
-    .max(50, "First name must be at most 50 characters")
-    .transform((v) => v.trim()),
+    .max(50, "First name must be at most 50 characters"),
   last_name: z
     .string()
+    .trim()
     .min(2, "Last name must be at least 2 characters")
-    .max(50, "Last name must be at most 50 characters")
-    .transform((v) => v.trim()),
+    .max(50, "Last name must be at most 50 characters"),
   email: z
     .string()
-    .email("Invalid email address")
-    .transform((v) => v.trim().toLowerCase()),
+    .trim()
+    .toLowerCase()
+    .email("Invalid email address"),
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")
@@ -26,15 +27,17 @@ export const registerInitiateSchema = z.object({
 export const registerResendSchema = z.object({
   email: z
     .string()
-    .email("Invalid email address")
-    .transform((v) => v.trim().toLowerCase()),
+    .trim()
+    .toLowerCase()
+    .email("Invalid email address"),
 });
 
 export const registerVerifySchema = z.object({
   email: z
     .string()
-    .email("Invalid email address")
-    .transform((v) => v.trim().toLowerCase()),
+    .trim()
+    .toLowerCase()
+    .email("Invalid email address"),
   otp: z
     .string()
     .length(6, "OTP must be 6 digits")
@@ -42,7 +45,11 @@ export const registerVerifySchema = z.object({
 });
 
 export const loginSchema = z.object({
-  email: z.string().email("Invalid email address"),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email("Invalid email address"),
   password: z.string().min(1, "Password is required"),
 });
 

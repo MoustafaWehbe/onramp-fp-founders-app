@@ -1,5 +1,6 @@
 import {
   hashToken,
+  hashOTP,
   generateRefreshToken,
   generateOTP,
   generateAccessToken,
@@ -64,9 +65,9 @@ describe("generateOTP", () => {
     }
   });
 
-  it("hash matches hashToken(raw)", () => {
+  it("hash matches hashOTP(raw)", () => {
     const { raw, hash } = generateOTP();
-    expect(hash).toBe(hashToken(raw));
+    expect(hash).toBe(hashOTP(raw));
   });
 
   it("generates unique OTPs on each call (probabilistically)", () => {

@@ -8,7 +8,12 @@
     "prisma",
     "pgvector",
     "dotenv",
-    "zod"
+    "zod",
+    "cellspacing",
+    "cellpadding",
+    "tabular",
+    "Segoe",
+    "Neue"
   ],
   "ignorePaths": ["node_modules", "dist", "*.lock"]
 }

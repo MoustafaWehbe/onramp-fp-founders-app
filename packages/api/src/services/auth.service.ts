@@ -6,6 +6,7 @@ import {
   generateRefreshToken,
   generateOTP,
   hashToken,
+  hashOTP,
 } from "../utils/auth";
 import { sendOTP } from "./email.service";
 import { prisma } from "../db/prisma";
@@ -35,7 +36,7 @@ export class AuthService {
     meta: { userAgent?: string; ipAddress?: string },
   ) {
     const pending = await prisma.pendingRegistration.findUnique({ where: { email: input.email } });
-    if (!pending) throw createError("No pending registration found for this email", 404, "NOT_FOUND");
+    if (!pending) throw createError("Invalid or expired verification code", 400, "INVALID_OTP");
 
     if (pending.attempts >= MAX_OTP_ATTEMPTS) {
       throw createError("Too many failed attempts. Please register again.", 429, "TOO_MANY_ATTEMPTS");
@@ -45,7 +46,7 @@ export class AuthService {
       throw createError("Verification code has expired", 410, "OTP_EXPIRED");
     }
 
-    if (hashToken(input.otp) !== pending.otpHash) {
+    if (hashOTP(input.otp) !== pending.otpHash) {
       await prisma.pendingRegistration.update({
         where: { email: input.email },
         data: { attempts: { increment: 1 } },
@@ -88,7 +89,13 @@ export class AuthService {
 
   async registerResend(email: string) {
     const pending = await prisma.pendingRegistration.findUnique({ where: { email } });
-    if (!pending) throw createError("No pending registration found for this email", 404, "NOT_FOUND");
+    if (!pending) {
+      return {
+        message: `Verification code sent to ${email}`,
+        email,
+        expires_in_seconds: OTP_TTL_MS / 1_000,
+      };
+    }
 
     if (pending.attempts >= MAX_OTP_ATTEMPTS) {
       throw createError("Too many failed attempts. Please register again.", 429, "TOO_MANY_ATTEMPTS");
@@ -119,7 +126,13 @@ export class AuthService {
 
   async registerInitiate(input: RegisterInitiateInput) {
     const existing = await prisma.user.findUnique({ where: { email: input.email } });
-    if (existing) throw createError("Email already in use", 409, "EMAIL_ALREADY_EXISTS");
+    if (existing) {
+      return {
+        message: `Verification code sent to ${input.email}`,
+        email: input.email,
+        expires_in_seconds: OTP_TTL_MS / 1_000,
+      };
+    }
 
     await prisma.pendingRegistration.deleteMany({ where: { email: input.email } });
 

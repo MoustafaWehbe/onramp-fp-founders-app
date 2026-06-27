@@ -82,17 +82,19 @@ describe("POST /api/v1/auth/register/initiate", () => {
     expect(res.body.code).toBe("VALIDATION_ERROR");
   });
 
-  it("returns 409 when email already exists", async () => {
-    mock.registerInitiate.mockRejectedValue(
-      Object.assign(new Error("Email already in use"), { statusCode: 409, code: "EMAIL_ALREADY_EXISTS" }),
-    );
+  it("returns 200 with same body when email already has an account (no enumeration)", async () => {
+    mock.registerInitiate.mockResolvedValue({
+      message: "Verification code sent to alice@example.com",
+      email: "alice@example.com",
+      expires_in_seconds: 600,
+    });
 
     const res = await request(app)
       .post("/api/v1/auth/register/initiate")
       .send(INITIATE_BODY);
 
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe("EMAIL_ALREADY_EXISTS");
+    expect(res.status).toBe(200);
+    expect(res.body.data.email).toBe("alice@example.com");
   });
 });
 
@@ -123,17 +125,19 @@ describe("POST /api/v1/auth/register/resend", () => {
     expect(res.body.code).toBe("VALIDATION_ERROR");
   });
 
-  it("returns 404 when no pending registration exists", async () => {
-    mock.registerResend.mockRejectedValue(
-      Object.assign(new Error("No pending registration found"), { statusCode: 404, code: "NOT_FOUND" }),
-    );
+  it("returns 200 with same body when no pending registration exists (no enumeration)", async () => {
+    mock.registerResend.mockResolvedValue({
+      message: "Verification code sent to nobody@example.com",
+      email: "nobody@example.com",
+      expires_in_seconds: 600,
+    });
 
     const res = await request(app)
       .post("/api/v1/auth/register/resend")
       .send({ email: "nobody@example.com" });
 
-    expect(res.status).toBe(404);
-    expect(res.body.code).toBe("NOT_FOUND");
+    expect(res.status).toBe(200);
+    expect(res.body.data.email).toBe("nobody@example.com");
   });
 });
 
@@ -167,14 +171,27 @@ describe("POST /api/v1/auth/register/verify", () => {
     expect(res.body.code).toBe("VALIDATION_ERROR");
   });
 
-  it("returns 400 on wrong OTP", async () => {
+  it("returns 400 INVALID_OTP on wrong OTP", async () => {
     mock.registerVerify.mockRejectedValue(
-      Object.assign(new Error("Invalid verification code"), { statusCode: 400, code: "INVALID_OTP" }),
+      Object.assign(new Error("Invalid or expired verification code"), { statusCode: 400, code: "INVALID_OTP" }),
     );
 
     const res = await request(app)
       .post("/api/v1/auth/register/verify")
       .send(VERIFY_BODY);
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("INVALID_OTP");
+  });
+
+  it("returns 400 INVALID_OTP when no pending registration exists (no enumeration)", async () => {
+    mock.registerVerify.mockRejectedValue(
+      Object.assign(new Error("Invalid or expired verification code"), { statusCode: 400, code: "INVALID_OTP" }),
+    );
+
+    const res = await request(app)
+      .post("/api/v1/auth/register/verify")
+      .send({ email: "nobody@example.com", otp: "000000" });
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("INVALID_OTP");

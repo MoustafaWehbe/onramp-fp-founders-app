@@ -9,6 +9,13 @@ export function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
+export function hashOTP(otp: string): string {
+  return crypto
+    .createHmac("sha256", process.env.OTP_HMAC_SECRET!)
+    .update(otp)
+    .digest("hex");
+}
+
 // Tokens
 
 export function generateRefreshToken(): { raw: string; hash: string } {
@@ -50,6 +57,6 @@ export function verifyPassword(password: string, hash: string): Promise<boolean>
 
 export function generateOTP(): { raw: string; hash: string } {
   const raw = crypto.randomInt(100_000, 999_999).toString();
-  return { raw, hash: hashToken(raw) };
+  return { raw, hash: hashOTP(raw) };
 }
 

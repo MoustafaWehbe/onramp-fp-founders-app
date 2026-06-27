@@ -4,6 +4,7 @@ const REQUIRED: Record<string, string[]> = {
     "REDIS_URL",
     "JWT_ACCESS_SECRET",
     "JWT_REFRESH_SECRET",
+    "OTP_HMAC_SECRET",
   ],
   production: [
     "RESEND_API_KEY",

@@ -8,6 +8,7 @@ global.console.log = jest.fn();
 process.env.NODE_ENV = "test";
 process.env.JWT_ACCESS_SECRET = "test-access-secret-32-chars-minimum";
 process.env.JWT_REFRESH_SECRET = "test-refresh-secret-32-chars-minimum";
+process.env.OTP_HMAC_SECRET = "test-otp-hmac-secret-32-chars-minimum";
 process.env.DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/fp_founders_test";
 process.env.REDIS_URL = "redis://localhost:6379";
 process.env.RESEND_API_KEY = "re_test_key";
