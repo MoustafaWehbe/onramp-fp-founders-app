@@ -17,14 +17,14 @@ function setAuthCookies(res: Response, accessToken: string, refreshToken: string
   });
   res.cookie("refreshToken", refreshToken, {
     ...COOKIE_BASE,
-    path: "/api/auth/refresh",
+    path: "/api/v1/auth/refresh",
     maxAge: 30 * 24 * 60 * 60 * 1_000, // 30 days
   });
 }
 
 function clearAuthCookies(res: Response): void {
   res.clearCookie("accessToken");
-  res.clearCookie("refreshToken", { path: "/api/auth/refresh" });
+  res.clearCookie("refreshToken", { path: "/api/v1/auth/refresh" });
 }
 
 export const authController = {
@@ -58,7 +58,7 @@ export const authController = {
   }),
 
   refresh: asyncHandler(async (req, res) => {
-    const token = req.cookies?.refreshToken as string | undefined;
+    const token = (req.cookies?.refreshToken ?? req.body?.refreshToken) as string | undefined;
     if (!token) throw createError("Missing refresh token", 401);
     const tokens = await authService.refresh(token);
     setAuthCookies(res, tokens.accessToken, tokens.refreshToken);

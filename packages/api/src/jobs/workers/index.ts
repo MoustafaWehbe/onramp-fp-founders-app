@@ -1,6 +1,4 @@
-import path from "path";
-import dotenv from "dotenv";
-dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+import "dotenv/config";
 
 import { Worker, type Processor } from "bullmq";
 import { getRedis } from "../queue";

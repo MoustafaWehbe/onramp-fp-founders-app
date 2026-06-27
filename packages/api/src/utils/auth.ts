@@ -5,12 +5,15 @@ import type { JwtPayload } from "../types";
 
 const BCRYPT_ROUNDS = 12;
 
+export function hashToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
 // Tokens
 
 export function generateRefreshToken(): { raw: string; hash: string } {
   const raw = crypto.randomBytes(64).toString("hex");
-  const hash = crypto.createHash("sha256").update(raw).digest("hex");
-  return { raw, hash };
+  return { raw, hash: hashToken(raw) };
 }
 
 export function generateAccessToken(userId: string, sessionId: string, email: string): string {
@@ -32,12 +35,6 @@ export function verifyAccessToken(token: string): JwtPayload {
   return { userId: payload.sub, sessionId: payload.sessionId, email: payload.email };
 }
 
-export function verifyRefreshToken(token: string): { userId: string; sessionId: string } {
-  return jwt.verify(token, process.env.JWT_REFRESH_SECRET!) as {
-    userId: string;
-    sessionId: string;
-  };
-}
 
 // Password
 
@@ -49,15 +46,10 @@ export function verifyPassword(password: string, hash: string): Promise<boolean>
   return bcrypt.compare(password, hash);
 }
 
-// Helpers
-
-export function hashToken(token: string): string {
-  return crypto.createHash("sha256").update(token).digest("hex");
-}
+// OTP
 
 export function generateOTP(): { raw: string; hash: string } {
   const raw = crypto.randomInt(100_000, 999_999).toString();
-  const hash = crypto.createHash("sha256").update(raw).digest("hex");
-  return { raw, hash };
+  return { raw, hash: hashToken(raw) };
 }
 

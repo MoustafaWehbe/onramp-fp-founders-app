@@ -5,7 +5,6 @@ import {
   generateAccessToken,
   generateRefreshToken,
   generateOTP,
-  verifyRefreshToken,
   hashToken,
 } from "../utils/auth";
 import { sendOTP } from "./email.service";
@@ -97,12 +96,15 @@ export class AuthService {
 
     const { raw: rawOtp, hash: otpHash } = generateOTP();
 
-    await prisma.pendingRegistration.update({
-      where: { email },
+    await prisma.pendingRegistration.delete({ where: { email } });
+    await prisma.pendingRegistration.create({
       data: {
+        firstName: pending.firstName,
+        lastName: pending.lastName,
+        email,
+        passwordHash: pending.passwordHash,
         otpHash,
         otpExpiresAt: new Date(Date.now() + OTP_TTL_MS),
-        attempts: 0,
       },
     });
 
@@ -186,9 +188,7 @@ export class AuthService {
       throw createError("Invalid or expired refresh token", 401);
     }
 
-    const payload = verifyRefreshToken(rawToken);
-
-    const user = await prisma.user.findUnique({ where: { id: payload.userId } });
+    const user = await prisma.user.findUnique({ where: { id: stored.userId } });
     if (!user) throw createError("User not found", 404);
 
     const familyId = stored.familyId ?? crypto.randomUUID();

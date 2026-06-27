@@ -1,6 +1,4 @@
-import path from "path";
-import dotenv from "dotenv";
-dotenv.config({ path: path.resolve(__dirname, ".env") });
+import "dotenv/config";
 
 import { validateEnv } from "./src/config/env";
 validateEnv();
