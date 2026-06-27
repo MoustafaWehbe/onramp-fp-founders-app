@@ -8,6 +8,6 @@ module.exports = {
   coverageDirectory: "coverage",
   collectCoverageFrom: ["src/**/*.ts", "!src/**/*.d.ts"],
   transform: {
-    "^.+\\.tsx?$": ["ts-jest", { tsconfig: "./tsconfig.json" }],
+    "^.+\\.tsx?$": ["ts-jest", { tsconfig: "./tsconfig.test.json" }],
   },
 };

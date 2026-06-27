@@ -20,7 +20,8 @@
     "useDefineForClassFields": false,
     "rootDir": "./",
     "outDir": "./dist",
-    "baseUrl": "."
+    "baseUrl": ".",
+    "ignoreDeprecations": "5.0"
   },
   "include": ["src/**/*", "app.ts", "server.ts", "worker.ts"],
   "exclude": ["node_modules", "dist", "tests"]

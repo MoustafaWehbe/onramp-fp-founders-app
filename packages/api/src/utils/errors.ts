@@ -2,12 +2,14 @@ import type { Request, Response, NextFunction, RequestHandler } from "express";
 
 export interface AppError extends Error {
   statusCode?: number;
+  code?: string;
   isOperational?: boolean;
 }
 
-export function createError(message: string, statusCode = 500): AppError {
+export function createError(message: string, statusCode = 500, code?: string): AppError {
   const error: AppError = new Error(message);
   error.statusCode = statusCode;
+  error.code = code;
   error.isOperational = true;
   return error;
 }
@@ -33,6 +35,7 @@ export function errorHandler(
   }
 
   res.status(statusCode).json({
+    ...(err.code && { code: err.code }),
     error: message,
     ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
   });

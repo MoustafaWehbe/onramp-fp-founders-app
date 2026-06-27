@@ -75,7 +75,7 @@ model StartupMember {
   roleId          String    @map("role_id")
   status          String    @default("pending")
   invitedEmail    String?   @map("invited_email")
-  inviteTokenHash String?   @map("invite_token_hash")
+  inviteTokenHash String?   @unique @map("invite_token_hash")
   inviteExpiresAt DateTime? @map("invite_expires_at")
   invitedBy       String?   @map("invited_by")
   joinedAt        DateTime? @map("joined_at")
@@ -87,6 +87,7 @@ model StartupMember {
   inviter User?   @relation("InvitedBy", fields: [invitedBy], references: [id])
 
   @@unique([startupId, userId])
+  @@unique([startupId, invitedEmail])
   @@map("startup_members")
 }
 
@@ -275,12 +276,13 @@ model StartupInvestor {
 
   startup             Startup              @relation(fields: [startupId], references: [id], onDelete: Cascade)
   investor            Investor             @relation(fields: [investorId], references: [id])
-  pipeline            Pipeline[]
+  pipeline            Pipeline[]           @relation("PipelineInvestor")
   interactionLogs     InteractionLog[]
-  commitments         Commitment[]
+  commitments         Commitment[]         @relation("CommitmentInvestor")
   reviewerInvitations ReviewerInvitation[]
 
   @@unique([startupId, investorId])
+  @@unique([startupId, id])
   @@map("startup_investors")
 }
 
@@ -295,11 +297,12 @@ model Pipeline {
   updatedAt             DateTime @updatedAt @map("updated_at")
 
   startup         Startup         @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  startupInvestor StartupInvestor @relation(fields: [startupInvestorId], references: [id], onDelete: Cascade)
+  startupInvestor StartupInvestor @relation("PipelineInvestor", fields: [startupInvestorId, startupId], references: [id, startupId], onDelete: Cascade)
   interactionLogs InteractionLog[]
-  commitments     Commitment[]
+  commitments     Commitment[]    @relation("CommitmentPipeline")
 
   @@unique([startupId, startupInvestorId])
+  @@unique([startupId, id])
   @@map("pipeline")
 }
 
@@ -337,8 +340,9 @@ model FundraisingRound {
   updatedAt               DateTime @updatedAt @map("updated_at")
 
   startup     Startup      @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  commitments Commitment[]
+  commitments Commitment[] @relation("CommitmentRound")
 
+  @@unique([startupId, id])
   @@map("fundraising_rounds")
 }
 
@@ -355,9 +359,9 @@ model Commitment {
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
   startup         Startup          @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  startupInvestor StartupInvestor  @relation(fields: [startupInvestorId], references: [id], onDelete: Cascade)
-  pipeline        Pipeline         @relation(fields: [pipelineId], references: [id])
-  round           FundraisingRound @relation(fields: [roundId], references: [id])
+  startupInvestor StartupInvestor  @relation("CommitmentInvestor", fields: [startupInvestorId, startupId], references: [id, startupId], onDelete: Cascade)
+  pipeline        Pipeline         @relation("CommitmentPipeline", fields: [pipelineId, startupId], references: [id, startupId])
+  round           FundraisingRound @relation("CommitmentRound", fields: [roundId, startupId], references: [id, startupId])
 
   @@map("commitments")
 }
@@ -376,11 +380,12 @@ model Document {
 
   startup        Startup                      @relation(fields: [startupId], references: [id], onDelete: Cascade)
   creator        User                         @relation(fields: [createdBy], references: [id])
-  currentVersion DocumentVersion?             @relation("CurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  currentVersion DocumentVersion?             @relation("CurrentVersion", fields: [currentVersionId, id], references: [id, documentId], onDelete: Restrict)
   versions       DocumentVersion[]            @relation("DocumentVersions")
   reviewerDocs   ReviewerInvitationDocument[]
-  aiChatSessions AiChatSession[]
+  aiChatSessions AiChatSession[]              @relation("AiChatSessionDocument")
 
+  @@unique([startupId, id])
   @@map("documents")
 }
 
@@ -400,6 +405,8 @@ model DocumentVersion {
   currentForDocs Document[]      @relation("CurrentVersion")
   aiAnalyses     AiAnalysis[]
 
+  @@unique([id, documentId])
+  @@unique([documentId, versionNumber])
   @@map("document_versions")
 }
 
@@ -416,6 +423,7 @@ model DocumentChunk {
 
   documentVersion DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
 
+  @@unique([documentVersionId, chunkIndex])
   @@map("document_chunks")
 }
 
@@ -437,8 +445,9 @@ model AiAnalysis {
   documentVersion DocumentVersion   @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
   gapAnalyses     AiGapAnalysis[]
   personas        InvestorPersona[]
-  aiChatSessions  AiChatSession[]
+  aiChatSessions  AiChatSession[]   @relation("AiChatSessionAnalysis")
 
+  @@unique([startupId, id])
   @@map("ai_analyses")
 }
 
@@ -490,8 +499,8 @@ model AiChatSession {
 
   startup  Startup        @relation(fields: [startupId], references: [id], onDelete: Cascade)
   user     User           @relation(fields: [userId], references: [id])
-  document Document?      @relation(fields: [documentId], references: [id])
-  analysis AiAnalysis?    @relation(fields: [analysisId], references: [id])
+  document Document?      @relation("AiChatSessionDocument", fields: [documentId, startupId], references: [id, startupId])
+  analysis AiAnalysis?    @relation("AiChatSessionAnalysis", fields: [analysisId, startupId], references: [id, startupId])
   messages AiChatMessage[]
 
   @@map("ai_chat_sessions")

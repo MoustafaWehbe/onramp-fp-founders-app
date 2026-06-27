@@ -1,27 +1,23 @@
 import type { Job } from "bullmq";
-
-export interface EmailJobData {
-  to: string;
-  subject: string;
-  template: string;
-  variables?: Record<string, string>;
-}
-
-export interface EmailJobResult {
-  messageId: string;
-}
+import { resend } from "../../config/email";
+import type { EmailJobData, EmailJobResult } from "../../types";
 
 export const emailJob = {
   name: "email" as const,
   concurrency: 10,
 
   async process(job: Job<EmailJobData, EmailJobResult>): Promise<EmailJobResult> {
-    const { to, subject, template } = job.data;
-    console.info(`[email] Sending "${subject}" to ${to} (template: ${template})`);
+    const { to, subject, html } = job.data;
 
-    // TODO: integrate with your email provider (Resend, SendGrid, SES, etc.)
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    const { data, error } = await resend.emails.send({
+      from: process.env.RESEND_FROM ?? "FP Founders <noreply@fpfounders.com>",
+      to,
+      subject,
+      html,
+    });
 
-    return { messageId: `mock-${Date.now()}` };
+    if (error) throw new Error(`Failed to send email: ${error.message}`);
+
+    return { messageId: data!.id };
   },
 };

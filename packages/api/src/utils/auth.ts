@@ -1,50 +1,62 @@
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import jwt from "jsonwebtoken";
-import type { JwtPayload, TokenPair } from "../types";
+import type { JwtPayload } from "../types";
 
-const SALT_ROUNDS = 12;
+const BCRYPT_ROUNDS = 12;
 
-export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, SALT_ROUNDS);
+export function hashToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
 }
 
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(password, hash);
+export function hashOTP(otp: string): string {
+  return crypto
+    .createHmac("sha256", process.env.OTP_HMAC_SECRET!)
+    .update(otp)
+    .digest("hex");
 }
 
-function getSecret(envKey: string, fallback: string): string {
-  const value = process.env[envKey];
-  if (!value && process.env.NODE_ENV === "production") {
-    throw new Error(`Missing required env var: ${envKey}`);
-  }
-  return value ?? fallback;
+// Tokens
+
+export function generateRefreshToken(): { raw: string; hash: string } {
+  const raw = crypto.randomBytes(64).toString("hex");
+  return { raw, hash: hashToken(raw) };
 }
 
-export function signAccessToken(payload: JwtPayload): string {
-  const secret = getSecret("JWT_SECRET", "dev-access-secret");
-  const expiresIn = process.env.JWT_EXPIRES_IN ?? "15m";
-  return jwt.sign(payload, secret, { expiresIn } as jwt.SignOptions);
-}
-
-export function signRefreshToken(payload: Pick<JwtPayload, "userId">): string {
-  const secret = getSecret("JWT_REFRESH_SECRET", "dev-refresh-secret");
-  const expiresIn = process.env.JWT_REFRESH_EXPIRES_IN ?? "7d";
-  return jwt.sign(payload, secret, { expiresIn } as jwt.SignOptions);
+export function generateAccessToken(userId: string, sessionId: string, email: string): string {
+  return jwt.sign(
+    { sub: userId, type: "access", sessionId, email },
+    process.env.JWT_ACCESS_SECRET!,
+    { expiresIn: "15m" },
+  );
 }
 
 export function verifyAccessToken(token: string): JwtPayload {
-  const secret = getSecret("JWT_SECRET", "dev-access-secret");
-  return jwt.verify(token, secret) as JwtPayload;
-}
-
-export function verifyRefreshToken(token: string): Pick<JwtPayload, "userId"> {
-  const secret = getSecret("JWT_REFRESH_SECRET", "dev-refresh-secret");
-  return jwt.verify(token, secret) as Pick<JwtPayload, "userId">;
-}
-
-export function generateTokenPair(payload: JwtPayload): TokenPair {
-  return {
-    accessToken: signAccessToken(payload),
-    refreshToken: signRefreshToken({ userId: payload.userId }),
+  const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as {
+    sub: string;
+    type: string;
+    sessionId: string;
+    email: string;
   };
+  if (payload.type !== "access") throw new Error("Invalid token type");
+  return { userId: payload.sub, sessionId: payload.sessionId, email: payload.email };
 }
+
+
+// Password
+
+export function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
+}
+
+export function verifyPassword(password: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(password, hash);
+}
+
+// OTP
+
+export function generateOTP(): { raw: string; hash: string } {
+  const raw = crypto.randomInt(100_000, 999_999).toString();
+  return { raw, hash: hashOTP(raw) };
+}
+
