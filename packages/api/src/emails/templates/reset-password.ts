@@ -1,7 +1,28 @@
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+}
+
+function safeUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "#";
+    return escapeHtml(url);
+  } catch {
+    return "#";
+  }
+}
+
 export function resetPasswordEmail(
   firstName: string,
   resetUrl: string,
 ): { subject: string; html: string } {
+  const safeName = escapeHtml(firstName);
+  const safeResetUrl = safeUrl(resetUrl);
   return {
     subject: "Reset your password",
     html: `
@@ -44,7 +65,7 @@ export function resetPasswordEmail(
             <td style="padding:40px 40px 32px;">
 
               <!-- Greeting -->
-              <p style="margin:0 0 8px;font-size:24px;font-weight:700;color:#0f172a;letter-spacing:-0.4px;">Hi ${firstName},</p>
+              <p style="margin:0 0 8px;font-size:24px;font-weight:700;color:#0f172a;letter-spacing:-0.4px;">Hi ${safeName},</p>
               <p style="margin:0 0 32px;font-size:15px;color:#64748b;line-height:1.6;">
                 We received a request to reset your password. Click the button below to choose a new one.
               </p>
@@ -53,7 +74,7 @@ export function resetPasswordEmail(
               <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:32px;">
                 <tr>
                   <td align="center">
-                    <a href="${resetUrl}" target="_blank"
+                    <a href="${safeResetUrl}" target="_blank"
                       style="display:inline-block;padding:14px 32px;background-color:#0f172a;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:8px;letter-spacing:-0.1px;">
                       Reset Password
                     </a>
