@@ -9,7 +9,7 @@ import {
   hashToken,
   hashOTP,
 } from "../utils/auth";
-import { sendOTP } from "./email.service";
+import { sendOTP, sendPasswordReset } from "./email.service";
 import { prisma } from "../db/prisma";
 import { createError, type AppError } from "../utils/errors";
 
@@ -215,10 +215,18 @@ export class AuthService {
 
     // REPLAY ATTACK DETECTION — if token was already revoked, revoke entire family
     if (stored.revokedAt !== null) {
-      await prisma.refreshToken.updateMany({
-        where: { familyId: stored.familyId },
-        data: { revokedAt: new Date() },
-      });
+      if (stored.familyId) {
+        await prisma.refreshToken.updateMany({
+          where: { familyId: stored.familyId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      } else {
+        // No familyId — fall back to revoking all sessions for this user
+        await prisma.refreshToken.updateMany({
+          where: { userId: stored.userId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      }
       throw createError(
         "Security alert: token reuse detected. All sessions revoked.",
         401,
@@ -290,11 +298,12 @@ export class AuthService {
     });
 
     // Send email with reset link
-    await sendOTP(
-      user.email,
-      user.firstName,
-      `Reset link: https://app.example.com/reset-password?token=${raw}`,
-    );
+    const resetUrl = `${process.env.CORS_ORIGIN}/reset-password?token=${raw}`;
+    try {
+      await sendPasswordReset(user.email, user.firstName, resetUrl);
+    } catch (err) {
+      console.error("[forgotPassword] email enqueue failed:", err);
+    }
 
     return {
       message: "If an account exists with that email, a password reset link has been sent.",
@@ -318,6 +327,11 @@ export class AuthService {
       throw createError("This reset link has expired", 410, "TOKEN_EXPIRED");
     }
 
+    const user = await prisma.user.findUnique({
+      where: { id: reset.userId },
+      select: { authProvider: true },
+    });
+
     const newPasswordHash = await hashPassword(input.new_password);
 
     await prisma.$transaction([
@@ -325,8 +339,7 @@ export class AuthService {
         where: { id: reset.userId },
         data: {
           passwordHash: newPasswordHash,
-          // If user was Google-only, now they have a password too
-          authProvider: "both",
+          ...(user?.authProvider === "google" && { authProvider: "both" }),
         },
       }),
       prisma.passwordReset.update({

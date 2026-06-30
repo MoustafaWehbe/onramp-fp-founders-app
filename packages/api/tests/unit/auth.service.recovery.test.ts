@@ -29,6 +29,7 @@ jest.mock("../../src/utils/auth", () => ({
 
 jest.mock("../../src/services/email.service", () => ({
   sendOTP: jest.fn().mockResolvedValue(undefined),
+  sendPasswordReset: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock("google-auth-library", () => ({
@@ -38,12 +39,12 @@ jest.mock("google-auth-library", () => ({
 }));
 
 import { prisma } from "../../src/db/prisma";
-import { sendOTP } from "../../src/services/email.service";
+import { sendPasswordReset } from "../../src/services/email.service";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockPrisma = prisma as any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mockSendOTP = sendOTP as any;
+const mockSendPasswordReset = sendPasswordReset as any;
 const service = new AuthService();
 
 const USER = {
@@ -163,7 +164,7 @@ describe("AuthService.refresh", () => {
     });
 
     expect(mockPrisma.refreshToken.updateMany).toHaveBeenCalledWith({
-      where: { familyId: "family-revoked" },
+      where: { familyId: "family-revoked", revokedAt: null },
       data: { revokedAt: expect.any(Date) },
     });
   });
@@ -240,7 +241,7 @@ describe("AuthService.forgotPassword", () => {
       }),
     );
 
-    expect(mockSendOTP).toHaveBeenCalledWith(USER.email, USER.firstName, expect.any(String));
+    expect(mockSendPasswordReset).toHaveBeenCalledWith(USER.email, USER.firstName, expect.any(String));
   });
 
   it("returns the same message for both existing and non-existing emails", async () => {
@@ -295,6 +296,7 @@ describe("AuthService.resetPassword", () => {
 
   it("sets authProvider to 'both' when user was Google-only", async () => {
     mockPrisma.passwordReset.findUnique.mockResolvedValue(RESET as never);
+    mockPrisma.user.findUnique.mockResolvedValue({ authProvider: "google" } as never);
     mockPrisma.$transaction.mockImplementation(async (ops: unknown) => {
       if (Array.isArray(ops)) return ops;
       return ops;
@@ -311,6 +313,26 @@ describe("AuthService.resetPassword", () => {
           passwordHash: "$2a$12$mockedHash",
           authProvider: "both",
         }),
+      }),
+    );
+  });
+
+  it("preserves authProvider for local accounts", async () => {
+    mockPrisma.passwordReset.findUnique.mockResolvedValue(RESET as never);
+    mockPrisma.user.findUnique.mockResolvedValue({ authProvider: "local" } as never);
+    mockPrisma.$transaction.mockImplementation(async (ops: unknown) => {
+      if (Array.isArray(ops)) return ops;
+      return ops;
+    });
+
+    await service.resetPassword({
+      token: "valid-reset-token",
+      new_password: "NewStrongPass1",
+    });
+
+    expect(mockPrisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({ authProvider: expect.anything() }),
       }),
     );
   });

@@ -5,16 +5,66 @@ const prisma = new PrismaClient();
 
 // ─── Permission matrix ────────────────────────────────────────────────────────
 
-const RESOURCES = ["pipeline", "documents", "ai_reports", "team", "billing"];
-const ACTIONS = ["create", "read", "update", "delete", "share"];
+const PERMISSIONS = [
+  // Startup management
+  { resource: "startup", action: "read", description: "View startup profile" },
+  { resource: "startup", action: "update", description: "Edit startup profile" },
+  { resource: "startup", action: "delete", description: "Delete startup" },
 
-const COLLABORATOR_DENIED = [
-  { resource: "billing", action: "create" },
-  { resource: "billing", action: "update" },
-  { resource: "billing", action: "delete" },
-  { resource: "billing", action: "share" },
-  { resource: "team", action: "delete" },
+  // Team management
+  { resource: "team", action: "read", description: "View team members" },
+  { resource: "team", action: "create", description: "Invite team members" },
+  { resource: "team", action: "update", description: "Change member roles" },
+  { resource: "team", action: "delete", description: "Remove team members" },
+
+  // CRM / Pipeline
+  { resource: "pipeline", action: "read", description: "View investors and pipeline" },
+  { resource: "pipeline", action: "create", description: "Add investors and pipeline entries" },
+  { resource: "pipeline", action: "update", description: "Move pipeline stages, edit investors" },
+  { resource: "pipeline", action: "delete", description: "Remove investors and pipeline entries" },
+
+  // Documents
+  { resource: "documents", action: "read", description: "View documents" },
+  { resource: "documents", action: "create", description: "Upload documents" },
+  { resource: "documents", action: "update", description: "Upload new versions" },
+  { resource: "documents", action: "delete", description: "Remove documents" },
+  { resource: "documents", action: "share", description: "Share documents with reviewers" },
+
+  // Financial
+  { resource: "financial", action: "read", description: "View rounds and commitments" },
+  { resource: "financial", action: "create", description: "Create rounds and commitments" },
+  { resource: "financial", action: "update", description: "Edit rounds and commitments" },
+  { resource: "financial", action: "delete", description: "Remove rounds and commitments" },
+
+  // AI
+  { resource: "ai_reports", action: "read", description: "View AI analyses and chat" },
+  { resource: "ai_reports", action: "create", description: "Trigger AI analysis and start chats" },
 ];
+
+const ROLE_TEMPLATES = {
+  owner: PERMISSIONS.map((p) => `${p.resource}:${p.action}`),
+  collaborator: [
+    "startup:read",
+    "team:read",
+    "pipeline:read",
+    "pipeline:create",
+    "pipeline:update",
+    "documents:read",
+    "documents:create",
+    "documents:update",
+    "financial:read",
+    "ai_reports:read",
+    "ai_reports:create",
+  ],
+  viewer: [
+    "startup:read",
+    "team:read",
+    "pipeline:read",
+    "documents:read",
+    "financial:read",
+    "ai_reports:read",
+  ],
+};
 
 // ─── Seed ─────────────────────────────────────────────────────────────────────
 
@@ -63,12 +113,8 @@ async function main() {
     data: { lastActiveStartupId: startup.id },
   });
 
-  // 3. Permissions (all resource × action combinations)
-  const permissionData = RESOURCES.flatMap((resource) =>
-    ACTIONS.map((action) => ({ resource, action, description: `${action} ${resource}` })),
-  );
-
-  await prisma.permission.createMany({ data: permissionData, skipDuplicates: true });
+  // 3. Permissions
+  await prisma.permission.createMany({ data: PERMISSIONS, skipDuplicates: true });
 
   const allPermissions = await prisma.permission.findMany();
 
@@ -110,37 +156,24 @@ async function main() {
   });
 
   // 5. Role ↔ permission assignments
-  // Owner: all permissions
-  for (const perm of allPermissions) {
-    await prisma.rolePermission.upsert({
-      where: { roleId_permissionId: { roleId: ownerRole.id, permissionId: perm.id } },
-      update: {},
-      create: { roleId: ownerRole.id, permissionId: perm.id },
-    });
-  }
+  const permByKey = Object.fromEntries(allPermissions.map((p) => [`${p.resource}:${p.action}`, p]));
 
-  // Collaborator: everything except billing write and team delete
-  const collaboratorPerms = allPermissions.filter(
-    (p) => !COLLABORATOR_DENIED.some((d) => d.resource === p.resource && d.action === p.action),
-  );
-  for (const perm of collaboratorPerms) {
-    await prisma.rolePermission.upsert({
-      where: { roleId_permissionId: { roleId: collaboratorRole.id, permissionId: perm.id } },
-      update: {},
-      create: { roleId: collaboratorRole.id, permissionId: perm.id },
-    });
-  }
+  const roleAssignments: Array<{ role: typeof ownerRole; keys: string[] }> = [
+    { role: ownerRole, keys: ROLE_TEMPLATES.owner },
+    { role: collaboratorRole, keys: ROLE_TEMPLATES.collaborator },
+    { role: viewerRole, keys: ROLE_TEMPLATES.viewer },
+  ];
 
-  // Viewer: read-only, no billing
-  const viewerPerms = allPermissions.filter(
-    (p) => p.action === "read" && p.resource !== "billing",
-  );
-  for (const perm of viewerPerms) {
-    await prisma.rolePermission.upsert({
-      where: { roleId_permissionId: { roleId: viewerRole.id, permissionId: perm.id } },
-      update: {},
-      create: { roleId: viewerRole.id, permissionId: perm.id },
-    });
+  for (const { role, keys } of roleAssignments) {
+    for (const key of keys) {
+      const perm = permByKey[key];
+      if (!perm) continue;
+      await prisma.rolePermission.upsert({
+        where: { roleId_permissionId: { roleId: role.id, permissionId: perm.id } },
+        update: {},
+        create: { roleId: role.id, permissionId: perm.id },
+      });
+    }
   }
 
   // 6. Founder as owner member
@@ -205,7 +238,7 @@ async function main() {
   console.info("  Founder:      founder@example.com");
   console.info(`  Startup:      ${startup.name}`);
   console.info(`  Roles:        owner · collaborator · viewer`);
-  console.info(`  Permissions:  ${RESOURCES.length * ACTIONS.length} entries (${RESOURCES.join(", ")})`);
+  console.info(`  Permissions:  ${PERMISSIONS.length} entries`);
   console.info(`  Investor:     ${investor.fullName} — ${investor.ventureFirm}`);
   console.info("─────────────────────────────────────────────────────────");
 }
