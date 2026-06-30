@@ -9,7 +9,7 @@ import {
   hashToken,
   hashOTP,
 } from "../utils/auth";
-import { sendOTP } from "./email.service";
+import { sendOTP, sendPasswordReset } from "./email.service";
 import { prisma } from "../db/prisma";
 import { createError, type AppError } from "../utils/errors";
 
@@ -209,8 +209,33 @@ export class AuthService {
     const now = new Date();
 
     const stored = await prisma.refreshToken.findUnique({ where: { tokenHash } });
-    if (!stored || stored.revokedAt || stored.expiresAt < now) {
-      throw createError("Invalid or expired refresh token", 401);
+    if (!stored) {
+      throw createError("Invalid refresh token", 401, "INVALID_TOKEN");
+    }
+
+    // REPLAY ATTACK DETECTION — if token was already revoked, revoke entire family
+    if (stored.revokedAt !== null) {
+      if (stored.familyId) {
+        await prisma.refreshToken.updateMany({
+          where: { familyId: stored.familyId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      } else {
+        // No familyId — fall back to revoking all sessions for this user
+        await prisma.refreshToken.updateMany({
+          where: { userId: stored.userId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      }
+      throw createError(
+        "Security alert: token reuse detected. All sessions revoked.",
+        401,
+        "TOKEN_REUSE_DETECTED",
+      );
+    }
+
+    if (stored.expiresAt < now) {
+      throw createError("Refresh token has expired. Please log in again.", 401, "TOKEN_EXPIRED");
     }
 
     const user = await prisma.user.findUnique({ where: { id: stored.userId } });
@@ -239,6 +264,97 @@ export class AuthService {
     ]);
 
     return { accessToken, refreshToken: rawRefresh };
+  }
+  async forgotPassword(input: { email: string }) {
+    const user = await prisma.user.findUnique({ where: { email: input.email } });
+    // Always return 200 — prevent email enumeration
+    if (!user) {
+      return {
+        message: "If an account exists with that email, a password reset link has been sent.",
+      };
+    }
+
+    // If Google-only user, still return 200 (don't reveal auth method)
+    if (user.authProvider === "google" && !user.passwordHash) {
+      return {
+        message: "If an account exists with that email, a password reset link has been sent.",
+      };
+    }
+
+    // Generate reset token
+    const raw = crypto.randomBytes(32).toString("hex");
+    const tokenHash = hashToken(raw);
+
+    // Delete any existing active resets for this user
+    await prisma.passwordReset.deleteMany({ where: { userId: user.id } });
+
+    // Insert new reset
+    await prisma.passwordReset.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1_000), // 15 min TTL
+      },
+    });
+
+    // Send email with reset link
+    const resetUrl = `${process.env.CORS_ORIGIN}/reset-password?token=${raw}`;
+    try {
+      await sendPasswordReset(user.email, user.firstName, resetUrl);
+    } catch (err) {
+      console.error("[forgotPassword] email enqueue failed:", err);
+    }
+
+    return {
+      message: "If an account exists with that email, a password reset link has been sent.",
+    };
+  }
+
+  async resetPassword(input: { token: string; new_password: string }) {
+    const tokenHash = hashToken(input.token);
+    const now = new Date();
+
+    const reset = await prisma.passwordReset.findUnique({ where: { tokenHash } });
+    if (!reset) {
+      throw createError("Invalid or expired reset token", 400, "INVALID_TOKEN");
+    }
+
+    if (reset.usedAt !== null) {
+      throw createError("This reset link has already been used", 400, "TOKEN_ALREADY_USED");
+    }
+
+    if (reset.expiresAt < now) {
+      throw createError("This reset link has expired", 410, "TOKEN_EXPIRED");
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: reset.userId },
+      select: { authProvider: true },
+    });
+
+    const newPasswordHash = await hashPassword(input.new_password);
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: reset.userId },
+        data: {
+          passwordHash: newPasswordHash,
+          ...(user?.authProvider === "google" && { authProvider: "both" }),
+        },
+      }),
+      prisma.passwordReset.update({
+        where: { id: reset.id },
+        data: { usedAt: now },
+      }),
+      prisma.refreshToken.updateMany({
+        where: { userId: reset.userId, revokedAt: null },
+        data: { revokedAt: now },
+      }),
+    ]);
+
+    return {
+      message: "Password reset successful. Please log in with your new password.",
+    };
   }
 
   async googleAuth(input: { idToken: string; userAgent?: string; ipAddress?: string }) {

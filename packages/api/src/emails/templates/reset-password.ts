@@ -1,6 +1,30 @@
-export function otpEmail(firstName: string, otp: string): { subject: string; html: string } {
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+}
+
+function safeUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "#";
+    return escapeHtml(url);
+  } catch {
+    return "#";
+  }
+}
+
+export function resetPasswordEmail(
+  firstName: string,
+  resetUrl: string,
+): { subject: string; html: string } {
+  const safeName = escapeHtml(firstName);
+  const safeResetUrl = safeUrl(resetUrl);
   return {
-    subject: "Your verification code",
+    subject: "Reset your password",
     html: `
 <!DOCTYPE html>
 <html lang="en">
@@ -8,7 +32,7 @@ export function otpEmail(firstName: string, otp: string): { subject: string; htm
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-  <title>Your verification code</title>
+  <title>Reset your password</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
 
@@ -29,7 +53,7 @@ export function otpEmail(firstName: string, otp: string): { subject: string; htm
                     <span style="font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">FP Founders</span>
                   </td>
                   <td align="right">
-                    <span style="font-size:12px;font-weight:500;color:#94a3b8;letter-spacing:0.5px;text-transform:uppercase;">Verification</span>
+                    <span style="font-size:12px;font-weight:500;color:#94a3b8;letter-spacing:0.5px;text-transform:uppercase;">Password Reset</span>
                   </td>
                 </tr>
               </table>
@@ -41,17 +65,19 @@ export function otpEmail(firstName: string, otp: string): { subject: string; htm
             <td style="padding:40px 40px 32px;">
 
               <!-- Greeting -->
-              <p style="margin:0 0 8px;font-size:24px;font-weight:700;color:#0f172a;letter-spacing:-0.4px;">Hi ${firstName},</p>
+              <p style="margin:0 0 8px;font-size:24px;font-weight:700;color:#0f172a;letter-spacing:-0.4px;">Hi ${safeName},</p>
               <p style="margin:0 0 32px;font-size:15px;color:#64748b;line-height:1.6;">
-                Use the code below to verify your email address and complete your registration.
+                We received a request to reset your password. Click the button below to choose a new one.
               </p>
 
-              <!-- OTP Box -->
+              <!-- CTA Button -->
               <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:32px;">
                 <tr>
-                  <td align="center" style="background-color:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:28px 24px;">
-                    <p style="margin:0 0 8px;font-size:11px;font-weight:600;color:#94a3b8;letter-spacing:1.5px;text-transform:uppercase;">Your verification code</p>
-                    <p style="margin:0;font-size:44px;font-weight:800;letter-spacing:14px;color:#0f172a;font-variant-numeric:tabular-nums;">${otp}</p>
+                  <td align="center">
+                    <a href="${safeResetUrl}" target="_blank"
+                      style="display:inline-block;padding:14px 32px;background-color:#0f172a;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:8px;letter-spacing:-0.1px;">
+                      Reset Password
+                    </a>
                   </td>
                 </tr>
               </table>
@@ -61,7 +87,7 @@ export function otpEmail(firstName: string, otp: string): { subject: string; htm
                 <tr>
                   <td style="background-color:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px 18px;">
                     <p style="margin:0;font-size:13px;color:#92400e;line-height:1.5;">
-                      This code expires in <strong>10 minutes</strong>. Do not share it with anyone.
+                      This link expires in <strong>15 minutes</strong>. If you didn't request a password reset, you can safely ignore this email.
                     </p>
                   </td>
                 </tr>
@@ -76,7 +102,7 @@ export function otpEmail(firstName: string, otp: string): { subject: string; htm
 
               <!-- Disclaimer -->
               <p style="margin:0;font-size:13px;color:#94a3b8;line-height:1.6;">
-                If you didn't create an account with FP Founders, you can safely ignore this email. Someone may have entered your address by mistake.
+                If you didn't request this, no action is needed. Your password will remain unchanged.
               </p>
 
             </td>

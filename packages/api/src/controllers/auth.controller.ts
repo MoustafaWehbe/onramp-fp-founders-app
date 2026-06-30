@@ -82,6 +82,16 @@ export const authController = {
     res.json({ data: { message: "Logged out successfully" } });
   }),
 
+  forgotPassword: asyncHandler(async (req, res) => {
+    const result = await authService.forgotPassword(req.body);
+    res.json({ data: result });
+  }),
+
+  resetPassword: asyncHandler(async (req, res) => {
+    const result = await authService.resetPassword(req.body);
+    res.json({ data: result });
+  }),
+
   me: asyncHandler(async (req, res) => {
     const user = await authService.getProfile(req.user!.userId);
     res.json({ data: user });
