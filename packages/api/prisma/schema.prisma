@@ -309,6 +309,7 @@ model Pipeline {
 
   @@unique([startupId, startupInvestorId])
   @@unique([id, startupInvestorId])
+  @@unique([startupId, id])
   @@map("pipeline")
 }
 
