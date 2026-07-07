@@ -47,10 +47,21 @@ ALTER TABLE "document_versions" ADD COLUMN     "is_current" BOOLEAN NOT NULL DEF
 ALTER TABLE "documents" DROP COLUMN "current_version_id";
 
 -- AlterTable
-ALTER TABLE "reviewer_comments" DROP COLUMN "target_id",
-DROP COLUMN "target_type",
+ALTER TABLE "reviewer_comments"
 ADD COLUMN     "chunk_id" TEXT,
 ADD COLUMN     "document_id" TEXT;
+
+-- Backfill new columns from legacy target fields (before dropping them)
+UPDATE "reviewer_comments" SET "document_id" = "target_id" WHERE "target_type" = 'document';
+UPDATE "reviewer_comments" SET "chunk_id" = "target_id" WHERE "target_type" = 'section';
+UPDATE "reviewer_comments" rc
+SET "document_id" = dv."document_id"
+FROM "document_versions" dv
+WHERE rc."target_type" = 'document_version'
+  AND dv."id" = rc."target_id";
+
+-- Drop legacy columns after backfill
+ALTER TABLE "reviewer_comments" DROP COLUMN "target_id", DROP COLUMN "target_type";
 
 -- CreateTable
 CREATE TABLE "audit_logs" (
