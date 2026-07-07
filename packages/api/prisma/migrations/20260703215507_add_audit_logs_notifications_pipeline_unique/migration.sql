@@ -43,6 +43,18 @@ ALTER TABLE "pipeline" DROP CONSTRAINT "pipeline_startup_investor_id_fkey";
 -- AlterTable
 ALTER TABLE "document_versions" ADD COLUMN     "is_current" BOOLEAN NOT NULL DEFAULT false;
 
+-- Backfill is_current from documents.current_version_id before dropping the column
+UPDATE "document_versions" dv
+SET "is_current" = TRUE
+FROM "documents" d
+WHERE d."current_version_id" IS NOT NULL
+  AND dv."id" = d."current_version_id";
+
+-- Ensure only one "current" version per document
+CREATE UNIQUE INDEX "document_versions_one_current_per_document_key"
+ON "document_versions"("document_id")
+WHERE "is_current" = TRUE;
+
 -- AlterTable
 ALTER TABLE "documents" DROP COLUMN "current_version_id";
 
