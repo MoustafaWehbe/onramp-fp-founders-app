@@ -922,12 +922,6 @@ components:
           example: Series A Pitch Deck
         documentType:
           $ref: "#/components/schemas/DocumentType"
-        currentVersionId:
-          type: string
-          format: uuid
-          nullable: true
-        currentVersion:
-          $ref: "#/components/schemas/DocumentVersion"
         createdBy:
           type: string
           format: uuid
@@ -1136,11 +1130,14 @@ components:
         startupId:
           type: string
           format: uuid
-        targetType:
-          $ref: "#/components/schemas/ReviewerCommentTargetType"
-        targetId:
+        documentId:
           type: string
           format: uuid
+          nullable: true
+        chunkId:
+          type: string
+          format: uuid
+          nullable: true
         commentText:
           type: string
         createdAt:
@@ -1149,13 +1146,16 @@ components:
 
     CreateReviewerCommentBody:
       type: object
-      required: [targetType, targetId, commentText]
+      required: [commentText]
       properties:
-        targetType:
-          $ref: "#/components/schemas/ReviewerCommentTargetType"
-        targetId:
+        documentId:
           type: string
           format: uuid
+          nullable: true
+        chunkId:
+          type: string
+          format: uuid
+          nullable: true
         commentText:
           type: string
           minLength: 1
