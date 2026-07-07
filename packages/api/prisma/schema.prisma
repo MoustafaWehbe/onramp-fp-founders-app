@@ -36,6 +36,8 @@ model User {
   createdDocuments     Document[]
   uploadedVersions     DocumentVersion[]
   aiChatSessions       AiChatSession[]
+  auditLogs            AuditLog[]
+  notifications        Notification[]
 
   @@map("users")
 }
@@ -64,6 +66,8 @@ model Startup {
   aiChatSessions      AiChatSession[]
   reviewerInvitations ReviewerInvitation[]
   reviewerComments    ReviewerComment[]
+  auditLogs           AuditLog[]
+  notifications       Notification[]
 
   @@map("startups")
 }
@@ -236,13 +240,15 @@ model ReviewerComment {
   id          String   @id @default(uuid())
   sessionId   String   @map("session_id")
   startupId   String   @map("startup_id")
-  targetType  String   @map("target_type")
-  targetId    String   @map("target_id")
+  documentId  String?  @map("document_id")
+  chunkId     String?  @map("chunk_id")
   commentText String   @map("comment_text")
   createdAt   DateTime @default(now()) @map("created_at")
 
-  session ReviewerSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  startup Startup         @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  session  ReviewerSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  startup  Startup         @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  document Document?       @relation(fields: [documentId], references: [id])
+  chunk    DocumentChunk?  @relation(fields: [chunkId], references: [id])
 
   @@map("reviewer_comments")
 }
@@ -302,6 +308,7 @@ model Pipeline {
   commitments     Commitment[]    @relation("CommitmentPipeline")
 
   @@unique([startupId, startupInvestorId])
+  @@unique([id, startupInvestorId])
   @@unique([startupId, id])
   @@map("pipeline")
 }
@@ -319,7 +326,7 @@ model InteractionLog {
   createdAt         DateTime  @default(now()) @map("created_at")
 
   startupInvestor StartupInvestor @relation(fields: [startupInvestorId], references: [id], onDelete: Cascade)
-  pipeline        Pipeline?       @relation(fields: [pipelineId], references: [id])
+  pipeline        Pipeline?       @relation(fields: [pipelineId, startupInvestorId], references: [id, startupInvestorId])
   creator         User            @relation(fields: [createdBy], references: [id])
 
   @@map("interaction_logs")
@@ -369,21 +376,20 @@ model Commitment {
 // ─── DOCUMENT VAULT ───────────────────────────────────────────────────────────
 
 model Document {
-  id               String   @id @default(uuid())
-  startupId        String   @map("startup_id")
-  title            String
-  documentType     String   @map("document_type")
-  currentVersionId String?  @map("current_version_id")
-  createdBy        String   @map("created_by")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(uuid())
+  startupId    String   @map("startup_id")
+  title        String
+  documentType String   @map("document_type")
+  createdBy    String   @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  startup        Startup                      @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  creator        User                         @relation(fields: [createdBy], references: [id])
-  currentVersion DocumentVersion?             @relation("CurrentVersion", fields: [currentVersionId, id], references: [id, documentId], onDelete: Restrict)
-  versions       DocumentVersion[]            @relation("DocumentVersions")
-  reviewerDocs   ReviewerInvitationDocument[]
-  aiChatSessions AiChatSession[]              @relation("AiChatSessionDocument")
+  startup          Startup                      @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  creator          User                         @relation(fields: [createdBy], references: [id])
+  versions         DocumentVersion[]
+  reviewerDocs     ReviewerInvitationDocument[]
+  reviewerComments ReviewerComment[]
+  aiChatSessions   AiChatSession[]              @relation("AiChatSessionDocument")
 
   @@unique([startupId, id])
   @@map("documents")
@@ -393,19 +399,18 @@ model DocumentVersion {
   id            String   @id @default(uuid())
   documentId    String   @map("document_id")
   versionNumber Int      @map("version_number")
+  isCurrent     Boolean  @default(false) @map("is_current")
   fileUrl       String   @map("file_url")
   fileSize      Int?     @map("file_size")
   summary       String?
   uploadedBy    String   @map("uploaded_by")
   createdAt     DateTime @default(now()) @map("created_at")
 
-  document       Document        @relation("DocumentVersions", fields: [documentId], references: [id], onDelete: Cascade)
-  uploader       User            @relation(fields: [uploadedBy], references: [id])
-  chunks         DocumentChunk[]
-  currentForDocs Document[]      @relation("CurrentVersion")
-  aiAnalyses     AiAnalysis[]
+  document   Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  uploader   User            @relation(fields: [uploadedBy], references: [id])
+  chunks     DocumentChunk[]
+  aiAnalyses AiAnalysis[]
 
-  @@unique([id, documentId])
   @@unique([documentId, versionNumber])
   @@map("document_versions")
 }
@@ -421,7 +426,8 @@ model DocumentChunk {
   sectionLabel      String?                      @map("section_label")
   createdAt         DateTime                     @default(now()) @map("created_at")
 
-  documentVersion DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+  documentVersion  DocumentVersion  @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+  reviewerComments ReviewerComment[]
 
   @@unique([documentVersionId, chunkIndex])
   @@map("document_chunks")
@@ -516,4 +522,45 @@ model AiChatMessage {
   session AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@map("ai_chat_messages")
+}
+
+// ─── PLATFORM ─────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  startupId  String   @map("startup_id")
+  userId     String   @map("user_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  changes    Json?
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  startup Startup @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@index([startupId, entityType, entityId])
+  @@index([startupId, createdAt])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id         String    @id @default(uuid())
+  startupId  String    @map("startup_id")
+  userId     String    @map("user_id")
+  type       String
+  title      String
+  body       String?
+  entityType String?   @map("entity_type")
+  entityId   String?   @map("entity_id")
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  startup Startup @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@index([userId, readAt])
+  @@index([startupId, createdAt])
+  @@map("notifications")
 }

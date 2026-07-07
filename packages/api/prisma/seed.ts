@@ -217,7 +217,7 @@ async function main() {
   });
 
   // 9. Pipeline entry for the investor
-  await prisma.pipeline.upsert({
+  const pipeline = await prisma.pipeline.upsert({
     where: {
       startupId_startupInvestorId: {
         startupId: startup.id,
@@ -226,11 +226,136 @@ async function main() {
     },
     update: {},
     create: {
+      id: "00000000-0000-0000-0000-000000000030",
       startupId: startup.id,
       startupInvestorId: startupInvestor.id,
       stage: "meeting_scheduled",
       expectedAmount: 250000,
       probabilityPercentage: 40,
+    },
+  });
+
+  // 10. Fundraising round
+  const round = await prisma.fundraisingRound.upsert({
+    where: { startupId_id: { startupId: startup.id, id: "00000000-0000-0000-0000-000000000031" } },
+    update: {},
+    create: {
+      id: "00000000-0000-0000-0000-000000000031",
+      startupId: startup.id,
+      roundName: "Pre-Seed",
+      targetAmount: 500000,
+      minimumTicketSize: 25000,
+      equityOfferedPercentage: 10,
+      currency: "USD",
+      status: "active",
+    },
+  });
+
+  // 11. Commitment linking the investor to the round
+  await prisma.commitment.upsert({
+    where: { id: "00000000-0000-0000-0000-000000000032" },
+    update: {},
+    create: {
+      id: "00000000-0000-0000-0000-000000000032",
+      startupId: startup.id,
+      startupInvestorId: startupInvestor.id,
+      pipelineId: pipeline.id,
+      roundId: round.id,
+      amount: 50000,
+      status: "negotiating",
+    },
+  });
+
+  // 12. Interaction log — first touchpoint with the investor
+  await prisma.interactionLog.upsert({
+    where: { id: "00000000-0000-0000-0000-000000000033" },
+    update: {},
+    create: {
+      id: "00000000-0000-0000-0000-000000000033",
+      startupInvestorId: startupInvestor.id,
+      pipelineId: pipeline.id,
+      createdBy: founder.id,
+      type: "email",
+      subject: "Introduction — Acme Corp",
+      description: "Sent intro email with deck link. Investor confirmed receipt and expressed interest.",
+      interactionDate: new Date(),
+    },
+  });
+
+  // 13. Audit logs
+  await prisma.auditLog.upsert({
+    where: { id: "00000000-0000-0000-0000-000000000040" },
+    update: {},
+    create: {
+      id: "00000000-0000-0000-0000-000000000040",
+      startupId: startup.id,
+      userId: founder.id,
+      action: "create",
+      entityType: "startup",
+      entityId: startup.id,
+      changes: { name: startup.name, fundingStage: startup.fundingStage },
+      ipAddress: "127.0.0.1",
+    },
+  });
+
+  await prisma.auditLog.upsert({
+    where: { id: "00000000-0000-0000-0000-000000000041" },
+    update: {},
+    create: {
+      id: "00000000-0000-0000-0000-000000000041",
+      startupId: startup.id,
+      userId: founder.id,
+      action: "create",
+      entityType: "investor",
+      entityId: investor.id,
+      changes: { fullName: investor.fullName, ventureFirm: investor.ventureFirm, source: "event" },
+      ipAddress: "127.0.0.1",
+    },
+  });
+
+  await prisma.auditLog.upsert({
+    where: { id: "00000000-0000-0000-0000-000000000042" },
+    update: {},
+    create: {
+      id: "00000000-0000-0000-0000-000000000042",
+      startupId: startup.id,
+      userId: founder.id,
+      action: "update",
+      entityType: "pipeline",
+      entityId: pipeline.id,
+      changes: { stage: { from: "prospect", to: "meeting_scheduled" } },
+      ipAddress: "127.0.0.1",
+    },
+  });
+
+  // 14. Notifications
+  await prisma.notification.upsert({
+    where: { id: "00000000-0000-0000-0000-000000000050" },
+    update: {},
+    create: {
+      id: "00000000-0000-0000-0000-000000000050",
+      startupId: startup.id,
+      userId: founder.id,
+      type: "investor_added",
+      title: "New investor added",
+      body: `${investor.fullName} from ${investor.ventureFirm} has been added to your pipeline.`,
+      entityType: "investor",
+      entityId: investor.id,
+    },
+  });
+
+  await prisma.notification.upsert({
+    where: { id: "00000000-0000-0000-0000-000000000051" },
+    update: {},
+    create: {
+      id: "00000000-0000-0000-0000-000000000051",
+      startupId: startup.id,
+      userId: founder.id,
+      type: "pipeline_stage_changed",
+      title: "Meeting scheduled with investor",
+      body: `${investor.fullName} has been moved to Meeting Scheduled stage.`,
+      entityType: "pipeline",
+      entityId: pipeline.id,
     },
   });
 
@@ -240,6 +365,10 @@ async function main() {
   console.info(`  Roles:        owner · collaborator · viewer`);
   console.info(`  Permissions:  ${PERMISSIONS.length} entries`);
   console.info(`  Investor:     ${investor.fullName} — ${investor.ventureFirm}`);
+  console.info(`  Round:        Pre-Seed — $500,000 target`);
+  console.info(`  Commitment:   $50,000 negotiating`);
+  console.info(`  Audit logs:   3 entries`);
+  console.info(`  Notifications: 2 entries`);
   console.info("─────────────────────────────────────────────────────────");
 }
 
