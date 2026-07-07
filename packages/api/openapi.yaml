@@ -965,6 +965,8 @@ components:
         versionNumber:
           type: integer
           example: 3
+        isCurrent:
+          type: boolean
         fileUrl:
           type: string
           format: uri
@@ -1113,11 +1115,6 @@ components:
             $ref: "#/components/schemas/Document"
 
     # ── Reviewer Comments ─────────────────────────────────────────────
-    ReviewerCommentTargetType:
-      type: string
-      enum: [document, document_version, section]
-      example: document_version
-
     ReviewerComment:
       type: object
       properties:
@@ -3384,7 +3381,7 @@ paths:
       summary: Upload a new version of a document
       operationId: createDocumentVersion
       description: >
-        Creates a new version and sets it as the document's `currentVersionId`.
+        Creates a new version and sets it as the document's current version (`isCurrent = true`).
         `fileUrl` should point to the already-uploaded file in object storage.
       security:
         - cookieAuth: []
@@ -3470,7 +3467,7 @@ paths:
       summary: Delete a specific document version
       operationId: deleteDocumentVersion
       description: >
-        Cannot delete the version currently set as `currentVersionId` unless it
+        Cannot delete the version currently marked with `isCurrent = true` unless it
         is the document's only version (in which case the document is also deleted).
       security:
         - cookieAuth: []
