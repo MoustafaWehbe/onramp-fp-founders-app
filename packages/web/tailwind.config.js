@@ -3,6 +3,11 @@ export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        display: ["Space Grotesk", "Inter", "sans-serif"],
+        mono: ["JetBrains Mono", "ui-monospace", "monospace"],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

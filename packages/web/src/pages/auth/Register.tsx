@@ -1,117 +1,51 @@
-import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { useAuth } from "../../hooks/useAuth";
+import { useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "../../components/ui/card";
+import { useAppStore } from "@/lib/app-store";
+import { toast } from "sonner";
 
-const registerSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters"),
-  email: z.string().email("Invalid email"),
-  password: z
-    .string()
-    .min(8, "Password must be at least 8 characters")
-    .regex(/[A-Z]/, "Must contain an uppercase letter")
-    .regex(/[0-9]/, "Must contain a number"),
-});
-
-type RegisterFormData = z.infer<typeof registerSchema>;
-
-export function Register() {
-  const { register: registerUser } = useAuth();
+function Register() {
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const register = useAppStore((s) => s.register);
   const navigate = useNavigate();
-  const [error, setError] = useState<string | null>(null);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<RegisterFormData>({
-    resolver: zodResolver(registerSchema),
-  });
-
-  const onSubmit = async (data: RegisterFormData) => {
-    try {
-      setError(null);
-      await registerUser(data.email, data.password, data.name);
-      navigate("/login");
-    } catch {
-      setError("Registration failed. That email may already be in use.");
-    }
-  };
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (password.length < 8) { toast.error("Password must be at least 8 characters"); return; }
+    register(email, firstName || "New", lastName || "User");
+    toast.success("Account created — welcome!");
+    navigate("/app");
+  }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Create an account</CardTitle>
-        <CardDescription>
-          Fill in the details below to get started
-        </CardDescription>
-      </CardHeader>
-      <form onSubmit={handleSubmit(onSubmit)}>
-        <CardContent className="space-y-4">
-          {error && (
-            <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
-            </p>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
-            <Input id="name" placeholder="Alice Smith" {...register("name")} />
-            {errors.name && (
-              <p className="text-xs text-destructive">{errors.name.message}</p>
-            )}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="you@example.com"
-              {...register("email")}
-            />
-            {errors.email && (
-              <p className="text-xs text-destructive">{errors.email.message}</p>
-            )}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="••••••••"
-              {...register("password")}
-            />
-            {errors.password && (
-              <p className="text-xs text-destructive">
-                {errors.password.message}
-              </p>
-            )}
-          </div>
-        </CardContent>
-        <CardFooter className="flex-col gap-4">
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
-            {isSubmitting ? "Creating account…" : "Create account"}
-          </Button>
-          <p className="text-sm text-muted-foreground">
-            Already have an account?{" "}
-            <Link to="/login" className="text-primary hover:underline">
-              Sign in
-            </Link>
-          </p>
-        </CardFooter>
+    <div>
+      <h1 className="font-display text-2xl font-semibold">Create your account</h1>
+      <p className="mt-1 text-sm text-muted-foreground">Start as a user. You can create a startup or accept an invite once you're in.</p>
+
+      <div className="mt-6 rounded-md border border-border bg-surface p-3 text-xs text-muted-foreground">
+        <strong className="text-foreground">Heads up:</strong> registering only creates <em>you</em> — no startup yet. Waiting on a team invite? Sign up, then paste the invite link.
+      </div>
+
+      <form onSubmit={onSubmit} className="mt-6 space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5"><Label htmlFor="fn">First name</Label><Input id="fn" value={firstName} onChange={(e) => setFirstName(e.target.value)} required /></div>
+          <div className="space-y-1.5"><Label htmlFor="ln">Last name</Label><Input id="ln" value={lastName} onChange={(e) => setLastName(e.target.value)} required /></div>
+        </div>
+        <div className="space-y-1.5"><Label htmlFor="e">Work email</Label><Input id="e" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
+        <div className="space-y-1.5"><Label htmlFor="p">Password</Label><Input id="p" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} /></div>
+        <Button type="submit" className="w-full">Create account</Button>
       </form>
-    </Card>
+
+      <p className="mt-6 text-center text-sm text-muted-foreground">
+        Already have an account? <Link to="/auth/login" className="text-primary hover:underline">Sign in</Link>
+      </p>
+    </div>
   );
 }
+
+export { Register };
