@@ -298,7 +298,7 @@ export class AuthService {
     });
 
     // Send email with reset link
-    const resetUrl = `${process.env.CORS_ORIGIN}/reset-password?token=${raw}`;
+    const resetUrl = `${process.env.CORS_ORIGIN}/auth/reset-password?token=${raw}`;
     try {
       await sendPasswordReset(user.email, user.firstName, resetUrl);
     } catch (err) {

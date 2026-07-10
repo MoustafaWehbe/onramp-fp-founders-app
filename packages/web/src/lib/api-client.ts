@@ -1,7 +1,7 @@
 import axios, { type AxiosError } from "axios";
 
 export const apiClient = axios.create({
-  baseURL: "/api",
+  baseURL: "/api/v1",
   withCredentials: true,
   headers: { "Content-Type": "application/json" },
 });
@@ -18,13 +18,9 @@ apiClient.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        // Refresh token is sent automatically via HttpOnly cookie
-        await axios.post("/api/auth/refresh", null, { withCredentials: true });
+        await axios.post("/api/v1/auth/refresh", null, { withCredentials: true });
         return apiClient(originalRequest);
       } catch {
-        // Let the caller decide what to do (e.g. AuthProvider sets user=null,
-        // protected routes redirect to /login). Never redirect here — that would
-        // cause an infinite remount loop.
         return Promise.reject(error);
       }
     }

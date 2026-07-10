@@ -15,5 +15,5 @@ export function ProtectedRoute() {
   }
 
   // Preserve attempted location so the app can redirect back after login
-  return user ? <Outlet /> : <Navigate to="/login" replace state={{ from: location }} />;
+  return user ? <Outlet /> : <Navigate to="/auth/login" replace state={{ from: location }} />;
 }

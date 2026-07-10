@@ -131,7 +131,7 @@ export function resetPasswordEmail(
 
         <!-- Sub-footer -->
         <p style="margin:24px 0 0;font-size:12px;color:#94a3b8;text-align:center;">
-          This is an automated message — please do not reply.
+          This is an automated message please do not reply.
         </p>
 
       </td>

@@ -10,7 +10,7 @@ export const rateLimiter = rateLimit({
 
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1_000,
-  max: 10, // stricter limit for auth endpoints
+  max: 20, // stricter limit for auth endpoints
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: {

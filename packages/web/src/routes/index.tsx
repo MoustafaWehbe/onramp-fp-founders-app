@@ -4,6 +4,7 @@ import { AppLayout } from "../layouts/AppLayout";
 import { AuthLayout } from "../layouts/AuthLayout";
 import { Login } from "../pages/auth/Login";
 import { Register } from "../pages/auth/Register";
+import { VerifyOtp } from "../pages/auth/verify";
 import { Forgot } from "../pages/auth/forgot-password";
 import { Reset } from "../pages/auth/reset-password";
 import { Dashboard } from "../pages/dashboard/Dashboard";
@@ -30,6 +31,7 @@ export function AppRoutes() {
       <Route element={<AuthLayout />}>
         <Route path="/auth/login" element={<Login />} />
         <Route path="/auth/register" element={<Register />} />
+        <Route path="/auth/verify" element={<VerifyOtp />} />
         <Route path="/auth/forgot-password" element={<Forgot />} />
         <Route path="/auth/reset-password" element={<Reset />} />
       </Route>
