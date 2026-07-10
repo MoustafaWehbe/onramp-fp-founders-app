@@ -14,14 +14,17 @@ import { AiInsights } from "../pages/dashboard/AiInsights/AiInsights";
 import { Team } from "../pages/dashboard/Team/Team";
 import { Settings } from "../pages/dashboard/Settings";
 import { NotFound } from "../pages/NotFound";
-
-
+import { LandingPage } from "../pages/landing/Landing";
+import PricingPage from "../pages/landing/Pricing";
+import { AboutPage } from "../pages/landing/About";
 
 export function AppRoutes() {
   return (
     <Routes>
-      {/* Redirect root to login */}
-      <Route path="/" element={<Navigate to="/auth/login" replace />} />
+      {/* Public marketing routes */}
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/pricing" element={<PricingPage />} />
+      <Route path="/about" element={<AboutPage />} />
 
       {/* Public auth routes */}
       <Route element={<AuthLayout />}>

@@ -18,13 +18,13 @@
     --popover-foreground: 210 40% 98%;
 
     /* Orange primary - more vibrant */
-    --primary: 28 93% 58%;              /* #f78166 - orange */
+    --primary: 21 98% 60%;              /* #fd7933 - orange */
     --primary-foreground: 222.2 84% 4.9%;
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
     --muted: 217.2 32.6% 17.5%;
     --muted-foreground: 215 20.2% 65.1%;  /* #7d8590 */
-    --accent: 28 93% 58%;                 /* orange accent */
+    --accent: 21 98% 60%;                 /* orange accent */
     --accent-foreground: 222.2 84% 4.9%;
 
     --destructive: 0 84.2% 60.2%;
@@ -35,9 +35,9 @@
 
     --border: 217.2 32.6% 17.5%;         /* #30363d */
     --input: 217.2 32.6% 17.5%;
-    --ring: 28 93% 58%;
+    --ring: 21 98% 60%;
     
-    --chart-1: 28 93% 58%;
+    --chart-1: 21 98% 60%;
     --chart-2: 217 91% 60%;
     --chart-3: 160 75% 45%;
     --chart-4: 38 92% 50%;
@@ -45,18 +45,22 @@
 
     --sidebar: 222.2 84% 4.9%;
     --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 28 93% 58%;
+    --sidebar-primary: 21 98% 60%;
     --sidebar-primary-foreground: 222.2 84% 4.9%;
     --sidebar-accent: 217.2 32.6% 17.5%;
     --sidebar-accent-foreground: 210 40% 98%;
     --sidebar-border: 217.2 32.6% 17.5%;
-    --sidebar-ring: 28 93% 58%;
+    --sidebar-ring: 21 98% 60%;
   }
 }
 
 @layer base {
   * {
     @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
   }
 
   html, body {
@@ -84,7 +88,7 @@
 
 @layer utilities {
   .glow-orange {
-    @apply shadow-[0_0_0_1px_rgba(247,129,102,0.3),0_8px_32px_-8px_rgba(247,129,102,0.4)];
+    @apply shadow-[0_0_0_1px_rgba(253,121,51,0.3),0_8px_32px_-8px_rgba(253,121,51,0.4)];
   }
 
   .grid-bg {
