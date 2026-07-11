@@ -45,13 +45,16 @@ export class StartupService {
         }
       }
 
+      if (!ownerRoleId) {
+        throw new Error("System role 'owner' was not created");
+      }
+
       // 4. Create the founder's membership with the owner role
       const member = await tx.startupMember.create({
         data: {
           startupId: startup.id,
           userId,
           roleId: ownerRoleId,
-          status: "active",
           joinedAt: new Date(),
         },
       });
