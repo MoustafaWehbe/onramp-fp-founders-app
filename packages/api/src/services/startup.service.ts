@@ -35,10 +35,15 @@ export class StartupService {
           ? allPermissions.map((p) => `${p.resource}:${p.action}`)
           : ROLE_TEMPLATES[name as keyof typeof ROLE_TEMPLATES];
 
-        const permRows = keys
-          .map((k) => byKey.get(k))
-          .filter((p): p is NonNullable<typeof p> => p != null)
-          .map((p) => ({ roleId: role.id, permissionId: p.id }));
+        const missing = keys.filter((k) => !byKey.has(k));
+        if (missing.length > 0) {
+          throw new Error(`Missing permission rows for: ${missing.join(", ")}`);
+        }
+
+        const permRows = keys.map((k) => ({
+          roleId: role.id,
+          permissionId: byKey.get(k)!.id,
+        }));
 
         if (permRows.length > 0) {
           await tx.rolePermission.createMany({ data: permRows });
