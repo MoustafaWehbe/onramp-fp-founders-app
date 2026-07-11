@@ -90,7 +90,7 @@ function OtpInput({
           }}
           type="text"
           inputMode="numeric"
-          maxLength={2}
+          maxLength={i === 0 ? 6 : 1}
           value={digit}
           onChange={(e) => handleChange(i, e)}
           onKeyDown={(e) => handleKeyDown(i, e)}
