@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
@@ -88,66 +89,66 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  async function login(email: string, password: string): Promise<void> {
+  const login = useCallback(async (email: string, password: string): Promise<void> => {
     const { data } = await apiClient.post<{ data: { user: AuthUser } }>(
       "/auth/login",
       { email, password },
     );
     markSession();
     setUser(data.data.user);
-  }
+  }, []);
 
-  async function logout(): Promise<void> {
+  const logout = useCallback(async (): Promise<void> => {
     try {
       await apiClient.post("/auth/logout");
     } finally {
       clearSessionHint();
       setUser(null);
     }
-  }
+  }, []);
 
-  async function registerInitiate(
+  const registerInitiate = useCallback(async (
     input: RegisterInitiateInput,
-  ): Promise<{ email: string; expires_in_seconds: number }> {
+  ): Promise<{ email: string; expires_in_seconds: number }> => {
     const { data } = await apiClient.post<{
       data: { email: string; expires_in_seconds: number; message: string };
     }>("/auth/register/initiate", input);
     return { email: data.data.email, expires_in_seconds: data.data.expires_in_seconds };
-  }
+  }, []);
 
-  async function registerVerify(email: string, otp: string): Promise<void> {
+  const registerVerify = useCallback(async (email: string, otp: string): Promise<void> => {
     const { data } = await apiClient.post<{ data: { user: AuthUser } }>(
       "/auth/register/verify",
       { email, otp },
     );
     markSession();
     setUser(data.data.user);
-  }
+  }, []);
 
-  async function registerResend(email: string): Promise<void> {
+  const registerResend = useCallback(async (email: string): Promise<void> => {
     await apiClient.post("/auth/register/resend", { email });
-  }
+  }, []);
 
-  async function forgotPassword(email: string): Promise<string> {
+  const forgotPassword = useCallback(async (email: string): Promise<string> => {
     const { data } = await apiClient.post<{ data: { message: string } }>(
       "/auth/forgot-password",
       { email },
     );
     return data.data.message;
-  }
+  }, []);
 
-  async function resetPassword(token: string, newPassword: string): Promise<void> {
+  const resetPassword = useCallback(async (token: string, newPassword: string): Promise<void> => {
     await apiClient.post("/auth/reset-password", { token, new_password: newPassword });
-  }
+  }, []);
 
-  async function googleAuth(idToken: string): Promise<void> {
+  const googleAuth = useCallback(async (idToken: string): Promise<void> => {
     const { data } = await apiClient.post<{ data: { user: AuthUser } }>(
       "/auth/google",
       { id_token: idToken },
     );
     markSession();
     setUser(data.data.user);
-  }
+  }, []);
 
   return (
     <AuthContext.Provider

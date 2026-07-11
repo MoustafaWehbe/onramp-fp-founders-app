@@ -115,6 +115,7 @@ function VerifyOtp() {
 
   const [otp, setOtp] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const submittingRef = useRef(false);
 
@@ -153,12 +154,15 @@ function VerifyOtp() {
   }
 
   async function onResend() {
+    setIsResending(true);
     try {
       await registerResend(email);
       setCooldown(RESEND_COOLDOWN_S);
       toast.success("New code sent to " + email);
     } catch {
       toast.error("Failed to resend please try again");
+    } finally {
+      setIsResending(false);
     }
   }
 
@@ -194,10 +198,10 @@ function VerifyOtp() {
           <button
             type="button"
             onClick={onResend}
-            disabled={isSubmitting}
+            disabled={isResending}
             className="text-primary hover:underline disabled:opacity-50"
           >
-            Resend
+            {isResending ? "Sending…" : "Resend"}
           </button>
         )}
       </div>
