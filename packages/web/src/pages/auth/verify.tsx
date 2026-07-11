@@ -135,7 +135,7 @@ function VerifyOtp() {
       setIsSubmitting(true);
       registerVerify(email, newOtp)
         .then(() => {
-          toast.success("Email verified — welcome!");
+          toast.success("Email verified welcome!");
           navigate("/dashboard");
         })
         .catch((err) => {
@@ -158,7 +158,7 @@ function VerifyOtp() {
       setCooldown(RESEND_COOLDOWN_S);
       toast.success("New code sent to " + email);
     } catch {
-      toast.error("Failed to resend — please try again");
+      toast.error("Failed to resend please try again");
     }
   }
 

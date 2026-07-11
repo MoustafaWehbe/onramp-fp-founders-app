@@ -54,7 +54,7 @@ function Login() {
 
   function onGoogleClick() {
     if (!window.google) {
-      toast.error("Google sign-in unavailable — please refresh the page");
+      toast.error("Google sign-in unavailable please refresh the page");
       return;
     }
     window.google.accounts.id.prompt((notification) => {

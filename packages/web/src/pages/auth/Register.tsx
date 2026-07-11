@@ -91,7 +91,7 @@ function Register() {
 
       <div className="mt-6 rounded-md border border-border bg-surface p-3 text-xs text-muted-foreground">
         <strong className="text-foreground">Heads up:</strong> registering only creates{" "}
-        <em>you</em> — no startup yet. Waiting on a team invite? Sign up, then paste the invite
+        <em>you</em> no startup yet. Waiting on a team invite? Sign up, then paste the invite
         link.
       </div>
 

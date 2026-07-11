@@ -85,7 +85,7 @@ function Reset() {
     setIsSubmitting(true);
     try {
       await resetPassword(token, pw);
-      toast.success("Password updated — please sign in");
+      toast.success("Password updated please sign in");
       navigate("/auth/login");
     } catch (err) {
       const axErr = err as AxiosError<{ error: string; code?: string }>;
