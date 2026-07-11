@@ -19,7 +19,7 @@ const FEATURES = [
   {
     icon: Users,
     title: "Investor CRM",
-    body: "8,000+ investor records, notes, ownership, and rich history — searchable and shareable across your team.",
+    body: "8,000+ investor records, notes, ownership, and rich history searchable and shareable across your team.",
   },
   {
     icon: LineChart,
@@ -222,7 +222,7 @@ function Hero() {
       <div className="relative mx-auto max-w-7xl px-6 py-24 md:py-32">
         <div className="hero-title mx-auto max-w-3xl text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs text-muted-foreground">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary" /> New — AI deck analysis with investor personas
+            <span className="h-1.5 w-1.5 rounded-full bg-primary" /> New AI deck analysis with investor personas
           </div>
           <h1 className="mt-6 font-display text-5xl font-semibold leading-[1.05] tracking-tight md:text-7xl">
             Run your fundraise {" "}
@@ -232,7 +232,7 @@ function Hero() {
             .
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
-            Investor CRM, deal pipeline, secure data room, and AI feedback on your deck — one workspace built to feel fast and stay out of your way.
+            Investor CRM, deal pipeline, secure data room, and AI feedback on your deck one workspace built to feel fast and stay out of your way.
           </p>
           <div className="mt-8 flex items-center justify-center gap-3 button-row">
             <Button asChild size="lg" className="gap-2">

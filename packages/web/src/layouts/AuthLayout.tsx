@@ -25,7 +25,7 @@ export function AuthLayout() {
           <blockquote className="text-2xl leading-snug font-medium">
             "We closed our seed 40% faster with Raise. The pipeline forecast alone was worth the switch."
           </blockquote>
-          <div className="mt-4 text-sm text-muted-foreground">— Priya S., founder of Kestrel Analytics</div>
+          <div className="mt-4 text-sm text-muted-foreground">Priya S., founder of Kestrel Analytics</div>
         </div>
         
         {/* Footer */}

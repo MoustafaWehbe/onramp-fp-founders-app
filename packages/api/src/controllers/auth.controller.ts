@@ -13,7 +13,7 @@ const COOKIE_BASE = {
 function setAuthCookies(res: Response, accessToken: string, refreshToken: string): void {
   res.cookie("accessToken", accessToken, {
     ...COOKIE_BASE,
-    path: "/api/v1/auth",
+    path: "/api/v1",
     maxAge: 15 * 60 * 1_000, // 15 min
   });
   res.cookie("refreshToken", refreshToken, {
@@ -24,7 +24,7 @@ function setAuthCookies(res: Response, accessToken: string, refreshToken: string
 }
 
 function clearAuthCookies(res: Response): void {
-  res.clearCookie("accessToken", { path: "/api/v1/auth" });
+  res.clearCookie("accessToken", { path: "/api/v1" });
   res.clearCookie("refreshToken", { path: "/api/v1/auth/refresh" });
 }
 

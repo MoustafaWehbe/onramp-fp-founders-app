@@ -11,6 +11,16 @@ export interface TokenPair {
   refreshToken: string;
 }
 
+// RBAC
+
+export interface Member {
+  id: string;
+  userId: string;
+  startupId: string;
+  roleId: string;
+  status: string;
+}
+
 // Jobs
 
 export interface EmailJobData {
