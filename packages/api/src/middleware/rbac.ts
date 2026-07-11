@@ -39,9 +39,14 @@ export async function requireMember(
 export function requirePermission(resource: string, action: string) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      if (!req.member) {
+        res.status(403).json({ error: "Forbidden", code: "FORBIDDEN" });
+        return;
+      }
+
       const found = await prisma.rolePermission.findFirst({
         where: {
-          roleId: req.member!.roleId,
+          roleId: req.member.roleId,
           permission: { resource, action },
         },
         include: { permission: true },
