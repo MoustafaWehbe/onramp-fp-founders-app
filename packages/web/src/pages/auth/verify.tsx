@@ -42,9 +42,16 @@ function OtpInput({
       update(index, "");
       return;
     }
-    const digit = raw.slice(-1);
-    update(index, digit);
-    if (index < 5) refs.current[index + 1]?.focus();
+
+    // Handle autofill / fast typing where multiple digits arrive at once.
+    const next = [...digits];
+    for (let offset = 0; offset < raw.length && index + offset < 6; offset++) {
+      next[index + offset] = raw[offset]!;
+    }
+    onChange(next.join(""));
+
+    const nextIndex = Math.min(index + raw.length, 5);
+    refs.current[nextIndex]?.focus();
   }
 
   function handleKeyDown(index: number, e: React.KeyboardEvent<HTMLInputElement>) {
