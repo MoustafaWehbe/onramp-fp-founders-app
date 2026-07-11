@@ -9,18 +9,17 @@ export const createStartupSchema = z.object({
   description: z
     .string()
     .trim()
-    .max(500, "Description must be at most 500 characters")
-    .optional(),
-  industry: z.string().trim().max(100).optional(),
-  website: z
+    .min(1, "Description is required")
+    .max(500, "Description must be at most 500 characters"),
+  industry: z
     .string()
     .trim()
-    .url("Website must be a valid URL")
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
-  funding_stage: z
-    .enum(["pre_seed", "seed", "series_a", "series_b", "series_c"])
-    .optional(),
+    .min(1, "Industry is required")
+    .max(100, "Industry must be at most 100 characters"),
+  website: z.string().trim().url("Website must be a valid URL"),
+  funding_stage: z.enum(["pre_seed", "seed", "series_a", "series_b", "series_c"], {
+    errorMap: () => ({ message: "Funding stage is required" }),
+  }),
 });
 
 export type CreateStartupInput = z.infer<typeof createStartupSchema>;

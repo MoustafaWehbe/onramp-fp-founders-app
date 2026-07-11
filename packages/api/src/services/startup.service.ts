@@ -11,8 +11,8 @@ export class StartupService {
           name: input.name,
           description: input.description,
           industry: input.industry,
-          website: input.website ?? null,
-          fundingStage: input.funding_stage ?? null,
+          website: input.website,
+          fundingStage: input.funding_stage,
           createdBy: userId,
         },
       });
