@@ -11,6 +11,7 @@ function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [gsiReady, setGsiReady] = useState(false);
   const { login, googleAuth } = useAuthContext();
   const navigate = useNavigate();
 
@@ -34,6 +35,7 @@ function Login() {
         }
       },
     });
+    setGsiReady(true);
   }, [googleAuth, navigate]);
 
   async function onSubmit(e: React.FormEvent) {
@@ -53,10 +55,6 @@ function Login() {
   }
 
   function onGoogleClick() {
-    if (!window.google) {
-      toast.error("Google sign-in unavailable please refresh the page");
-      return;
-    }
     window.google.accounts.id.prompt((notification) => {
       if (notification.isNotDisplayed()) {
         toast.error(
@@ -77,19 +75,23 @@ function Login() {
         Welcome back. Let's get your round closed.
       </p>
 
-      <Button
-        variant="outline"
-        className="mt-6 w-full gap-2"
-        type="button"
-        onClick={onGoogleClick}
-      >
-        <GoogleIcon /> Continue with Google
-      </Button>
+      {gsiReady && (
+        <>
+          <Button
+            variant="outline"
+            className="mt-6 w-full gap-2"
+            type="button"
+            onClick={onGoogleClick}
+          >
+            <GoogleIcon /> Continue with Google
+          </Button>
 
-      <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
-        <div className="h-px flex-1 bg-border" /> OR{" "}
-        <div className="h-px flex-1 bg-border" />
-      </div>
+          <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="h-px flex-1 bg-border" /> OR{" "}
+            <div className="h-px flex-1 bg-border" />
+          </div>
+        </>
+      )}
 
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="space-y-1.5">
