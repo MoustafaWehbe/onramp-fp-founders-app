@@ -1,6 +1,19 @@
 import { prisma } from "../db/prisma";
-import type { CreateStartupInput } from "../validators/startup.schemas";
+import { createError } from "../utils/errors";
+import type { CreateStartupInput, UpdateStartupInput } from "../validators/startup.schemas";
 import { ROLE_DEFINITIONS, ROLE_TEMPLATES } from "../config/permissions";
+
+const STARTUP_SELECT = {
+  id: true,
+  name: true,
+  description: true,
+  industry: true,
+  website: true,
+  fundingStage: true,
+  createdBy: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 export class StartupService {
   async createStartup(input: CreateStartupInput, userId: string) {
@@ -15,6 +28,7 @@ export class StartupService {
           fundingStage: input.funding_stage,
           createdBy: userId,
         },
+        select: STARTUP_SELECT,
       });
 
       // 2. Fetch all global permissions once
@@ -60,6 +74,7 @@ export class StartupService {
           startupId: startup.id,
           userId,
           roleId: ownerRoleId,
+          status: "active",
           joinedAt: new Date(),
         },
       });
@@ -71,6 +86,103 @@ export class StartupService {
       });
 
       return { startup, member };
+    });
+  }
+
+  async getStartup(startupId: string, userId: string) {
+    const startup = await prisma.startup.findUnique({
+      where: { id: startupId },
+      select: STARTUP_SELECT,
+    });
+    if (!startup) throw createError("Startup not found", 404, "NOT_FOUND");
+
+    const membership = await prisma.startupMember.findUnique({
+      where: { startupId_userId: { startupId, userId } },
+      include: { role: { select: { name: true } } },
+    });
+    if (!membership || membership.status !== "active") {
+      throw createError("Forbidden", 403, "FORBIDDEN");
+    }
+
+    return {
+      startup,
+      member: {
+        id: membership.id,
+        status: membership.status,
+        role: membership.role.name,
+        joinedAt: membership.joinedAt,
+      },
+    };
+  }
+
+  async updateStartup(startupId: string, input: UpdateStartupInput) {
+    const existing = await prisma.startup.findUnique({ where: { id: startupId }, select: { id: true } });
+    if (!existing) throw createError("Startup not found", 404, "NOT_FOUND");
+
+    return prisma.startup.update({
+      where: { id: startupId },
+      data: input,
+      select: STARTUP_SELECT,
+    });
+  }
+
+  async deleteStartup(startupId: string) {
+    const existing = await prisma.startup.findUnique({ where: { id: startupId }, select: { id: true } });
+    if (!existing) throw createError("Startup not found", 404, "NOT_FOUND");
+
+    await prisma.$transaction([
+      prisma.user.updateMany({
+        where: { lastActiveStartupId: startupId },
+        data: { lastActiveStartupId: null },
+      }),
+      prisma.startup.delete({ where: { id: startupId } }),
+    ]);
+  }
+
+  async listMembers(startupId: string) {
+    const members = await prisma.startupMember.findMany({
+      where: { startupId },
+      orderBy: { createdAt: "asc" },
+      include: {
+        role: { select: { name: true } },
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    });
+
+    return members.map((m) => {
+      const base = {
+        id: m.id,
+        status: m.status,
+        role: m.role.name,
+        joinedAt: m.joinedAt,
+        createdAt: m.createdAt,
+      };
+
+      if (m.userId && m.user) {
+        return {
+          ...base,
+          user: {
+            id: m.user.id,
+            firstName: m.user.firstName,
+            lastName: m.user.lastName,
+            email: m.user.email,
+            avatarUrl: m.user.avatarUrl,
+          },
+        };
+      }
+
+      return {
+        ...base,
+        invitedEmail: m.invitedEmail,
+      };
     });
   }
 }
