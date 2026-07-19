@@ -1,4 +1,4 @@
-import { createStartupSchema } from "../../src/validators/startup.schemas";
+import { createStartupSchema, updateStartupSchema, startupIdParamSchema } from "../../src/validators/startup.schemas";
 
 const VALID_INPUT = {
   name: "Acme Corp",
@@ -134,5 +134,63 @@ describe("createStartupSchema", () => {
     const result = createStartupSchema.safeParse({ ...VALID_INPUT, description: "  hello  " });
     expect(result.success).toBe(true);
     if (result.success) expect(result.data.description).toBe("hello");
+  });
+});
+
+describe("updateStartupSchema", () => {
+  it("accepts a single optional field", () => {
+    const result = updateStartupSchema.safeParse({ name: "New Name" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).toEqual({ name: "New Name" });
+  });
+
+  it("rejects empty body", () => {
+    const result = updateStartupSchema.safeParse({});
+    expect(result.success).toBe(false);
+  });
+
+  it("normalizes funding_stage to fundingStage", () => {
+    const result = updateStartupSchema.safeParse({ funding_stage: "seed" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).toEqual({ fundingStage: "seed" });
+  });
+
+  it("accepts fundingStage camelCase", () => {
+    const result = updateStartupSchema.safeParse({ fundingStage: "series_a" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).toEqual({ fundingStage: "series_a" });
+  });
+
+  it("prefers fundingStage when both are provided", () => {
+    const result = updateStartupSchema.safeParse({
+      funding_stage: "seed",
+      fundingStage: "series_b",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.fundingStage).toBe("series_b");
+  });
+
+  it("rejects invalid website", () => {
+    const result = updateStartupSchema.safeParse({ website: "not-a-url" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty name string", () => {
+    const result = updateStartupSchema.safeParse({ name: "" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("startupIdParamSchema", () => {
+  it("accepts a valid UUID", () => {
+    const result = startupIdParamSchema.safeParse({
+      startupId: "00000000-0000-0000-0000-000000000002",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a non-UUID startupId", () => {
+    const result = startupIdParamSchema.safeParse({ startupId: "not-a-uuid" });
+    expect(result.success).toBe(false);
   });
 });
