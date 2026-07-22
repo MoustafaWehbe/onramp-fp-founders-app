@@ -7,7 +7,7 @@ export async function requireMember(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const { startupId } = req.params;
+    const startupId = req.params.startupId as string | undefined;
     if (!startupId) {
       res.status(400).json({ error: "Missing startupId parameter" });
       return;

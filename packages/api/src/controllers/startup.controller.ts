@@ -12,25 +12,25 @@ export const startupController = {
   }),
 
   getStartup: asyncHandler(async (req, res) => {
-    const result = await startupService.getStartup(req.params.startupId, req.user!.userId);
+    const result = await startupService.getStartup(req.params.startupId as string, req.user!.userId);
     res.json({ data: result });
   }),
 
   updateStartup: asyncHandler(async (req, res) => {
     const startup = await startupService.updateStartup(
-      req.params.startupId,
+      req.params.startupId as string,
       req.body as UpdateStartupInput,
     );
     res.json({ data: { startup } });
   }),
 
   deleteStartup: asyncHandler(async (req, res) => {
-    await startupService.deleteStartup(req.params.startupId);
+    await startupService.deleteStartup(req.params.startupId as string);
     res.status(204).send();
   }),
 
   listMembers: asyncHandler(async (req, res) => {
-    const members = await startupService.listMembers(req.params.startupId);
+    const members = await startupService.listMembers(req.params.startupId as string);
     res.json({ data: { members } });
   }),
 };
