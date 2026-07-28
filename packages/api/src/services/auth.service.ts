@@ -12,6 +12,8 @@ import {
 import { sendOTP, sendPasswordReset } from "./email.service";
 import { prisma } from "../db/prisma";
 import { createError, type AppError } from "../utils/errors";
+import { inviteService } from "./invite.service";
+import { getAppUrl } from "../config/env";
 
 const USER_SELECT = { id: true, email: true, firstName: true, lastName: true } as const;
 
@@ -57,8 +59,8 @@ export class AuthService {
       throw createError("Invalid verification code", 400, "INVALID_OTP");
     }
 
-    const [user] = await prisma.$transaction([
-      prisma.user.create({
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
         data: {
           firstName: pending.firstName,
           lastName: pending.lastName,
@@ -68,9 +70,15 @@ export class AuthService {
           emailVerifiedAt: new Date(),
         },
         select: { id: true, email: true, firstName: true, lastName: true },
-      }),
-      prisma.pendingRegistration.delete({ where: { email: input.email } }),
-    ]);
+      });
+
+      await tx.pendingRegistration.delete({ where: { email: input.email } });
+
+      // Claim any matching pending invitations for this verified email
+      await inviteService.claimPendingInvites(pending.email, created.id, tx);
+
+      return created;
+    });
 
     const familyId = crypto.randomUUID();
     const { raw: rawRefresh, hash: refreshHash } = generateRefreshToken();
@@ -298,7 +306,7 @@ export class AuthService {
     });
 
     // Send email with reset link
-    const resetUrl = `${process.env.CORS_ORIGIN}/auth/reset-password?token=${raw}`;
+    const resetUrl = `${getAppUrl()}/auth/reset-password?token=${raw}`;
     try {
       await sendPasswordReset(user.email, user.firstName, resetUrl);
     } catch (err) {

@@ -1684,14 +1684,20 @@ paths:
               $ref: "#/components/schemas/InviteMemberBody"
       responses:
         "201":
-          description: Invitation created
+          description: >
+            Invitation created. `emailQueued` is false if the invite record was
+            created but the notification email could not be queued (e.g. Redis
+            outage) — the caller should tell the inviter to resend or notify the
+            person directly.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  data:
-                    $ref: "#/components/schemas/StartupMember"
+                  message:
+                    type: string
+                  emailQueued:
+                    type: boolean
         "401":
           description: Unauthorized
           content:

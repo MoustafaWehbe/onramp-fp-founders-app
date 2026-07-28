@@ -7,7 +7,13 @@ import {
   updateStartupSchema,
   startupIdParamSchema,
 } from "../validators/startup.schemas";
+import {
+  inviteMemberSchema,
+  changeRoleSchema,
+  memberIdParamSchema,
+} from "../validators/invite.schemas";
 import { startupController } from "../controllers/startup.controller";
+import { inviteController } from "../controllers/invite.controller";
 
 const router = Router();
 
@@ -20,6 +26,17 @@ router.post(
   startupController.createStartup,
 );
 
+// POST /api/v1/startups/:startupId/invites — team:create
+router.post(
+  "/:startupId/invites",
+  authenticate,
+  validate(startupIdParamSchema, "params"),
+  requireMember,
+  requirePermission("team", "create"),
+  validate(inviteMemberSchema),
+  inviteController.inviteMember,
+);
+
 // GET /api/v1/startups/:startupId/members — team:read
 router.get(
   "/:startupId/members",
@@ -28,6 +45,27 @@ router.get(
   requireMember,
   requirePermission("team", "read"),
   startupController.listMembers,
+);
+
+// PATCH /api/v1/startups/:startupId/members/:memberId/role — team:update
+router.patch(
+  "/:startupId/members/:memberId/role",
+  authenticate,
+  validate(memberIdParamSchema, "params"),
+  requireMember,
+  requirePermission("team", "update"),
+  validate(changeRoleSchema),
+  inviteController.changeRole,
+);
+
+// DELETE /api/v1/startups/:startupId/members/:memberId — team:delete
+router.delete(
+  "/:startupId/members/:memberId",
+  authenticate,
+  validate(memberIdParamSchema, "params"),
+  requireMember,
+  requirePermission("team", "delete"),
+  inviteController.removeMember,
 );
 
 // GET /api/v1/startups/:startupId — any active member
