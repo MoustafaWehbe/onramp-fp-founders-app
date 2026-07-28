@@ -3,8 +3,9 @@ import { z } from "zod";
 export const inviteMemberSchema = z.object({
   email: z
     .string()
-    .email("Invalid email address")
-    .transform((v) => v.trim().toLowerCase()),
+    .trim()
+    .toLowerCase()
+    .email("Invalid email address"),
   roleId: z.string().uuid("Invalid role ID"),
 });
 

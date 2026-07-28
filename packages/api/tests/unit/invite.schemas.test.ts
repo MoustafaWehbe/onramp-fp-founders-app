@@ -20,6 +20,17 @@ describe("inviteMemberSchema", () => {
     }
   });
 
+  it("normalizes surrounding whitespace", () => {
+    const result = inviteMemberSchema.safeParse({
+      email: "  test@example.com  ",
+      roleId: "00000000-0000-0000-0000-000000000001",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.email).toBe("test@example.com");
+    }
+  });
+
   it("rejects an invalid email", () => {
     const result = inviteMemberSchema.safeParse({
       email: "not-an-email",

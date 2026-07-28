@@ -44,6 +44,7 @@ const MEMBER_ID = "00000000-0000-0000-0000-000000000002";
 const ROLE_ID = "00000000-0000-0000-0000-000000000003";
 const USER_ID = "00000000-0000-0000-0000-000000000004";
 const INVITER_ID = "00000000-0000-0000-0000-000000000005";
+const ACTOR_ID = "00000000-0000-0000-0000-000000000006";
 const TOKEN_HASH = "hashed_rawtoken";
 
 describe("InviteService.inviteMember", () => {
@@ -73,6 +74,7 @@ describe("InviteService.inviteMember", () => {
       { email: "new@example.com", roleId: ROLE_ID },
       STARTUP_ID,
       INVITER_ID,
+      ACTOR_ID,
     );
 
     expect(result.rawToken).toBeDefined();
@@ -109,6 +111,7 @@ describe("InviteService.inviteMember", () => {
       { email: "new@example.com", roleId: ROLE_ID },
       STARTUP_ID,
       INVITER_ID,
+      ACTOR_ID,
     );
 
     expect(result.inviteExpiresAt.getTime() - now).toBe(7 * 24 * 60 * 60 * 1000);
@@ -122,7 +125,7 @@ describe("InviteService.inviteMember", () => {
     });
 
     await expect(
-      service.inviteMember({ email: "new@example.com", roleId: ROLE_ID }, STARTUP_ID, INVITER_ID),
+      service.inviteMember({ email: "new@example.com", roleId: ROLE_ID }, STARTUP_ID, INVITER_ID, ACTOR_ID),
     ).rejects.toMatchObject({ statusCode: 404, code: "ROLE_NOT_FOUND" });
   });
 
@@ -130,7 +133,7 @@ describe("InviteService.inviteMember", () => {
     (mockPrisma.role.findUnique as jest.Mock).mockResolvedValue(null);
 
     await expect(
-      service.inviteMember({ email: "new@example.com", roleId: ROLE_ID }, STARTUP_ID, INVITER_ID),
+      service.inviteMember({ email: "new@example.com", roleId: ROLE_ID }, STARTUP_ID, INVITER_ID, ACTOR_ID),
     ).rejects.toMatchObject({ statusCode: 404, code: "ROLE_NOT_FOUND" });
   });
 
@@ -145,7 +148,7 @@ describe("InviteService.inviteMember", () => {
     });
 
     await expect(
-      service.inviteMember({ email: "existing@example.com", roleId: ROLE_ID }, STARTUP_ID, INVITER_ID),
+      service.inviteMember({ email: "existing@example.com", roleId: ROLE_ID }, STARTUP_ID, INVITER_ID, ACTOR_ID),
     ).rejects.toMatchObject({ statusCode: 409, code: "ALREADY_MEMBER" });
   });
 
@@ -160,7 +163,7 @@ describe("InviteService.inviteMember", () => {
     });
 
     await expect(
-      service.inviteMember({ email: "pending@example.com", roleId: ROLE_ID }, STARTUP_ID, INVITER_ID),
+      service.inviteMember({ email: "pending@example.com", roleId: ROLE_ID }, STARTUP_ID, INVITER_ID, ACTOR_ID),
     ).rejects.toMatchObject({ statusCode: 409, code: "ALREADY_MEMBER" });
   });
 
@@ -176,11 +179,51 @@ describe("InviteService.inviteMember", () => {
       { email: "new@example.com", roleId: ROLE_ID },
       STARTUP_ID,
       INVITER_ID,
+      ACTOR_ID,
     );
 
     const createCall = (mockPrisma.startupMember.create as jest.Mock).mock.calls[0][0];
     expect(createCall.data.inviteTokenHash).not.toBe(result.rawToken);
     expect(createCall.data.inviteTokenHash).toBe(`hashed_${result.rawToken}`);
+  });
+
+  it("allows inviting as owner when the actor is an owner", async () => {
+    (mockPrisma.role.findUnique as jest.Mock).mockResolvedValue({
+      id: ROLE_ID,
+      startupId: STARTUP_ID,
+      name: "owner",
+    });
+    (mockPrisma.startupMember.findFirst as jest.Mock).mockResolvedValue(null);
+    (mockPrisma.startupMember.findUnique as jest.Mock).mockResolvedValue({
+      id: ACTOR_ID,
+      startupId: STARTUP_ID,
+      status: "active",
+      role: { name: "owner" },
+    });
+    (mockPrisma.startupMember.create as jest.Mock).mockResolvedValue({});
+
+    await expect(
+      service.inviteMember({ email: "new@example.com", roleId: ROLE_ID }, STARTUP_ID, INVITER_ID, ACTOR_ID),
+    ).resolves.toHaveProperty("rawToken");
+  });
+
+  it("rejects inviting as owner when the actor is not an owner", async () => {
+    (mockPrisma.role.findUnique as jest.Mock).mockResolvedValue({
+      id: ROLE_ID,
+      startupId: STARTUP_ID,
+      name: "owner",
+    });
+    (mockPrisma.startupMember.findFirst as jest.Mock).mockResolvedValue(null);
+    (mockPrisma.startupMember.findUnique as jest.Mock).mockResolvedValue({
+      id: ACTOR_ID,
+      startupId: STARTUP_ID,
+      status: "active",
+      role: { name: "collaborator" },
+    });
+
+    await expect(
+      service.inviteMember({ email: "new@example.com", roleId: ROLE_ID }, STARTUP_ID, INVITER_ID, ACTOR_ID),
+    ).rejects.toMatchObject({ statusCode: 403, code: "OWNER_ONLY" });
   });
 });
 
@@ -348,15 +391,25 @@ describe("InviteService.changeRole", () => {
     jest.clearAllMocks();
   });
 
-  it("successfully updates member role", async () => {
+  it("successfully updates member role (owner assignment performed by an owner)", async () => {
     (mockPrisma.$transaction as jest.Mock).mockImplementation(async (cb: Function) => {
       const tx = {
         startupMember: {
-          findUnique: jest.fn().mockResolvedValue({
-            id: MEMBER_ID,
-            startupId: STARTUP_ID,
-            status: "active",
-            role: { name: "collaborator" },
+          findUnique: jest.fn().mockImplementation(({ where }: any) => {
+            if (where.id === ACTOR_ID) {
+              return Promise.resolve({
+                id: ACTOR_ID,
+                startupId: STARTUP_ID,
+                status: "active",
+                role: { name: "owner" },
+              });
+            }
+            return Promise.resolve({
+              id: MEMBER_ID,
+              startupId: STARTUP_ID,
+              status: "active",
+              role: { name: "collaborator" },
+            });
           }),
           update: jest.fn().mockResolvedValue({
             id: MEMBER_ID,
@@ -381,12 +434,49 @@ describe("InviteService.changeRole", () => {
       return cb(tx);
     });
 
-    const result = await service.changeRole(STARTUP_ID, MEMBER_ID, { roleId: ROLE_ID }, MEMBER_ID);
+    const result = await service.changeRole(STARTUP_ID, MEMBER_ID, { roleId: ROLE_ID }, ACTOR_ID);
 
     expect(result).toHaveProperty("data");
     if ("data" in result) {
       expect(result.data.roleId).toBe(ROLE_ID);
     }
+  });
+
+  it("rejects owner-role assignment by a non-owner actor", async () => {
+    (mockPrisma.$transaction as jest.Mock).mockImplementation(async (cb: Function) => {
+      const tx = {
+        startupMember: {
+          findUnique: jest.fn().mockImplementation(({ where }: any) => {
+            if (where.id === ACTOR_ID) {
+              return Promise.resolve({
+                id: ACTOR_ID,
+                startupId: STARTUP_ID,
+                status: "active",
+                role: { name: "collaborator" },
+              });
+            }
+            return Promise.resolve({
+              id: MEMBER_ID,
+              startupId: STARTUP_ID,
+              status: "active",
+              role: { name: "collaborator" },
+            });
+          }),
+        },
+        role: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: ROLE_ID,
+            startupId: STARTUP_ID,
+            name: "owner",
+          }),
+        },
+      };
+      return cb(tx);
+    });
+
+    await expect(
+      service.changeRole(STARTUP_ID, MEMBER_ID, { roleId: ROLE_ID }, ACTOR_ID),
+    ).rejects.toMatchObject({ statusCode: 403, code: "OWNER_ONLY" });
   });
 
   it("rejects role from another startup", async () => {

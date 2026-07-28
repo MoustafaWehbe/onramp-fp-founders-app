@@ -13,3 +13,4 @@ process.env.DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/fp_fou
 process.env.REDIS_URL = "redis://localhost:6379";
 process.env.RESEND_API_KEY = "re_test_key";
 process.env.RESEND_FROM = "FP Founders <noreply@fpfounders.com>";
+process.env.APP_URL = "http://localhost:5173";

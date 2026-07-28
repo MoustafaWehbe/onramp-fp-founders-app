@@ -31,7 +31,7 @@ export function inviteEmail(
   const safeLink = safeUrl(inviteLink);
 
   return {
-    subject: `You've been invited to join ${startupName} on FP Founders`,
+    subject: `You've been invited to join ${safeStartup} on FP Founders`,
     html: `
 <!DOCTYPE html>
 <html lang="en">

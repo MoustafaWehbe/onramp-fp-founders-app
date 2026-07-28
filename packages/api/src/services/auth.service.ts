@@ -13,6 +13,7 @@ import { sendOTP, sendPasswordReset } from "./email.service";
 import { prisma } from "../db/prisma";
 import { createError, type AppError } from "../utils/errors";
 import { inviteService } from "./invite.service";
+import { getAppUrl } from "../config/env";
 
 const USER_SELECT = { id: true, email: true, firstName: true, lastName: true } as const;
 
@@ -305,7 +306,7 @@ export class AuthService {
     });
 
     // Send email with reset link
-    const resetUrl = `${process.env.CORS_ORIGIN}/auth/reset-password?token=${raw}`;
+    const resetUrl = `${getAppUrl()}/auth/reset-password?token=${raw}`;
     try {
       await sendPasswordReset(user.email, user.firstName, resetUrl);
     } catch (err) {

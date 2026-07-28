@@ -1,3 +1,5 @@
+import "dotenv/config";
+
 import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/utils/auth";
 import { PERMISSIONS, ROLE_TEMPLATES } from "../src/config/permissions";

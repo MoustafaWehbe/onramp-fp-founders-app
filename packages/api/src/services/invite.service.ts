@@ -1,8 +1,11 @@
 import crypto from "crypto";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
 import { hashToken } from "../utils/auth";
 import type { InviteMemberInput, AcceptInviteInput, ChangeRoleInput } from "../validators/invite.schemas";
+
+type Db = typeof prisma | Prisma.TransactionClient;
 
 const MEMBER_SELECT = {
   id: true,
@@ -19,16 +22,20 @@ const MEMBER_SELECT = {
 const INVITE_EXPIRATION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export class InviteService {
-  async inviteMember(input: InviteMemberInput, startupId: string, inviterUserId: string) {
+  async inviteMember(input: InviteMemberInput, startupId: string, inviterUserId: string, actorMemberId: string) {
     const email = input.email;
 
     // Validate that roleId belongs to this startup (cross-startup role injection prevention)
     const role = await prisma.role.findUnique({
       where: { id: input.roleId },
-      select: { id: true, startupId: true },
+      select: { id: true, startupId: true, name: true },
     });
     if (!role || role.startupId !== startupId) {
       throw createError("Role not found in this startup", 404, "ROLE_NOT_FOUND");
+    }
+
+    if (role.name === "owner") {
+      await this.assertActorIsOwner(prisma, actorMemberId, startupId);
     }
 
     // Check if email already has an active or pending member row
@@ -160,6 +167,10 @@ export class InviteService {
         throw createError("Role not found in this startup", 404, "ROLE_NOT_FOUND");
       }
 
+      if (newRole.name === "owner") {
+        await this.assertActorIsOwner(tx, actorMemberId, startupId);
+      }
+
       // Prevent demoting the last active owner
       if (target.role.name === "owner" && target.status === "active" && newRole.name !== "owner") {
         const activeOwnerCount = await tx.startupMember.count({
@@ -237,6 +248,18 @@ export class InviteService {
     });
   }
 
+  // Helper to assert that the actor is an active owner of the startup
+  private async assertActorIsOwner(db: Db, actorMemberId: string, startupId: string): Promise<void> {
+    const actor = await db.startupMember.findUnique({
+      where: { id: actorMemberId },
+      include: { role: { select: { name: true } } },
+    });
+
+    if (!actor || actor.startupId !== startupId || actor.status !== "active" || actor.role.name !== "owner") {
+      throw createError("Only owners can assign the owner role", 403, "OWNER_ONLY");
+    }
+  }
+
   async claimPendingInvites(email: string, userId: string, tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0]) {
     const now = new Date();
 
@@ -247,6 +270,7 @@ export class InviteService {
         userId: null,
         inviteExpiresAt: { gt: now },
       },
+      orderBy: { createdAt: "asc" },
     });
 
     if (pendingInvites.length > 0) {

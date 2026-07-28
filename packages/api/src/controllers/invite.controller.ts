@@ -2,6 +2,7 @@ import { asyncHandler } from "../utils/errors";
 import { inviteService } from "../services/invite.service";
 import { emailQueue } from "../jobs/queue";
 import { inviteEmail } from "../emails/templates/invite";
+import { getAppUrl } from "../config/env";
 import type { InviteMemberInput, AcceptInviteInput, ChangeRoleInput } from "../validators/invite.schemas";
 
 export const inviteController = {
@@ -10,7 +11,7 @@ export const inviteController = {
     const startupId = req.params.startupId as string;
     const inviterUserId = req.user!.userId;
 
-    const { rawToken } = await inviteService.inviteMember(input, startupId, inviterUserId);
+    const { rawToken } = await inviteService.inviteMember(input, startupId, inviterUserId, req.member!.id);
 
     // Enqueue invitation email — follows existing email queue pattern
     const startup = await import("../db/prisma").then((m) =>
@@ -20,9 +21,10 @@ export const inviteController = {
       }),
     );
 
-    const inviteLink = `${process.env.CORS_ORIGIN}/accept-invite?token=${rawToken}`;
+    const inviteLink = `${getAppUrl()}/accept-invite?token=${rawToken}`;
     const { subject, html } = inviteEmail(startup?.name ?? "this startup", inviteLink);
 
+    let emailQueued = true;
     try {
       await emailQueue.add("send-invite", {
         to: input.email,
@@ -30,10 +32,17 @@ export const inviteController = {
         html,
       });
     } catch (err) {
+      emailQueued = false;
       console.error("[inviteMember] email enqueue failed:", err);
     }
 
-    res.status(201).json({ message: "Invitation sent" });
+    // The membership row is the source of truth and is already committed above —
+    // a queue outage shouldn't fail the request, but the caller needs to know the
+    // invite email didn't go out so they can resend or notify the person directly.
+    res.status(201).json({
+      message: emailQueued ? "Invitation sent" : "Invitation created, but the email failed to send",
+      emailQueued,
+    });
   }),
 
   acceptInvite: asyncHandler(async (req, res) => {
