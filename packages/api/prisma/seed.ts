@@ -129,34 +129,26 @@ async function main() {
     },
   });
 
-  // 7. Sample investor
-  const investor = await prisma.investor.upsert({
-    where: { email: "investor@vc.example.com" },
+  // 7. Sample investor contact (private to this startup)
+  const startupInvestor = await prisma.startupInvestor.upsert({
+    where: { startupId_email: { startupId: startup.id, email: "investor@vc.example.com" } },
     update: {},
     create: {
       id: "00000000-0000-0000-0000-000000000020",
+      startupId: startup.id,
       fullName: "John Smith",
       email: "investor@vc.example.com",
       ventureFirm: "Accel Partners",
+      investorType: "vc",
       sectorFocus: "SaaS",
       investmentStagePreference: "pre_seed",
       linkedinUrl: "https://linkedin.com/in/johnsmith",
-    },
-  });
-
-  // 8. Link investor to startup
-  const startupInvestor = await prisma.startupInvestor.upsert({
-    where: { startupId_investorId: { startupId: startup.id, investorId: investor.id } },
-    update: {},
-    create: {
-      startupId: startup.id,
-      investorId: investor.id,
       notes: "Met at TechCrunch Disrupt. Very interested in our GTM strategy.",
       source: "event",
     },
   });
 
-  // 9. Pipeline entry for the investor
+  // 8. Pipeline entry for the investor
   const pipeline = await prisma.pipeline.upsert({
     where: {
       startupId_startupInvestorId: {
@@ -175,7 +167,7 @@ async function main() {
     },
   });
 
-  // 10. Fundraising round
+  // 9. Fundraising round
   const round = await prisma.fundraisingRound.upsert({
     where: { startupId_id: { startupId: startup.id, id: "00000000-0000-0000-0000-000000000031" } },
     update: {},
@@ -191,7 +183,7 @@ async function main() {
     },
   });
 
-  // 11. Commitment linking the investor to the round
+  // 10. Commitment linking the investor to the round
   await prisma.commitment.upsert({
     where: { id: "00000000-0000-0000-0000-000000000032" },
     update: {},
@@ -206,7 +198,7 @@ async function main() {
     },
   });
 
-  // 12. Interaction log — first touchpoint with the investor
+  // 11. Interaction log — first touchpoint with the investor
   await prisma.interactionLog.upsert({
     where: { id: "00000000-0000-0000-0000-000000000033" },
     update: {},
@@ -222,7 +214,7 @@ async function main() {
     },
   });
 
-  // 13. Audit logs
+  // 12. Audit logs
   await prisma.auditLog.upsert({
     where: { id: "00000000-0000-0000-0000-000000000040" },
     update: {},
@@ -247,8 +239,8 @@ async function main() {
       userId: founder.id,
       action: "create",
       entityType: "investor",
-      entityId: investor.id,
-      changes: { fullName: investor.fullName, ventureFirm: investor.ventureFirm, source: "event" },
+      entityId: startupInvestor.id,
+      changes: { fullName: startupInvestor.fullName, ventureFirm: startupInvestor.ventureFirm, source: "event" },
       ipAddress: "127.0.0.1",
     },
   });
@@ -268,7 +260,7 @@ async function main() {
     },
   });
 
-  // 14. Notifications
+  // 13. Notifications
   await prisma.notification.upsert({
     where: { id: "00000000-0000-0000-0000-000000000050" },
     update: {},
@@ -278,9 +270,9 @@ async function main() {
       userId: founder.id,
       type: "investor_added",
       title: "New investor added",
-      body: `${investor.fullName} from ${investor.ventureFirm} has been added to your pipeline.`,
+      body: `${startupInvestor.fullName} from ${startupInvestor.ventureFirm} has been added to your pipeline.`,
       entityType: "investor",
-      entityId: investor.id,
+      entityId: startupInvestor.id,
     },
   });
 
@@ -293,7 +285,7 @@ async function main() {
       userId: founder.id,
       type: "pipeline_stage_changed",
       title: "Meeting scheduled with investor",
-      body: `${investor.fullName} has been moved to Meeting Scheduled stage.`,
+      body: `${startupInvestor.fullName} has been moved to Meeting Scheduled stage.`,
       entityType: "pipeline",
       entityId: pipeline.id,
     },
@@ -304,7 +296,7 @@ async function main() {
   console.info(`  Startup:      ${startup.name}`);
   console.info(`  Roles:        owner · collaborator · viewer`);
   console.info(`  Permissions:  ${PERMISSIONS.length} entries`);
-  console.info(`  Investor:     ${investor.fullName} — ${investor.ventureFirm}`);
+  console.info(`  Investor:     ${startupInvestor.fullName} — ${startupInvestor.ventureFirm}`);
   console.info(`  Round:        Pre-Seed — $500,000 target`);
   console.info(`  Commitment:   $50,000 negotiating`);
   console.info(`  Audit logs:   3 entries`);
