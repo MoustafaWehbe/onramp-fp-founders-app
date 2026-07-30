@@ -1,7 +1,7 @@
+import { PageHeader } from "../../../components/layout/PageHeader";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "../../../components/ui/card";
@@ -9,10 +9,10 @@ import {
 export function AiInsights() {
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">AI Insights</h1>
-        <p className="text-muted-foreground">Review generated summaries, gap analyses, and investor intelligence.</p>
-      </div>
+      <PageHeader
+        title="AI Insights"
+        description="Review generated summaries, gap analyses, and investor intelligence."
+      />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
@@ -30,7 +30,7 @@ export function AiInsights() {
             <CardTitle>AI Recommendations</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-4xl font-semibold">7</p>
+            <p className="font-display text-4xl font-semibold">7</p>
             <p className="mt-2 text-sm text-muted-foreground">Strategic recommendations generated this week.</p>
           </CardContent>
         </Card>
@@ -40,7 +40,7 @@ export function AiInsights() {
             <CardTitle>Chat Sessions</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-4xl font-semibold">3</p>
+            <p className="font-display text-4xl font-semibold">3</p>
             <p className="mt-2 text-sm text-muted-foreground">Active AI-assisted conversations running.</p>
           </CardContent>
         </Card>

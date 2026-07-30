@@ -1,7 +1,7 @@
+import { PageHeader } from "../../../components/layout/PageHeader";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "../../../components/ui/card";
@@ -9,10 +9,10 @@ import {
 export function Team() {
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Team</h1>
-        <p className="text-muted-foreground">Manage teammates, roles, and collaborator access across startups.</p>
-      </div>
+      <PageHeader
+        title="Team"
+        description="Manage teammates, roles, and collaborator access across startups."
+      />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
@@ -20,7 +20,7 @@ export function Team() {
             <CardTitle>Team Members</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-4xl font-semibold">14</p>
+            <p className="font-display text-4xl font-semibold">14</p>
             <p className="mt-2 text-sm text-muted-foreground">Active users collaborating across all startups.</p>
           </CardContent>
         </Card>
@@ -30,7 +30,7 @@ export function Team() {
             <CardTitle>Pending Invites</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-4xl font-semibold">6</p>
+            <p className="font-display text-4xl font-semibold">6</p>
             <p className="mt-2 text-sm text-muted-foreground">Invites waiting for acceptance.</p>
           </CardContent>
         </Card>
