@@ -5,52 +5,53 @@
 @layer base {
   :root {
     color-scheme: dark;
-    --radius: 0.375rem;
+    --radius: 0.625rem;
 
-    /* GitHub-dark surfaces */
-    --background: 222.2 84% 4.9%;       /* #0d1117 */
-    --foreground: 210 40% 98%;          /* #e6edf3 */
-    --surface: 222.2 84% 4.9%;          /* #161b22 */
-    --surface-2: 217.2 32.6% 17.5%;     /* #21262d */
-    --card: 222.2 84% 4.9%;
+    --background: 222 47% 7%;
+    --foreground: 210 40% 98%;
+    --surface: 222 47% 10%;
+    --surface-hover: 217 33% 15%;
+    --card: 222 47% 12%;
     --card-foreground: 210 40% 98%;
-    --popover: 217.2 32.6% 17.5%;
+    --popover: 222 47% 12%;
     --popover-foreground: 210 40% 98%;
 
-    /* Orange primary - more vibrant */
-    --primary: 21 98% 60%;              /* #fd7933 - orange */
-    --primary-foreground: 222.2 84% 4.9%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;  /* #7d8590 */
-    --accent: 21 98% 60%;                 /* orange accent */
-    --accent-foreground: 222.2 84% 4.9%;
+    --primary: 24 95% 60%;
+    --primary-foreground: 222 47% 7%;
+    --primary-hover: 20 95% 54%;
+    --primary-light: 33 100% 70%;
 
-    --destructive: 0 84.2% 60.2%;
+    --secondary: 217 33% 18%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 18%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 24 95% 60%;
+    --accent-foreground: 222 47% 7%;
+
+    --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
-    --success: 160 75% 45%;
+    --success: 152 68% 45%;
     --warning: 38 92% 50%;
     --info: 217 91% 60%;
 
-    --border: 217.2 32.6% 17.5%;         /* #30363d */
-    --input: 217.2 32.6% 17.5%;
-    --ring: 21 98% 60%;
-    
-    --chart-1: 21 98% 60%;
+    --border: 217 33% 20%;
+    --input: 217 33% 20%;
+    --ring: 24 95% 60%;
+
+    --chart-1: 24 95% 60%;
     --chart-2: 217 91% 60%;
-    --chart-3: 160 75% 45%;
+    --chart-3: 152 68% 45%;
     --chart-4: 38 92% 50%;
     --chart-5: 280 85% 60%;
 
-    --sidebar: 222.2 84% 4.9%;
+    --sidebar: 222 47% 7%;
     --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 21 98% 60%;
-    --sidebar-primary-foreground: 222.2 84% 4.9%;
-    --sidebar-accent: 217.2 32.6% 17.5%;
+    --sidebar-primary: 24 95% 60%;
+    --sidebar-primary-foreground: 222 47% 7%;
+    --sidebar-accent: 217 33% 18%;
     --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217.2 32.6% 17.5%;
-    --sidebar-ring: 21 98% 60%;
+    --sidebar-border: 217 33% 20%;
+    --sidebar-ring: 24 95% 60%;
   }
 }
 
@@ -63,38 +64,90 @@
     scroll-behavior: smooth;
   }
 
-  html, body {
+  html,
+  body {
     @apply bg-background text-foreground;
-    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
-    font-feature-settings: 'rlig' 1, 'calt' 1;
-  }
-  
-  h1, h2, h3, h4, h5, h6 {
-    @apply font-bold;
-    font-family: "Space Grotesk", "Inter", sans-serif;
+
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
 
-  h1 { @apply text-4xl; }
-  h2 { @apply text-3xl; }
-  h3 { @apply text-2xl; }
-  h4 { @apply text-xl; }
-  h5 { @apply text-lg; }
-  h6 { @apply text-base; }
-  
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-semibold tracking-tight text-foreground;
+
+    /* "Space Grotesk" keeps its quotes — multi-word family names require them. */
+    font-family: "Space Grotesk", Inter, sans-serif;
+  }
+
   ::selection {
     @apply bg-primary/35 text-foreground;
   }
 }
 
 @layer utilities {
+  /* Thin overlay scrollbar. Firefox gets the standard properties, Chromium/WebKit
+     the vendor pseudo-elements; both are needed for full coverage. */
+  .scrollbar-slim {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  .scrollbar-slim::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-slim::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-slim::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background-color: hsl(var(--border));
+  }
+
+  .scrollbar-slim::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.55);
+  }
+
+  .scrollbar-slim::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
   .glow-orange {
     @apply shadow-[0_0_0_1px_rgba(253,121,51,0.3),0_8px_32px_-8px_rgba(253,121,51,0.4)];
   }
 
+  .card-elevated {
+    @apply rounded-2xl border border-border/70 bg-card/95 shadow-[0_1px_0_0_rgba(255,255,255,0.03)_inset,0_8px_24px_-12px_rgba(0,0,0,0.7)];
+  }
+
+  .gradient-brand {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary-light)) 100%);
+  }
+
+  .text-gradient-brand {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary-light)) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .glow-brand {
+    box-shadow: 0 0 0 1px color-mix(in srgb, hsl(var(--primary)) 35%, transparent),
+      0 10px 34px -10px color-mix(in srgb, hsl(var(--primary)) 45%, transparent);
+  }
+
   .grid-bg {
     background-image:
-      linear-gradient(rgba(48, 54, 61, 0.4) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(48, 54, 61, 0.4) 1px, transparent 1px);
+      linear-gradient(rgba(48, 54, 61, 0.35) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(48, 54, 61, 0.35) 1px, transparent 1px);
     background-size: 48px 48px;
   }
 }
+

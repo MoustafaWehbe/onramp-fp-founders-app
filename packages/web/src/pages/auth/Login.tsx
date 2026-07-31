@@ -55,6 +55,11 @@ function Login() {
   }
 
   function onGoogleClick() {
+    if (!window.google?.accounts?.id) {
+      toast.error("Google sign-in is unavailable right now.");
+      return;
+    }
+
     window.google.accounts.id.prompt((notification) => {
       if (notification.isNotDisplayed()) {
         toast.error(

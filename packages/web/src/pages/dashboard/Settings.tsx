@@ -1,4 +1,5 @@
 import { useAuth } from "../../hooks/useAuth";
+import { PageHeader } from "../../components/layout/PageHeader";
 import {
   Card,
   CardContent,
@@ -12,10 +13,7 @@ export function Settings() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground">Manage your account settings.</p>
-      </div>
+      <PageHeader title="Settings" description="Manage your account settings." />
 
       <Card>
         <CardHeader>
@@ -25,7 +23,7 @@ export function Settings() {
         <CardContent className="space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Name</span>
-            <span>{user?.name}</span>
+            <span>{user ? `${user.firstName} ${user.lastName}`.trim() : "Account"}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Email</span>
@@ -33,7 +31,7 @@ export function Settings() {
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Role</span>
-            <span className="capitalize">{user?.role}</span>
+            <span className="capitalize">Member</span>
           </div>
         </CardContent>
       </Card>

@@ -8,6 +8,7 @@ import { VerifyOtp } from "../pages/auth/verify";
 import { Forgot } from "../pages/auth/forgot-password";
 import { Reset } from "../pages/auth/reset-password";
 import { Dashboard } from "../pages/dashboard/Dashboard";
+import { Notifications } from "../pages/dashboard/Notifications/Notifications";
 import { Pipeline } from "../pages/dashboard/Pipeline/Pipeline";
 import { Investors } from "../pages/dashboard/Investors/Investors";
 import { Documents } from "../pages/dashboard/Documents/Documents";
@@ -41,6 +42,7 @@ export function AppRoutes() {
         <Route element={<AppLayout />}>
           <Route path="/app" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/notifications" element={<Notifications />} />
           <Route path="/pipeline" element={<Pipeline />} />
           <Route path="/investors" element={<Investors />} />
           <Route path="/documents" element={<Documents />} />
