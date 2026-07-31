@@ -79,7 +79,13 @@ export const listInvestorsQuerySchema = z.object({
     .min(1, "limit must be at least 1")
     .max(100, "limit must be at most 100")
     .default(20),
-  search: z.string().trim().min(1).optional(),
+  // `?search=` is how a cleared search box serializes — treat it as "no filter"
+  // rather than rejecting the request.
+  search: z
+    .string()
+    .trim()
+    .transform((value) => (value === "" ? undefined : value))
+    .optional(),
   investorType: investorTypeEnum.optional(),
   stage: pipelineStageEnum.optional(),
 });

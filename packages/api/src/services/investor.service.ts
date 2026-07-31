@@ -37,6 +37,12 @@ type PipelineRow = {
   probabilityPercentage: number | null;
 };
 
+/** "a", "a and b", "a, b and c" — for naming what blocks a delete. */
+function listPhrase(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
 // Decimal serializes to a JSON string, but the API contract documents these as
 // numbers — convert at the boundary rather than leaking Prisma's type.
 function serializePipeline(entry: PipelineRow | undefined) {
@@ -165,15 +171,24 @@ export class InvestorService {
     });
     if (!existing) throw createError("Investor contact not found", 404, "INVESTOR_NOT_FOUND");
 
-    // Checked explicitly so the caller gets a 409 rather than a raw FK error.
-    const [pipelineCount, commitmentCount] = await Promise.all([
+    // Every FK onto startup_investors cascades on delete, so without this guard
+    // removing a contact would silently destroy its pipeline entry, commitments
+    // and logged history rather than failing.
+    const [pipelineCount, commitmentCount, interactionLogCount] = await Promise.all([
       prisma.pipeline.count({ where: { startupInvestorId: investorId } }),
       prisma.commitment.count({ where: { startupInvestorId: investorId } }),
+      prisma.interactionLog.count({ where: { startupInvestorId: investorId } }),
     ]);
 
-    if (pipelineCount > 0 || commitmentCount > 0) {
+    const blockers = [
+      pipelineCount > 0 ? "pipeline entries" : null,
+      commitmentCount > 0 ? "commitments" : null,
+      interactionLogCount > 0 ? "interaction logs" : null,
+    ].filter((value): value is string => value !== null);
+
+    if (blockers.length > 0) {
       throw createError(
-        "This contact has pipeline entries or commitments and cannot be deleted",
+        `This contact has ${listPhrase(blockers)} and cannot be deleted`,
         409,
         "HAS_DEPENDENTS",
       );

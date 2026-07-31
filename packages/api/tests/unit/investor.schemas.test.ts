@@ -149,6 +149,24 @@ describe("listInvestorsQuerySchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("treats an empty search as no filter rather than rejecting it", () => {
+    const result = listInvestorsQuerySchema.safeParse({ search: "" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.search).toBeUndefined();
+  });
+
+  it("treats a whitespace-only search as no filter", () => {
+    const result = listInvestorsQuerySchema.safeParse({ search: "   " });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.search).toBeUndefined();
+  });
+
+  it("trims a real search term", () => {
+    const result = listInvestorsQuerySchema.safeParse({ search: "  accel  " });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.search).toBe("accel");
+  });
+
   it("rejects an unknown pipeline stage", () => {
     const result = listInvestorsQuerySchema.safeParse({ stage: "nonsense" });
     expect(result.success).toBe(false);

@@ -13,7 +13,7 @@ jest.mock("../../src/db/prisma", () => ({
     },
     pipeline: { count: jest.fn() },
     commitment: { count: jest.fn() },
-    interactionLog: { groupBy: jest.fn() },
+    interactionLog: { groupBy: jest.fn(), count: jest.fn() },
   },
 }));
 
@@ -330,6 +330,14 @@ describe("InvestorService.updateInvestor", () => {
 });
 
 describe("InvestorService.deleteInvestor", () => {
+  /** All three FKs cascade, so each must be blocked explicitly. */
+  function mockDependents({ pipeline = 0, commitments = 0, logs = 0 }) {
+    mockFindUnique({ byId: { id: CONTACT_ID } });
+    (mockPrisma.pipeline.count as jest.Mock).mockResolvedValue(pipeline);
+    (mockPrisma.commitment.count as jest.Mock).mockResolvedValue(commitments);
+    (mockPrisma.interactionLog.count as jest.Mock).mockResolvedValue(logs);
+  }
+
   it("404s for a contact belonging to another startup", async () => {
     mockFindUnique({ byId: null });
 
@@ -340,22 +348,19 @@ describe("InvestorService.deleteInvestor", () => {
   });
 
   it("refuses to delete a contact with pipeline entries", async () => {
-    mockFindUnique({ byId: { id: CONTACT_ID } });
-    (mockPrisma.pipeline.count as jest.Mock).mockResolvedValue(1);
-    (mockPrisma.commitment.count as jest.Mock).mockResolvedValue(0);
+    mockDependents({ pipeline: 1 });
 
     await expect(service.deleteInvestor(STARTUP_ID, CONTACT_ID)).rejects.toMatchObject({
       statusCode: 409,
       code: "HAS_DEPENDENTS",
+      message: "This contact has pipeline entries and cannot be deleted",
     });
 
     expect(mockPrisma.startupInvestor.delete).not.toHaveBeenCalled();
   });
 
   it("refuses to delete a contact with commitments", async () => {
-    mockFindUnique({ byId: { id: CONTACT_ID } });
-    (mockPrisma.pipeline.count as jest.Mock).mockResolvedValue(0);
-    (mockPrisma.commitment.count as jest.Mock).mockResolvedValue(1);
+    mockDependents({ commitments: 1 });
 
     await expect(service.deleteInvestor(STARTUP_ID, CONTACT_ID)).rejects.toMatchObject({
       statusCode: 409,
@@ -363,10 +368,30 @@ describe("InvestorService.deleteInvestor", () => {
     });
   });
 
+  it("refuses to delete a contact whose only dependents are interaction logs", async () => {
+    mockDependents({ logs: 1 });
+
+    await expect(service.deleteInvestor(STARTUP_ID, CONTACT_ID)).rejects.toMatchObject({
+      statusCode: 409,
+      code: "HAS_DEPENDENTS",
+      message: "This contact has interaction logs and cannot be deleted",
+    });
+
+    // The FK cascades — without the guard this delete would have destroyed the
+    // logged history instead of failing.
+    expect(mockPrisma.startupInvestor.delete).not.toHaveBeenCalled();
+  });
+
+  it("names every blocking dependent in the message", async () => {
+    mockDependents({ pipeline: 2, commitments: 1, logs: 4 });
+
+    await expect(service.deleteInvestor(STARTUP_ID, CONTACT_ID)).rejects.toMatchObject({
+      message: "This contact has pipeline entries, commitments and interaction logs and cannot be deleted",
+    });
+  });
+
   it("deletes a contact with no dependents", async () => {
-    mockFindUnique({ byId: { id: CONTACT_ID } });
-    (mockPrisma.pipeline.count as jest.Mock).mockResolvedValue(0);
-    (mockPrisma.commitment.count as jest.Mock).mockResolvedValue(0);
+    mockDependents({});
     (mockPrisma.startupInvestor.delete as jest.Mock).mockResolvedValue({});
 
     await service.deleteInvestor(STARTUP_ID, CONTACT_ID);

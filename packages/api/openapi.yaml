@@ -2320,7 +2320,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "422":
+        "400":
           description: Validation error
           content:
             application/json:
@@ -2421,7 +2421,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "422":
+        "400":
           description: Validation error
           content:
             application/json:
@@ -2459,7 +2459,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Contact has related pipeline entries or commitments and cannot be deleted
+          description: >
+            Contact has related pipeline entries, commitments or interaction
+            logs and cannot be deleted. Every one of those foreign keys cascades
+            on delete, so they are blocked explicitly rather than silently
+            destroyed. The message names which are present.
           content:
             application/json:
               schema:
