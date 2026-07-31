@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
@@ -333,7 +334,10 @@ export function Dashboard() {
           </div>
         </button>
 
-        <div className="card-elevated group flex items-center gap-3 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-surface-hover">
+        <Link
+          to="/documents"
+          className="card-elevated group flex items-center gap-3 p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-surface-hover"
+        >
           <div className="grid h-10 w-10 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
             <FileText className="h-4 w-4" />
           </div>
@@ -341,9 +345,12 @@ export function Dashboard() {
             <div className="text-sm font-medium text-foreground">Upload document</div>
             <div className="text-xs text-muted-foreground">Share your latest deck</div>
           </div>
-        </div>
+        </Link>
 
-        <div className="card-elevated group flex items-center gap-3 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-surface-hover">
+        <Link
+          to="/ai-insights"
+          className="card-elevated group flex items-center gap-3 p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-surface-hover"
+        >
           <div className="grid h-10 w-10 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
             <MessageSquare className="h-4 w-4" />
           </div>
@@ -351,9 +358,14 @@ export function Dashboard() {
             <div className="text-sm font-medium text-foreground">Ask AI about your data</div>
             <div className="text-xs text-muted-foreground">Get instant insights</div>
           </div>
-        </div>
+        </Link>
 
-        <div className="card-elevated group flex items-center gap-3 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-surface-hover">
+        {/* No reviewers route exists yet, so this points at Team rather than a
+            dead link. Repoint it once the reviewer invitation flow is built. */}
+        <Link
+          to="/team"
+          className="card-elevated group flex items-center gap-3 p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-surface-hover"
+        >
           <div className="grid h-10 w-10 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
             <Users className="h-4 w-4" />
           </div>
@@ -361,7 +373,7 @@ export function Dashboard() {
             <div className="text-sm font-medium text-foreground">Invite a reviewer</div>
             <div className="text-xs text-muted-foreground">Bring in a trusted partner</div>
           </div>
-        </div>
+        </Link>
       </div>
 
       <Dialog open={open} onOpenChange={(next: boolean) => {

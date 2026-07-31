@@ -1,8 +1,16 @@
-import { useMemo, useState, type DragEvent } from "react";
-import { Plus } from "lucide-react";
+import { useCallback, useMemo, useState, type DragEvent } from "react";
+import { MoveRight, Plus } from "lucide-react";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../../../components/ui/dropdown-menu";
 import {
   investors,
   pipelineDeals as initialPipelineDeals,
@@ -38,17 +46,9 @@ export function Pipeline() {
     return grouped;
   }, [deals]);
 
-  const handleDragStart = (event: DragEvent<HTMLElement>, dealId: string) => {
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", dealId);
-    setDraggedDealId(dealId);
-  };
-
-  const handleDrop = (event: DragEvent<HTMLElement>, stageId: PipelineStageId) => {
-    event.preventDefault();
-    const dealId = event.dataTransfer.getData("text/plain") || draggedDealId;
-    if (!dealId) return;
-
+  // Single source of truth for a stage transition, so the drag path and the
+  // menu path can never drift apart.
+  const moveDeal = useCallback((dealId: string, stageId: PipelineStageId) => {
     setDeals((current) =>
       current.map((deal) =>
         deal.id === dealId
@@ -62,13 +62,26 @@ export function Pipeline() {
     );
     setDraggedDealId(null);
     setDropTarget(null);
+  }, []);
+
+  const handleDragStart = (event: DragEvent<HTMLElement>, dealId: string) => {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", dealId);
+    setDraggedDealId(dealId);
+  };
+
+  const handleDrop = (event: DragEvent<HTMLElement>, stageId: PipelineStageId) => {
+    event.preventDefault();
+    const dealId = event.dataTransfer.getData("text/plain") || draggedDealId;
+    if (!dealId) return;
+    moveDeal(dealId, stageId);
   };
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Deal pipeline"
-        description="Drag investors through stages and forecast your round by probability."
+        description="Drag investors through stages, or use a card's move menu, and forecast your round by probability."
         actions={
           <Button size="sm">
             <Plus className="h-4 w-4" />
@@ -164,6 +177,44 @@ export function Pipeline() {
                             {investor.firm}
                           </div>
                         </div>
+
+                        {/* Dragging is mouse-only — HTML5 drag events don't fire
+                            on touch, and there's no keyboard equivalent. This
+                            menu is the accessible path to the same transition. */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 shrink-0 text-muted-foreground"
+                              aria-label={`Move ${investor.name} to another stage`}
+                            >
+                              <MoveRight className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="min-w-48">
+                            <DropdownMenuLabel>Move to stage</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {STAGES.map((target) => (
+                              <DropdownMenuItem
+                                key={target.id}
+                                disabled={target.id === deal.stageId}
+                                onSelect={() => moveDeal(deal.id, target.id)}
+                              >
+                                <span
+                                  className={cn("mr-2 h-2 w-2 rounded-full", target.dotClass)}
+                                />
+                                {target.label}
+                                {target.id === deal.stageId && (
+                                  <span className="ml-auto text-xs text-muted-foreground">
+                                    Current
+                                  </span>
+                                )}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
 
                       <div className="mt-3 flex items-center justify-between gap-2 text-xs">

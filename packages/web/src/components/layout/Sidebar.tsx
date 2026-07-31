@@ -157,13 +157,13 @@ export function Sidebar({ className, onNavigate, onClose }: SidebarProps) {
       </nav>
 
       <div className="border-t border-border/60 p-3">
-        <UserMenu />
+        <UserMenu onNavigate={onNavigate} />
       </div>
     </aside>
   );
 }
 
-function UserMenu() {
+function UserMenu({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout } = useAuth();
 
   const displayName = user
@@ -202,7 +202,8 @@ function UserMenu() {
       >
         <DropdownMenuLabel>Account</DropdownMenuLabel>
         <DropdownMenuItem asChild>
-          <NavLink to="/settings">
+          {/* Closes the mobile drawer too — otherwise it stays open over Settings. */}
+          <NavLink to="/settings" onClick={onNavigate}>
             <Settings className="mr-2 h-4 w-4" /> Settings
           </NavLink>
         </DropdownMenuItem>
