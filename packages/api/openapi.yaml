@@ -6,8 +6,10 @@ info:
   description: REST API for the Fundraising SaaS application (Auth, RBAC, CRM, Financial, Documents, Reviewer Portal)
 
 servers:
-  - url: /api
-    description: Default server
+  - url: http://localhost:3000/api/v1
+    description: Local development
+  - url: /api/v1
+    description: Same-origin
 
 tags:
   - name: Auth
