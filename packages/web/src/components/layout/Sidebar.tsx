@@ -222,11 +222,11 @@ function StartupSwitcher() {
       <DropdownMenuTrigger asChild>
         <button className="group flex w-full items-center gap-2.5 rounded-lg border border-border/70 bg-surface/80 px-2.5 py-2.5 text-left text-sm transition-colors hover:border-primary/30 hover:bg-surface-hover focus:outline-none focus:ring-1 focus:ring-ring">
           <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-primary font-display text-xs font-bold text-primary-foreground">
-            LN
+            AC
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate font-medium text-foreground">Lumen AI</div>
-            <div className="truncate text-xs text-muted-foreground">Seed · $2.5M target</div>
+            <div className="truncate font-medium text-foreground">Acme Corp</div>
+            <div className="truncate text-xs text-muted-foreground">Pre-Seed · $500k target</div>
           </div>
           <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
         </button>
@@ -237,8 +237,8 @@ function StartupSwitcher() {
         className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-56"
       >
         <DropdownMenuLabel>Startups</DropdownMenuLabel>
-        <DropdownMenuItem>Lumen AI</DropdownMenuItem>
-        <DropdownMenuItem>Northwind Labs</DropdownMenuItem>
+        <DropdownMenuItem>Acme Corp</DropdownMenuItem>
+        <DropdownMenuItem disabled>Northwind Labs</DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem>
           <Plus className="mr-2 h-4 w-4" /> New startup

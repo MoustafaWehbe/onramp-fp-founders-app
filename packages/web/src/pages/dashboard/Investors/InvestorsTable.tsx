@@ -1,14 +1,16 @@
 import { Checkbox } from "../../../components/ui/checkbox";
-import type { Investor } from "../../../lib/mock-data";
 import { cn, formatCompactUsd, getInitials } from "../../../lib/utils";
 import { InvestorActions } from "./InvestorActions";
+import type { InvestorRow } from "./investor-types";
 import { StageBadge } from "./StageBadge";
 
 type InvestorsTableProps = {
-  investors: Investor[];
+  investors: InvestorRow[];
   selectedIds: Set<string>;
   onToggleOne: (id: string) => void;
   onToggleAll: (checked: boolean) => void;
+  onMoveToPipeline: (investor: InvestorRow) => void;
+  movingInvestorId?: string | null;
 };
 
 export function InvestorsTable({
@@ -16,6 +18,8 @@ export function InvestorsTable({
   selectedIds,
   onToggleOne,
   onToggleAll,
+  onMoveToPipeline,
+  movingInvestorId = null,
 }: InvestorsTableProps) {
   const allSelected = investors.length > 0 && investors.every((inv) => selectedIds.has(inv.id));
   const someSelected = investors.some((inv) => selectedIds.has(inv.id));
@@ -71,7 +75,7 @@ export function InvestorsTable({
                     <div className="min-w-0">
                       <div className="truncate font-medium text-foreground">{investor.name}</div>
                       <div className="truncate text-xs text-muted-foreground">
-                        {investor.email}
+                        {investor.email || "No email"}
                       </div>
                     </div>
                   </div>
@@ -87,13 +91,17 @@ export function InvestorsTable({
                   <StageBadge stageId={investor.pipelineStageId} />
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums text-foreground">
-                  {formatCompactUsd(investor.amount)}
+                  {investor.amount != null ? formatCompactUsd(investor.amount) : "—"}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
                   {investor.lastContact}
                 </td>
                 <td className="px-4 py-3">
-                  <InvestorActions investor={investor} />
+                  <InvestorActions
+                    investor={investor}
+                    onMoveToPipeline={onMoveToPipeline}
+                    moving={movingInvestorId === investor.id}
+                  />
                 </td>
               </tr>
             );

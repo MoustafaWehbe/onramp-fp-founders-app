@@ -1,10 +1,10 @@
 export type PipelineStageId =
-  | "lead"
+  | "sourced"
   | "contacted"
-  | "meeting"
-  | "diligence"
+  | "meeting_scheduled"
+  | "due_diligence"
+  | "term_sheet"
   | "committed"
-  | "closed"
   | "passed";
 
 export type PipelineStage = {
@@ -15,10 +15,11 @@ export type PipelineStage = {
   dotClass: string;
 };
 
+/** Matches packages/api/src/config/crm.ts PIPELINE_STAGES. */
 export const STAGES: PipelineStage[] = [
   {
-    id: "lead",
-    label: "Lead",
+    id: "sourced",
+    label: "Sourced",
     badgeClass: "bg-muted text-muted-foreground",
     dotClass: "bg-muted-foreground",
   },
@@ -29,26 +30,26 @@ export const STAGES: PipelineStage[] = [
     dotClass: "bg-info",
   },
   {
-    id: "meeting",
+    id: "meeting_scheduled",
     label: "Meeting",
     badgeClass: "bg-warning/15 text-warning",
     dotClass: "bg-warning",
   },
   {
-    id: "diligence",
+    id: "due_diligence",
     label: "Diligence",
     badgeClass: "bg-primary/15 text-primary",
     dotClass: "bg-primary",
   },
   {
-    id: "committed",
-    label: "Committed",
-    badgeClass: "bg-success/15 text-success",
-    dotClass: "bg-success",
+    id: "term_sheet",
+    label: "Term sheet",
+    badgeClass: "bg-primary/20 text-primary",
+    dotClass: "bg-primary",
   },
   {
-    id: "closed",
-    label: "Closed",
+    id: "committed",
+    label: "Committed",
     badgeClass: "bg-success/15 text-success",
     dotClass: "bg-success",
   },
@@ -59,6 +60,16 @@ export const STAGES: PipelineStage[] = [
     dotClass: "bg-destructive",
   },
 ];
+
+export const DEFAULT_PROBABILITY_BY_STAGE: Record<PipelineStageId, number> = {
+  sourced: 10,
+  contacted: 25,
+  meeting_scheduled: 45,
+  due_diligence: 70,
+  term_sheet: 80,
+  committed: 90,
+  passed: 0,
+};
 
 const stagesById = new Map(STAGES.map((stage) => [stage.id, stage]));
 
@@ -99,7 +110,7 @@ export const investors: Investor[] = [
     firm: "Northwind Capital",
     sector: "B2B SaaS",
     stagePreference: "Seed / Series A",
-    pipelineStageId: "diligence",
+    pipelineStageId: "due_diligence",
     amount: 400000,
     lastContact: "4 days ago",
   },
@@ -121,7 +132,7 @@ export const investors: Investor[] = [
     firm: "Brightpath VC",
     sector: "Developer tools",
     stagePreference: "Seed",
-    pipelineStageId: "meeting",
+    pipelineStageId: "meeting_scheduled",
     amount: 300000,
     lastContact: "Yesterday",
   },
@@ -143,7 +154,7 @@ export const investors: Investor[] = [
     firm: "Quantleap Fund",
     sector: "AI / Infrastructure",
     stagePreference: "Series A",
-    pipelineStageId: "meeting",
+    pipelineStageId: "meeting_scheduled",
     amount: 500000,
     lastContact: "5 days ago",
   },
@@ -154,7 +165,7 @@ export const investors: Investor[] = [
     firm: "Meridian Partners",
     sector: "Healthtech",
     stagePreference: "Seed",
-    pipelineStageId: "lead",
+    pipelineStageId: "sourced",
     amount: 200000,
     lastContact: "2 weeks ago",
   },
@@ -165,7 +176,7 @@ export const investors: Investor[] = [
     firm: "Cascade Ventures",
     sector: "B2B SaaS",
     stagePreference: "Pre-seed / Seed",
-    pipelineStageId: "diligence",
+    pipelineStageId: "due_diligence",
     amount: 125000,
     lastContact: "6 days ago",
   },
@@ -187,7 +198,7 @@ export const investors: Investor[] = [
     firm: "Lodestar VC",
     sector: "Climate",
     stagePreference: "Series A",
-    pipelineStageId: "lead",
+    pipelineStageId: "sourced",
     amount: 350000,
     lastContact: "3 weeks ago",
   },
@@ -201,25 +212,59 @@ export type PipelineDeal = {
   probabilityPercentage: number;
 };
 
-export const pipelineDeals: PipelineDeal[] = investors.map((investor, index) => {
-  const probabilityByStage: Record<PipelineStageId, number> = {
-    lead: 10,
-    contacted: 25,
-    meeting: 45,
-    diligence: 70,
-    committed: 90,
-    closed: 100,
-    passed: 0,
-  };
+export const pipelineDeals: PipelineDeal[] = investors.map((investor, index) => ({
+  id: `deal-${index + 1}`,
+  investorId: investor.id,
+  stageId: investor.pipelineStageId,
+  expectedAmount: investor.amount,
+  probabilityPercentage: DEFAULT_PROBABILITY_BY_STAGE[investor.pipelineStageId],
+}));
 
-  return {
-    id: `deal-${index + 1}`,
-    investorId: investor.id,
-    stageId: investor.pipelineStageId,
-    expectedAmount: investor.amount,
-    probabilityPercentage: probabilityByStage[investor.pipelineStageId],
-  };
-});
+export type RoundStatus = "active" | "closed" | "planned";
+
+export type Round = {
+  id: string;
+  name: string;
+  status: RoundStatus;
+  raised: number;
+  target: number;
+  ticket: number;
+  equity: number;
+  currency: string;
+};
+
+export const rounds: Round[] = [
+  {
+    id: "r1",
+    name: "Pre-Seed",
+    status: "closed",
+    raised: 500_000,
+    target: 500_000,
+    ticket: 25_000,
+    equity: 8,
+    currency: "USD",
+  },
+  {
+    id: "r2",
+    name: "Seed",
+    status: "active",
+    raised: 1_250_000,
+    target: 2_500_000,
+    ticket: 100_000,
+    equity: 15,
+    currency: "USD",
+  },
+  {
+    id: "r3",
+    name: "Series A",
+    status: "planned",
+    raised: 0,
+    target: 8_000_000,
+    ticket: 500_000,
+    equity: 18,
+    currency: "USD",
+  },
+];
 
 export type NotificationType = "ai" | "reviewer" | "commitment" | "task" | "team";
 
