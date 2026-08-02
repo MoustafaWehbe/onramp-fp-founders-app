@@ -169,7 +169,7 @@ export function Investors() {
               variant="outline"
               onClick={() => {
                 setActiveStartupId(SEED_STARTUP_ID);
-                void investorsQuery.refetch();
+                void queryClient.invalidateQueries({ queryKey: ["investors", SEED_STARTUP_ID] });
               }}
             >
               Reset startup & retry
