@@ -255,39 +255,28 @@ model ReviewerComment {
 
 // ─── CRM ──────────────────────────────────────────────────────────────────────
 
-model Investor {
+model StartupInvestor {
   id                        String   @id @default(uuid())
+  startupId                 String   @map("startup_id")
   fullName                  String   @map("full_name")
-  email                     String   @unique
+  email                     String?
   ventureFirm               String?  @map("venture_firm")
+  investorType              String?  @map("investor_type")
   sectorFocus               String?  @map("sector_focus")
   investmentStagePreference String?  @map("investment_stage_preference")
   linkedinUrl               String?  @map("linkedin_url")
+  notes                     String?
+  source                    String?
   createdAt                 DateTime @default(now()) @map("created_at")
   updatedAt                 DateTime @updatedAt @map("updated_at")
 
-  startupInvestors StartupInvestor[]
-
-  @@map("investors")
-}
-
-model StartupInvestor {
-  id         String   @id @default(uuid())
-  startupId  String   @map("startup_id")
-  investorId String   @map("investor_id")
-  notes      String?
-  source     String?
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
-
   startup             Startup              @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  investor            Investor             @relation(fields: [investorId], references: [id])
   pipeline            Pipeline[]           @relation("PipelineInvestor")
   interactionLogs     InteractionLog[]
   commitments         Commitment[]         @relation("CommitmentInvestor")
   reviewerInvitations ReviewerInvitation[]
 
-  @@unique([startupId, investorId])
+  @@unique([startupId, email])
   @@unique([startupId, id])
   @@map("startup_investors")
 }
@@ -296,7 +285,7 @@ model Pipeline {
   id                    String   @id @default(uuid())
   startupId             String   @map("startup_id")
   startupInvestorId     String   @map("startup_investor_id")
-  stage                 String   @default("prospect")
+  stage                 String   @default("sourced")
   expectedAmount        Decimal? @map("expected_amount")
   probabilityPercentage Int?     @map("probability_percentage")
   createdAt             DateTime @default(now()) @map("created_at")

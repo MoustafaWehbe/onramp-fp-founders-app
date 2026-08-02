@@ -6,8 +6,10 @@ info:
   description: REST API for the Fundraising SaaS application (Auth, RBAC, CRM, Financial, Documents, Reviewer Portal)
 
 servers:
-  - url: /api
-    description: Default server
+  - url: http://localhost:3000/api/v1
+    description: Local development
+  - url: /api/v1
+    description: Same-origin
 
 tags:
   - name: Auth
@@ -489,6 +491,14 @@ components:
           description: Required only if the invited person does not yet have an account
 
     # ── CRM: Investors ────────────────────────────────────────────────
+    InvestorType:
+      type: string
+      enum: [vc, angel, family_office, accelerator, other]
+      example: vc
+
+    # An investor contact private to one startup. Contacts are never shared
+    # between startups — two startups tracking the same person hold two
+    # independent records.
     Investor:
       type: object
       properties:
@@ -505,10 +515,15 @@ components:
           type: string
           format: email
           nullable: true
+          description: Optional — a contact can be added before an address is known.
         ventureFirm:
           type: string
           nullable: true
           example: Acme Ventures
+        investorType:
+          allOf:
+            - $ref: "#/components/schemas/InvestorType"
+          nullable: true
         sectorFocus:
           type: string
           nullable: true
@@ -524,12 +539,48 @@ components:
         notes:
           type: string
           nullable: true
+        source:
+          type: string
+          nullable: true
+          example: event
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
+
+    # A contact joined to its pipeline entry and next follow-up — the shape the
+    # Investors screen renders.
+    InvestorListItem:
+      allOf:
+        - $ref: "#/components/schemas/Investor"
+        - type: object
+          properties:
+            pipeline:
+              nullable: true
+              description: Null when the contact has not been added to the pipeline.
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                stage:
+                  $ref: "#/components/schemas/PipelineStage"
+                expectedAmount:
+                  type: number
+                  format: double
+                  nullable: true
+                probabilityPercentage:
+                  type: integer
+                  nullable: true
+            nextFollowupDate:
+              type: string
+              format: date-time
+              nullable: true
+              description: >
+                Earliest upcoming nextFollowupDate across this contact's
+                interaction logs; null when none is scheduled.
 
     CreateInvestorBody:
       type: object
@@ -542,8 +593,11 @@ components:
         email:
           type: string
           format: email
+          description: Optional, but must be unique within the startup when given.
         ventureFirm:
           type: string
+        investorType:
+          $ref: "#/components/schemas/InvestorType"
         sectorFocus:
           type: string
         investmentStagePreference:
@@ -551,11 +605,16 @@ components:
         linkedinUrl:
           type: string
           format: uri
+          description: Must use http or https.
         notes:
+          type: string
+        source:
           type: string
 
     UpdateInvestorBody:
       type: object
+      description: All fields optional; at least one required.
+      minProperties: 1
       properties:
         fullName:
           type: string
@@ -566,6 +625,8 @@ components:
           format: email
         ventureFirm:
           type: string
+        investorType:
+          $ref: "#/components/schemas/InvestorType"
         sectorFocus:
           type: string
         investmentStagePreference:
@@ -574,6 +635,8 @@ components:
           type: string
           format: uri
         notes:
+          type: string
+        source:
           type: string
 
     # ── CRM: Pipeline ─────────────────────────────────────────────────
@@ -594,6 +657,7 @@ components:
         investorId:
           type: string
           format: uuid
+          description: The investor contact id (a startup-scoped contact record).
         investor:
           $ref: "#/components/schemas/Investor"
         stage:
@@ -623,6 +687,7 @@ components:
         investorId:
           type: string
           format: uuid
+          description: The investor contact id (a startup-scoped contact record).
         stage:
           $ref: "#/components/schemas/PipelineStage"
         expectedAmount:
@@ -635,16 +700,19 @@ components:
 
     UpdatePipelineEntryBody:
       type: object
+      description: At least one field is required.
       properties:
         stage:
           $ref: "#/components/schemas/PipelineStage"
         expectedAmount:
           type: number
           format: double
+          nullable: true
         probabilityPercentage:
           type: integer
           minimum: 0
           maximum: 100
+          nullable: true
 
     # ── CRM: Interaction Logs ─────────────────────────────────────────
     InteractionType:
@@ -661,6 +729,7 @@ components:
         investorId:
           type: string
           format: uuid
+          description: The investor contact id (a startup-scoped contact record).
         pipelineId:
           type: string
           format: uuid
@@ -694,6 +763,7 @@ components:
         investorId:
           type: string
           format: uuid
+          description: The investor contact id (a startup-scoped contact record).
         pipelineId:
           type: string
           format: uuid
@@ -840,6 +910,7 @@ components:
         investorId:
           type: string
           format: uuid
+          description: The investor contact id (a startup-scoped contact record).
         investor:
           $ref: "#/components/schemas/Investor"
         pipelineId:
@@ -873,6 +944,7 @@ components:
         investorId:
           type: string
           format: uuid
+          description: The investor contact id (a startup-scoped contact record).
         pipelineId:
           type: string
           format: uuid
@@ -2143,11 +2215,23 @@ paths:
   # ════════════════════════════════════════════════════════════════
   #  INVESTORS (CRM)
   # ════════════════════════════════════════════════════════════════
-  /investors:
+  /startups/{startupId}/investors:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
     get:
       tags: [Investors]
-      summary: List investors for the current startup
+      summary: List investor contacts for a startup
       operationId: listInvestors
+      description: >
+        Returns the startup's private investor contacts. Each row is joined to
+        its pipeline entry (null when the contact has not been added to the
+        pipeline) and to the earliest upcoming follow-up date across that
+        contact's interaction logs, which is what the Investors screen renders.
       security:
         - cookieAuth: []
       parameters:
@@ -2158,9 +2242,18 @@ paths:
           schema:
             type: string
           description: Free-text search across fullName, email, ventureFirm
+        - name: investorType
+          in: query
+          schema:
+            $ref: "#/components/schemas/InvestorType"
+        - name: stage
+          in: query
+          schema:
+            $ref: "#/components/schemas/PipelineStage"
+          description: Filter on the joined pipeline entry's stage
       responses:
         "200":
-          description: List of investors
+          description: List of investor contacts
           content:
             application/json:
               schema:
@@ -2169,7 +2262,7 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: "#/components/schemas/Investor"
+                      $ref: "#/components/schemas/InvestorListItem"
                   meta:
                     $ref: "#/components/schemas/PaginationMeta"
         "401":
@@ -2178,10 +2271,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       tags: [Investors]
-      summary: Create an investor record
+      summary: Create an investor contact
       operationId: createInvestor
+      description: >
+        Creates a contact private to this startup. Contacts are never shared
+        between startups — two startups tracking the same person hold two
+        independent records.
       security:
         - cookieAuth: []
       requestBody:
@@ -2192,7 +2295,7 @@ paths:
               $ref: "#/components/schemas/CreateInvestorBody"
       responses:
         "201":
-          description: Investor created
+          description: Investor contact created
           content:
             application/json:
               schema:
@@ -2206,15 +2309,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "422":
+        "403":
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: >
+            This startup already has a contact with that email. Contacts
+            without an email never conflict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
           description: Validation error
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
 
-  /investors/{investorId}:
+  /startups/{startupId}/investors/{investorId}:
     parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
       - name: investorId
         in: path
         required: true
@@ -2223,35 +2346,41 @@ paths:
           format: uuid
     get:
       tags: [Investors]
-      summary: Get an investor by ID
+      summary: Get an investor contact by ID
       operationId: getInvestor
       security:
         - cookieAuth: []
       responses:
         "200":
-          description: Investor details
+          description: Investor contact details
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/Investor"
+                    $ref: "#/components/schemas/InvestorListItem"
         "401":
           description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Investor not found
+          description: Contact not found in this startup
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
     patch:
       tags: [Investors]
-      summary: Update an investor record
+      summary: Update an investor contact
       operationId: updateInvestor
       security:
         - cookieAuth: []
@@ -2263,7 +2392,7 @@ paths:
               $ref: "#/components/schemas/UpdateInvestorBody"
       responses:
         "200":
-          description: Investor updated
+          description: Investor contact updated
           content:
             application/json:
               schema:
@@ -2277,13 +2406,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Investor not found
+        "403":
+          description: Insufficient permissions
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "422":
+        "404":
+          description: Contact not found in this startup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: This startup already has another contact with that email
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
           description: Validation error
           content:
             application/json:
@@ -2291,13 +2432,13 @@ paths:
                 $ref: "#/components/schemas/ValidationErrorResponse"
     delete:
       tags: [Investors]
-      summary: Delete an investor record
+      summary: Delete an investor contact
       operationId: deleteInvestor
       security:
         - cookieAuth: []
       responses:
         "200":
-          description: Investor deleted
+          description: Investor contact deleted
           content:
             application/json:
               schema:
@@ -2308,21 +2449,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Investor not found
+          description: Contact not found in this startup
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Investor has related pipeline entries or commitments and cannot be deleted
+          description: >
+            Contact has related pipeline entries, commitments or interaction
+            logs and cannot be deleted. Every one of those foreign keys cascades
+            on delete, so they are blocked explicitly rather than silently
+            destroyed. The message names which are present.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /investors/{investorId}/interaction-logs:
+  /startups/{startupId}/investors/{investorId}/interaction-logs:
     parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
       - name: investorId
         in: path
         required: true
@@ -2368,10 +2525,17 @@ paths:
   # ════════════════════════════════════════════════════════════════
   #  PIPELINE (CRM)
   # ════════════════════════════════════════════════════════════════
-  /pipeline:
+  /startups/{startupId}/pipeline:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
     get:
       tags: [Pipeline]
-      summary: List pipeline entries for the current startup
+      summary: List pipeline entries for a startup
       operationId: listPipelineEntries
       security:
         - cookieAuth: []
@@ -2402,9 +2566,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       tags: [Pipeline]
-      summary: Add an investor to the pipeline
+      summary: Add an investor contact to the pipeline
       operationId: createPipelineEntry
       security:
         - cookieAuth: []
@@ -2430,8 +2600,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Investor not found
+          description: Investor contact not found for this startup
           content:
             application/json:
               schema:
@@ -2449,8 +2625,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
 
-  /pipeline/{pipelineId}:
+  /startups/{startupId}/pipeline/{pipelineId}:
     parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
       - name: pipelineId
         in: path
         required: true
@@ -2475,6 +2657,12 @@ paths:
                     $ref: "#/components/schemas/PipelineEntry"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2513,6 +2701,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Pipeline entry not found
           content:
@@ -2544,6 +2738,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Pipeline entry not found
           content:
@@ -2557,8 +2757,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /pipeline/{pipelineId}/interaction-logs:
+  /startups/{startupId}/pipeline/{pipelineId}/interaction-logs:
     parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
       - name: pipelineId
         in: path
         required: true
