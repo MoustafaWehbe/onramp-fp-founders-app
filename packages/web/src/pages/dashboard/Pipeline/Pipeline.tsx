@@ -241,8 +241,7 @@ export function Pipeline() {
               variant="outline"
               onClick={() => {
                 setActiveStartupId(SEED_STARTUP_ID);
-                void queryClient.invalidateQueries({ queryKey: ["pipeline"] });
-                void pipelineQuery.refetch();
+                void queryClient.invalidateQueries({ queryKey: ["pipeline", SEED_STARTUP_ID] });
               }}
             >
               Reset startup & retry
