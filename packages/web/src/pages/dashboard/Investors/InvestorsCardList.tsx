@@ -1,19 +1,23 @@
 import { Checkbox } from "../../../components/ui/checkbox";
-import type { Investor } from "../../../lib/mock-data";
 import { cn, formatCompactUsd, getInitials } from "../../../lib/utils";
 import { InvestorActions } from "./InvestorActions";
+import type { InvestorRow } from "./investor-types";
 import { StageBadge } from "./StageBadge";
 
 type InvestorsCardListProps = {
-  investors: Investor[];
+  investors: InvestorRow[];
   selectedIds: Set<string>;
   onToggleOne: (id: string) => void;
+  onMoveToPipeline: (investor: InvestorRow) => void;
+  movingInvestorId?: string | null;
 };
 
 export function InvestorsCardList({
   investors,
   selectedIds,
   onToggleOne,
+  onMoveToPipeline,
+  movingInvestorId = null,
 }: InvestorsCardListProps) {
   return (
     <ul className="divide-y divide-border/60">
@@ -45,7 +49,7 @@ export function InvestorsCardList({
                 </div>
                 <div className="shrink-0 text-right">
                   <div className="text-sm font-medium tabular-nums text-foreground">
-                    {formatCompactUsd(investor.amount)}
+                    {investor.amount != null ? formatCompactUsd(investor.amount) : "—"}
                   </div>
                   <div className="text-[11px] text-muted-foreground">{investor.lastContact}</div>
                 </div>
@@ -58,7 +62,11 @@ export function InvestorsCardList({
               </div>
             </div>
 
-            <InvestorActions investor={investor} />
+            <InvestorActions
+              investor={investor}
+              onMoveToPipeline={onMoveToPipeline}
+              moving={movingInvestorId === investor.id}
+            />
           </li>
         );
       })}

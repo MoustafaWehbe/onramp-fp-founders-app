@@ -1,4 +1,4 @@
-import { Linkedin, Mail, MoreHorizontal } from "lucide-react";
+import { Briefcase, Linkedin, Mail, MoreHorizontal } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import {
   DropdownMenu,
@@ -7,9 +7,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../../components/ui/dropdown-menu";
-import type { Investor } from "../../../lib/mock-data";
+import type { InvestorRow } from "./investor-types";
 
-export function InvestorActions({ investor }: { investor: Investor }) {
+type InvestorActionsProps = {
+  investor: InvestorRow;
+  onMoveToPipeline?: (investor: InvestorRow) => void;
+  moving?: boolean;
+};
+
+export function InvestorActions({
+  investor,
+  onMoveToPipeline,
+  moving = false,
+}: InvestorActionsProps) {
+  const alreadyInPipeline = Boolean(investor.pipelineId);
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -23,17 +35,31 @@ export function InvestorActions({ investor }: { investor: Investor }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-48">
-        <DropdownMenuItem asChild>
-          <a href={`mailto:${investor.email}`}>
-            <Mail className="mr-2 h-4 w-4" /> Send email
-          </a>
+        {investor.email && (
+          <DropdownMenuItem asChild>
+            <a href={`mailto:${investor.email}`}>
+              <Mail className="mr-2 h-4 w-4" /> Send email
+            </a>
+          </DropdownMenuItem>
+        )}
+        {investor.linkedinUrl && (
+          <DropdownMenuItem asChild>
+            <a href={investor.linkedinUrl} target="_blank" rel="noreferrer">
+              <Linkedin className="mr-2 h-4 w-4" /> View LinkedIn
+            </a>
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem
+          disabled={alreadyInPipeline || moving || !onMoveToPipeline}
+          onSelect={() => onMoveToPipeline?.(investor)}
+        >
+          <Briefcase className="mr-2 h-4 w-4" />
+          {alreadyInPipeline ? "Already in pipeline" : moving ? "Adding…" : "Move to pipeline"}
         </DropdownMenuItem>
-        <DropdownMenuItem>
-          <Linkedin className="mr-2 h-4 w-4" /> View LinkedIn
-        </DropdownMenuItem>
-        <DropdownMenuItem>Move to pipeline</DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem className="text-destructive">Archive</DropdownMenuItem>
+        <DropdownMenuItem className="text-destructive" disabled>
+          Archive
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
