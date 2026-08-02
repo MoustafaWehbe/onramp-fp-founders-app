@@ -1,42 +1,80 @@
 import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { isAxiosError } from "axios";
 import { Plus, Upload, Users } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { Button } from "../../../components/ui/button";
-import { investors as allInvestors, STAGES } from "../../../lib/mock-data";
-// import { formatCompactUsd } from "../../../lib/utils";
+import { SEED_STARTUP_ID, useActiveStartupId, useAppStore } from "../../../lib/app-store";
+import { DEFAULT_PROBABILITY_BY_STAGE, STAGES } from "../../../lib/mock-data";
+import { createPipelineEntry, listInvestorContacts } from "../../../lib/pipeline-api";
 import { InvestorsCardList } from "./InvestorsCardList";
+import { mapContactToRow, type InvestorRow } from "./investor-types";
 import { InvestorsTable } from "./InvestorsTable";
 import { InvestorsToolbar, type InvestorFilters } from "./InvestorsToolbar";
 
 const emptyFilters: InvestorFilters = { stage: null, sector: null, firm: null };
 
-const unique = (values: string[]) => Array.from(new Set(values)).sort();
+const unique = (values: string[]) => Array.from(new Set(values.filter(Boolean))).sort();
+
+function apiErrorMessage(err: unknown, fallback: string) {
+  if (isAxiosError(err)) {
+    const status = err.response?.status;
+    const data = err.response?.data as { error?: string; message?: string; code?: string } | undefined;
+    if (status === 403) {
+      return "Forbidden — this account is not an active member of the current startup (or lacks pipeline permission).";
+    }
+    if (status === 401) {
+      return "Not signed in — please log in again.";
+    }
+    return data?.error ?? data?.message ?? fallback;
+  }
+  return fallback;
+}
 
 export function Investors() {
+  const startupId = useActiveStartupId();
+  const setActiveStartupId = useAppStore((s) => s.setActiveStartupId);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<InvestorFilters>(emptyFilters);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  const investorsQuery = useQuery({
+    queryKey: ["investors", startupId],
+    queryFn: () => listInvestorContacts(startupId, { page: 1, limit: 100 }),
+  });
+
+  const rows = useMemo(
+    () => (investorsQuery.data?.data ?? []).map(mapContactToRow),
+    [investorsQuery.data],
+  );
+
   const filterOptions = useMemo(
     () => ({
       stages: STAGES.map((stage) => stage.label),
-      sectors: unique(allInvestors.map((inv) => inv.sector)),
-      firms: unique(allInvestors.map((inv) => inv.firm)),
+      sectors: unique(rows.map((inv) => inv.sector).filter((v) => v !== "—")),
+      firms: unique(rows.map((inv) => inv.firm).filter((v) => v !== "—")),
     }),
-    [],
+    [rows],
   );
 
   const visibleInvestors = useMemo(() => {
     const needle = query.trim().toLowerCase();
 
-    return allInvestors.filter((inv) => {
+    return rows.filter((inv) => {
       const matchesQuery =
         needle.length === 0 ||
         [inv.name, inv.firm, inv.email, inv.sector].some((field) =>
           field.toLowerCase().includes(needle),
         );
 
-      const stageLabel = STAGES.find((stage) => stage.id === inv.pipelineStageId)?.label;
+      const stageLabel = inv.pipelineStageId
+        ? STAGES.find((stage) => stage.id === inv.pipelineStageId)?.label
+        : "Not in pipeline";
 
       return (
         matchesQuery &&
@@ -45,17 +83,36 @@ export function Investors() {
         (!filters.firm || inv.firm === filters.firm)
       );
     });
-  }, [query, filters]);
+  }, [rows, query, filters]);
 
-  const summary = useMemo(() => {
-    const committed = allInvestors.filter((inv) => inv.pipelineStageId === "committed");
-    return {
-      total: allInvestors.length,
-      committedCount: committed.length,
-      committedAmount: committed.reduce((sum, inv) => sum + inv.amount, 0),
-      pipelineAmount: allInvestors.reduce((sum, inv) => sum + inv.amount, 0),
-    };
-  }, []);
+  const moveMutation = useMutation({
+    mutationFn: (investor: InvestorRow) =>
+      createPipelineEntry(startupId, {
+        investorId: investor.id,
+        stage: "sourced",
+        expectedAmount: investor.amount ?? undefined,
+        probabilityPercentage: DEFAULT_PROBABILITY_BY_STAGE.sourced,
+      }),
+    onSuccess: (_entry, investor) => {
+      toast.success(`${investor.name} added to pipeline`);
+      void queryClient.invalidateQueries({ queryKey: ["investors", startupId] });
+      void queryClient.invalidateQueries({ queryKey: ["pipeline", startupId] });
+      navigate("/pipeline");
+    },
+    onError: (err) => {
+      if (isAxiosError(err) && err.response?.status === 409) {
+        toast.message("Already in pipeline");
+        navigate("/pipeline");
+        return;
+      }
+      if (isAxiosError(err) && err.response?.status === 403) {
+        setActiveStartupId(SEED_STARTUP_ID);
+        toast.error("Forbidden — reset to Acme Corp startup. Sign in again if this continues.");
+        return;
+      }
+      toast.error(apiErrorMessage(err, "Could not move to pipeline"));
+    },
+  });
 
   const handleFilterChange = (key: keyof InvestorFilters, value: string | null) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -70,7 +127,6 @@ export function Investors() {
     });
   };
 
-  // Only affects rows the current filters actually show.
   const toggleAllVisible = (checked: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -89,11 +145,11 @@ export function Investors() {
         description="Your central directory of investors and firm relationships."
         actions={
           <>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" disabled>
               <Upload className="h-4 w-4" />
               Import CSV
             </Button>
-            <Button size="sm">
+            <Button size="sm" disabled>
               <Plus className="h-4 w-4" />
               Add investor
             </Button>
@@ -101,26 +157,26 @@ export function Investors() {
         }
       />
 
-      {/* Summary boxes - hidden for now, restore by uncommenting this block,
-          the SummaryCard component below, and the formatCompactUsd import.
-      <div className="grid gap-4 sm:grid-cols-3">
-        <SummaryCard
-          label="Investors tracked"
-          value={String(summary.total)}
-          hint="Across all your startups"
-        />
-        <SummaryCard
-          label="Committed"
-          value={formatCompactUsd(summary.committedAmount)}
-          hint={`${summary.committedCount} investors committed`}
-        />
-        <SummaryCard
-          label="Pipeline value"
-          value={formatCompactUsd(summary.pipelineAmount)}
-          hint="Total of all tracked cheques"
-        />
-      </div>
-      */}
+      {investorsQuery.isError && (
+        <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-6 text-sm text-destructive">
+          {apiErrorMessage(
+            investorsQuery.error,
+            "Failed to load investors. Sign in as founder@example.com and make sure the API is running.",
+          )}
+          <div className="mt-3">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setActiveStartupId(SEED_STARTUP_ID);
+                void investorsQuery.refetch();
+              }}
+            >
+              Reset startup & retry
+            </Button>
+          </div>
+        </div>
+      )}
 
       <InvestorsToolbar
         query={query}
@@ -128,14 +184,18 @@ export function Investors() {
         filters={filters}
         onFilterChange={handleFilterChange}
         onClearFilters={() => setFilters(emptyFilters)}
-        stageOptions={filterOptions.stages}
+        stageOptions={[...filterOptions.stages, "Not in pipeline"]}
         sectorOptions={filterOptions.sectors}
         firmOptions={filterOptions.firms}
         selectedCount={selectedIds.size}
       />
 
       <div className="card-elevated overflow-hidden">
-        {visibleInvestors.length === 0 ? (
+        {investorsQuery.isLoading ? (
+          <div className="px-6 py-14 text-center text-sm text-muted-foreground">
+            Loading investors…
+          </div>
+        ) : visibleInvestors.length === 0 && !investorsQuery.isError ? (
           <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
             <div className="grid h-10 w-10 place-items-center rounded-xl border border-border bg-surface text-muted-foreground">
               <Users className="h-4 w-4" />
@@ -153,6 +213,8 @@ export function Investors() {
                 selectedIds={selectedIds}
                 onToggleOne={toggleOne}
                 onToggleAll={toggleAllVisible}
+                onMoveToPipeline={(investor) => moveMutation.mutate(investor)}
+                movingInvestorId={moveMutation.isPending ? moveMutation.variables?.id : null}
               />
             </div>
 
@@ -161,20 +223,14 @@ export function Investors() {
                 investors={visibleInvestors}
                 selectedIds={selectedIds}
                 onToggleOne={toggleOne}
+                onMoveToPipeline={(investor) => moveMutation.mutate(investor)}
+                movingInvestorId={moveMutation.isPending ? moveMutation.variables?.id : null}
               />
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground">
               <div className="tabular-nums">
-                Showing {visibleInvestors.length} of {summary.total} investors
-              </div>
-              <div className="flex items-center gap-1">
-                <Button size="sm" variant="ghost" disabled>
-                  Prev
-                </Button>
-                <Button size="sm" variant="ghost" disabled>
-                  Next
-                </Button>
+                Showing {visibleInvestors.length} of {rows.length} investors
               </div>
             </div>
           </>
@@ -183,24 +239,3 @@ export function Investors() {
     </div>
   );
 }
-
-// Used by the summary boxes above, kept for when they are restored.
-// function SummaryCard({
-//   label,
-//   value,
-//   hint,
-// }: {
-//   label: string;
-//   value: string;
-//   hint: string;
-// }) {
-//   return (
-//     <div className="card-elevated p-5">
-//       <div className="text-xs text-muted-foreground">{label}</div>
-//       <div className="mt-1 font-display text-2xl font-semibold tabular-nums text-foreground">
-//         {value}
-//       </div>
-//       <div className="mt-0.5 text-[11px] text-muted-foreground">{hint}</div>
-//     </div>
-//   );
-// }
