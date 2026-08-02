@@ -28,10 +28,6 @@ export const createStartupSchema = z.object({
     .min(1, "Industry is required")
     .max(100, "Industry must be at most 100 characters"),
   website: httpUrlSchema,
-  funding_stage: z.enum(["pre_seed", "seed", "series_a", "series_b", "series_c"], {
-    errorMap: () => ({ message: "Funding stage is required" }),
-  }),
-  website: z.string().trim().url("Website must be a valid URL"),
   funding_stage: fundingStageEnum,
 });
 
