@@ -1,6 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
-  Bell,
   Briefcase,
   Building2,
   ChevronDown,
@@ -13,6 +12,7 @@ import {
   Settings,
   Shield,
   Sparkles,
+  User,
   UserCog,
   Users,
   Wallet,
@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { cn } from "../../lib/utils";
-import { useUnreadNotificationCount } from "../../lib/app-store";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,10 +34,7 @@ import { Button } from "../ui/button";
 const navGroups = [
   {
     label: "Overview",
-    items: [
-      { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { to: "/notifications", label: "Notifications", icon: Bell },
-    ],
+    items: [{ to: "/dashboard", label: "Dashboard", icon: LayoutDashboard }],
   },
   {
     label: "Fundraising",
@@ -81,7 +77,6 @@ type SidebarProps = {
 
 export function Sidebar({ className, onNavigate, onClose }: SidebarProps) {
   const location = useLocation();
-  const unreadCount = useUnreadNotificationCount();
 
   return (
     <aside
@@ -122,12 +117,6 @@ export function Sidebar({ className, onNavigate, onClose }: SidebarProps) {
                 const active =
                   location.pathname === item.to || location.pathname.startsWith(`${item.to}/`);
                 const Icon = item.icon;
-                const badge =
-                  item.to === "/notifications" && unreadCount > 0
-                    ? unreadCount > 9
-                      ? "9+"
-                      : String(unreadCount)
-                    : null;
                 return (
                   <li key={item.to}>
                     <NavLink
@@ -142,11 +131,6 @@ export function Sidebar({ className, onNavigate, onClose }: SidebarProps) {
                     >
                       <Icon className={cn("h-4 w-4", active ? "text-primary" : "text-muted-foreground")} />
                       <span className="flex-1">{item.label}</span>
-                      {badge && (
-                        <span className="rounded-full bg-primary/15 px-1.5 py-0.5 font-mono text-[10px] font-medium text-primary">
-                          {badge}
-                        </span>
-                      )}
                     </NavLink>
                   </li>
                 );
@@ -179,8 +163,8 @@ function UserMenu({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="group flex w-full items-center gap-2.5 rounded-lg border border-border/70 bg-surface/80 px-2.5 py-2.5 text-left transition-colors hover:border-primary/30 hover:bg-surface-hover focus:outline-none focus:ring-1 focus:ring-ring">
-          <Avatar className="h-8 w-8">
+        <button className="group flex w-full items-center gap-2.5 rounded-xl border border-border/70 bg-card/95 px-3 py-2.5 text-left shadow-[0_1px_0_0_rgba(255,255,255,0.03)_inset,0_8px_20px_-14px_rgba(0,0,0,0.7)] transition-colors duration-200 hover:border-primary/40 hover:bg-surface-hover focus:outline-none focus:ring-1 focus:ring-ring data-[state=open]:border-primary/40 data-[state=open]:bg-surface-hover">
+          <Avatar className="h-9 w-9 shrink-0 ring-1 ring-primary/15">
             <AvatarFallback className="bg-primary/15 font-display text-xs font-semibold text-primary">
               {initials}
             </AvatarFallback>
@@ -191,7 +175,7 @@ function UserMenu({ onNavigate }: { onNavigate?: () => void }) {
               <div className="mt-0.5 truncate text-xs text-muted-foreground">{user.email}</div>
             )}
           </div>
-          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -204,7 +188,7 @@ function UserMenu({ onNavigate }: { onNavigate?: () => void }) {
         <DropdownMenuItem asChild>
           {/* Closes the mobile drawer too — otherwise it stays open over Settings. */}
           <NavLink to="/settings" onClick={onNavigate}>
-            <Settings className="mr-2 h-4 w-4" /> Settings
+            <User className="mr-2 h-4 w-4" /> Profile
           </NavLink>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -220,7 +204,7 @@ function StartupSwitcher() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="group flex w-full items-center gap-2.5 rounded-lg border border-border/70 bg-surface/80 px-2.5 py-2.5 text-left text-sm transition-colors hover:border-primary/30 hover:bg-surface-hover focus:outline-none focus:ring-1 focus:ring-ring">
+        <button className="group flex w-full items-center gap-2.5 rounded-xl border border-border/70 bg-card/95 px-3 py-2.5 text-left text-sm shadow-[0_1px_0_0_rgba(255,255,255,0.03)_inset,0_8px_20px_-14px_rgba(0,0,0,0.7)] transition-colors duration-200 hover:border-primary/40 hover:bg-surface-hover focus:outline-none focus:ring-1 focus:ring-ring data-[state=open]:border-primary/40 data-[state=open]:bg-surface-hover">
           <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-primary font-display text-xs font-bold text-primary-foreground">
             AC
           </div>
@@ -228,7 +212,7 @@ function StartupSwitcher() {
             <div className="truncate font-medium text-foreground">Acme Corp</div>
             <div className="truncate text-xs text-muted-foreground">Pre-Seed · $500k target</div>
           </div>
-          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
