@@ -700,16 +700,19 @@ components:
 
     UpdatePipelineEntryBody:
       type: object
+      description: At least one field is required.
       properties:
         stage:
           $ref: "#/components/schemas/PipelineStage"
         expectedAmount:
           type: number
           format: double
+          nullable: true
         probabilityPercentage:
           type: integer
           minimum: 0
           maximum: 100
+          nullable: true
 
     # ── CRM: Interaction Logs ─────────────────────────────────────────
     InteractionType:
@@ -2522,10 +2525,17 @@ paths:
   # ════════════════════════════════════════════════════════════════
   #  PIPELINE (CRM)
   # ════════════════════════════════════════════════════════════════
-  /pipeline:
+  /startups/{startupId}/pipeline:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
     get:
       tags: [Pipeline]
-      summary: List pipeline entries for the current startup
+      summary: List pipeline entries for a startup
       operationId: listPipelineEntries
       security:
         - cookieAuth: []
@@ -2556,9 +2566,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       tags: [Pipeline]
-      summary: Add an investor to the pipeline
+      summary: Add an investor contact to the pipeline
       operationId: createPipelineEntry
       security:
         - cookieAuth: []
@@ -2584,8 +2600,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Investor not found
+          description: Investor contact not found for this startup
           content:
             application/json:
               schema:
@@ -2603,8 +2625,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
 
-  /pipeline/{pipelineId}:
+  /startups/{startupId}/pipeline/{pipelineId}:
     parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
       - name: pipelineId
         in: path
         required: true
@@ -2629,6 +2657,12 @@ paths:
                     $ref: "#/components/schemas/PipelineEntry"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2667,6 +2701,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Pipeline entry not found
           content:
@@ -2698,6 +2738,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Pipeline entry not found
           content:
@@ -2711,8 +2757,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /pipeline/{pipelineId}/interaction-logs:
+  /startups/{startupId}/pipeline/{pipelineId}/interaction-logs:
     parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
       - name: pipelineId
         in: path
         required: true
