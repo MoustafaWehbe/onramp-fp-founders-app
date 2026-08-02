@@ -285,7 +285,7 @@ model Pipeline {
   id                    String   @id @default(uuid())
   startupId             String   @map("startup_id")
   startupInvestorId     String   @map("startup_investor_id")
-  stage                 String   @default("prospect")
+  stage                 String   @default("sourced")
   expectedAmount        Decimal? @map("expected_amount")
   probabilityPercentage Int?     @map("probability_percentage")
   createdAt             DateTime @default(now()) @map("created_at")

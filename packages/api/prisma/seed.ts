@@ -493,7 +493,7 @@ async function main() {
       action: "update",
       entityType: "pipeline",
       entityId: pipeline.id,
-      changes: { stage: { from: "prospect", to: "meeting_scheduled" } },
+      changes: { stage: { from: "sourced", to: "meeting_scheduled" } },
       ipAddress: "127.0.0.1",
     },
   });
