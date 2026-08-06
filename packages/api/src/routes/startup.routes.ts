@@ -16,6 +16,7 @@ import { startupController } from "../controllers/startup.controller";
 import { inviteController } from "../controllers/invite.controller";
 import { investorRouter } from "./investor.routes";
 import { pipelineRouter } from "./pipeline.routes";
+import { interactionLogRouter } from "./interaction-log.routes";
 
 const router = Router();
 
@@ -24,6 +25,9 @@ router.use("/:startupId/investors", investorRouter);
 
 // /api/v1/startups/:startupId/pipeline — declares its own middleware chain
 router.use("/:startupId/pipeline", pipelineRouter);
+
+// /api/v1/startups/:startupId/interaction-logs — declares its own middleware chain
+router.use("/:startupId/interaction-logs", interactionLogRouter);
 
 // POST /api/v1/startups
 // authenticate only — the caller has no membership yet (they're creating the startup)
