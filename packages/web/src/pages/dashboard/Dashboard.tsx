@@ -126,10 +126,6 @@ export function Dashboard() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
-              <Sparkles className="h-4 w-4" />
-              Create startup
-            </Button>
             <Button type="button" size="sm">
               <Plus className="h-4 w-4" />
               Add investor
