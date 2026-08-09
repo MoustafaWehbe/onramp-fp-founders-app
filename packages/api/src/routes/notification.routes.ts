@@ -15,6 +15,9 @@ const router = Router();
 router.use(authenticate);
 
 router.get("/", validate(listNotificationsQuerySchema, "query"), notificationController.list);
+// Long-lived: registered before the :notificationId routes so "stream" is never
+// read as an id.
+router.get("/stream", notificationController.stream);
 router.post("/read-all", notificationController.markAllRead);
 router.patch(
   "/:notificationId/read",

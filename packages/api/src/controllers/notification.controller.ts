@@ -1,8 +1,57 @@
+import type { Request, Response } from "express";
 import { asyncHandler } from "../utils/errors";
 import { notificationService } from "../services/notification.service";
+import { notificationBus, type NotificationEvent } from "../events/notification-bus";
 import type { ListNotificationsQuery } from "../validators/notification.schemas";
 
+/** Browsers reconnect an EventSource on their own; this paces the retries. */
+const RETRY_MS = 5_000;
+
+/**
+ * Proxies and load balancers hang up on a connection that goes quiet. A comment
+ * frame every 25s is invisible to EventSource but keeps the socket warm.
+ */
+const HEARTBEAT_MS = 25_000;
+
 export const notificationController = {
+  /**
+   * Server-sent events, chosen over WebSockets because the traffic is entirely
+   * server → client: it rides ordinary HTTP, so the existing cookie auth and
+   * trust-proxy setup apply unchanged, and the browser handles reconnection.
+   */
+  stream: (req: Request, res: Response): void => {
+    const userId = req.user!.userId;
+
+    res.status(200).set({
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-store",
+      Connection: "keep-alive",
+      // nginx buffers proxied responses by default, which would hold every
+      // event back until the buffer filled — i.e. forever, on a quiet stream.
+      "X-Accel-Buffering": "no",
+    });
+    res.flushHeaders();
+
+    res.write(`retry: ${RETRY_MS}\n\n`);
+    // An immediate frame proves the pipe is open before anything happens.
+    res.write(`event: ready\ndata: {}\n\n`);
+
+    const send = (event: NotificationEvent) => {
+      res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+    };
+
+    const unsubscribe = notificationBus.subscribe(userId, send);
+    const heartbeat = setInterval(() => res.write(": ping\n\n"), HEARTBEAT_MS);
+
+    const close = () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    };
+
+    req.on("close", close);
+    res.on("error", close);
+  },
+
   list: asyncHandler(async (req, res) => {
     const { limit, unread } = req.query as unknown as ListNotificationsQuery;
     const { items, unreadCount } = await notificationService.list(req.user!.userId, {

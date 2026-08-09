@@ -508,6 +508,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/notifications/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Live notification stream (server-sent events)
+         * @description A long-lived text/event-stream carrying the caller's notification events. Chosen over WebSockets because the traffic is one-directional: it rides ordinary HTTP, so cookie auth applies unchanged and the browser reconnects on its own (the stream advertises `retry: 5000`).
+         *
+         *     Events are signals, not data — each one means "refetch". A comment heartbeat is sent every 25s to stop idle proxies hanging up, and the response sets `X-Accel-Buffering: no` because nginx would otherwise buffer the stream indefinitely.
+         *
+         *     Event names: `ready` once on connect; `notification.created` when one arrives; `notifications.changed` when the unread state moved elsewhere (another tab marking read, or an invitation being accepted).
+         *
+         *     Fan-out is in-process today, so this only reaches clients connected to the same API instance. Running more than one requires a shared bus.
+         */
+        get: operations["streamNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/notifications/read-all": {
         parameters: {
             query?: never;
@@ -3363,6 +3389,46 @@ export interface operations {
                             unreadCount?: number;
                         };
                     };
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    streamNotifications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description An open event stream */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example retry: 5000
+                     *
+                     *     event: ready
+                     *     data: {}
+                     *
+                     *     event: notification.created
+                     *     data: {"type":"notification.created","notification":{"id":"…","type":"team_invite","title":"You've been invited to Acme Corp","body":"Join as collaborator to start collaborating."}}
+                     *
+                     *     : ping
+                     */
+                    "text/event-stream": string;
                 };
             };
             /** @description Authentication required */

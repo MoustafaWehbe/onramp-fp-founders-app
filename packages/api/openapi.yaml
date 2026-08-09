@@ -2699,6 +2699,58 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /notifications/stream:
+    get:
+      tags: [Notifications]
+      summary: Live notification stream (server-sent events)
+      operationId: streamNotifications
+      description: >
+        A long-lived text/event-stream carrying the caller's notification
+        events. Chosen over WebSockets because the traffic is one-directional:
+        it rides ordinary HTTP, so cookie auth applies unchanged and the browser
+        reconnects on its own (the stream advertises `retry: 5000`).
+
+
+        Events are signals, not data — each one means "refetch". A comment
+        heartbeat is sent every 25s to stop idle proxies hanging up, and the
+        response sets `X-Accel-Buffering: no` because nginx would otherwise
+        buffer the stream indefinitely.
+
+
+        Event names: `ready` once on connect; `notification.created` when one
+        arrives; `notifications.changed` when the unread state moved elsewhere
+        (another tab marking read, or an invitation being accepted).
+
+
+        Fan-out is in-process today, so this only reaches clients connected to
+        the same API instance. Running more than one requires a shared bus.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: An open event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              example: |
+                retry: 5000
+
+                event: ready
+                data: {}
+
+                event: notification.created
+                data: {"type":"notification.created","notification":{"id":"…","type":"team_invite","title":"You've been invited to Acme Corp","body":"Join as collaborator to start collaborating."}}
+
+                : ping
+
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /notifications/read-all:
     post:
       tags: [Notifications]

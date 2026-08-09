@@ -1,5 +1,6 @@
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
+import { notificationBus } from "../events/notification-bus";
 
 /**
  * Notification types the app knows how to render. Anything else still lists,
@@ -62,7 +63,12 @@ export class NotificationService {
       if (!exists) {
         throw createError("Notification not found", 404, "NOT_FOUND");
       }
+      // Already read — nothing changed, so nobody needs telling.
+      return;
     }
+
+    // Other tabs belonging to this user are showing a stale unread badge.
+    notificationBus.publish(userId, { type: "notifications.changed" });
   }
 
   async markAllRead(userId: string) {
@@ -70,6 +76,11 @@ export class NotificationService {
       where: { userId, readAt: null },
       data: { readAt: new Date() },
     });
+
+    if (count > 0) {
+      notificationBus.publish(userId, { type: "notifications.changed" });
+    }
+
     return count;
   }
 
@@ -95,7 +106,7 @@ export class NotificationService {
       });
       if (!user) return;
 
-      await prisma.notification.create({
+      const created = await prisma.notification.create({
         data: {
           userId: user.id,
           startupId: input.startupId,
@@ -105,7 +116,12 @@ export class NotificationService {
           entityType: "startup_member",
           entityId: input.memberId,
         },
+        select: { id: true, type: true, title: true, body: true },
       });
+
+      // Reaches them immediately if they have the app open — which is the
+      // whole point, since they may well be signed in already.
+      notificationBus.publish(user.id, { type: "notification.created", notification: created });
     } catch (err) {
       console.error("[notifyInvitedUser] failed:", err);
     }
@@ -114,7 +130,7 @@ export class NotificationService {
   /** Clears the invite notification once it has been accepted or declined. */
   async clearInviteNotification(memberId: string, userId: string): Promise<void> {
     try {
-      await prisma.notification.deleteMany({
+      const { count } = await prisma.notification.deleteMany({
         where: {
           userId,
           type: NOTIFICATION_TYPES.TEAM_INVITE,
@@ -122,6 +138,10 @@ export class NotificationService {
           entityId: memberId,
         },
       });
+
+      if (count > 0) {
+        notificationBus.publish(userId, { type: "notifications.changed" });
+      }
     } catch (err) {
       console.error("[clearInviteNotification] failed:", err);
     }

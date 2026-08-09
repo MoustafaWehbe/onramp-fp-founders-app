@@ -1,20 +1,15 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Building2, Mail, Rocket } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { CreateStartupDialog } from "../../components/startup/CreateStartupDialog";
 import { LoadingSpinner } from "../../components/shared/LoadingSpinner";
 import { useWorkspace, MY_STARTUPS_KEY } from "../../hooks/useWorkspace";
+import { useMyInvites, MY_INVITES_KEY } from "../../hooks/useMyInvites";
+import { NOTIFICATIONS_KEY } from "../../hooks/useNotifications";
 import { apiErrorMessage } from "../../lib/api-error";
-import {
-  acceptMyInvite,
-  declineMyInvite,
-  listMyInvites,
-  type PendingInvite,
-} from "../../lib/invite-api";
-
-export const MY_INVITES_KEY = ["my-invites"] as const;
+import { acceptMyInvite, declineMyInvite, type PendingInvite } from "../../lib/invite-api";
 
 const ROLE_LABELS: Record<string, string> = {
   owner: "Owner",
@@ -39,7 +34,7 @@ export function NoWorkspaceHome() {
   const [createOpen, setCreateOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const invitesQuery = useQuery({ queryKey: MY_INVITES_KEY, queryFn: listMyInvites });
+  const invitesQuery = useMyInvites();
   const invites = invitesQuery.data ?? [];
 
   const acceptMutation = useMutation({
@@ -50,7 +45,7 @@ export function NoWorkspaceHome() {
       setActiveStartupId(invite.startup.id);
       await queryClient.invalidateQueries({ queryKey: MY_STARTUPS_KEY });
       await queryClient.invalidateQueries({ queryKey: MY_INVITES_KEY });
-      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      await queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY });
       toast.success(`You've joined ${invite.startup.name}`);
     },
     onError: (err) => toast.error(apiErrorMessage(err, "Could not accept the invitation")),
@@ -61,7 +56,7 @@ export function NoWorkspaceHome() {
     mutationFn: (invite: PendingInvite) => declineMyInvite(invite.id),
     onSuccess: async (_void, invite) => {
       await queryClient.invalidateQueries({ queryKey: MY_INVITES_KEY });
-      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      await queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY });
       toast.success(`Declined the invitation to ${invite.startup.name}`);
     },
     onError: (err) => toast.error(apiErrorMessage(err, "Could not decline the invitation")),

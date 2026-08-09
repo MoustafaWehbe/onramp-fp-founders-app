@@ -3,9 +3,14 @@ import { Outlet } from "react-router-dom";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Header } from "../components/layout/Header";
 import { Sidebar } from "../components/layout/Sidebar";
+import { useNotificationStream } from "../hooks/useNotificationStream";
 
 export function AppLayout() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  // One connection for the whole signed-in app, held for as long as the shell
+  // is mounted.
+  useNotificationStream();
 
   return (
     <div className="min-h-screen bg-background font-sans text-foreground">

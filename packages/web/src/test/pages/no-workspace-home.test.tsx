@@ -7,8 +7,15 @@ import { AxiosError, AxiosHeaders } from "axios";
 const listMyInvites = vi.fn();
 const acceptMyInvite = vi.fn();
 const declineMyInvite = vi.fn();
+vi.mock("../../hooks/useMyInvites", async () => {
+  const { useQuery } = await import("@tanstack/react-query");
+  return {
+    MY_INVITES_KEY: ["my-invites"],
+    useMyInvites: () => useQuery({ queryKey: ["my-invites"], queryFn: () => listMyInvites() }),
+  };
+});
+
 vi.mock("../../lib/invite-api", () => ({
-  listMyInvites: () => listMyInvites(),
   acceptMyInvite: (id: string) => acceptMyInvite(id),
   declineMyInvite: (id: string) => declineMyInvite(id),
 }));
