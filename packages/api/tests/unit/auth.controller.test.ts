@@ -4,6 +4,7 @@ import { app } from "../../app";
 jest.mock("../../src/middleware/rate-limiter", () => ({
   rateLimiter: (_req: any, _res: any, next: any) => next(),
   authRateLimiter: (_req: any, _res: any, next: any) => next(),
+  credentialRateLimiter: (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../src/db/prisma", () => ({ prisma: {} }));
 jest.mock("../../src/config/email", () => ({ resend: {} }));

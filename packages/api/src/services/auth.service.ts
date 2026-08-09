@@ -114,13 +114,12 @@ export class AuthService {
 
     const { raw: rawOtp, hash: otpHash } = generateOTP();
 
-    await prisma.pendingRegistration.delete({ where: { email } });
-    await prisma.pendingRegistration.create({
+    // Carry the failed-attempt count across the reissue. Starting the new row
+    // at zero would let a caller sit just under MAX_OTP_ATTEMPTS, resend, and
+    // guess again indefinitely — the cap has to survive a new code.
+    await prisma.pendingRegistration.update({
+      where: { email },
       data: {
-        firstName: pending.firstName,
-        lastName: pending.lastName,
-        email,
-        passwordHash: pending.passwordHash,
         otpHash,
         otpExpiresAt: new Date(Date.now() + OTP_TTL_MS),
       },

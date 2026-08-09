@@ -101,10 +101,11 @@ export function Team() {
       if (result.emailQueued) {
         toast.success(`Invitation sent to ${input.email}`);
       } else {
-        // The membership row exists either way — the inviter needs to know the
-        // email never went out so they can reach the person another way.
+        // The membership row exists either way. The raw invite token never
+        // leaves the server, so the only recovery open to the inviter is to
+        // revoke the pending row and invite again.
         toast.warning(
-          `${input.email} was invited, but the email failed to send. Share the invite link manually.`,
+          `${input.email} was invited, but the email failed to send. Revoke the invitation and try again.`,
         );
       }
       invalidateMembers();

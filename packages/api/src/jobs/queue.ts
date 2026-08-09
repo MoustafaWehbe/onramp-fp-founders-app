@@ -1,21 +1,14 @@
 import { Queue } from "bullmq";
-import IORedis from "ioredis";
 import { emailJob } from "./workers/email.worker";
 import type { EmailJobData } from "../types";
 import { embeddingsJob, type EmbeddingsJobData } from "./workers/embeddings.worker";
 
-// Redis singleton (shared with workers)
+// The Redis singleton now lives in db/redis so non-job callers (the rate
+// limiters) can share it without importing the workers. Re-exported here
+// because the workers still reach for it through this module.
+export { getRedis } from "../db/redis";
 
-let redis: IORedis | null = null;
-
-export function getRedis(): IORedis {
-  if (!redis) {
-    redis = new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379", {
-      maxRetriesPerRequest: null,
-    });
-  }
-  return redis;
-}
+import { getRedis } from "../db/redis";
 
 // Queue factory
 

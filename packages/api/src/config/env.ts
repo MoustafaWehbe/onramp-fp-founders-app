@@ -34,6 +34,33 @@ export function getAppUrl(): string {
   return raw.replace(/\/+$/, "");
 }
 
+/**
+ * How many reverse proxies sit in front of this process, as an Express
+ * `trust proxy` value.
+ *
+ * This drives `req.ip`, which is what every rate limiter keys on. Get it wrong
+ * in either direction and the limiters break: too low and every request behind
+ * a load balancer shares the proxy's IP, so one attacker locks out all users;
+ * too high (or `true`) and a client can forge `X-Forwarded-For` to present a
+ * fresh IP on every request and never be limited at all.
+ *
+ * Defaults to 0 — trust nothing — which is correct for local development and
+ * for a process exposed directly. Set TRUST_PROXY to the number of hops you
+ * actually run behind (typically 1 for a single nginx/ALB/Cloudflare layer).
+ */
+export function getTrustProxy(): number | string | boolean {
+  const raw = process.env.TRUST_PROXY?.trim();
+  if (!raw) return 0;
+
+  const hops = Number(raw);
+  if (Number.isInteger(hops) && hops >= 0) return hops;
+
+  // Anything else is treated as a comma-separated list of trusted addresses or
+  // subnets, which Express parses itself. `true` is deliberately not special-
+  // cased — spell out the hop count or the addresses instead.
+  return raw;
+}
+
 export function validateEnv(): void {
   const problems: string[] = [];
 
