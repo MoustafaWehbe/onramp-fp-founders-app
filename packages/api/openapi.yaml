@@ -947,12 +947,84 @@ components:
           maximum: 100
           nullable: true
           example: 60
+        stageChangedAt:
+          type: string
+          format: date-time
+          description: >-
+            When the deal last moved stage. Distinct from updatedAt, which also
+            moves when the amount or probability is edited.
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
+
+    PipelineAnalytics:
+      type: object
+      description: >-
+        Funnel and velocity derived from append-only stage history. Deals created
+        before stage history existed contribute a single backfilled "joined"
+        event, so they count toward reach but show no movement until next moved.
+      properties:
+        totalDeals:
+          type: integer
+        funnel:
+          type: array
+          items:
+            type: object
+            properties:
+              stage:
+                $ref: "#/components/schemas/PipelineStage"
+              current:
+                type: integer
+                description: Deals sitting in this stage right now.
+              currentValue:
+                type: number
+                format: double
+              everReached:
+                type: integer
+                description: Deals that have ever occupied this stage.
+              medianDaysInStage:
+                type: number
+                format: double
+                nullable: true
+                description: >-
+                  Median length of completed visits to this stage. The current
+                  occupancy is still running so it is excluded.
+        conversion:
+          type: array
+          items:
+            type: object
+            properties:
+              fromStage:
+                $ref: "#/components/schemas/PipelineStage"
+              toStage:
+                $ref: "#/components/schemas/PipelineStage"
+              reached:
+                type: integer
+              advanced:
+                type: integer
+                description: Of those that reached fromStage, how many went further.
+              rate:
+                type: number
+                format: double
+                nullable: true
+                description: advanced / reached; null when nothing reached the stage.
+        outcomes:
+          type: object
+          properties:
+            open:
+              type: integer
+            committed:
+              type: integer
+            passed:
+              type: integer
+            winRate:
+              type: number
+              format: double
+              nullable: true
+              description: committed / (committed + passed); null before anything is decided.
 
     CreatePipelineEntryBody:
       type: object
@@ -1027,6 +1099,14 @@ components:
           type: string
           format: date-time
           nullable: true
+        followupCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            Null while the follow-up is outstanding. Set when it is marked done,
+            or automatically when a later interaction is logged for the same
+            contact that satisfies it (logged on or after the follow-up date).
         createdAt:
           type: string
           format: date-time
@@ -1082,6 +1162,14 @@ components:
           type: string
           format: date-time
           nullable: true
+          description: >-
+            Setting a new date reopens the follow-up, clearing any prior
+            followupCompletedAt unless one is sent in the same request.
+        followupCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Marks the follow-up done; null reopens it.
 
     # ── Financial: Fundraising Rounds ─────────────────────────────────
     RoundStatus:
@@ -3620,6 +3708,43 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /startups/{startupId}/pipeline/analytics:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Pipeline]
+      summary: Funnel, conversion and stage velocity for the whole board
+      operationId: getPipelineAnalytics
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Analytics computed from stage history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PipelineAnalytics"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing pipeline:read permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /startups/{startupId}/pipeline/{pipelineId}:
     parameters:

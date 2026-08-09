@@ -1,0 +1,495 @@
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CalendarClock, Check, Linkedin, Mail, Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "../../../components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../../components/ui/dialog";
+import { Input } from "../../../components/ui/input";
+import { Label } from "../../../components/ui/label";
+import { usePermissions } from "../../../hooks/usePermissions";
+import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
+import {
+  completeFollowup,
+  createInteractionLog,
+  deleteInteractionLog,
+  listLogsForInvestor,
+  updateInteractionLog,
+  type InteractionLog,
+} from "../../../lib/interaction-log-api";
+import { INVESTOR_TYPE_LABELS, type InvestorType } from "../../../lib/investor-api";
+import { DEFAULT_PROBABILITY_BY_STAGE, STAGES, type PipelineStageId } from "../../../lib/mock-data";
+import { fetchAllPages } from "../../../lib/pagination";
+import { updatePipelineEntry, type PipelineEntry } from "../../../lib/pipeline-api";
+import { listMembers } from "../../../lib/team-api";
+import { cn, formatCompactUsd, getInitials } from "../../../lib/utils";
+import { InteractionTimeline } from "../Investors/InteractionTimeline";
+import { LogInteractionDialog, type LogFormValues } from "../Investors/LogInteractionDialog";
+import {
+  formatDateTime,
+  formatDaysAgo,
+  formatDuration,
+  type DealSignals,
+} from "./deal-signals";
+
+/** "Passed" is an exit, not a step, so it sits apart from the progression. */
+const PROGRESSION = STAGES.filter((stage) => stage.id !== "passed");
+
+type DealDetailDialogProps = {
+  startupId: string;
+  deal: PipelineEntry | null;
+  signals: DealSignals;
+  onOpenChange: (open: boolean) => void;
+  onRemove: (deal: PipelineEntry) => void;
+};
+
+function logErrorMessage(err: unknown, fallback: string): string {
+  switch (apiErrorCode(err)) {
+    case "PIPELINE_MISMATCH":
+      return "That pipeline entry belongs to a different contact.";
+    case "LOG_NOT_FOUND":
+      return "That entry no longer exists — a teammate may have removed it.";
+    case "PIPELINE_NOT_FOUND":
+      return "This deal is no longer on the board.";
+    default:
+      return apiErrorMessage(
+        err,
+        fallback,
+        "You don't have permission to change this deal.",
+      );
+  }
+}
+
+export function DealDetailDialog({
+  startupId,
+  deal,
+  signals,
+  onOpenChange,
+  onRemove,
+}: DealDetailDialogProps) {
+  const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canUpdate = can("pipeline", "update");
+  const canCreate = can("pipeline", "create");
+  const canDelete = can("pipeline", "delete");
+
+  const [logOpen, setLogOpen] = useState(false);
+  const [editingLog, setEditingLog] = useState<InteractionLog | null>(null);
+  const [pendingLogDelete, setPendingLogDelete] = useState<InteractionLog | null>(null);
+  const [amount, setAmount] = useState("");
+  const [probability, setProbability] = useState("");
+
+  const investorId = deal?.investor.id ?? null;
+
+  // Reset the editable fields whenever a different deal is opened, so a stale
+  // draft never leaks onto the next investor.
+  useEffect(() => {
+    if (!deal) return;
+    setAmount(deal.expectedAmount == null ? "" : String(deal.expectedAmount));
+    setProbability(deal.probabilityPercentage == null ? "" : String(deal.probabilityPercentage));
+  }, [deal]);
+
+  const logsQuery = useQuery({
+    queryKey: ["interaction-logs", startupId, investorId],
+    queryFn: () =>
+      fetchAllPages((page, limit) =>
+        listLogsForInvestor(startupId, investorId!, { page, limit }),
+      ).then((data) => ({ data })),
+    enabled: investorId !== null,
+  });
+
+  // Logs carry only a createdBy user id; the members list puts a name on each.
+  const membersQuery = useQuery({
+    queryKey: ["team-members", startupId],
+    queryFn: () => listMembers(startupId),
+    enabled: investorId !== null,
+  });
+
+  const authorNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const member of membersQuery.data ?? []) {
+      if (member.user) {
+        map.set(member.user.id, `${member.user.firstName} ${member.user.lastName}`.trim());
+      }
+    }
+    return map;
+  }, [membersQuery.data]);
+
+  const logs = logsQuery.data?.data ?? [];
+
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ["interaction-logs", startupId] });
+    void queryClient.invalidateQueries({ queryKey: ["pipeline", startupId] });
+    void queryClient.invalidateQueries({ queryKey: ["investors", startupId] });
+  };
+
+  const dealMutation = useMutation({
+    mutationFn: (patch: Parameters<typeof updatePipelineEntry>[2]) =>
+      updatePipelineEntry(startupId, deal!.id, patch),
+    onSuccess: () => invalidate(),
+    onError: (err) => toast.error(logErrorMessage(err, "Could not update the deal")),
+  });
+
+  const saveLogMutation = useMutation({
+    mutationFn: (values: LogFormValues) =>
+      editingLog
+        ? updateInteractionLog(startupId, editingLog.id, values)
+        : createInteractionLog(startupId, {
+            investorId: investorId!,
+            // Attaching the pipeline entry keeps the log tied to this deal.
+            pipelineId: deal!.id,
+            ...values,
+          }),
+    onSuccess: () => {
+      toast.success(editingLog ? "Interaction updated" : "Interaction logged");
+      setLogOpen(false);
+      setEditingLog(null);
+      invalidate();
+    },
+    onError: (err) => toast.error(logErrorMessage(err, "Could not save the interaction")),
+  });
+
+  const completeMutation = useMutation({
+    mutationFn: (logId: string) => completeFollowup(startupId, logId),
+    onSuccess: () => {
+      toast.success("Follow-up marked done");
+      invalidate();
+    },
+    onError: (err) => toast.error(logErrorMessage(err, "Could not close the follow-up")),
+  });
+
+  const deleteLogMutation = useMutation({
+    mutationFn: (log: InteractionLog) => deleteInteractionLog(startupId, log.id),
+    onSuccess: () => {
+      toast.success("Interaction removed");
+      setPendingLogDelete(null);
+      invalidate();
+    },
+    onError: (err) => toast.error(logErrorMessage(err, "Could not remove the interaction")),
+  });
+
+  const commitAmount = () => {
+    if (!deal || !canUpdate) return;
+    const trimmed = amount.trim();
+    const next = trimmed === "" ? null : Number(trimmed);
+    if (next !== null && (Number.isNaN(next) || next < 0)) {
+      toast.error("Expected amount must be a positive number");
+      setAmount(deal.expectedAmount == null ? "" : String(deal.expectedAmount));
+      return;
+    }
+    if (next === (deal.expectedAmount ?? null)) return;
+    dealMutation.mutate({ expectedAmount: next });
+  };
+
+  const commitProbability = () => {
+    if (!deal || !canUpdate) return;
+    const trimmed = probability.trim();
+    const next = trimmed === "" ? null : Number(trimmed);
+    if (next !== null && (Number.isNaN(next) || next < 0 || next > 100)) {
+      toast.error("Probability must be between 0 and 100");
+      setProbability(deal.probabilityPercentage == null ? "" : String(deal.probabilityPercentage));
+      return;
+    }
+    if (next === (deal.probabilityPercentage ?? null)) return;
+    dealMutation.mutate({ probabilityPercentage: next });
+  };
+
+  const moveToStage = (stage: PipelineStageId) => {
+    if (!deal || !canUpdate || stage === deal.stage) return;
+    const nextProbability = DEFAULT_PROBABILITY_BY_STAGE[stage];
+    setProbability(String(nextProbability));
+    dealMutation.mutate({ stage, probabilityPercentage: nextProbability });
+  };
+
+  const currentIndex = deal ? PROGRESSION.findIndex((stage) => stage.id === deal.stage) : -1;
+  const investor = deal?.investor;
+
+  const facts = deal
+    ? [
+        {
+          label: "Type",
+          value: investor?.investorType
+            ? INVESTOR_TYPE_LABELS[investor.investorType as InvestorType]
+            : "—",
+        },
+        { label: "Sector", value: investor?.sectorFocus ?? "—" },
+        { label: "Writes at", value: investor?.investmentStagePreference ?? "—" },
+        { label: "Source", value: investor?.source ?? "—" },
+        { label: "Added", value: formatDateTime(deal.createdAt) },
+        {
+          label: "Last touch",
+          value: signals.lastTouch ? formatDaysAgo(signals.daysQuiet) : "Never",
+        },
+        { label: "In stage", value: formatDuration(signals.daysInStage) },
+      ]
+    : [];
+
+  const weighted =
+    deal && deal.expectedAmount != null
+      ? deal.expectedAmount * ((deal.probabilityPercentage ?? 0) / 100)
+      : null;
+
+  return (
+    <>
+      <Dialog open={deal !== null} onOpenChange={onOpenChange}>
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+          {deal && investor && (
+            <>
+              <DialogHeader>
+                <div className="flex items-start gap-3">
+                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary/15 font-display text-sm font-semibold text-primary">
+                    {getInitials(investor.fullName)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <DialogTitle className="truncate">{investor.fullName}</DialogTitle>
+                    <DialogDescription className="truncate">
+                      {investor.ventureFirm ?? "Independent"}
+                      {investor.email ? ` · ${investor.email}` : ""}
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {investor.email && (
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={`mailto:${investor.email}`}>
+                      <Mail className="h-3.5 w-3.5" /> Email
+                    </a>
+                  </Button>
+                )}
+                {investor.linkedinUrl && (
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={investor.linkedinUrl} target="_blank" rel="noreferrer">
+                      <Linkedin className="h-3.5 w-3.5" /> LinkedIn
+                    </a>
+                  </Button>
+                )}
+                {canCreate && (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setEditingLog(null);
+                      setLogOpen(true);
+                    }}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Log interaction
+                  </Button>
+                )}
+                {signals.nextFollowup && (
+                  <div className="ml-auto flex items-center gap-1.5">
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs",
+                        signals.followup === "overdue"
+                          ? "bg-destructive/15 text-destructive"
+                          : signals.followup === "today"
+                            ? "bg-warning/15 text-warning"
+                            : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      <CalendarClock className="h-3.5 w-3.5" />
+                      Follow up {formatDateTime(signals.nextFollowup)}
+                    </span>
+                    {canUpdate && signals.followupLogId && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={completeMutation.isPending}
+                        onClick={() => completeMutation.mutate(signals.followupLogId!)}
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                        {completeMutation.isPending ? "Saving…" : "Mark done"}
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <section aria-label="Deal stage" className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="font-display text-sm font-semibold">Stage</h3>
+                  {canUpdate && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={deal.stage === "passed" ? "outline" : "ghost"}
+                      className={cn(deal.stage !== "passed" && "text-muted-foreground")}
+                      onClick={() => moveToStage(deal.stage === "passed" ? "sourced" : "passed")}
+                    >
+                      {deal.stage === "passed" ? "Reopen deal" : "Mark as passed"}
+                    </Button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {PROGRESSION.map((stage, index) => {
+                    const isCurrent = stage.id === deal.stage;
+                    const isDone = currentIndex >= 0 && index < currentIndex;
+                    return (
+                      <button
+                        key={stage.id}
+                        type="button"
+                        disabled={!canUpdate || dealMutation.isPending}
+                        onClick={() => moveToStage(stage.id)}
+                        aria-current={isCurrent ? "step" : undefined}
+                        className={cn(
+                          "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors",
+                          isCurrent
+                            ? "border-primary bg-primary/10 font-medium text-foreground"
+                            : isDone
+                              ? "border-border/70 bg-surface/60 text-muted-foreground"
+                              : "border-dashed border-border/70 text-muted-foreground",
+                          canUpdate && !isCurrent && "hover:border-primary/50 hover:text-foreground",
+                          !canUpdate && "cursor-default",
+                        )}
+                      >
+                        <span className={cn("h-1.5 w-1.5 rounded-full", stage.dotClass)} />
+                        {stage.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {deal.stage === "passed" && (
+                  <p className="text-xs text-destructive">
+                    This investor passed. Reopening drops them back to Sourced.
+                  </p>
+                )}
+              </section>
+
+              <section aria-label="Deal economics" className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="deal-amount">Expected amount</Label>
+                  <Input
+                    id="deal-amount"
+                    type="number"
+                    min={0}
+                    step={1000}
+                    placeholder="250000"
+                    disabled={!canUpdate}
+                    value={amount}
+                    onChange={(event) => setAmount(event.target.value)}
+                    onBlur={commitAmount}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="deal-probability">Probability %</Label>
+                  <Input
+                    id="deal-probability"
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={5}
+                    disabled={!canUpdate}
+                    value={probability}
+                    onChange={(event) => setProbability(event.target.value)}
+                    onBlur={commitProbability}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <span className="text-sm font-medium">Weighted</span>
+                  <div className="flex h-9 items-center rounded-md border border-border/70 bg-surface/50 px-3 font-mono text-sm tabular-nums text-muted-foreground">
+                    {weighted == null ? "—" : formatCompactUsd(Math.round(weighted))}
+                  </div>
+                </div>
+              </section>
+
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-border/70 bg-surface/50 p-3 text-sm sm:grid-cols-3">
+                {facts.map((fact) => (
+                  <div key={fact.label} className="min-w-0">
+                    <dt className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                      {fact.label}
+                    </dt>
+                    <dd className="truncate text-foreground">{fact.value}</dd>
+                  </div>
+                ))}
+              </dl>
+
+              {investor.notes && (
+                <p className="whitespace-pre-wrap rounded-xl border border-border/70 bg-surface/50 p-3 text-sm text-muted-foreground">
+                  {investor.notes}
+                </p>
+              )}
+
+              <div>
+                <h3 className="mb-2 font-display text-sm font-semibold">Interaction history</h3>
+                <div className="scrollbar-slim max-h-[36vh] overflow-y-auto pr-1">
+                  <InteractionTimeline
+                    logs={logs}
+                    authorNames={authorNames}
+                    isLoading={logsQuery.isPending}
+                    onEdit={(log) => {
+                      setEditingLog(log);
+                      setLogOpen(true);
+                    }}
+                    onDelete={setPendingLogDelete}
+                  />
+                </div>
+              </div>
+
+              {canDelete && (
+                <DialogFooter className="sm:justify-start">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => onRemove(deal)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Remove from pipeline
+                  </Button>
+                </DialogFooter>
+              )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <LogInteractionDialog
+        open={logOpen}
+        onOpenChange={(open) => {
+          setLogOpen(open);
+          if (!open) setEditingLog(null);
+        }}
+        investorName={investor?.fullName ?? ""}
+        log={editingLog}
+        isSubmitting={saveLogMutation.isPending}
+        onSubmit={(values) => saveLogMutation.mutate(values)}
+      />
+
+      <Dialog
+        open={pendingLogDelete !== null}
+        onOpenChange={(open) => !open && setPendingLogDelete(null)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Remove this interaction?</DialogTitle>
+            <DialogDescription>
+              The entry is deleted permanently, along with any follow-up date it carried.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setPendingLogDelete(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleteLogMutation.isPending}
+              onClick={() => pendingLogDelete && deleteLogMutation.mutate(pendingLogDelete)}
+            >
+              {deleteLogMutation.isPending ? "Removing…" : "Remove interaction"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}

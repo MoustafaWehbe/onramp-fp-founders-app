@@ -25,8 +25,39 @@ export type PipelineEntry = {
   stage: PipelineStageId;
   expectedAmount: number | null;
   probabilityPercentage: number | null;
+  /**
+   * When the deal last moved stage. Distinct from updatedAt, which also moves
+   * when the amount or probability is edited — so only this can measure how
+   * long a deal has been sitting where it is.
+   */
+  stageChangedAt: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type PipelineAnalytics = {
+  totalDeals: number;
+  funnel: {
+    stage: PipelineStageId;
+    current: number;
+    currentValue: number;
+    everReached: number;
+    /** Median length of finished visits; null when nothing has left the stage. */
+    medianDaysInStage: number | null;
+  }[];
+  conversion: {
+    fromStage: PipelineStageId;
+    toStage: PipelineStageId;
+    reached: number;
+    advanced: number;
+    rate: number | null;
+  }[];
+  outcomes: {
+    open: number;
+    committed: number;
+    passed: number;
+    winRate: number | null;
+  };
 };
 
 export type PaginationMeta = {
@@ -75,6 +106,18 @@ export async function updatePipelineEntry(
   const { data } = await apiClient.patch<{ data: PipelineEntry }>(
     `/startups/${startupId}/pipeline/${pipelineId}`,
     body,
+  );
+  return data.data;
+}
+
+/**
+ * Funnel, conversion and stage velocity, computed server-side from the deal's
+ * stage history rather than from the current board — a deal now marked passed
+ * still counts toward every stage it once reached.
+ */
+export async function getPipelineAnalytics(startupId: string) {
+  const { data } = await apiClient.get<{ data: PipelineAnalytics }>(
+    `/startups/${startupId}/pipeline/analytics`,
   );
   return data.data;
 }

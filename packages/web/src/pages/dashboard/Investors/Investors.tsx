@@ -34,7 +34,7 @@ import { mapContactToRow, type InvestorRow } from "./investor-types";
 import { InvestorsTable } from "./InvestorsTable";
 import { InvestorsToolbar, type InvestorFilters } from "./InvestorsToolbar";
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 10;
 const emptyFilters: InvestorFilters = { stage: null, investorType: null };
 
 const TABS: { id: Engagement; label: string; blurb: string }[] = [

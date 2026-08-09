@@ -119,6 +119,16 @@
     background: transparent;
   }
 
+  /* Fully hidden scrollbar — the element still scrolls, nothing is drawn for it. */
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
   .glow-orange {
     @apply shadow-[0_0_0_1px_rgba(253,121,51,0.3),0_8px_32px_-8px_rgba(253,121,51,0.4)];
   }

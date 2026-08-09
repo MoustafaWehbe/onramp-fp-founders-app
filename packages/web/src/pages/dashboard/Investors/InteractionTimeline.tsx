@@ -1,5 +1,6 @@
 import {
   CalendarClock,
+  CheckCircle2,
   Mail,
   MessageSquare,
   Phone,
@@ -101,6 +102,7 @@ export function InteractionTimeline({
       {logs.map((log) => {
         const Icon = TYPE_ICONS[log.type] ?? MessageSquare;
         const author = authorNames.get(log.createdBy) ?? "A teammate";
+        const followupDone = log.followupCompletedAt !== null;
         const followupUpcoming =
           log.nextFollowupDate !== null && new Date(log.nextFollowupDate).getTime() > now;
 
@@ -170,13 +172,21 @@ export function InteractionTimeline({
                 <div
                   className={cn(
                     "mt-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs",
-                    followupUpcoming
-                      ? "bg-warning/15 text-warning"
-                      : "bg-muted text-muted-foreground",
+                    followupDone
+                      ? "bg-success/15 text-success"
+                      : followupUpcoming
+                        ? "bg-warning/15 text-warning"
+                        : "bg-destructive/15 text-destructive",
                   )}
                 >
-                  <CalendarClock className="h-3.5 w-3.5" />
-                  {followupUpcoming ? "Follow up" : "Follow-up was"} {formatWhen(log.nextFollowupDate)}
+                  {followupDone ? (
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                  ) : (
+                    <CalendarClock className="h-3.5 w-3.5" />
+                  )}
+                  {followupDone
+                    ? `Followed up · was due ${formatWhen(log.nextFollowupDate)}`
+                    : `${followupUpcoming ? "Follow up" : "Overdue since"} ${formatWhen(log.nextFollowupDate)}`}
                 </div>
               )}
             </div>

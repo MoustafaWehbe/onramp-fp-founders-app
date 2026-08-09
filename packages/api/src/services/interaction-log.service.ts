@@ -17,6 +17,7 @@ const LOG_SELECT = {
   description: true,
   interactionDate: true,
   nextFollowupDate: true,
+  followupCompletedAt: true,
   createdAt: true,
 } as const;
 
@@ -30,6 +31,7 @@ type LogRow = {
   description: string | null;
   interactionDate: Date | null;
   nextFollowupDate: Date | null;
+  followupCompletedAt: Date | null;
   createdAt: Date;
 };
 
@@ -44,6 +46,7 @@ function serializeLog(row: LogRow) {
     description: row.description,
     interactionDate: row.interactionDate,
     nextFollowupDate: row.nextFollowupDate,
+    followupCompletedAt: row.followupCompletedAt,
     createdAt: row.createdAt,
   };
 }
@@ -84,6 +87,35 @@ export class InteractionLogService {
     }
   }
 
+  /**
+   * Recording an interaction is how a follow-up actually gets done — founders
+   * log the call, they don't tick a box. So a new log closes that contact's
+   * outstanding follow-ups that were due on or before it.
+   *
+   * Later follow-ups survive: a note logged today must not clear a reminder
+   * you deliberately set for next month. The new log is excluded so a log that
+   * sets a backdated follow-up doesn't immediately close its own.
+   */
+  private async completeFollowupsSatisfiedBy(
+    startupInvestorId: string,
+    newLogId: string,
+    interactionDate: Date | null,
+  ): Promise<number> {
+    const satisfiedThrough = interactionDate ?? new Date();
+
+    const { count } = await prisma.interactionLog.updateMany({
+      where: {
+        startupInvestorId,
+        id: { not: newLogId },
+        followupCompletedAt: null,
+        nextFollowupDate: { not: null, lte: satisfiedThrough },
+      },
+      data: { followupCompletedAt: satisfiedThrough },
+    });
+
+    return count;
+  }
+
   async createLog(startupId: string, input: CreateInteractionLogInput, userId: string) {
     const contactId = await this.resolveContact(startupId, input.investorId);
 
@@ -105,6 +137,9 @@ export class InteractionLogService {
         },
         select: LOG_SELECT,
       });
+
+      await this.completeFollowupsSatisfiedBy(contactId, log.id, log.interactionDate);
+
       return { data: serializeLog(log) };
     } catch (err) {
       // The composite FK ( [pipelineId, startupInvestorId] ) enforces pipeline-contact
@@ -200,6 +235,12 @@ export class InteractionLogService {
           ...(input.description !== undefined && { description: input.description }),
           ...(input.nextFollowupDate !== undefined && {
             nextFollowupDate: input.nextFollowupDate,
+            // Rescheduling reopens the follow-up: the new date is the live one,
+            // so a stale completion must not keep it hidden.
+            ...(input.followupCompletedAt === undefined && { followupCompletedAt: null }),
+          }),
+          ...(input.followupCompletedAt !== undefined && {
+            followupCompletedAt: input.followupCompletedAt,
           }),
         },
         select: LOG_SELECT,

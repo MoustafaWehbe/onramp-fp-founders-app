@@ -22,6 +22,12 @@ export type InteractionLog = {
   description: string | null;
   interactionDate: string | null;
   nextFollowupDate: string | null;
+  /**
+   * Null while the follow-up is still outstanding. The API sets it when the
+   * follow-up is marked done, and automatically when a later interaction is
+   * logged for the same contact that satisfies it.
+   */
+  followupCompletedAt: string | null;
   createdAt: string;
 };
 
@@ -43,7 +49,22 @@ export type CreateInteractionLogInput = {
   nextFollowupDate?: string | null;
 };
 
-export type UpdateInteractionLogInput = Partial<Omit<CreateInteractionLogInput, "investorId">>;
+export type UpdateInteractionLogInput = Partial<Omit<CreateInteractionLogInput, "investorId">> & {
+  /** Send a timestamp to mark the follow-up done, or null to reopen it. */
+  followupCompletedAt?: string | null;
+};
+
+/**
+ * Closes an outstanding follow-up when there was nothing to log — you chased
+ * them and got nothing back, or the step no longer applies. When something did
+ * happen, log the interaction instead: the API closes the follow-ups it
+ * satisfies on its own.
+ */
+export async function completeFollowup(startupId: string, logId: string) {
+  return updateInteractionLog(startupId, logId, {
+    followupCompletedAt: new Date().toISOString(),
+  });
+}
 
 /** Newest first, across every contact in the startup. */
 export async function listInteractionLogs(

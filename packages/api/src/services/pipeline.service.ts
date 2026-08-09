@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
+import { PIPELINE_STAGES } from "../config/crm";
 import { createError } from "../utils/errors";
 import type {
   CreatePipelineEntryInput,
@@ -30,6 +31,7 @@ const ENTRY_SELECT = {
   stage: true,
   expectedAmount: true,
   probabilityPercentage: true,
+  stageChangedAt: true,
   createdAt: true,
   updatedAt: true,
   startupInvestor: { select: CONTACT_SELECT },
@@ -42,6 +44,7 @@ type EntryRow = {
   stage: string;
   expectedAmount: Prisma.Decimal | null;
   probabilityPercentage: number | null;
+  stageChangedAt: Date;
   createdAt: Date;
   updatedAt: Date;
   startupInvestor: {
@@ -71,13 +74,24 @@ function serializeEntry(entry: EntryRow) {
     stage: entry.stage,
     expectedAmount: entry.expectedAmount === null ? null : Number(entry.expectedAmount),
     probabilityPercentage: entry.probabilityPercentage,
+    stageChangedAt: entry.stageChangedAt,
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
   };
 }
 
+/** Median of a sample, rounded to one decimal. Null for an empty sample. */
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const value =
+    sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  return Math.round(value * 10) / 10;
+}
+
 export class PipelineService {
-  async createEntry(startupId: string, input: CreatePipelineEntryInput) {
+  async createEntry(startupId: string, input: CreatePipelineEntryInput, userId?: string) {
     const contact = await prisma.startupInvestor.findUnique({
       where: { startupId_id: { startupId, id: input.investorId } },
       select: { id: true },
@@ -85,18 +99,37 @@ export class PipelineService {
     if (!contact) throw createError("Investor contact not found", 404, "INVESTOR_NOT_FOUND");
 
     try {
-      const entry = await prisma.pipeline.create({
-        data: {
-          startupId,
-          startupInvestorId: input.investorId,
-          stage: input.stage,
-          ...(input.expectedAmount !== undefined && { expectedAmount: input.expectedAmount }),
-          ...(input.probabilityPercentage !== undefined && {
-            probabilityPercentage: input.probabilityPercentage,
-          }),
-        },
-        select: ENTRY_SELECT,
+      // The entry and its opening history row must land together, or analytics
+      // silently under-counts every deal whose event write failed.
+      const entry = await prisma.$transaction(async (tx) => {
+        const created = await tx.pipeline.create({
+          data: {
+            startupId,
+            startupInvestorId: input.investorId,
+            stage: input.stage,
+            stageChangedAt: new Date(),
+            ...(input.expectedAmount !== undefined && { expectedAmount: input.expectedAmount }),
+            ...(input.probabilityPercentage !== undefined && {
+              probabilityPercentage: input.probabilityPercentage,
+            }),
+          },
+          select: ENTRY_SELECT,
+        });
+
+        await tx.pipelineStageEvent.create({
+          data: {
+            startupId,
+            pipelineId: created.id,
+            fromStage: null,
+            toStage: created.stage,
+            changedBy: userId ?? null,
+            createdAt: created.stageChangedAt,
+          },
+        });
+
+        return created;
       });
+
       return serializeEntry(entry);
     } catch (err) {
       throw this.translateDuplicatePipeline(err);
@@ -142,18 +175,54 @@ export class PipelineService {
     return serializeEntry(entry);
   }
 
-  async updateEntry(startupId: string, pipelineId: string, input: UpdatePipelineEntryInput) {
+  async updateEntry(
+    startupId: string,
+    pipelineId: string,
+    input: UpdatePipelineEntryInput,
+    userId?: string,
+  ) {
     const existing = await prisma.pipeline.findUnique({
       where: { startupId_id: { startupId, id: pipelineId } },
-      select: { id: true },
+      select: { id: true, stage: true },
     });
     if (!existing) throw createError("Pipeline entry not found", 404, "PIPELINE_NOT_FOUND");
 
-    const entry = await prisma.pipeline.update({
-      where: { id: pipelineId },
-      data: input,
-      select: ENTRY_SELECT,
+    // Editing an amount is not a stage move; only a real transition advances the
+    // clock and appends history.
+    const movedTo =
+      input.stage !== undefined && input.stage !== existing.stage ? input.stage : null;
+
+    if (movedTo === null) {
+      const entry = await prisma.pipeline.update({
+        where: { id: pipelineId },
+        data: input,
+        select: ENTRY_SELECT,
+      });
+      return serializeEntry(entry);
+    }
+
+    const changedAt = new Date();
+    const entry = await prisma.$transaction(async (tx) => {
+      const updated = await tx.pipeline.update({
+        where: { id: pipelineId },
+        data: { ...input, stageChangedAt: changedAt },
+        select: ENTRY_SELECT,
+      });
+
+      await tx.pipelineStageEvent.create({
+        data: {
+          startupId,
+          pipelineId,
+          fromStage: existing.stage,
+          toStage: movedTo,
+          changedBy: userId ?? null,
+          createdAt: changedAt,
+        },
+      });
+
+      return updated;
     });
+
     return serializeEntry(entry);
   }
 
@@ -177,6 +246,136 @@ export class PipelineService {
     }
 
     await prisma.pipeline.delete({ where: { id: pipelineId } });
+  }
+
+  /**
+   * Funnel, conversion and velocity, computed from the append-only stage
+   * history rather than from current state. Current state alone cannot tell you
+   * that a deal now marked "passed" once reached diligence, and deals can be
+   * added at any stage — so a snapshot would invent transitions.
+   *
+   * Deals that predate the history table contribute a single "joined" event
+   * from the backfill, so they count toward funnel reach but show no movement
+   * until they are next touched.
+   */
+  async getAnalytics(startupId: string) {
+    const [entries, events] = await Promise.all([
+      prisma.pipeline.findMany({
+        where: { startupId },
+        select: { id: true, stage: true, expectedAmount: true, stageChangedAt: true },
+      }),
+      prisma.pipelineStageEvent.findMany({
+        where: { startupId },
+        orderBy: { createdAt: "asc" },
+        select: { pipelineId: true, toStage: true, createdAt: true },
+      }),
+    ]);
+
+    const progression = PIPELINE_STAGES.filter((stage) => stage !== "passed");
+    const rankOf = new Map<string, number>(progression.map((stage, index) => [stage, index]));
+
+    // Per deal: which stages it ever occupied, and how long each finished visit lasted.
+    const reachedByDeal = new Map<string, Set<string>>();
+    const eventsByDeal = new Map<string, { toStage: string; at: number }[]>();
+
+    for (const event of events) {
+      let reached = reachedByDeal.get(event.pipelineId);
+      if (!reached) {
+        reached = new Set<string>();
+        reachedByDeal.set(event.pipelineId, reached);
+      }
+      reached.add(event.toStage);
+
+      const timeline = eventsByDeal.get(event.pipelineId);
+      const point = { toStage: event.toStage, at: event.createdAt.getTime() };
+      if (timeline) timeline.push(point);
+      else eventsByDeal.set(event.pipelineId, [point]);
+    }
+
+    const durationsByStage = new Map<string, number[]>();
+    for (const timeline of eventsByDeal.values()) {
+      // The last entry is the stage the deal sits in now — that visit is still
+      // running, so it would drag every median down if counted.
+      for (let i = 0; i < timeline.length - 1; i += 1) {
+        const days = (timeline[i + 1].at - timeline[i].at) / (24 * 60 * 60 * 1000);
+        const bucket = durationsByStage.get(timeline[i].toStage);
+        if (bucket) bucket.push(days);
+        else durationsByStage.set(timeline[i].toStage, [days]);
+      }
+    }
+
+    const currentByStage = new Map<string, { count: number; value: number }>();
+    for (const entry of entries) {
+      const bucket = currentByStage.get(entry.stage) ?? { count: 0, value: 0 };
+      bucket.count += 1;
+      bucket.value += entry.expectedAmount === null ? 0 : Number(entry.expectedAmount);
+      currentByStage.set(entry.stage, bucket);
+    }
+
+    const everReached = (stage: string) => {
+      let count = 0;
+      for (const reached of reachedByDeal.values()) if (reached.has(stage)) count += 1;
+      return count;
+    };
+
+    /** Deals that reached `stage` and later occupied anything further along. */
+    const everAdvancedBeyond = (stage: string) => {
+      const rank = rankOf.get(stage);
+      if (rank === undefined) return 0;
+      let count = 0;
+      for (const reached of reachedByDeal.values()) {
+        if (!reached.has(stage)) continue;
+        for (const other of reached) {
+          const otherRank = rankOf.get(other);
+          if (otherRank !== undefined && otherRank > rank) {
+            count += 1;
+            break;
+          }
+        }
+      }
+      return count;
+    };
+
+    const funnel = PIPELINE_STAGES.map((stage) => {
+      const current = currentByStage.get(stage) ?? { count: 0, value: 0 };
+      return {
+        stage,
+        current: current.count,
+        currentValue: current.value,
+        everReached: everReached(stage),
+        medianDaysInStage: median(durationsByStage.get(stage) ?? []),
+      };
+    });
+
+    const conversion = progression.slice(0, -1).map((stage, index) => {
+      const reached = everReached(stage);
+      const advanced = everAdvancedBeyond(stage);
+      return {
+        fromStage: stage,
+        toStage: progression[index + 1],
+        reached,
+        advanced,
+        rate: reached === 0 ? null : advanced / reached,
+      };
+    });
+
+    const committed = currentByStage.get("committed")?.count ?? 0;
+    const passed = currentByStage.get("passed")?.count ?? 0;
+    const decided = committed + passed;
+
+    return {
+      data: {
+        totalDeals: entries.length,
+        funnel,
+        conversion,
+        outcomes: {
+          open: entries.length - decided,
+          committed,
+          passed,
+          winRate: decided === 0 ? null : committed / decided,
+        },
+      },
+    };
   }
 
   private translateDuplicatePipeline(err: unknown): unknown {

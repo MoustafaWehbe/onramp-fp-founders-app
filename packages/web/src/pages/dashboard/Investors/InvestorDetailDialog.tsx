@@ -22,6 +22,7 @@ import {
   type InteractionLog,
 } from "../../../lib/interaction-log-api";
 import { INVESTOR_TYPE_LABELS } from "../../../lib/investor-api";
+import { fetchAllPages } from "../../../lib/pagination";
 import { listMembers } from "../../../lib/team-api";
 import { cn, getInitials } from "../../../lib/utils";
 import { InteractionTimeline } from "./InteractionTimeline";
@@ -71,7 +72,10 @@ export function InvestorDetailDialog({
 
   const logsQuery = useQuery({
     queryKey: ["interaction-logs", startupId, investorId],
-    queryFn: () => listLogsForInvestor(startupId, investorId!, { page: 1, limit: 50 }),
+    queryFn: () =>
+      fetchAllPages((page, limit) =>
+        listLogsForInvestor(startupId, investorId!, { page, limit }),
+      ).then((data) => ({ data })),
     enabled: investorId !== null,
   });
 

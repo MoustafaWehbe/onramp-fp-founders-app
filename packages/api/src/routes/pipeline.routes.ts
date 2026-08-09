@@ -39,6 +39,17 @@ router.get(
   pipelineController.listEntries,
 );
 
+// GET /api/v1/startups/:startupId/pipeline/analytics — pipeline:read
+// Registered before /:pipelineId so "analytics" is never parsed as an id.
+router.get(
+  "/analytics",
+  authenticate,
+  validate(startupIdParamSchema, "params"),
+  requireMember,
+  requirePermission("pipeline", "read"),
+  pipelineController.getAnalytics,
+);
+
 // GET /api/v1/startups/:startupId/pipeline/:pipelineId — pipeline:read
 router.get(
   "/:pipelineId",

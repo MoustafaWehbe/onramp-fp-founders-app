@@ -1,11 +1,9 @@
-import { useCallback, useMemo, useState, type DragEvent } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { isAxiosError } from "axios";
-import { MoveRight, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { Button } from "../../../components/ui/button";
-import { Card } from "../../../components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -14,44 +12,59 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../../../components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../../../components/ui/dropdown-menu";
-import { Input } from "../../../components/ui/input";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { useActiveStartupId } from "../../../hooks/useWorkspace";
+import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
+import {
+  completeFollowup,
+  createInteractionLog,
+  listInteractionLogs,
+} from "../../../lib/interaction-log-api";
 import {
   DEFAULT_PROBABILITY_BY_STAGE,
   STAGES,
   type PipelineStageId,
 } from "../../../lib/mock-data";
-import { listInvestors } from "../../../lib/investor-api";
 import {
   createPipelineEntry,
+  deletePipelineEntry,
+  getPipelineAnalytics,
   listPipelineEntries,
   updatePipelineEntry,
   type PipelineEntry,
 } from "../../../lib/pipeline-api";
-import { cn, formatCompactUsd, getInitials } from "../../../lib/utils";
+import { fetchAllPages } from "../../../lib/pagination";
+import { cn, formatCompactUsd } from "../../../lib/utils";
+import { LogInteractionDialog, type LogFormValues } from "../Investors/LogInteractionDialog";
+import { AddDealDialog, type AddDealValues } from "./AddDealDialog";
+import { DealCard } from "./DealCard";
+import { DealDetailDialog } from "./DealDetailDialog";
+import { FocusList, type FocusItem } from "./FocusList";
+import { PipelineAnalyticsView } from "./PipelineAnalyticsView";
+import { PipelineSummary, type PipelineTotals } from "./PipelineSummary";
+import { PipelineToolbar, type PipelineView } from "./PipelineToolbar";
+import { ViewTabs, type PipelineViewId } from "./ViewTabs";
+import {
+  dealSignals,
+  EMPTY_SIGNALS,
+  groupLogsByInvestor,
+  type DealSignals,
+} from "./deal-signals";
 
-function apiErrorMessage(err: unknown, fallback: string) {
-  if (isAxiosError(err)) {
-    const status = err.response?.status;
-    const data = err.response?.data as { error?: string; message?: string; code?: string } | undefined;
-    if (status === 403) {
-      return "Forbidden — this account is not an active member of the current startup (or lacks pipeline permission).";
-    }
-    if (status === 401) {
-      return "Not signed in — please log in again.";
-    }
-    return data?.error ?? data?.message ?? fallback;
+const FORBIDDEN_HINT =
+  "This account is not an active member of the current startup, or lacks pipeline permission.";
+
+function pipelineErrorMessage(err: unknown, fallback: string): string {
+  switch (apiErrorCode(err)) {
+    case "ALREADY_IN_PIPELINE":
+      return "That investor is already on the board.";
+    case "PIPELINE_NOT_FOUND":
+      return "That deal no longer exists — a teammate may have removed it.";
+    case "HAS_DEPENDENTS":
+      return "This deal has commitments attached, so it can't be removed.";
+    default:
+      return apiErrorMessage(err, fallback, FORBIDDEN_HINT);
   }
-  return fallback;
 }
 
 export function Pipeline() {
@@ -61,60 +74,197 @@ export function Pipeline() {
   // Collaborators may add and move deals; viewers may only look.
   const canCreate = can("pipeline", "create");
   const canUpdate = can("pipeline", "update");
+
   const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
+  // dragover fires in a tight native loop that doesn't reliably wait for a
+  // React commit, so the id it reads must come from a ref, not state — a
+  // dragover right after dragstart can otherwise still see draggedDealId as
+  // null and skip computing the drop position entirely. State stays in sync
+  // for everything that renders (dimming the source card, filtering it out).
+  const draggedIdRef = useRef<string | null>(null);
   const [dropTarget, setDropTarget] = useState<PipelineStageId | null>(null);
+  // Where the dragged card would land if dropped right now — drives the
+  // insertion marker and the index handleDrop commits to.
+  const [dropPreview, setDropPreview] = useState<{ stage: PipelineStageId; index: number } | null>(
+    null,
+  );
   const [addOpen, setAddOpen] = useState(false);
-  const [selectedInvestorId, setSelectedInvestorId] = useState("");
-  const [newStage, setNewStage] = useState<PipelineStageId>("sourced");
-  const [newAmount, setNewAmount] = useState("");
+  const [openDealId, setOpenDealId] = useState<string | null>(null);
+  const [pendingRemove, setPendingRemove] = useState<PipelineEntry | null>(null);
+  const [activeView, setActiveView] = useState<PipelineViewId>("board");
+  // Logging straight from the focus list, without opening the deal first.
+  const [quickLogDeal, setQuickLogDeal] = useState<PipelineEntry | null>(null);
+  const [view, setView] = useState<PipelineView>({
+    search: "",
+    attentionOnly: false,
+    showPassed: true,
+  });
 
   const pipelineQuery = useQuery({
     queryKey: ["pipeline", startupId],
-    queryFn: () => listPipelineEntries(startupId, { page: 1, limit: 100 }),
+    // The whole board has to be on screen at once for a Kanban to make sense,
+    // so page through in batches of 10 rather than asking for everything at once.
+    queryFn: () =>
+      fetchAllPages((page, limit) => listPipelineEntries(startupId, { page, limit })).then(
+        (data) => ({ data }),
+      ),
   });
 
-  const contactsQuery = useQuery({
-    queryKey: ["investors", startupId, "for-pipeline"],
-    queryFn: () => listInvestors(startupId, { page: 1, limit: 100 }),
-    enabled: addOpen,
+  // The board's follow-up and last-touch signals come from interaction logs.
+  // One workspace-wide fetch beats a request per card; logs come back
+  // newest-first so the freshest signals always survive.
+  const logsQuery = useQuery({
+    queryKey: ["interaction-logs", startupId, "board"],
+    queryFn: () =>
+      fetchAllPages((page, limit) => listInteractionLogs(startupId, { page, limit })).then(
+        (data) => ({ data }),
+      ),
   });
 
-  const entries = pipelineQuery.data?.data ?? [];
+  const analyticsQuery = useQuery({
+    queryKey: ["pipeline-analytics", startupId],
+    queryFn: () => getPipelineAnalytics(startupId),
+    // Only fetched once the tab is actually opened; nothing else on the page
+    // needs it.
+    enabled: activeView === "analytics",
+  });
 
+  const entries = useMemo(() => pipelineQuery.data?.data ?? [], [pipelineQuery.data]);
+  const entryById = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries]);
+
+  // Card position within a column, independent of the server's sort order
+  // (updatedAt desc) — otherwise a moved card always jumps to the top on
+  // refetch instead of staying where it was dropped. Reconciled against the
+  // server on every fetch: gone ids drop out, new ones land at the end.
+  const [cardOrder, setCardOrder] = useState<string[]>([]);
+  useEffect(() => {
+    setCardOrder((prev) => {
+      const currentIds = new Set(entries.map((entry) => entry.id));
+      const kept = prev.filter((id) => currentIds.has(id));
+      const known = new Set(kept);
+      const appended = entries.filter((entry) => !known.has(entry.id)).map((entry) => entry.id);
+      return [...kept, ...appended];
+    });
+  }, [entries]);
+
+  const signalsByDeal = useMemo(() => {
+    const logsByInvestor = groupLogsByInvestor(logsQuery.data?.data ?? []);
+    const now = Date.now();
+    const map = new Map<string, DealSignals>();
+    for (const entry of entries) {
+      map.set(entry.id, dealSignals(entry, logsByInvestor.get(entry.investorId), now));
+    }
+    return map;
+  }, [entries, logsQuery.data]);
+
+  const signalsFor = useCallback(
+    (dealId: string | null) =>
+      (dealId === null ? undefined : signalsByDeal.get(dealId)) ?? EMPTY_SIGNALS,
+    [signalsByDeal],
+  );
+
+  const totals = useMemo<PipelineTotals>(() => {
+    let liveCount = 0;
+    let liveValue = 0;
+    let weightedValue = 0;
+    let committedCount = 0;
+    let committedValue = 0;
+    let attentionCount = 0;
+
+    for (const entry of entries) {
+      const amount = entry.expectedAmount ?? 0;
+      if (signalsByDeal.get(entry.id)?.needsAttention) attentionCount += 1;
+      if (entry.stage === "passed") continue;
+
+      liveCount += 1;
+      liveValue += amount;
+      weightedValue += amount * ((entry.probabilityPercentage ?? 0) / 100);
+      if (entry.stage === "committed") {
+        committedCount += 1;
+        committedValue += amount;
+      }
+    }
+
+    return {
+      liveCount,
+      liveValue,
+      weightedValue: Math.round(weightedValue),
+      committedCount,
+      committedValue,
+      attentionCount,
+    };
+  }, [entries, signalsByDeal]);
+
+  const visibleEntries = useMemo(() => {
+    const needle = view.search.trim().toLowerCase();
+    return entries.filter((entry) => {
+      if (!view.showPassed && entry.stage === "passed") return false;
+      if (view.attentionOnly && !signalsByDeal.get(entry.id)?.needsAttention) return false;
+      if (needle === "") return true;
+      const haystack = `${entry.investor.fullName} ${entry.investor.ventureFirm ?? ""}`;
+      return haystack.toLowerCase().includes(needle);
+    });
+  }, [entries, signalsByDeal, view]);
+
+  const visibleStages = useMemo(
+    () => (view.showPassed ? STAGES : STAGES.filter((stage) => stage.id !== "passed")),
+    [view.showPassed],
+  );
+
+  const visibleIds = useMemo(
+    () => new Set(visibleEntries.map((entry) => entry.id)),
+    [visibleEntries],
+  );
+
+  // Grouped by walking cardOrder (not visibleEntries) so manual positioning
+  // survives filtering, searching and refetches.
   const dealsByStage = useMemo(() => {
     const grouped = new Map<PipelineStageId, PipelineEntry[]>(
       STAGES.map((stage) => [stage.id, []]),
     );
-    for (const entry of entries) {
-      const bucket = grouped.get(entry.stage as PipelineStageId);
+    for (const id of cardOrder) {
+      if (!visibleIds.has(id)) continue;
+      const entry = entryById.get(id);
+      if (!entry) continue;
+      const bucket = grouped.get(entry.stage);
       if (bucket) bucket.push(entry);
       else grouped.get("sourced")?.push(entry);
     }
     return grouped;
-  }, [entries]);
+  }, [cardOrder, visibleIds, entryById]);
 
-  const availableContacts = useMemo(
-    () => (contactsQuery.data?.data ?? []).filter((contact) => !contact.pipeline),
-    [contactsQuery.data],
+  const openDeal = useMemo(
+    () => entries.find((entry) => entry.id === openDealId) ?? null,
+    [entries, openDealId],
   );
 
-  const selectedContact = availableContacts.find((c) => c.id === selectedInvestorId);
-  const selectedStage = STAGES.find((stage) => stage.id === newStage) ?? STAGES[0];
+  /** Overdue first, then longest-quiet — the order you'd actually work them. */
+  const focusItems = useMemo<FocusItem[]>(() => {
+    const rank: Record<string, number> = { overdue: 0, today: 1, upcoming: 2, none: 3 };
+    return entries
+      .map((deal) => ({ deal, signals: signalsFor(deal.id) }))
+      .filter((item) => item.signals.needsAttention)
+      .sort((a, b) => {
+        const byUrgency = rank[a.signals.followup] - rank[b.signals.followup];
+        if (byUrgency !== 0) return byUrgency;
+        return b.signals.daysQuiet - a.signals.daysQuiet;
+      });
+  }, [entries, signalsFor]);
 
   const invalidatePipeline = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["pipeline", startupId] });
     void queryClient.invalidateQueries({ queryKey: ["investors", startupId] });
+    void queryClient.invalidateQueries({ queryKey: ["pipeline-analytics", startupId] });
+  }, [queryClient, startupId]);
+
+  /** Follow-up state lives in the logs, so the board's signals must refetch too. */
+  const invalidateLogs = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ["interaction-logs", startupId] });
+    void queryClient.invalidateQueries({ queryKey: ["investors", startupId] });
   }, [queryClient, startupId]);
 
   const moveMutation = useMutation({
-    mutationFn: ({
-      pipelineId,
-      stage,
-    }: {
-      pipelineId: string;
-      stage: PipelineStageId;
-      previous?: PipelineEntry[];
-    }) =>
+    mutationFn: ({ pipelineId, stage }: { pipelineId: string; stage: PipelineStageId }) =>
       updatePipelineEntry(startupId, pipelineId, {
         stage,
         probabilityPercentage: DEFAULT_PROBABILITY_BY_STAGE[stage],
@@ -151,63 +301,174 @@ export function Pipeline() {
       if (context?.previous) {
         queryClient.setQueryData(["pipeline", startupId], context.previous);
       }
-      toast.error(apiErrorMessage(err, "Could not move deal"));
+      toast.error(pipelineErrorMessage(err, "Could not move deal"));
     },
     onSettled: () => {
       invalidatePipeline();
-      setDraggedDealId(null);
-      setDropTarget(null);
+      clearDragState();
     },
   });
 
   const createMutation = useMutation({
-    mutationFn: () => {
-      const amount = newAmount.trim() === "" ? undefined : Number(newAmount);
-      if (amount !== undefined && Number.isNaN(amount)) {
-        throw new Error("Expected amount must be a number");
-      }
-      return createPipelineEntry(startupId, {
-        investorId: selectedInvestorId,
-        stage: newStage,
-        expectedAmount: amount,
-        probabilityPercentage: DEFAULT_PROBABILITY_BY_STAGE[newStage],
-      });
-    },
+    mutationFn: (values: AddDealValues) =>
+      createPipelineEntry(startupId, {
+        investorId: values.investorId,
+        stage: values.stage,
+        expectedAmount: values.expectedAmount,
+        probabilityPercentage: DEFAULT_PROBABILITY_BY_STAGE[values.stage],
+      }),
     onSuccess: () => {
       toast.success("Added to pipeline");
       setAddOpen(false);
-      setSelectedInvestorId("");
-      setNewStage("sourced");
-      setNewAmount("");
       invalidatePipeline();
     },
-    onError: (err) => {
-      toast.error(apiErrorMessage(err, "Could not add to pipeline"));
-    },
+    onError: (err) => toast.error(pipelineErrorMessage(err, "Could not add to pipeline")),
   });
+
+  const removeMutation = useMutation({
+    mutationFn: (deal: PipelineEntry) => deletePipelineEntry(startupId, deal.id),
+    onSuccess: (_result, deal) => {
+      toast.success(`${deal.investor.fullName} removed from the pipeline`);
+      setPendingRemove(null);
+      setOpenDealId(null);
+      invalidatePipeline();
+    },
+    onError: (err) => toast.error(pipelineErrorMessage(err, "Could not remove the deal")),
+  });
+
+  const completeFollowupMutation = useMutation({
+    mutationFn: (logId: string) => completeFollowup(startupId, logId),
+    onSuccess: () => {
+      toast.success("Follow-up marked done");
+      invalidateLogs();
+    },
+    onError: (err) => toast.error(pipelineErrorMessage(err, "Could not close the follow-up")),
+  });
+
+  const quickLogMutation = useMutation({
+    mutationFn: (values: LogFormValues) =>
+      createInteractionLog(startupId, {
+        investorId: quickLogDeal!.investorId,
+        pipelineId: quickLogDeal!.id,
+        ...values,
+      }),
+    onSuccess: () => {
+      // The API closes whatever follow-ups this interaction satisfied, so the
+      // row usually leaves the focus list on its own.
+      toast.success("Interaction logged");
+      setQuickLogDeal(null);
+      invalidateLogs();
+    },
+    onError: (err) => toast.error(pipelineErrorMessage(err, "Could not save the interaction")),
+  });
+
+  /**
+   * Moves a deal within cardOrder, then persists a stage change if it crossed
+   * columns. targetIndex is measured against the target stage's own cards
+   * (the dragged one excluded), so it's the same index the drop preview shows.
+   */
+  const reorderDeal = useCallback(
+    (dealId: string, targetStage: PipelineStageId, targetIndex: number) => {
+      if (!canUpdate) return;
+      const source = entryById.get(dealId);
+      if (!source) return;
+
+      setCardOrder((prev) => {
+        const withoutDragged = prev.filter((id) => id !== dealId);
+        const stageOf = (id: string) => (id === dealId ? targetStage : entryById.get(id)?.stage);
+        const stageIds = withoutDragged.filter((id) => stageOf(id) === targetStage);
+        const clamped = Math.min(Math.max(targetIndex, 0), stageIds.length);
+        const beforeId = stageIds[clamped];
+        const insertAt = beforeId
+          ? withoutDragged.indexOf(beforeId)
+          : stageIds.length > 0
+            ? withoutDragged.indexOf(stageIds[stageIds.length - 1]) + 1
+            : withoutDragged.length;
+        const next = [...withoutDragged];
+        next.splice(insertAt, 0, dealId);
+        return next;
+      });
+
+      if (source.stage !== targetStage) {
+        moveMutation.mutate({ pipelineId: dealId, stage: targetStage });
+      }
+    },
+    [canUpdate, entryById, moveMutation],
+  );
 
   const moveDeal = useCallback(
     (pipelineId: string, stage: PipelineStageId) => {
-      if (!canUpdate) return;
-      const current = entries.find((entry) => entry.id === pipelineId);
+      const current = entryById.get(pipelineId);
       if (!current || current.stage === stage) return;
-      moveMutation.mutate({ pipelineId, stage });
+      // Triggered from the card's menu, not a drag — there's no drop
+      // position, so the deal goes to the end of its new column.
+      reorderDeal(pipelineId, stage, (dealsByStage.get(stage) ?? []).length);
     },
-    [canUpdate, entries, moveMutation],
+    [entryById, dealsByStage, reorderDeal],
   );
 
   const handleDragStart = (event: DragEvent<HTMLElement>, dealId: string) => {
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", dealId);
+    draggedIdRef.current = dealId;
     setDraggedDealId(dealId);
+  };
+
+  const clearDragState = () => {
+    draggedIdRef.current = null;
+    setDraggedDealId(null);
+    setDropTarget(null);
+    setDropPreview(null);
+  };
+
+  /**
+   * Finds the card nearest the pointer and whether it's above or below that
+   * card's midpoint, so the insertion marker — and the eventual drop — lands
+   * next to the cursor instead of always at the top of the column.
+   */
+  const handleColumnDragOver = (event: DragEvent<HTMLElement>, stageId: PipelineStageId) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDropTarget(stageId);
+
+    const draggedId = draggedIdRef.current;
+    if (!draggedId) return;
+
+    const cards = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>("[data-deal-card]"),
+    ).filter((el) => el.dataset.dealCard !== draggedId);
+
+    let index = cards.length;
+    for (let i = 0; i < cards.length; i += 1) {
+      const rect = cards[i].getBoundingClientRect();
+      if (event.clientY < rect.top + rect.height / 2) {
+        index = i;
+        break;
+      }
+    }
+
+    // Skip the state write once it already matches — dragover fires dozens of
+    // times a second, and a new object every time would re-render for no
+    // visible change.
+    setDropPreview((prev) =>
+      prev && prev.stage === stageId && prev.index === index ? prev : { stage: stageId, index },
+    );
   };
 
   const handleDrop = (event: DragEvent<HTMLElement>, stageId: PipelineStageId) => {
     event.preventDefault();
-    const dealId = event.dataTransfer.getData("text/plain") || draggedDealId;
-    if (!dealId) return;
-    moveDeal(dealId, stageId);
+    const dealId = event.dataTransfer.getData("text/plain") || draggedIdRef.current;
+    if (dealId) {
+      const index =
+        dropPreview?.stage === stageId
+          ? dropPreview.index
+          : (dealsByStage.get(stageId) ?? []).length;
+      reorderDeal(dealId, stageId, index);
+    }
+    clearDragState();
   };
+
+  const boardReady = !pipelineQuery.isLoading && !pipelineQuery.isError;
 
   return (
     <div className="space-y-6">
@@ -215,7 +476,7 @@ export function Pipeline() {
         title="Deal pipeline"
         description={
           canUpdate
-            ? "Drag investors through stages, or use a card's move menu."
+            ? "Open a card to log a call, set the next step, or move the deal along."
             : "A read-only view of where each investor stands."
         }
         actions={
@@ -236,30 +497,105 @@ export function Pipeline() {
 
       {pipelineQuery.isError && (
         <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-6 text-sm text-destructive">
-          <p>{apiErrorMessage(pipelineQuery.error, "Failed to load pipeline.")}</p>
+          <p>{pipelineErrorMessage(pipelineQuery.error, "Failed to load pipeline.")}</p>
           <div className="mt-3">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                void queryClient.invalidateQueries({ queryKey: ["pipeline", startupId] })
-              }
-            >
+            <Button size="sm" variant="outline" onClick={() => void pipelineQuery.refetch()}>
               Retry
             </Button>
           </div>
         </div>
       )}
 
-      {!pipelineQuery.isLoading && !pipelineQuery.isError && (
-        <div className="scrollbar-slim flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4">
-          {STAGES.map((stage) => {
+      {boardReady && entries.length > 0 && (
+        <>
+          <PipelineSummary
+            totals={totals}
+            attentionActive={view.attentionOnly}
+            onToggleAttention={() => {
+              // The tile is the shortcut into the focus list; on the board it
+              // just filters in place.
+              if (activeView === "board") {
+                setView((prev) => ({ ...prev, attentionOnly: !prev.attentionOnly }));
+              } else {
+                setActiveView("focus");
+              }
+            }}
+          />
+
+          <ViewTabs
+            value={activeView}
+            onChange={setActiveView}
+            focusCount={focusItems.length}
+          />
+        </>
+      )}
+
+      {boardReady && activeView === "focus" && (
+        <FocusList
+          items={focusItems}
+          canUpdate={canUpdate}
+          canCreate={canCreate}
+          completingLogId={
+            completeFollowupMutation.isPending
+              ? (completeFollowupMutation.variables ?? null)
+              : null
+          }
+          onOpen={(deal) => setOpenDealId(deal.id)}
+          onLog={setQuickLogDeal}
+          onMarkDone={(logId) => completeFollowupMutation.mutate(logId)}
+        />
+      )}
+
+      {boardReady && activeView === "analytics" && (
+        <>
+          {analyticsQuery.isPending && (
+            <div className="rounded-xl border border-border/70 bg-surface/50 px-4 py-10 text-center text-sm text-muted-foreground">
+              Crunching stage history…
+            </div>
+          )}
+          {analyticsQuery.isError && (
+            <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-6 text-sm text-destructive">
+              <p>{pipelineErrorMessage(analyticsQuery.error, "Failed to load analytics.")}</p>
+              <div className="mt-3">
+                <Button size="sm" variant="outline" onClick={() => void analyticsQuery.refetch()}>
+                  Retry
+                </Button>
+              </div>
+            </div>
+          )}
+          {analyticsQuery.data && <PipelineAnalyticsView analytics={analyticsQuery.data} />}
+        </>
+      )}
+
+      {boardReady && activeView === "board" && entries.length > 0 && (
+        <PipelineToolbar
+          view={view}
+          onChange={(key, value) => setView((prev) => ({ ...prev, [key]: value }))}
+          visibleCount={visibleEntries.length}
+          totalCount={entries.length}
+        />
+      )}
+
+      {boardReady && activeView === "board" && (
+        <div className="scrollbar-none flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1">
+          {visibleStages.map((stage) => {
             const stageDeals = dealsByStage.get(stage.id) ?? [];
             const weightedTotal = stageDeals.reduce((sum, deal) => {
               const amount = deal.expectedAmount ?? 0;
-              const probability = deal.probabilityPercentage ?? 0;
-              return sum + amount * (probability / 100);
+              return sum + amount * ((deal.probabilityPercentage ?? 0) / 100);
             }, 0);
+
+            // Lifted visually out of its own column while dragging, so the
+            // insertion marker's index lines up with what's actually on
+            // screen instead of double-counting the card being moved.
+            const displayDeals =
+              draggedDealId !== null
+                ? stageDeals.filter((deal) => deal.id !== draggedDealId)
+                : stageDeals;
+            const showMarkerAt =
+              draggedDealId !== null && dropPreview?.stage === stage.id
+                ? dropPreview.index
+                : null;
 
             return (
               <section
@@ -285,126 +621,50 @@ export function Pipeline() {
                       className="shrink-0 font-mono text-xs text-muted-foreground"
                       title="Probability-weighted forecast"
                     >
-                      {formatCompactUsd(weightedTotal)}
+                      {formatCompactUsd(Math.round(weightedTotal))}
                     </span>
                   )}
                 </div>
 
+                {/* Fixed height — about three cards — so no column ever grows
+                    past its neighbours; anything beyond that scrolls inside. */}
                 <div
                   className={cn(
-                    "min-h-[24rem] space-y-2 rounded-xl border border-border/70 bg-surface/50 p-2 transition-colors",
+                    "scrollbar-slim h-[26rem] space-y-2 overflow-y-auto rounded-xl border border-border/70 bg-surface/50 p-2 transition-colors",
                     dropTarget === stage.id && "border-primary/50 bg-primary/[0.04]",
                   )}
-                  onDragEnter={(event) => {
-                    event.preventDefault();
-                    setDropTarget(stage.id);
-                  }}
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = "move";
-                  }}
+                  onDragEnter={(event) => handleColumnDragOver(event, stage.id)}
+                  onDragOver={(event) => handleColumnDragOver(event, stage.id)}
                   onDragLeave={(event) => {
                     if (!event.currentTarget.contains(event.relatedTarget as Node)) {
                       setDropTarget(null);
+                      setDropPreview(null);
                     }
                   }}
                   onDrop={(event) => handleDrop(event, stage.id)}
                 >
-                  {stageDeals.map((deal) => {
-                    const investor = deal.investor;
-                    return (
-                      <Card
-                        key={deal.id}
-                        draggable={canUpdate}
+                  {showMarkerAt === 0 && <DropMarker />}
+                  {displayDeals.map((deal, index) => (
+                    <Fragment key={deal.id}>
+                      <DealCard
+                        deal={deal}
+                        signals={signalsFor(deal.id)}
+                        canUpdate={canUpdate}
+                        isDragging={draggedDealId === deal.id}
+                        onOpen={() => setOpenDealId(deal.id)}
+                        onMove={(target) => moveDeal(deal.id, target)}
                         onDragStart={(event) => handleDragStart(event, deal.id)}
-                        onDragEnd={() => {
-                          setDraggedDealId(null);
-                          setDropTarget(null);
-                        }}
-                        className={cn(
-                          "border-border/70 bg-card/95 p-3 shadow-sm transition-[border-color,opacity,transform] hover:-translate-y-0.5 hover:border-primary/40",
-                          canUpdate && "cursor-grab active:cursor-grabbing",
-                          draggedDealId === deal.id && "opacity-50",
-                        )}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/15 font-display text-[10px] font-semibold text-primary">
-                            {getInitials(investor.fullName)}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-medium text-foreground">
-                              {investor.fullName}
-                            </div>
-                            <div className="truncate text-xs text-muted-foreground">
-                              {investor.ventureFirm ?? "Independent"}
-                            </div>
-                          </div>
+                        onDragEnd={clearDragState}
+                      />
+                      {showMarkerAt === index + 1 && <DropMarker />}
+                    </Fragment>
+                  ))}
 
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className={cn(
-                                  "h-7 w-7 shrink-0 text-muted-foreground",
-                                  !canUpdate && "hidden",
-                                )}
-                                aria-label={`Move ${investor.fullName} to another stage`}
-                              >
-                                <MoveRight className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="min-w-48">
-                              <DropdownMenuLabel>Move to stage</DropdownMenuLabel>
-                              <DropdownMenuSeparator />
-                              {STAGES.map((target) => (
-                                <DropdownMenuItem
-                                  key={target.id}
-                                  disabled={target.id === deal.stage}
-                                  onSelect={() => moveDeal(deal.id, target.id)}
-                                >
-                                  <span
-                                    className={cn("mr-2 h-2 w-2 rounded-full", target.dotClass)}
-                                  />
-                                  {target.label}
-                                  {target.id === deal.stage && (
-                                    <span className="ml-auto text-xs text-muted-foreground">
-                                      Current
-                                    </span>
-                                  )}
-                                </DropdownMenuItem>
-                              ))}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-
-                        <div className="mt-3 flex items-center justify-between gap-2 text-xs">
-                          <span className="font-mono text-muted-foreground">
-                            {deal.expectedAmount != null
-                              ? formatCompactUsd(deal.expectedAmount)
-                              : "—"}
-                          </span>
-                          <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                            {deal.probabilityPercentage ?? 0}%
-                          </span>
-                        </div>
-                        <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-muted">
-                          <div
-                            className={cn(
-                              "h-full rounded-full transition-[width] duration-300",
-                              stage.id === "passed" ? "bg-destructive" : "bg-primary",
-                            )}
-                            style={{ width: `${deal.probabilityPercentage ?? 0}%` }}
-                          />
-                        </div>
-                      </Card>
-                    );
-                  })}
-
-                  {stageDeals.length === 0 && (
+                  {displayDeals.length === 0 && showMarkerAt === null && (
                     <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
-                      Drop an investor here
+                      {view.attentionOnly || view.search.trim() !== ""
+                        ? "Nothing matches here"
+                        : "Drop an investor here"}
                     </div>
                   )}
                 </div>
@@ -414,143 +674,67 @@ export function Pipeline() {
         </div>
       )}
 
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+      <DealDetailDialog
+        startupId={startupId}
+        deal={openDeal}
+        signals={signalsFor(openDealId)}
+        onOpenChange={(open) => !open && setOpenDealId(null)}
+        onRemove={setPendingRemove}
+      />
+
+      <LogInteractionDialog
+        open={quickLogDeal !== null}
+        onOpenChange={(open) => !open && setQuickLogDeal(null)}
+        investorName={quickLogDeal?.investor.fullName ?? ""}
+        isSubmitting={quickLogMutation.isPending}
+        onSubmit={(values) => quickLogMutation.mutate(values)}
+      />
+
+      <AddDealDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        startupId={startupId}
+        isSubmitting={createMutation.isPending}
+        onSubmit={(values) => createMutation.mutate(values)}
+      />
+
+      <Dialog
+        open={pendingRemove !== null}
+        onOpenChange={(open) => !open && setPendingRemove(null)}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Add to pipeline</DialogTitle>
+            <DialogTitle>Remove {pendingRemove?.investor.fullName} from the pipeline?</DialogTitle>
             <DialogDescription>
-              Choose a contact that is not already on the board, then pick a starting stage.
+              The contact stays in your investor directory along with everything you've logged —
+              only their place on this board is removed.
             </DialogDescription>
           </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Investor contact</div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-auto min-h-9 w-full justify-between px-3 py-2 text-left font-normal"
-                  >
-                    <span className="min-w-0 truncate">
-                      {selectedContact
-                        ? `${selectedContact.fullName}${
-                            selectedContact.ventureFirm
-                              ? ` — ${selectedContact.ventureFirm}`
-                              : ""
-                          }`
-                        : contactsQuery.isLoading
-                          ? "Loading contacts…"
-                          : "Select a contact"}
-                    </span>
-                    <MoveRight className="h-4 w-4 shrink-0 rotate-90 text-muted-foreground" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="start"
-                  className="w-[var(--radix-dropdown-menu-trigger-width)] max-h-64 overflow-y-auto"
-                >
-                  <DropdownMenuLabel>Available contacts</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {contactsQuery.isError && (
-                    <DropdownMenuItem disabled>
-                      Failed to load contacts — check you are signed in
-                    </DropdownMenuItem>
-                  )}
-                  {!contactsQuery.isLoading &&
-                    !contactsQuery.isError &&
-                    availableContacts.length === 0 && (
-                      <DropdownMenuItem disabled>
-                        Every contact already has a pipeline entry
-                      </DropdownMenuItem>
-                    )}
-                  {availableContacts.map((contact) => (
-                    <DropdownMenuItem
-                      key={contact.id}
-                      onSelect={() => setSelectedInvestorId(contact.id)}
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate font-medium">{contact.fullName}</div>
-                        <div className="truncate text-xs text-muted-foreground">
-                          {contact.ventureFirm ?? contact.email ?? "No firm"}
-                        </div>
-                      </div>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              {!contactsQuery.isLoading && availableContacts.length > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  {availableContacts.length} contact
-                  {availableContacts.length === 1 ? "" : "s"} ready to add
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Starting stage</div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-9 w-full justify-between px-3 font-normal"
-                  >
-                    <span className="flex items-center gap-2">
-                      <span className={cn("h-2 w-2 rounded-full", selectedStage.dotClass)} />
-                      {selectedStage.label}
-                    </span>
-                    <MoveRight className="h-4 w-4 shrink-0 rotate-90 text-muted-foreground" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="start"
-                  className="w-[var(--radix-dropdown-menu-trigger-width)]"
-                >
-                  {STAGES.map((stage) => (
-                    <DropdownMenuItem
-                      key={stage.id}
-                      onSelect={() => setNewStage(stage.id)}
-                    >
-                      <span className={cn("mr-2 h-2 w-2 rounded-full", stage.dotClass)} />
-                      {stage.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="pipeline-amount">
-                Expected amount (optional)
-              </label>
-              <Input
-                id="pipeline-amount"
-                type="number"
-                min={0}
-                step={1000}
-                placeholder="250000"
-                value={newAmount}
-                onChange={(event) => setNewAmount(event.target.value)}
-              />
-            </div>
-          </div>
-
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setAddOpen(false)}>
+            <Button type="button" variant="ghost" onClick={() => setPendingRemove(null)}>
               Cancel
             </Button>
             <Button
               type="button"
-              disabled={!selectedInvestorId || createMutation.isPending}
-              onClick={() => createMutation.mutate()}
+              variant="destructive"
+              disabled={removeMutation.isPending}
+              onClick={() => pendingRemove && removeMutation.mutate(pendingRemove)}
             >
-              {createMutation.isPending ? "Adding…" : "Add to pipeline"}
+              {removeMutation.isPending ? "Removing…" : "Remove from pipeline"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/** The glowing line that shows exactly where a dragged card will land. */
+function DropMarker() {
+  return (
+    <div
+      aria-hidden
+      className="h-1 shrink-0 rounded-full bg-primary shadow-[0_0_10px_2px_hsl(var(--primary)/0.55)]"
+    />
   );
 }

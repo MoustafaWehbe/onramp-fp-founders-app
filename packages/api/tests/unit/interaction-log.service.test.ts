@@ -15,6 +15,7 @@ jest.mock("../../src/db/prisma", () => ({
       findMany: jest.fn(),
       count: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
       delete: jest.fn(),
     },
   },
@@ -38,6 +39,9 @@ const DEFAULT_QUERY = { page: 1, limit: 20 };
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Creating a log closes the follow-ups it satisfies; tests that don't care
+  // about that still need the sweep to resolve.
+  (mockPrisma.interactionLog.updateMany as jest.Mock).mockResolvedValue({ count: 0 });
 });
 
 describe("InteractionLogService.createLog", () => {
@@ -270,6 +274,119 @@ describe("InteractionLogService.getLog", () => {
       statusCode: 404,
       code: "LOG_NOT_FOUND",
     });
+  });
+});
+
+describe("InteractionLogService follow-up completion", () => {
+  const LOGGED_AT = new Date("2026-08-09T10:00:00.000Z");
+
+  function createdLog(overrides: Record<string, unknown> = {}) {
+    return {
+      id: LOG_ID,
+      startupInvestorId: CONTACT_ID,
+      pipelineId: null,
+      createdBy: USER_ID,
+      type: "call",
+      subject: null,
+      description: null,
+      interactionDate: LOGGED_AT,
+      nextFollowupDate: null,
+      followupCompletedAt: null,
+      createdAt: LOGGED_AT,
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    (mockPrisma.startupInvestor.findUnique as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
+    (mockPrisma.interactionLog.create as jest.Mock).mockResolvedValue(createdLog());
+  });
+
+  it("closes only the follow-ups the new interaction actually satisfies", async () => {
+    await service.createLog(
+      STARTUP_ID,
+      { investorId: CONTACT_ID, type: "call", interactionDate: LOGGED_AT } as never,
+      USER_ID,
+    );
+
+    expect(mockPrisma.interactionLog.updateMany).toHaveBeenCalledWith({
+      where: {
+        startupInvestorId: CONTACT_ID,
+        id: { not: LOG_ID },
+        followupCompletedAt: null,
+        // A reminder set for next month must survive a note logged today.
+        nextFollowupDate: { not: null, lte: LOGGED_AT },
+      },
+      data: { followupCompletedAt: LOGGED_AT },
+    });
+  });
+
+  it("never closes the follow-up the new log itself is setting", async () => {
+    await service.createLog(
+      STARTUP_ID,
+      {
+        investorId: CONTACT_ID,
+        type: "call",
+        interactionDate: LOGGED_AT,
+        nextFollowupDate: new Date("2026-08-01T10:00:00.000Z"),
+      } as never,
+      USER_ID,
+    );
+
+    const [{ where }] = (mockPrisma.interactionLog.updateMany as jest.Mock).mock.calls[0];
+    expect(where.id).toEqual({ not: LOG_ID });
+  });
+
+  it("exposes followupCompletedAt on the serialized log", async () => {
+    const completedAt = new Date("2026-08-09T12:00:00.000Z");
+    (mockPrisma.interactionLog.create as jest.Mock).mockResolvedValue(
+      createdLog({ followupCompletedAt: completedAt }),
+    );
+
+    const result = await service.createLog(
+      STARTUP_ID,
+      { investorId: CONTACT_ID, type: "call", interactionDate: LOGGED_AT } as never,
+      USER_ID,
+    );
+
+    expect(result.data.followupCompletedAt).toEqual(completedAt);
+  });
+
+  it("reopens a follow-up when it is rescheduled", async () => {
+    (mockPrisma.interactionLog.findUnique as jest.Mock).mockResolvedValue({
+      id: LOG_ID,
+      startupInvestorId: CONTACT_ID,
+      startupInvestor: { startupId: STARTUP_ID },
+    });
+    (mockPrisma.interactionLog.update as jest.Mock).mockResolvedValue(createdLog());
+
+    await service.updateLog(STARTUP_ID, LOG_ID, {
+      nextFollowupDate: new Date("2026-09-01T10:00:00.000Z"),
+    } as never);
+
+    expect(mockPrisma.interactionLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ followupCompletedAt: null }),
+      }),
+    );
+  });
+
+  it("marks a follow-up done without touching its date", async () => {
+    const doneAt = new Date("2026-08-09T15:00:00.000Z");
+    (mockPrisma.interactionLog.findUnique as jest.Mock).mockResolvedValue({
+      id: LOG_ID,
+      startupInvestorId: CONTACT_ID,
+      startupInvestor: { startupId: STARTUP_ID },
+    });
+    (mockPrisma.interactionLog.update as jest.Mock).mockResolvedValue(
+      createdLog({ followupCompletedAt: doneAt }),
+    );
+
+    await service.updateLog(STARTUP_ID, LOG_ID, { followupCompletedAt: doneAt } as never);
+
+    const [{ data }] = (mockPrisma.interactionLog.update as jest.Mock).mock.calls[0];
+    expect(data.followupCompletedAt).toEqual(doneAt);
+    expect(data).not.toHaveProperty("nextFollowupDate");
   });
 });
 

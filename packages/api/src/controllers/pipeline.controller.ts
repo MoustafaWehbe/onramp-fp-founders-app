@@ -11,8 +11,14 @@ export const pipelineController = {
     const entry = await pipelineService.createEntry(
       req.params.startupId as string,
       req.body as CreatePipelineEntryInput,
+      req.user!.userId,
     );
     res.status(201).json({ data: entry });
+  }),
+
+  getAnalytics: asyncHandler(async (req, res) => {
+    const result = await pipelineService.getAnalytics(req.params.startupId as string);
+    res.json(result);
   }),
 
   listEntries: asyncHandler(async (req, res) => {
@@ -36,6 +42,7 @@ export const pipelineController = {
       req.params.startupId as string,
       req.params.pipelineId as string,
       req.body as UpdatePipelineEntryInput,
+      req.user!.userId,
     );
     res.json({ data: entry });
   }),

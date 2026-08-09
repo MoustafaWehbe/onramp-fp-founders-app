@@ -1,8 +1,8 @@
 import { Prisma } from "@prisma/client";
 import { PipelineService } from "../../src/services/pipeline.service";
 
-jest.mock("../../src/db/prisma", () => ({
-  prisma: {
+jest.mock("../../src/db/prisma", () => {
+  const client: Record<string, unknown> = {
     startupInvestor: { findUnique: jest.fn() },
     pipeline: {
       create: jest.fn(),
@@ -12,9 +12,14 @@ jest.mock("../../src/db/prisma", () => ({
       update: jest.fn(),
       delete: jest.fn(),
     },
+    pipelineStageEvent: { create: jest.fn(), findMany: jest.fn() },
     commitment: { count: jest.fn() },
-  },
-}));
+  };
+  // Stage writes run in a transaction; hand the callback the same mock client so
+  // assertions still see prisma.pipeline.create et al.
+  client.$transaction = jest.fn((fn: (tx: unknown) => unknown) => fn(client));
+  return { prisma: client };
+});
 
 import { prisma } from "../../src/db/prisma";
 
@@ -25,6 +30,7 @@ const STARTUP_ID = "00000000-0000-0000-0000-000000000001";
 const OTHER_STARTUP = "00000000-0000-0000-0000-000000000099";
 const CONTACT_ID = "00000000-0000-0000-0000-000000000002";
 const PIPELINE_ID = "00000000-0000-0000-0000-000000000003";
+const USER_ID = "00000000-0000-0000-0000-000000000004";
 
 const CONTACT = {
   id: CONTACT_ID,
@@ -50,6 +56,7 @@ function entryRow(overrides: Record<string, unknown> = {}) {
     stage: "sourced",
     expectedAmount: new Prisma.Decimal(250000),
     probabilityPercentage: 40,
+    stageChangedAt: new Date("2026-01-02"),
     createdAt: new Date("2026-01-02"),
     updatedAt: new Date("2026-01-03"),
     startupInvestor: CONTACT,
@@ -59,6 +66,7 @@ function entryRow(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  (mockPrisma.pipelineStageEvent.create as jest.Mock).mockResolvedValue({});
 });
 
 describe("PipelineService.createEntry", () => {
@@ -236,6 +244,133 @@ describe("PipelineService.updateEntry", () => {
     ).rejects.toMatchObject({ statusCode: 404, code: "PIPELINE_NOT_FOUND" });
 
     expect(mockPrisma.pipeline.update).not.toHaveBeenCalled();
+  });
+
+  it("appends a stage event and advances stageChangedAt on a real move", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({
+      id: PIPELINE_ID,
+      stage: "contacted",
+    });
+    (mockPrisma.pipeline.update as jest.Mock).mockResolvedValue(
+      entryRow({ stage: "term_sheet" }),
+    );
+
+    await service.updateEntry(
+      STARTUP_ID,
+      PIPELINE_ID,
+      { stage: "term_sheet" } as never,
+      USER_ID,
+    );
+
+    expect(mockPrisma.pipelineStageEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          startupId: STARTUP_ID,
+          pipelineId: PIPELINE_ID,
+          fromStage: "contacted",
+          toStage: "term_sheet",
+          changedBy: USER_ID,
+        }),
+      }),
+    );
+    expect(mockPrisma.pipeline.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ stageChangedAt: expect.any(Date) }),
+      }),
+    );
+  });
+
+  it("leaves stage history alone when only the amount changes", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({
+      id: PIPELINE_ID,
+      stage: "contacted",
+    });
+    (mockPrisma.pipeline.update as jest.Mock).mockResolvedValue(entryRow());
+
+    await service.updateEntry(STARTUP_ID, PIPELINE_ID, { expectedAmount: 5000 } as never);
+
+    expect(mockPrisma.pipelineStageEvent.create).not.toHaveBeenCalled();
+    // stageChangedAt must not move, or time-in-stage resets on every edit.
+    expect(mockPrisma.pipeline.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { expectedAmount: 5000 } }),
+    );
+  });
+
+  it("treats a no-op stage write as an edit, not a move", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({
+      id: PIPELINE_ID,
+      stage: "contacted",
+    });
+    (mockPrisma.pipeline.update as jest.Mock).mockResolvedValue(entryRow());
+
+    await service.updateEntry(STARTUP_ID, PIPELINE_ID, { stage: "contacted" } as never);
+
+    expect(mockPrisma.pipelineStageEvent.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("PipelineService.getAnalytics", () => {
+  function event(pipelineId: string, toStage: string, day: number) {
+    return { pipelineId, toStage, createdAt: new Date(2026, 0, day) };
+  }
+
+  it("counts reach from history, so a passed deal still credits the stages it hit", async () => {
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([
+      { id: "p1", stage: "passed", expectedAmount: new Prisma.Decimal(100), stageChangedAt: new Date() },
+    ]);
+    (mockPrisma.pipelineStageEvent.findMany as jest.Mock).mockResolvedValue([
+      event("p1", "sourced", 1),
+      event("p1", "meeting_scheduled", 5),
+      event("p1", "passed", 9),
+    ]);
+
+    const { data } = await service.getAnalytics(STARTUP_ID);
+
+    const meeting = data.funnel.find((row) => row.stage === "meeting_scheduled")!;
+    expect(meeting.everReached).toBe(1);
+    // It reached the meeting stage but sits in "passed" now.
+    expect(meeting.current).toBe(0);
+    expect(data.outcomes).toMatchObject({ passed: 1, committed: 0, winRate: 0 });
+  });
+
+  it("computes conversion as reaching anything further along the funnel", async () => {
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([]);
+    (mockPrisma.pipelineStageEvent.findMany as jest.Mock).mockResolvedValue([
+      // Two deals get contacted; only one goes on to a meeting.
+      event("p1", "contacted", 1),
+      event("p1", "meeting_scheduled", 3),
+      event("p2", "contacted", 2),
+    ]);
+
+    const { data } = await service.getAnalytics(STARTUP_ID);
+
+    const contacted = data.conversion.find((row) => row.fromStage === "contacted")!;
+    expect(contacted).toMatchObject({ reached: 2, advanced: 1, rate: 0.5 });
+  });
+
+  it("excludes the stage a deal currently sits in from median duration", async () => {
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([]);
+    (mockPrisma.pipelineStageEvent.findMany as jest.Mock).mockResolvedValue([
+      event("p1", "sourced", 1),
+      event("p1", "contacted", 5),
+    ]);
+
+    const { data } = await service.getAnalytics(STARTUP_ID);
+
+    // Four days in sourced; the contacted visit is still running.
+    expect(data.funnel.find((row) => row.stage === "sourced")!.medianDaysInStage).toBe(4);
+    expect(data.funnel.find((row) => row.stage === "contacted")!.medianDaysInStage).toBeNull();
+  });
+
+  it("returns null rates rather than dividing by zero on an empty board", async () => {
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([]);
+    (mockPrisma.pipelineStageEvent.findMany as jest.Mock).mockResolvedValue([]);
+
+    const { data } = await service.getAnalytics(STARTUP_ID);
+
+    expect(data.totalDeals).toBe(0);
+    expect(data.outcomes.winRate).toBeNull();
+    expect(data.conversion.every((row) => row.rate === null)).toBe(true);
   });
 });
 

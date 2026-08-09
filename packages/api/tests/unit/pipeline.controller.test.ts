@@ -22,6 +22,7 @@ jest.mock("../../src/services/pipeline.service", () => ({
     getEntry: jest.fn(),
     updateEntry: jest.fn(),
     deleteEntry: jest.fn(),
+    getAnalytics: jest.fn(),
   },
 }));
 
@@ -84,6 +85,8 @@ describe("POST /api/v1/startups/:startupId/pipeline", () => {
         expectedAmount: 100000,
         probabilityPercentage: 25,
       }),
+      // The actor is attributed on the stage event, never taken from the body.
+      USER_ID,
     );
   });
 
@@ -177,6 +180,7 @@ describe("PATCH /api/v1/startups/:startupId/pipeline/:pipelineId", () => {
       STARTUP_ID,
       PIPELINE_ID,
       expect.objectContaining({ stage: "committed", probabilityPercentage: 90 }),
+      USER_ID,
     );
   });
 

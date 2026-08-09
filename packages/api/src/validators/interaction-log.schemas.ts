@@ -54,6 +54,11 @@ export const updateInteractionLogSchema = z
       .union([z.null(), coercedDate("nextFollowupDate")])
       .transform((value) => (value === null ? null : value))
       .optional(),
+    // "Mark done" sends a timestamp; null reopens the follow-up.
+    followupCompletedAt: z
+      .union([z.null(), coercedDate("followupCompletedAt")])
+      .transform((value) => (value === null ? null : value))
+      .optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one field is required",

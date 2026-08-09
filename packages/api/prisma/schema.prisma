@@ -38,6 +38,7 @@ model User {
   aiChatSessions       AiChatSession[]
   auditLogs            AuditLog[]
   notifications        Notification[]
+  pipelineStageEvents  PipelineStageEvent[]
 
   @@map("users")
 }
@@ -68,6 +69,7 @@ model Startup {
   reviewerComments    ReviewerComment[]
   auditLogs           AuditLog[]
   notifications       Notification[]
+  pipelineStageEvents PipelineStageEvent[]
 
   @@map("startups")
 }
@@ -288,6 +290,7 @@ model Pipeline {
   stage                 String   @default("sourced")
   expectedAmount        Decimal? @map("expected_amount")
   probabilityPercentage Int?     @map("probability_percentage")
+  stageChangedAt        DateTime @default(now()) @map("stage_changed_at")
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 
@@ -295,11 +298,30 @@ model Pipeline {
   startupInvestor StartupInvestor @relation("PipelineInvestor", fields: [startupInvestorId, startupId], references: [id, startupId], onDelete: Cascade)
   interactionLogs InteractionLog[]
   commitments     Commitment[]    @relation("CommitmentPipeline")
+  stageEvents     PipelineStageEvent[]
 
   @@unique([startupId, startupInvestorId])
   @@unique([id, startupInvestorId])
   @@unique([startupId, id])
   @@map("pipeline")
+}
+
+model PipelineStageEvent {
+  id         String   @id @default(uuid())
+  startupId  String   @map("startup_id")
+  pipelineId String   @map("pipeline_id")
+  fromStage  String?  @map("from_stage")
+  toStage    String   @map("to_stage")
+  changedBy  String?  @map("changed_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  startup  Startup  @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  actor    User?    @relation(fields: [changedBy], references: [id], onDelete: SetNull)
+
+  @@index([startupId, createdAt])
+  @@index([pipelineId, createdAt])
+  @@map("pipeline_stage_events")
 }
 
 model InteractionLog {
@@ -312,6 +334,7 @@ model InteractionLog {
   description       String?
   interactionDate   DateTime? @map("interaction_date")
   nextFollowupDate  DateTime? @map("next_followup_date")
+  followupCompletedAt DateTime? @map("followup_completed_at")
   createdAt         DateTime  @default(now()) @map("created_at")
 
   startupInvestor StartupInvestor @relation(fields: [startupInvestorId], references: [id], onDelete: Cascade)
