@@ -1,4 +1,5 @@
 import { useAuth } from "../../hooks/useAuth";
+import { useWorkspace } from "../../hooks/useWorkspace";
 import { PageHeader } from "../../components/layout/PageHeader";
 import {
   Card,
@@ -10,6 +11,7 @@ import {
 
 export function Settings() {
   const { user } = useAuth();
+  const { activeStartup } = useWorkspace();
 
   return (
     <div className="space-y-6">
@@ -30,8 +32,12 @@ export function Settings() {
             <span>{user?.email}</span>
           </div>
           <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Workspace</span>
+            <span>{activeStartup?.name ?? "—"}</span>
+          </div>
+          <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Role</span>
-            <span className="capitalize">Member</span>
+            <span className="capitalize">{activeStartup?.member.role ?? "—"}</span>
           </div>
         </CardContent>
       </Card>

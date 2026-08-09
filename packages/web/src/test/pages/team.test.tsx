@@ -19,7 +19,14 @@ vi.mock("../../lib/team-api", () => ({
   removeMember: (...args: unknown[]) => removeMember(...args),
 }));
 
-vi.mock("../../hooks/useWorkspace", () => ({ useActiveStartupId: () => "startup-1" }));
+// Drives usePermissions, which is what gates every management action.
+let workspaceRole = "owner";
+vi.mock("../../hooks/useWorkspace", () => ({
+  useActiveStartupId: () => "startup-1",
+  useWorkspace: () => ({
+    activeStartup: { id: "startup-1", member: { role: workspaceRole } },
+  }),
+}));
 
 const toast = {
   success: vi.fn(),
@@ -114,6 +121,7 @@ async function openActionsFor(name: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   authState = { user: OWNER, isLoading: false };
+  workspaceRole = "owner";
   listMembers.mockResolvedValue(MEMBERS);
   listRoles.mockResolvedValue(ROLES);
 });
@@ -139,6 +147,7 @@ describe("Team", () => {
 
   it("hides every management action from a non-owner", async () => {
     authState = { user: VIEWER, isLoading: false };
+    workspaceRole = "viewer";
     renderTeam();
 
     await screen.findAllByText("Jane Doe");

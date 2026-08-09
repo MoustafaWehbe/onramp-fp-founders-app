@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "../../../components/ui/dropdown-menu";
 import { Input } from "../../../components/ui/input";
+import { usePermissions } from "../../../hooks/usePermissions";
 import { useActiveStartupId } from "../../../hooks/useWorkspace";
 import {
   DEFAULT_PROBABILITY_BY_STAGE,
@@ -55,7 +56,11 @@ function apiErrorMessage(err: unknown, fallback: string) {
 
 export function Pipeline() {
   const startupId = useActiveStartupId();
+  const { can } = usePermissions();
   const queryClient = useQueryClient();
+  // Collaborators may add and move deals; viewers may only look.
+  const canCreate = can("pipeline", "create");
+  const canUpdate = can("pipeline", "update");
   const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<PipelineStageId | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -183,11 +188,12 @@ export function Pipeline() {
 
   const moveDeal = useCallback(
     (pipelineId: string, stage: PipelineStageId) => {
+      if (!canUpdate) return;
       const current = entries.find((entry) => entry.id === pipelineId);
       if (!current || current.stage === stage) return;
       moveMutation.mutate({ pipelineId, stage });
     },
-    [entries, moveMutation],
+    [canUpdate, entries, moveMutation],
   );
 
   const handleDragStart = (event: DragEvent<HTMLElement>, dealId: string) => {
@@ -207,12 +213,18 @@ export function Pipeline() {
     <div className="space-y-6">
       <PageHeader
         title="Deal pipeline"
-        description="Drag investors through stages, or use a card's move menu. Data is live from the API."
+        description={
+          canUpdate
+            ? "Drag investors through stages, or use a card's move menu."
+            : "A read-only view of where each investor stands."
+        }
         actions={
-          <Button size="sm" type="button" onClick={() => setAddOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Add to pipeline
-          </Button>
+          canCreate ? (
+            <Button size="sm" type="button" onClick={() => setAddOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Add to pipeline
+            </Button>
+          ) : null
         }
       />
 
@@ -303,14 +315,15 @@ export function Pipeline() {
                     return (
                       <Card
                         key={deal.id}
-                        draggable
+                        draggable={canUpdate}
                         onDragStart={(event) => handleDragStart(event, deal.id)}
                         onDragEnd={() => {
                           setDraggedDealId(null);
                           setDropTarget(null);
                         }}
                         className={cn(
-                          "cursor-grab border-border/70 bg-card/95 p-3 shadow-sm transition-[border-color,opacity,transform] hover:-translate-y-0.5 hover:border-primary/40 active:cursor-grabbing",
+                          "border-border/70 bg-card/95 p-3 shadow-sm transition-[border-color,opacity,transform] hover:-translate-y-0.5 hover:border-primary/40",
+                          canUpdate && "cursor-grab active:cursor-grabbing",
                           draggedDealId === deal.id && "opacity-50",
                         )}
                       >
@@ -333,7 +346,10 @@ export function Pipeline() {
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                className="h-7 w-7 shrink-0 text-muted-foreground"
+                                className={cn(
+                                  "h-7 w-7 shrink-0 text-muted-foreground",
+                                  !canUpdate && "hidden",
+                                )}
                                 aria-label={`Move ${investor.fullName} to another stage`}
                               >
                                 <MoveRight className="h-4 w-4" />

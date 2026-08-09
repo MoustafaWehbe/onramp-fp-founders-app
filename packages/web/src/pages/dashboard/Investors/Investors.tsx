@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { Button } from "../../../components/ui/button";
+import { usePermissions } from "../../../hooks/usePermissions";
 import { useActiveStartupId } from "../../../hooks/useWorkspace";
 import { DEFAULT_PROBABILITY_BY_STAGE, STAGES } from "../../../lib/mock-data";
 import { createPipelineEntry, listInvestorContacts } from "../../../lib/pipeline-api";
@@ -35,7 +36,9 @@ function apiErrorMessage(err: unknown, fallback: string) {
 
 export function Investors() {
   const startupId = useActiveStartupId();
+  const { can } = usePermissions();
   const navigate = useNavigate();
+  const canCreate = can("pipeline", "create");
   const queryClient = useQueryClient();
 
   const [query, setQuery] = useState("");
@@ -138,16 +141,18 @@ export function Investors() {
         title="Investors"
         description="Your central directory of investors and firm relationships."
         actions={
-          <>
-            <Button variant="outline" size="sm" disabled>
-              <Upload className="h-4 w-4" />
-              Import CSV
-            </Button>
-            <Button size="sm" disabled>
-              <Plus className="h-4 w-4" />
-              Add investor
-            </Button>
-          </>
+          canCreate ? (
+            <>
+              <Button variant="outline" size="sm" disabled>
+                <Upload className="h-4 w-4" />
+                Import CSV
+              </Button>
+              <Button size="sm" disabled>
+                <Plus className="h-4 w-4" />
+                Add investor
+              </Button>
+            </>
+          ) : null
         }
       />
 

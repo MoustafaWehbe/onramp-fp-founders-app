@@ -7,6 +7,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../../components/ui/dropdown-menu";
+import { usePermissions } from "../../../hooks/usePermissions";
 import type { InvestorRow } from "./investor-types";
 
 type InvestorActionsProps = {
@@ -20,7 +21,10 @@ export function InvestorActions({
   onMoveToPipeline,
   moving = false,
 }: InvestorActionsProps) {
+  const { can } = usePermissions();
   const alreadyInPipeline = Boolean(investor.pipelineId);
+  const canAddToPipeline = can("pipeline", "create");
+  const canArchive = can("pipeline", "delete");
 
   return (
     <DropdownMenu>
@@ -49,17 +53,23 @@ export function InvestorActions({
             </a>
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem
-          disabled={alreadyInPipeline || moving || !onMoveToPipeline}
-          onSelect={() => onMoveToPipeline?.(investor)}
-        >
-          <Briefcase className="mr-2 h-4 w-4" />
-          {alreadyInPipeline ? "Already in pipeline" : moving ? "Adding…" : "Move to pipeline"}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem className="text-destructive" disabled>
-          Archive
-        </DropdownMenuItem>
+        {canAddToPipeline && (
+          <DropdownMenuItem
+            disabled={alreadyInPipeline || moving || !onMoveToPipeline}
+            onSelect={() => onMoveToPipeline?.(investor)}
+          >
+            <Briefcase className="mr-2 h-4 w-4" />
+            {alreadyInPipeline ? "Already in pipeline" : moving ? "Adding…" : "Move to pipeline"}
+          </DropdownMenuItem>
+        )}
+        {canArchive && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="text-destructive" disabled>
+              Archive
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

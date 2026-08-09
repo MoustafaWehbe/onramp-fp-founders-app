@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "../../../components/ui/dialog";
 import { useAuth } from "../../../hooks/useAuth";
+import { usePermissions } from "../../../hooks/usePermissions";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
 import { useActiveStartupId } from "../../../hooks/useWorkspace";
 import {
@@ -77,16 +78,13 @@ export function Team() {
 
   const roles = rolesQuery.data ?? [];
 
-  // The members list already carries the caller's own row, so the current
-  // role comes for free rather than costing a second request.
-  const myRole = useMemo(
-    () => members.find((member) => member.userId === user?.id)?.role ?? null,
-    [members, user?.id],
-  );
+  // Role comes from the workspace list rather than being re-derived here, so
+  // every screen agrees on what the caller may do.
+  const { role: myRole, can } = usePermissions();
 
-  // Only owners hold team:create / team:update / team:delete — see
-  // ROLE_TEMPLATES in packages/api/src/config/permissions.ts.
-  const canManage = myRole === "owner";
+  // team:create / team:update / team:delete travel together — only owners hold
+  // any of them, so one check covers inviting, role changes and removal.
+  const canManage = can("team", "create");
 
   const activeCount = members.filter((member) => !member.isPending).length;
   const pendingCount = members.length - activeCount;
