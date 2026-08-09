@@ -11,6 +11,7 @@ type MembersTableProps = {
   currentUserId: string | null;
   onChangeRole: (member: TeamMemberRow, roleId: string) => void;
   onRemove: (member: TeamMemberRow) => void;
+  onResend: (member: TeamMemberRow) => void;
   busyMemberId?: string | null;
 };
 
@@ -21,6 +22,7 @@ export function MembersTable({
   currentUserId,
   onChangeRole,
   onRemove,
+  onResend,
   busyMemberId = null,
 }: MembersTableProps) {
   return (
@@ -84,6 +86,7 @@ export function MembersTable({
                     isSelf={isSelf}
                     onChangeRole={onChangeRole}
                     onRemove={onRemove}
+                    onResend={onResend}
                     busy={busyMemberId === member.id}
                   />
                 </td>

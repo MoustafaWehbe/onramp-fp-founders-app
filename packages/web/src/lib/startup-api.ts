@@ -54,6 +54,14 @@ export async function getStartup(startupId: string) {
   return data.data;
 }
 
+/**
+ * Persists which workspace the user is working in, so the choice follows them
+ * to another device rather than living only in this browser's storage.
+ */
+export async function activateStartup(startupId: string) {
+  await apiClient.put(`/startups/${startupId}/activate`);
+}
+
 export async function updateStartup(startupId: string, input: Partial<CreateStartupInput>) {
   const { data } = await apiClient.patch<{ data: { startup: Startup } }>(
     `/startups/${startupId}`,

@@ -15,6 +15,7 @@ jest.mock("../../src/db/prisma", () => ({
       findMany: jest.fn(),
     },
     user: {
+      update: jest.fn(),
       updateMany: jest.fn(),
     },
     $transaction: jest.fn(),
@@ -124,6 +125,19 @@ describe("StartupService.deleteStartup", () => {
 
     await expect(service.deleteStartup(STARTUP_ID)).rejects.toMatchObject({
       statusCode: 404,
+    });
+  });
+});
+
+describe("StartupService.setActiveStartup", () => {
+  it("records the workspace against the user", async () => {
+    (mockPrisma.user.update as jest.Mock).mockResolvedValue({} as never);
+
+    await service.setActiveStartup(STARTUP_ID, USER_ID);
+
+    expect(mockPrisma.user.update).toHaveBeenCalledWith({
+      where: { id: USER_ID },
+      data: { lastActiveStartupId: STARTUP_ID },
     });
   });
 });

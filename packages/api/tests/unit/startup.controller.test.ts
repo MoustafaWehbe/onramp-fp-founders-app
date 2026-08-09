@@ -24,6 +24,7 @@ jest.mock("../../src/services/startup.service", () => ({
     listMembers: jest.fn(),
     listRoles: jest.fn(),
     listMyStartups: jest.fn(),
+    setActiveStartup: jest.fn(),
   },
 }));
 
@@ -184,6 +185,37 @@ describe("DELETE /api/v1/startups/:startupId", () => {
 
     expect(res.status).toBe(403);
     expect(mockService.deleteStartup).not.toHaveBeenCalled();
+  });
+});
+
+describe("PUT /api/v1/startups/:startupId/activate", () => {
+  it("records the active workspace and answers 204", async () => {
+    mockService.setActiveStartup.mockResolvedValue(undefined);
+
+    const res = await request(app)
+      .put(`/api/v1/startups/${STARTUP_ID}/activate`)
+      .set("Cookie", [accessCookie()]);
+
+    expect(res.status).toBe(204);
+    expect(mockService.setActiveStartup).toHaveBeenCalledWith(STARTUP_ID, USER_ID);
+  });
+
+  it("refuses for someone who is not an active member", async () => {
+    // Guarded by requireMember alone — any role may switch into a workspace
+    // they belong to, so no extra permission is required.
+    mockPrisma.startupMember.findUnique.mockResolvedValue(null);
+
+    const res = await request(app)
+      .put(`/api/v1/startups/${STARTUP_ID}/activate`)
+      .set("Cookie", [accessCookie()]);
+
+    expect(res.status).toBe(403);
+    expect(mockService.setActiveStartup).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 without an auth cookie", async () => {
+    const res = await request(app).put(`/api/v1/startups/${STARTUP_ID}/activate`);
+    expect(res.status).toBe(401);
   });
 });
 

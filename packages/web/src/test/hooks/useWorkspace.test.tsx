@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import type { AuthUser } from "../../providers/AuthProvider";
 import type { WorkspaceSummary } from "../../lib/startup-api";
 
 const listMyStartups = vi.fn();
-vi.mock("../../lib/startup-api", () => ({ listMyStartups: () => listMyStartups() }));
+const activateStartup = vi.fn();
+vi.mock("../../lib/startup-api", () => ({
+  listMyStartups: () => listMyStartups(),
+  activateStartup: (id: string) => activateStartup(id),
+}));
 
 let authState: { user: AuthUser | null; isLoading: boolean };
 vi.mock("../../hooks/useAuth", () => ({ useAuth: () => authState }));
@@ -58,6 +62,32 @@ beforeEach(() => {
   authState = { user: USER, isLoading: false };
   preferredStartupId = null;
   listMyStartups.mockResolvedValue([ALPHA, BETA]);
+  activateStartup.mockResolvedValue(undefined);
+});
+
+describe("useWorkspace switching", () => {
+  it("stores the choice locally and persists it for other devices", async () => {
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => result.current.setActiveStartupId("s-beta"));
+
+    expect(setActiveStartupId).toHaveBeenCalledWith("s-beta");
+    await waitFor(() => expect(activateStartup).toHaveBeenCalledWith("s-beta"));
+  });
+
+  it("keeps the local switch even if persisting it fails", async () => {
+    // Losing the cross-device preference is a far smaller problem than
+    // refusing to switch workspace at all.
+    activateStartup.mockRejectedValue(new Error("offline"));
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => result.current.setActiveStartupId("s-beta"));
+
+    expect(setActiveStartupId).toHaveBeenCalledWith("s-beta");
+    await waitFor(() => expect(activateStartup).toHaveBeenCalled());
+  });
 });
 
 describe("useWorkspace", () => {

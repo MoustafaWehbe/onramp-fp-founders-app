@@ -64,6 +64,18 @@ export async function inviteMember(startupId: string, body: { email: string; rol
   return data;
 }
 
+/**
+ * Issues a fresh invite link and emails it again. The previous link stops
+ * working — only its hash was stored, so it cannot be re-sent, only replaced.
+ * Fails with 409 ALREADY_ACCEPTED if the person has since joined.
+ */
+export async function resendInvite(startupId: string, memberId: string) {
+  const { data } = await apiClient.post<{ message: string; emailQueued: boolean }>(
+    `/startups/${startupId}/invites/${memberId}/resend`,
+  );
+  return data;
+}
+
 export async function changeMemberRole(startupId: string, memberId: string, roleId: string) {
   const { data } = await apiClient.patch<{ data: MembershipRecord }>(
     `/startups/${startupId}/members/${memberId}/role`,

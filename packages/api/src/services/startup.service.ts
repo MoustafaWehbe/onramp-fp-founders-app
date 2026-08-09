@@ -119,6 +119,17 @@ export class StartupService {
     }));
   }
 
+  /**
+   * Records the workspace this user is now working in. requireMember has
+   * already established they belong to it, so no further check is needed.
+   */
+  async setActiveStartup(startupId: string, userId: string) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { lastActiveStartupId: startupId },
+    });
+  }
+
   async getStartup(startupId: string, userId: string) {
     const startup = await prisma.startup.findUnique({
       where: { id: startupId },

@@ -77,6 +77,41 @@ export class InviteService {
     return { member, rawToken, inviteExpiresAt };
   }
 
+  /**
+   * Issues a fresh token for a still-pending invitation and restarts its 7-day
+   * clock. Only the hash of the original is stored, so the old link cannot be
+   * re-sent — it is replaced, and any copy already in someone's inbox stops
+   * working.
+   */
+  async resendInvite(startupId: string, memberId: string) {
+    const member = await prisma.startupMember.findUnique({
+      where: { id: memberId },
+      select: { id: true, startupId: true, status: true, invitedEmail: true },
+    });
+
+    if (!member || member.startupId !== startupId) {
+      throw createError("Member not found", 404, "NOT_FOUND");
+    }
+
+    if (member.status !== "pending" || !member.invitedEmail) {
+      throw createError(
+        "This invitation has already been accepted",
+        409,
+        "ALREADY_ACCEPTED",
+      );
+    }
+
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const inviteExpiresAt = new Date(Date.now() + INVITE_EXPIRATION_MS);
+
+    await prisma.startupMember.update({
+      where: { id: memberId },
+      data: { inviteTokenHash: hashToken(rawToken), inviteExpiresAt },
+    });
+
+    return { rawToken, email: member.invitedEmail, inviteExpiresAt };
+  }
+
   async acceptInvite(input: AcceptInviteInput) {
     const tokenHash = hashToken(input.token);
 

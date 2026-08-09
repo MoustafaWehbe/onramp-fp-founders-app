@@ -52,9 +52,6 @@ export function Header({ onMenuClick }: HeaderProps) {
 
         <NotificationsMenu />
 
-        <Button type="button" size="sm" className="hidden sm:inline-flex">
-          <Plus className="h-4 w-4" /> New
-        </Button>
         <Button type="button" size="icon" aria-label="New" className="sm:hidden">
           <Plus className="h-4 w-4" />
         </Button>

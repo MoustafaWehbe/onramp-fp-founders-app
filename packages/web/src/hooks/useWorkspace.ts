@@ -1,8 +1,8 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "./useAuth";
 import { useAppStore } from "../lib/app-store";
-import { listMyStartups, type WorkspaceSummary } from "../lib/startup-api";
+import { activateStartup, listMyStartups, type WorkspaceSummary } from "../lib/startup-api";
 
 export const MY_STARTUPS_KEY = ["my-startups"] as const;
 
@@ -28,7 +28,20 @@ type Workspace = {
 export function useWorkspace(): Workspace {
   const { user, isLoading: isAuthLoading } = useAuth();
   const preferredStartupId = useAppStore((s) => s.preferredStartupId);
-  const setActiveStartupId = useAppStore((s) => s.setActiveStartupId);
+  const setPreferredStartupId = useAppStore((s) => s.setActiveStartupId);
+
+  const setActiveStartupId = useCallback(
+    (startupId: string) => {
+      // Local first so the switch is instant, then tell the server so the
+      // choice follows the user to another device. Best-effort on purpose:
+      // failing to persist the preference must not block the switch itself.
+      setPreferredStartupId(startupId);
+      void activateStartup(startupId).catch(() => {
+        /* the local preference still stands */
+      });
+    },
+    [setPreferredStartupId],
+  );
 
   const query = useQuery({
     queryKey: MY_STARTUPS_KEY,

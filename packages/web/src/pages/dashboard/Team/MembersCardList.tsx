@@ -11,6 +11,7 @@ type MembersCardListProps = {
   currentUserId: string | null;
   onChangeRole: (member: TeamMemberRow, roleId: string) => void;
   onRemove: (member: TeamMemberRow) => void;
+  onResend: (member: TeamMemberRow) => void;
   busyMemberId?: string | null;
 };
 
@@ -21,6 +22,7 @@ export function MembersCardList({
   currentUserId,
   onChangeRole,
   onRemove,
+  onResend,
   busyMemberId = null,
 }: MembersCardListProps) {
   return (
@@ -71,6 +73,7 @@ export function MembersCardList({
               isSelf={isSelf}
               onChangeRole={onChangeRole}
               onRemove={onRemove}
+              onResend={onResend}
               busy={busyMemberId === member.id}
             />
           </li>

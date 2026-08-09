@@ -28,6 +28,7 @@ import {
   listMembers,
   listRoles,
   removeMember,
+  resendInvite,
 } from "../../../lib/team-api";
 import { InviteMemberDialog } from "./InviteMemberDialog";
 import { MembersCardList } from "./MembersCardList";
@@ -99,11 +100,11 @@ export function Team() {
       if (result.emailQueued) {
         toast.success(`Invitation sent to ${input.email}`);
       } else {
-        // The membership row exists either way. The raw invite token never
-        // leaves the server, so the only recovery open to the inviter is to
-        // revoke the pending row and invite again.
+        // The membership row exists either way. The raw token never leaves the
+        // server, so there is no link to share by hand — resending issues a
+        // fresh one and mails it again.
         toast.warning(
-          `${input.email} was invited, but the email failed to send. Revoke the invitation and try again.`,
+          `${input.email} was invited, but the email failed to send. Use Resend invitation to try again.`,
         );
       }
       invalidateMembers();
@@ -126,6 +127,22 @@ export function Team() {
     onError: (err) => toast.error(mutationErrorMessage(err, "Could not change the role")),
   });
 
+  const resendMutation = useMutation({
+    mutationFn: (member: TeamMemberRow) => resendInvite(startupId, member.id),
+    onSuccess: (result, member) => {
+      if (result.emailQueued) {
+        // The old link stops working, which matters if they still have it.
+        toast.success(`A new invitation was sent to ${member.name}`);
+      } else {
+        toast.warning(
+          `A new link was issued for ${member.name}, but the email failed to send.`,
+        );
+      }
+      invalidateMembers();
+    },
+    onError: (err) => toast.error(mutationErrorMessage(err, "Could not resend the invitation")),
+  });
+
   const removeMutation = useMutation({
     mutationFn: (member: TeamMemberRow) => removeMember(startupId, member.id),
     onSuccess: (_result, member) => {
@@ -142,7 +159,9 @@ export function Team() {
     ? (roleMutation.variables?.member.id ?? null)
     : removeMutation.isPending
       ? (removeMutation.variables?.id ?? null)
-      : null;
+      : resendMutation.isPending
+        ? (resendMutation.variables?.id ?? null)
+        : null;
 
   const removingSelf = pendingRemoval?.userId !== null && pendingRemoval?.userId === user?.id;
 
@@ -240,6 +259,7 @@ export function Team() {
                 currentUserId={user?.id ?? null}
                 onChangeRole={(member, roleId) => roleMutation.mutate({ member, roleId })}
                 onRemove={setPendingRemoval}
+                onResend={(member) => resendMutation.mutate(member)}
                 busyMemberId={busyMemberId}
               />
             </div>
@@ -252,6 +272,7 @@ export function Team() {
                 currentUserId={user?.id ?? null}
                 onChangeRole={(member, roleId) => roleMutation.mutate({ member, roleId })}
                 onRemove={setPendingRemoval}
+                onResend={(member) => resendMutation.mutate(member)}
                 busyMemberId={busyMemberId}
               />
             </div>

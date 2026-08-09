@@ -34,6 +34,11 @@ export const startupController = {
     res.status(204).send();
   }),
 
+  activateStartup: asyncHandler(async (req, res) => {
+    await startupService.setActiveStartup(req.params.startupId as string, req.user!.userId);
+    res.status(204).send();
+  }),
+
   listRoles: asyncHandler(async (req, res) => {
     const roles = await startupService.listRoles(req.params.startupId as string);
     res.json({ data: { roles } });

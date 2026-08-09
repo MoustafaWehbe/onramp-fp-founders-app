@@ -54,6 +54,27 @@ router.post(
   inviteController.inviteMember,
 );
 
+// POST /api/v1/startups/:startupId/invites/:memberId/resend — team:create
+router.post(
+  "/:startupId/invites/:memberId/resend",
+  authenticate,
+  validate(memberIdParamSchema, "params"),
+  requireMember,
+  requirePermission("team", "create"),
+  inviteController.resendInvite,
+);
+
+// PUT /api/v1/startups/:startupId/activate — any active member
+// Remembers which workspace this user was last in, so the choice follows them
+// to another device instead of living only in that browser's storage.
+router.put(
+  "/:startupId/activate",
+  authenticate,
+  validate(startupIdParamSchema, "params"),
+  requireMember,
+  startupController.activateStartup,
+);
+
 // GET /api/v1/startups/:startupId/roles — team:read
 router.get(
   "/:startupId/roles",

@@ -795,3 +795,57 @@ describe("InviteService.claimPendingInvites", () => {
     expect(mockTx.startupMember.updateMany).not.toHaveBeenCalled();
   });
 });
+
+describe("InviteService.resendInvite", () => {
+  const PENDING = {
+    id: MEMBER_ID,
+    startupId: STARTUP_ID,
+    status: "pending",
+    invitedEmail: "invitee@example.com",
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("issues a brand new token and restarts the expiry", async () => {
+    (mockPrisma.startupMember.findUnique as jest.Mock).mockResolvedValue(PENDING as never);
+    (mockPrisma.startupMember.update as jest.Mock).mockResolvedValue({} as never);
+
+    const result = await service.resendInvite(STARTUP_ID, MEMBER_ID);
+
+    expect(result.email).toBe("invitee@example.com");
+    expect(result.rawToken).toMatch(/^[a-f0-9]{64}$/);
+
+    const [[call]] = (mockPrisma.startupMember.update as jest.Mock).mock.calls;
+    // Only the hash is ever stored, so the previous link cannot be re-sent —
+    // it is replaced, which also invalidates any copy already in an inbox.
+    expect(call.data.inviteTokenHash).toBe(`hashed_${result.rawToken}`);
+    expect(call.data.inviteExpiresAt.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("refuses once the invitation has been accepted", async () => {
+    (mockPrisma.startupMember.findUnique as jest.Mock).mockResolvedValue({
+      ...PENDING,
+      status: "active",
+    } as never);
+
+    await expect(service.resendInvite(STARTUP_ID, MEMBER_ID)).rejects.toMatchObject({
+      statusCode: 409,
+      code: "ALREADY_ACCEPTED",
+    });
+    expect(mockPrisma.startupMember.update).not.toHaveBeenCalled();
+  });
+
+  it("refuses a member id belonging to another startup", async () => {
+    (mockPrisma.startupMember.findUnique as jest.Mock).mockResolvedValue({
+      ...PENDING,
+      startupId: "00000000-0000-0000-0000-0000000000ff",
+    } as never);
+
+    await expect(service.resendInvite(STARTUP_ID, MEMBER_ID)).rejects.toMatchObject({
+      statusCode: 404,
+      code: "NOT_FOUND",
+    });
+  });
+});

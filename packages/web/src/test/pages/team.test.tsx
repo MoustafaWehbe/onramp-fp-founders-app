@@ -10,6 +10,7 @@ const listRoles = vi.fn();
 const inviteMember = vi.fn();
 const changeMemberRole = vi.fn();
 const removeMember = vi.fn();
+const resendInvite = vi.fn();
 
 vi.mock("../../lib/team-api", () => ({
   listMembers: (...args: unknown[]) => listMembers(...args),
@@ -17,6 +18,7 @@ vi.mock("../../lib/team-api", () => ({
   inviteMember: (...args: unknown[]) => inviteMember(...args),
   changeMemberRole: (...args: unknown[]) => changeMemberRole(...args),
   removeMember: (...args: unknown[]) => removeMember(...args),
+  resendInvite: (...args: unknown[]) => resendInvite(...args),
 }));
 
 // Drives usePermissions, which is what gates every management action.
@@ -205,6 +207,45 @@ describe("Team", () => {
 
     await waitFor(() => expect(removeMember).toHaveBeenCalledWith("startup-1", "m-viewer"));
     expect(toast.success).toHaveBeenCalledWith("Sam Patel was removed from the team");
+  });
+
+  it("offers Resend invitation only for people who haven't accepted", async () => {
+    renderTeam();
+    await screen.findAllByText("Jane Doe");
+
+    // An accepted member has nothing to resend.
+    let user = await openActionsFor("Sam Patel");
+    expect(screen.queryByRole("menuitem", { name: /resend invitation/i })).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    user = await openActionsFor("bob@acme.io");
+    expect(
+      await screen.findByRole("menuitem", { name: /resend invitation/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("resends a pending invitation", async () => {
+    resendInvite.mockResolvedValue({ message: "Invitation resent", emailQueued: true });
+    renderTeam();
+    await screen.findAllByText("Jane Doe");
+
+    const user = await openActionsFor("bob@acme.io");
+    await user.click(await screen.findByRole("menuitem", { name: /resend invitation/i }));
+
+    await waitFor(() => expect(resendInvite).toHaveBeenCalledWith("startup-1", "m-pending"));
+    expect(toast.success).toHaveBeenCalledWith("A new invitation was sent to bob@acme.io");
+  });
+
+  it("warns when the resent invitation could not be emailed", async () => {
+    resendInvite.mockResolvedValue({ message: "…", emailQueued: false });
+    renderTeam();
+    await screen.findAllByText("Jane Doe");
+
+    const user = await openActionsFor("bob@acme.io");
+    await user.click(await screen.findByRole("menuitem", { name: /resend invitation/i }));
+
+    await waitFor(() => expect(toast.warning).toHaveBeenCalled());
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("frames removing a pending invite as revoking it", async () => {

@@ -1,9 +1,40 @@
 import { asyncHandler } from "../utils/errors";
 import { inviteService } from "../services/invite.service";
+import { prisma } from "../db/prisma";
 import { emailQueue } from "../jobs/queue";
 import { inviteEmail } from "../emails/templates/invite";
 import { getAppUrl } from "../config/env";
 import type { InviteMemberInput, AcceptInviteInput, ChangeRoleInput } from "../validators/invite.schemas";
+
+/**
+ * Builds and enqueues the invitation email.
+ *
+ * The membership row is already committed by the time this runs, so a queue
+ * outage must not fail the request — it reports back instead, and the caller
+ * tells the inviter the mail never went out.
+ */
+async function queueInviteEmail(
+  startupId: string,
+  to: string,
+  rawToken: string,
+  context: string,
+): Promise<boolean> {
+  const startup = await prisma.startup.findUnique({
+    where: { id: startupId },
+    select: { name: true },
+  });
+
+  const inviteLink = `${getAppUrl()}/accept-invite?token=${rawToken}`;
+  const { subject, html } = inviteEmail(startup?.name ?? "this startup", inviteLink);
+
+  try {
+    await emailQueue.add("send-invite", { to, subject, html });
+    return true;
+  } catch (err) {
+    console.error(`[${context}] email enqueue failed:`, err);
+    return false;
+  }
+}
 
 export const inviteController = {
   inviteMember: asyncHandler(async (req, res) => {
@@ -13,34 +44,25 @@ export const inviteController = {
 
     const { rawToken } = await inviteService.inviteMember(input, startupId, inviterUserId, req.member!.id);
 
-    // Enqueue invitation email — follows existing email queue pattern
-    const startup = await import("../db/prisma").then((m) =>
-      m.prisma.startup.findUnique({
-        where: { id: startupId },
-        select: { name: true },
-      }),
-    );
+    const emailQueued = await queueInviteEmail(startupId, input.email, rawToken, "inviteMember");
 
-    const inviteLink = `${getAppUrl()}/accept-invite?token=${rawToken}`;
-    const { subject, html } = inviteEmail(startup?.name ?? "this startup", inviteLink);
-
-    let emailQueued = true;
-    try {
-      await emailQueue.add("send-invite", {
-        to: input.email,
-        subject,
-        html,
-      });
-    } catch (err) {
-      emailQueued = false;
-      console.error("[inviteMember] email enqueue failed:", err);
-    }
-
-    // The membership row is the source of truth and is already committed above —
-    // a queue outage shouldn't fail the request, but the caller needs to know the
-    // invite email didn't go out so they can resend or notify the person directly.
     res.status(201).json({
       message: emailQueued ? "Invitation sent" : "Invitation created, but the email failed to send",
+      emailQueued,
+    });
+  }),
+
+  resendInvite: asyncHandler(async (req, res) => {
+    const startupId = req.params.startupId as string;
+    const memberId = req.params.memberId as string;
+
+    const { rawToken, email } = await inviteService.resendInvite(startupId, memberId);
+    const emailQueued = await queueInviteEmail(startupId, email, rawToken, "resendInvite");
+
+    res.json({
+      message: emailQueued
+        ? "Invitation resent"
+        : "A new invitation link was issued, but the email failed to send",
       emailQueued,
     });
   }),

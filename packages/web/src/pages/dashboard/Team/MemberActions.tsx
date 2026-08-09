@@ -1,4 +1,4 @@
-import { Mail, MoreHorizontal, Shield, UserMinus } from "lucide-react";
+import { Mail, MoreHorizontal, Send, Shield, UserMinus } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import {
   DropdownMenu,
@@ -18,6 +18,7 @@ type MemberActionsProps = {
   isSelf: boolean;
   onChangeRole: (member: TeamMemberRow, roleId: string) => void;
   onRemove: (member: TeamMemberRow) => void;
+  onResend: (member: TeamMemberRow) => void;
   busy?: boolean;
 };
 
@@ -28,6 +29,7 @@ export function MemberActions({
   isSelf,
   onChangeRole,
   onRemove,
+  onResend,
   busy = false,
 }: MemberActionsProps) {
   const removeLabel = member.isPending
@@ -54,6 +56,12 @@ export function MemberActions({
             <a href={`mailto:${member.email}`}>
               <Mail className="mr-2 h-4 w-4" /> Send email
             </a>
+          </DropdownMenuItem>
+        )}
+
+        {canManage && member.isPending && (
+          <DropdownMenuItem disabled={busy} onSelect={() => onResend(member)}>
+            <Send className="mr-2 h-4 w-4" /> Resend invitation
           </DropdownMenuItem>
         )}
 
