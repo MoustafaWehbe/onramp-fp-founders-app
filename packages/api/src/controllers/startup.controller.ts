@@ -11,6 +11,11 @@ export const startupController = {
     res.status(201).json({ data: result });
   }),
 
+  listMyStartups: asyncHandler(async (req, res) => {
+    const startups = await startupService.listMyStartups(req.user!.userId);
+    res.json({ data: { startups } });
+  }),
+
   getStartup: asyncHandler(async (req, res) => {
     const result = await startupService.getStartup(req.params.startupId as string, req.user!.userId);
     res.json({ data: result });

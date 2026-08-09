@@ -2,12 +2,12 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { notifications as seedNotifications, type Notification } from "./mock-data";
 
-/** Seeded Acme Corp startup — used until a real startup switcher is wired. */
-export const SEED_STARTUP_ID = "00000000-0000-0000-0000-000000000002";
-
-// Non-auth app state — auth is managed by AuthProvider
+// Non-auth app state — auth is managed by AuthProvider, and which workspace is
+// actually open is resolved by useWorkspace. This only remembers the user's
+// last explicit choice; it is a preference, not a source of truth, because the
+// stored id may point at a workspace they have since been removed from.
 interface AppState {
-  activeStartupId: string;
+  preferredStartupId: string | null;
   setActiveStartupId: (startupId: string) => void;
   notifications: Notification[];
   markNotificationRead: (id: string) => void;
@@ -17,8 +17,8 @@ interface AppState {
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
-      activeStartupId: SEED_STARTUP_ID,
-      setActiveStartupId: (startupId) => set({ activeStartupId: startupId }),
+      preferredStartupId: null,
+      setActiveStartupId: (startupId) => set({ preferredStartupId: startupId }),
       notifications: seedNotifications,
       markNotificationRead: (id) =>
         set((state) => ({
@@ -32,17 +32,13 @@ export const useAppStore = create<AppState>()(
         })),
     }),
     {
-      name: "fp:app-store",
-      partialize: (state) => ({ activeStartupId: state.activeStartupId }),
+      // Bumped from the previous key: stored values were seeded with a
+      // hardcoded demo startup id that no longer means anything.
+      name: "fp:app-store:v2",
+      partialize: (state) => ({ preferredStartupId: state.preferredStartupId }),
     },
   ),
 );
 
 export const useUnreadNotificationCount = () =>
   useAppStore((state) => state.notifications.reduce((total, n) => (n.read ? total : total + 1), 0));
-
-export const useActiveStartupId = () =>
-  useAppStore((state) => {
-    const id = state.activeStartupId;
-    return /^[0-9a-f-]{36}$/i.test(id) ? id : SEED_STARTUP_ID;
-  });

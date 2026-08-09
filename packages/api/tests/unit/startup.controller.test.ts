@@ -23,6 +23,7 @@ jest.mock("../../src/services/startup.service", () => ({
     deleteStartup: jest.fn(),
     listMembers: jest.fn(),
     listRoles: jest.fn(),
+    listMyStartups: jest.fn(),
   },
 }));
 
@@ -183,6 +184,38 @@ describe("DELETE /api/v1/startups/:startupId", () => {
 
     expect(res.status).toBe(403);
     expect(mockService.deleteStartup).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/v1/startups", () => {
+  it("returns the caller's workspaces", async () => {
+    mockService.listMyStartups.mockResolvedValue([
+      { ...STARTUP, member: { id: "m1", status: "active", role: "owner", joinedAt: null } },
+    ] as never);
+
+    const res = await request(app).get("/api/v1/startups").set("Cookie", [accessCookie()]);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.startups).toHaveLength(1);
+    expect(res.body.data.startups[0].member.role).toBe("owner");
+    expect(mockService.listMyStartups).toHaveBeenCalledWith(USER_ID);
+  });
+
+  it("returns 200 with an empty list rather than 403 for a user with no workspace", async () => {
+    // This is the signal the client uses to route someone to onboarding, so it
+    // must not be conflated with a permission failure.
+    mockService.listMyStartups.mockResolvedValue([] as never);
+
+    const res = await request(app).get("/api/v1/startups").set("Cookie", [accessCookie()]);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.startups).toEqual([]);
+  });
+
+  it("returns 401 without an auth cookie", async () => {
+    const res = await request(app).get("/api/v1/startups");
+    expect(res.status).toBe(401);
+    expect(mockService.listMyStartups).not.toHaveBeenCalled();
   });
 });
 

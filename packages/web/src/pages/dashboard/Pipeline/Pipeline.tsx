@@ -23,7 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "../../../components/ui/dropdown-menu";
 import { Input } from "../../../components/ui/input";
-import { useActiveStartupId, useAppStore, SEED_STARTUP_ID } from "../../../lib/app-store";
+import { useActiveStartupId } from "../../../hooks/useWorkspace";
 import {
   DEFAULT_PROBABILITY_BY_STAGE,
   STAGES,
@@ -55,7 +55,6 @@ function apiErrorMessage(err: unknown, fallback: string) {
 
 export function Pipeline() {
   const startupId = useActiveStartupId();
-  const setActiveStartupId = useAppStore((s) => s.setActiveStartupId);
   const queryClient = useQueryClient();
   const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<PipelineStageId | null>(null);
@@ -225,26 +224,16 @@ export function Pipeline() {
 
       {pipelineQuery.isError && (
         <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-6 text-sm text-destructive">
-          <p>
-            {apiErrorMessage(
-              pipelineQuery.error,
-              "Failed to load pipeline. Are you signed in as founder@example.com?",
-            )}
-          </p>
-          <p className="mt-2 text-xs text-destructive/80">
-            Forbidden usually means your session is not a member of the active startup. Reset to the
-            seeded Acme Corp workspace and try again.
-          </p>
+          <p>{apiErrorMessage(pipelineQuery.error, "Failed to load pipeline.")}</p>
           <div className="mt-3">
             <Button
               size="sm"
               variant="outline"
-              onClick={() => {
-                setActiveStartupId(SEED_STARTUP_ID);
-                void queryClient.invalidateQueries({ queryKey: ["pipeline", SEED_STARTUP_ID] });
-              }}
+              onClick={() =>
+                void queryClient.invalidateQueries({ queryKey: ["pipeline", startupId] })
+              }
             >
-              Reset startup & retry
+              Retry
             </Button>
           </div>
         </div>

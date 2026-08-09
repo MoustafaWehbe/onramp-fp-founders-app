@@ -29,6 +29,11 @@ router.use("/:startupId/pipeline", pipelineRouter);
 // /api/v1/startups/:startupId/interaction-logs — declares its own middleware chain
 router.use("/:startupId/interaction-logs", interactionLogRouter);
 
+// GET /api/v1/startups
+// authenticate only — this is scoped by the caller's memberships, and it is
+// what the client calls before it knows which startup it is working in.
+router.get("/", authenticate, startupController.listMyStartups);
+
 // POST /api/v1/startups
 // authenticate only — the caller has no membership yet (they're creating the startup)
 router.post(

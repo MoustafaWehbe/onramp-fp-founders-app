@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { Button } from "../../../components/ui/button";
-import { SEED_STARTUP_ID, useActiveStartupId, useAppStore } from "../../../lib/app-store";
+import { useActiveStartupId } from "../../../hooks/useWorkspace";
 import { DEFAULT_PROBABILITY_BY_STAGE, STAGES } from "../../../lib/mock-data";
 import { createPipelineEntry, listInvestorContacts } from "../../../lib/pipeline-api";
 import { InvestorsCardList } from "./InvestorsCardList";
@@ -35,7 +35,6 @@ function apiErrorMessage(err: unknown, fallback: string) {
 
 export function Investors() {
   const startupId = useActiveStartupId();
-  const setActiveStartupId = useAppStore((s) => s.setActiveStartupId);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -105,11 +104,6 @@ export function Investors() {
         navigate("/pipeline");
         return;
       }
-      if (isAxiosError(err) && err.response?.status === 403) {
-        setActiveStartupId(SEED_STARTUP_ID);
-        toast.error("Forbidden — reset to Acme Corp startup. Sign in again if this continues.");
-        return;
-      }
       toast.error(apiErrorMessage(err, "Could not move to pipeline"));
     },
   });
@@ -159,20 +153,16 @@ export function Investors() {
 
       {investorsQuery.isError && (
         <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-6 text-sm text-destructive">
-          {apiErrorMessage(
-            investorsQuery.error,
-            "Failed to load investors. Sign in as founder@example.com and make sure the API is running.",
-          )}
+          {apiErrorMessage(investorsQuery.error, "Failed to load investors.")}
           <div className="mt-3">
             <Button
               size="sm"
               variant="outline"
-              onClick={() => {
-                setActiveStartupId(SEED_STARTUP_ID);
-                void queryClient.invalidateQueries({ queryKey: ["investors", SEED_STARTUP_ID] });
-              }}
+              onClick={() =>
+                void queryClient.invalidateQueries({ queryKey: ["investors", startupId] })
+              }
             >
-              Reset startup & retry
+              Retry
             </Button>
           </div>
         </div>

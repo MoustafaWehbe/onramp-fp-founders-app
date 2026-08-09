@@ -128,6 +128,38 @@ describe("StartupService.deleteStartup", () => {
   });
 });
 
+describe("StartupService.listMyStartups", () => {
+  it("returns only workspaces where the caller is an active member", async () => {
+    mockPrisma.startupMember.findMany.mockResolvedValue([
+      {
+        id: "m1",
+        status: "active",
+        joinedAt: new Date("2026-01-01"),
+        role: { name: "owner" },
+        startup: STARTUP,
+      },
+    ] as never);
+
+    const result = await service.listMyStartups(USER_ID);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: STARTUP_ID,
+      name: "Acme Corp",
+      member: { role: "owner", status: "active" },
+    });
+    // Pending invitations are not openable workspaces — they must not appear.
+    expect(mockPrisma.startupMember.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: USER_ID, status: "active" } }),
+    );
+  });
+
+  it("returns an empty list for a user who belongs to nothing yet", async () => {
+    mockPrisma.startupMember.findMany.mockResolvedValue([] as never);
+    await expect(service.listMyStartups(USER_ID)).resolves.toEqual([]);
+  });
+});
+
 describe("StartupService.listRoles", () => {
   it("returns only the roles scoped to the startup, most privileged first", async () => {
     const roles = [

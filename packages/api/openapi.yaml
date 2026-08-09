@@ -277,6 +277,19 @@ components:
           format: uri
           nullable: true
           example: https://cdn.example.com/avatars/123.png
+        emailVerifiedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastActiveStartupId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Which workspace to reopen on load. Null for someone who has neither
+            created a startup nor accepted an invite — a client should route
+            those users to onboarding instead of into a 403. Only returned by
+            GET /auth/me; the sign-in responses carry a narrower user object.
         createdAt:
           type: string
           format: date-time
@@ -350,6 +363,29 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    # A startup plus the caller's own membership in it, so a client can render
+    # a workspace list and know its role in each without a request per row.
+    StartupWithMembership:
+      allOf:
+        - $ref: "#/components/schemas/Startup"
+        - type: object
+          properties:
+            member:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                status:
+                  $ref: "#/components/schemas/MemberStatus"
+                role:
+                  type: string
+                  enum: [owner, collaborator, viewer]
+                joinedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
 
     CreateStartupBody:
       type: object
@@ -1772,27 +1808,32 @@ paths:
   /startups:
     get:
       tags: [Startups]
-      summary: List startups the current user belongs to
+      summary: List the workspaces the current user can open
       operationId: listStartups
+      description: >
+        Scoped by the caller's active memberships, so this is the one startup
+        endpoint that takes no startupId — it is what a client calls before it
+        knows which workspace it is in. Pending invitations are excluded, since
+        they are not openable. Not paginated: a user belongs to a handful of
+        workspaces. An empty list means the user has no workspace yet and should
+        be sent to onboarding — it is not a permission failure.
       security:
         - cookieAuth: []
-      parameters:
-        - $ref: "#/components/parameters/PageParam"
-        - $ref: "#/components/parameters/LimitParam"
       responses:
         "200":
-          description: List of startups
+          description: Workspaces the caller is an active member of, oldest first
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Startup"
-                  meta:
-                    $ref: "#/components/schemas/PaginationMeta"
+                    type: object
+                    properties:
+                      startups:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/StartupWithMembership"
         "401":
           description: Unauthorized
           content:

@@ -89,6 +89,36 @@ export class StartupService {
     });
   }
 
+  /**
+   * Every workspace the caller can actually open. Scoped by membership rather
+   * than by a startup id, so this is the one startup endpoint that cannot use
+   * requireMember — it is what the client calls before it knows which startup
+   * it is in.
+   */
+  async listMyStartups(userId: string) {
+    const memberships = await prisma.startupMember.findMany({
+      where: { userId, status: "active" },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        status: true,
+        joinedAt: true,
+        role: { select: { name: true } },
+        startup: { select: STARTUP_SELECT },
+      },
+    });
+
+    return memberships.map((m) => ({
+      ...m.startup,
+      member: {
+        id: m.id,
+        status: m.status,
+        role: m.role.name,
+        joinedAt: m.joinedAt,
+      },
+    }));
+  }
+
   async getStartup(startupId: string, userId: string) {
     const startup = await prisma.startup.findUnique({
       where: { id: startupId },

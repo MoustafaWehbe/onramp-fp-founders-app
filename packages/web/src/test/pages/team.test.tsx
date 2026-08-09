@@ -19,7 +19,7 @@ vi.mock("../../lib/team-api", () => ({
   removeMember: (...args: unknown[]) => removeMember(...args),
 }));
 
-vi.mock("../../lib/app-store", () => ({ useActiveStartupId: () => "startup-1" }));
+vi.mock("../../hooks/useWorkspace", () => ({ useActiveStartupId: () => "startup-1" }));
 
 const toast = {
   success: vi.fn(),

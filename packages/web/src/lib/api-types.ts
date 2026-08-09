@@ -216,7 +216,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List startups the current user belongs to */
+        /**
+         * List the workspaces the current user can open
+         * @description Scoped by the caller's active memberships, so this is the one startup endpoint that takes no startupId — it is what a client calls before it knows which workspace it is in. Pending invitations are excluded, since they are not openable. Not paginated: a user belongs to a handful of workspaces. An empty list means the user has no workspace yet and should be sent to onboarding — it is not a permission failure.
+         */
         get: operations["listStartups"];
         put?: never;
         /**
@@ -1163,6 +1166,13 @@ export interface components {
              * @example https://cdn.example.com/avatars/123.png
              */
             avatarUrl?: string | null;
+            /** Format: date-time */
+            emailVerifiedAt?: string | null;
+            /**
+             * Format: uuid
+             * @description Which workspace to reopen on load. Null for someone who has neither created a startup nor accepted an invite — a client should route those users to onboarding instead of into a 403. Only returned by GET /auth/me; the sign-in responses carry a narrower user object.
+             */
+            lastActiveStartupId?: string | null;
             /**
              * Format: date-time
              * @example 2024-01-01T00:00:00.000Z
@@ -1208,6 +1218,17 @@ export interface components {
             createdAt?: string;
             /** Format: date-time */
             updatedAt?: string;
+        };
+        StartupWithMembership: components["schemas"]["Startup"] & {
+            member?: {
+                /** Format: uuid */
+                id?: string;
+                status?: components["schemas"]["MemberStatus"];
+                /** @enum {string} */
+                role?: "owner" | "collaborator" | "viewer";
+                /** Format: date-time */
+                joinedAt?: string | null;
+            };
         };
         CreateStartupBody: {
             /** @example Acme Inc. */
@@ -2287,27 +2308,23 @@ export interface operations {
     };
     listStartups: {
         parameters: {
-            query?: {
-                /** @description Page number (1-indexed) */
-                page?: components["parameters"]["PageParam"];
-                /** @description Number of items per page */
-                limit?: components["parameters"]["LimitParam"];
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description List of startups */
+            /** @description Workspaces the caller is an active member of, oldest first */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
-                        data?: components["schemas"]["Startup"][];
-                        meta?: components["schemas"]["PaginationMeta"];
+                        data?: {
+                            startups?: components["schemas"]["StartupWithMembership"][];
+                        };
                     };
                 };
             };

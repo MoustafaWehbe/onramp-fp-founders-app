@@ -15,6 +15,7 @@ export interface AuthUser {
   firstName: string;
   lastName: string;
   avatarUrl: string | null;
+  lastActiveStartupId?: string | null;
 }
 
 interface RegisterInitiateInput {

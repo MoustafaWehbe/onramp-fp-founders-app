@@ -20,7 +20,7 @@ import {
 } from "../../../components/ui/dialog";
 import { useAuth } from "../../../hooks/useAuth";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
-import { useActiveStartupId } from "../../../lib/app-store";
+import { useActiveStartupId } from "../../../hooks/useWorkspace";
 import {
   changeMemberRole,
   inviteMember,

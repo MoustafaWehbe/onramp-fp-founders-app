@@ -487,6 +487,7 @@ export class AuthService {
         avatarUrl: true,
         emailVerifiedAt: true,
         createdAt: true,
+        lastActiveStartupId: true,
       },
     });
     if (!user) throw createError("User not found", 404);
