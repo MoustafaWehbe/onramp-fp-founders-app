@@ -112,16 +112,119 @@ describe("InvestorService.createInvestor", () => {
 });
 
 describe("InvestorService.listInvestors", () => {
+  /** The two counts resolve in order: engaged first, then prospect. */
+  function mockCounts(engaged: number, prospect: number) {
+    (mockPrisma.startupInvestor.count as jest.Mock)
+      .mockResolvedValueOnce(engaged)
+      .mockResolvedValueOnce(prospect);
+  }
+
   it("returns pagination meta alongside the rows", async () => {
-    (mockPrisma.startupInvestor.count as jest.Mock).mockResolvedValue(45);
+    mockCounts(12, 33);
     (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([]);
 
     const result = await service.listInvestors(STARTUP_ID, { page: 2, limit: 20 } as never);
 
-    expect(result.meta).toEqual({ page: 2, limit: 20, total: 45, totalPages: 3 });
+    // With no engagement filter the view spans both tabs, so total is the sum.
+    expect(result.meta).toEqual({
+      page: 2,
+      limit: 20,
+      total: 45,
+      totalPages: 3,
+      engagementCounts: { engaged: 12, prospect: 33 },
+    });
     expect(mockPrisma.startupInvestor.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ skip: 20, take: 20 }),
     );
+  });
+
+  it("treats a contact as engaged when it is in the pipeline or has logged interactions", async () => {
+    mockCounts(4, 9);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([]);
+
+    const result = await service.listInvestors(STARTUP_ID, {
+      ...DEFAULT_QUERY,
+      engagement: "engaged",
+    } as never);
+
+    const { where } = (mockPrisma.startupInvestor.findMany as jest.Mock).mock.calls[0][0];
+    expect(where.AND[1]).toEqual({
+      OR: [{ pipeline: { some: {} } }, { interactionLogs: { some: {} } }],
+    });
+    // Total narrows to the tab being viewed; the counts still describe both.
+    expect(result.meta.total).toBe(4);
+    expect(result.meta.engagementCounts).toEqual({ engaged: 4, prospect: 9 });
+  });
+
+  it("treats a contact as a prospect only when it has neither", async () => {
+    mockCounts(4, 9);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([]);
+
+    const result = await service.listInvestors(STARTUP_ID, {
+      ...DEFAULT_QUERY,
+      engagement: "prospect",
+    } as never);
+
+    const { where } = (mockPrisma.startupInvestor.findMany as jest.Mock).mock.calls[0][0];
+    expect(where.AND[1]).toEqual({
+      pipeline: { none: {} },
+      interactionLogs: { none: {} },
+    });
+    expect(result.meta.total).toBe(9);
+  });
+
+  it("keeps the search filter when an engagement tab is selected", async () => {
+    // Both halves use `OR`, so merging them as plain keys would drop the
+    // search entirely and quietly return the whole tab.
+    mockCounts(1, 1);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.listInvestors(STARTUP_ID, {
+      ...DEFAULT_QUERY,
+      search: "accel",
+      engagement: "engaged",
+    } as never);
+
+    const { where } = (mockPrisma.startupInvestor.findMany as jest.Mock).mock.calls[0][0];
+    expect(where.AND[0].OR).toEqual([
+      { fullName: { contains: "accel", mode: "insensitive" } },
+      { email: { contains: "accel", mode: "insensitive" } },
+      { ventureFirm: { contains: "accel", mode: "insensitive" } },
+    ]);
+    expect(where.AND[1].OR).toEqual([
+      { pipeline: { some: {} } },
+      { interactionLogs: { some: {} } },
+    ]);
+  });
+
+  it("keeps the stage filter when an engagement tab is selected", async () => {
+    // Both halves constrain `pipeline`, the other collision case.
+    mockCounts(1, 1);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.listInvestors(STARTUP_ID, {
+      ...DEFAULT_QUERY,
+      stage: "term_sheet",
+      engagement: "engaged",
+    } as never);
+
+    const { where } = (mockPrisma.startupInvestor.findMany as jest.Mock).mock.calls[0][0];
+    expect(where.AND[0].pipeline).toEqual({ some: { stage: "term_sheet" } });
+    expect(where.AND[1]).toHaveProperty("OR");
+  });
+
+  it("counts both tabs against the same search, so the badges follow the filter", async () => {
+    mockCounts(2, 5);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.listInvestors(STARTUP_ID, { ...DEFAULT_QUERY, search: "seed" } as never);
+
+    const countCalls = (mockPrisma.startupInvestor.count as jest.Mock).mock.calls;
+    for (const [{ where }] of countCalls) {
+      expect(where.AND[0].OR).toEqual(
+        expect.arrayContaining([{ fullName: { contains: "seed", mode: "insensitive" } }]),
+      );
+    }
   });
 
   it("joins the pipeline entry and converts Decimal amounts to numbers", async () => {

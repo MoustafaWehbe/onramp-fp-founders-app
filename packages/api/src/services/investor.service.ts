@@ -37,6 +37,22 @@ type PipelineRow = {
   probabilityPercentage: number | null;
 };
 
+/**
+ * "Engaged" means this startup has actually approached the contact: they are
+ * on the pipeline board, or someone has logged a call/email/meeting with them.
+ * Everything else is a prospect — sourced or imported, never reached out to.
+ * Derived rather than stored, so it cannot drift from what the team has done.
+ */
+const ENGAGEMENT_FILTERS = {
+  engaged: {
+    OR: [{ pipeline: { some: {} } }, { interactionLogs: { some: {} } }],
+  },
+  prospect: {
+    pipeline: { none: {} },
+    interactionLogs: { none: {} },
+  },
+} as const satisfies Record<string, Prisma.StartupInvestorWhereInput>;
+
 /** "a", "a and b", "a, b and c" — for naming what blocks a delete. */
 function listPhrase(items: string[]): string {
   if (items.length <= 1) return items[0] ?? "";
@@ -73,9 +89,12 @@ export class InvestorService {
   }
 
   async listInvestors(startupId: string, query: ListInvestorsQuery) {
-    const { page, limit, search, investorType, stage } = query;
+    const { page, limit, search, investorType, stage, engagement } = query;
 
-    const where: Prisma.StartupInvestorWhereInput = {
+    // Everything except the engagement split. The tab counts are taken against
+    // this so they answer "how many match my search on the other tab", rather
+    // than always reporting the whole directory.
+    const baseWhere: Prisma.StartupInvestorWhereInput = {
       startupId,
       ...(investorType && { investorType }),
       ...(stage && { pipeline: { some: { stage } } }),
@@ -88,8 +107,20 @@ export class InvestorService {
       }),
     };
 
-    const [total, contacts] = await Promise.all([
-      prisma.startupInvestor.count({ where }),
+    // Combined with AND rather than spread: both sides use `OR` (search vs.
+    // engaged) and `pipeline` (stage vs. prospect), so merging them as keys
+    // would silently drop one of the two filters.
+    const where: Prisma.StartupInvestorWhereInput = engagement
+      ? { AND: [baseWhere, ENGAGEMENT_FILTERS[engagement]] }
+      : baseWhere;
+
+    const [engagedCount, prospectCount, contacts] = await Promise.all([
+      prisma.startupInvestor.count({
+        where: { AND: [baseWhere, ENGAGEMENT_FILTERS.engaged] },
+      }),
+      prisma.startupInvestor.count({
+        where: { AND: [baseWhere, ENGAGEMENT_FILTERS.prospect] },
+      }),
       prisma.startupInvestor.findMany({
         where,
         orderBy: { createdAt: "desc" },
@@ -104,6 +135,15 @@ export class InvestorService {
       }),
     ]);
 
+    // The two counts partition the same base set, so the total for whichever
+    // view is being asked for falls out of them — no third count query.
+    const total =
+      engagement === "engaged"
+        ? engagedCount
+        : engagement === "prospect"
+          ? prospectCount
+          : engagedCount + prospectCount;
+
     const followups = await this.nextFollowupsFor(contacts.map((c) => c.id));
 
     return {
@@ -117,6 +157,7 @@ export class InvestorService {
         limit,
         total,
         totalPages: Math.ceil(total / limit),
+        engagementCounts: { engaged: engagedCount, prospect: prospectCount },
       },
     };
   }

@@ -1382,6 +1382,20 @@ export interface components {
          * @enum {string}
          */
         InvestorType: "vc" | "angel" | "family_office" | "accelerator" | "other";
+        /**
+         * @example engaged
+         * @enum {string}
+         */
+        Engagement: "engaged" | "prospect";
+        InvestorListMeta: components["schemas"]["PaginationMeta"] & {
+            /** @description How many contacts fall on each side of the split. Both counts honour the other active filters (search, investorType, stage) but ignore `engagement` itself, so a client can label both tabs from one request. `total` reflects the requested view: one of the two counts when `engagement` is set, their sum when not. */
+            engagementCounts?: {
+                /** @example 10 */
+                engaged?: number;
+                /** @example 8 */
+                prospect?: number;
+            };
+        };
         Investor: {
             /** Format: uuid */
             id?: string;
@@ -3323,6 +3337,8 @@ export interface operations {
                 investorType?: components["schemas"]["InvestorType"];
                 /** @description Filter on the joined pipeline entry's stage */
                 stage?: components["schemas"]["PipelineStage"];
+                /** @description Splits the directory into contacts the startup has actually approached and ones it has not. Omit to span both. */
+                engagement?: components["schemas"]["Engagement"];
             };
             header?: never;
             path: {
@@ -3340,7 +3356,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         data?: components["schemas"]["InvestorListItem"][];
-                        meta?: components["schemas"]["PaginationMeta"];
+                        meta?: components["schemas"]["InvestorListMeta"];
                     };
                 };
             };

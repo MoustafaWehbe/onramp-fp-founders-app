@@ -9,17 +9,33 @@ import {
   DropdownMenuTrigger,
 } from "../../../components/ui/dropdown-menu";
 import { Input } from "../../../components/ui/input";
+import { STAGES, type PipelineStageId } from "../../../lib/mock-data";
+import {
+  INVESTOR_TYPES,
+  INVESTOR_TYPE_LABELS,
+  type InvestorType,
+} from "../../../lib/investor-api";
 import { cn } from "../../../lib/utils";
 
-type FilterMenuProps = {
+type Option<T extends string> = { value: T; label: string };
+
+type FilterMenuProps<T extends string> = {
   label: string;
-  options: string[];
-  value: string | null;
-  onChange: (value: string | null) => void;
+  options: Option<T>[];
+  value: T | null;
+  onChange: (value: T | null) => void;
   showIcon?: boolean;
 };
 
-function FilterMenu({ label, options, value, onChange, showIcon }: FilterMenuProps) {
+function FilterMenu<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+  showIcon,
+}: FilterMenuProps<T>) {
+  const selected = options.find((option) => option.value === value);
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -29,7 +45,7 @@ function FilterMenu({ label, options, value, onChange, showIcon }: FilterMenuPro
           className={cn(value && "border-primary/40 text-primary")}
         >
           {showIcon && <Filter className="h-3.5 w-3.5" />}
-          {value ?? label}
+          {selected?.label ?? label}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="min-w-48">
@@ -37,13 +53,16 @@ function FilterMenu({ label, options, value, onChange, showIcon }: FilterMenuPro
         <DropdownMenuSeparator />
         {options.map((option) => (
           <DropdownMenuItem
-            key={option}
-            onClick={() => onChange(option === value ? null : option)}
+            key={option.value}
+            onSelect={() => onChange(option.value === value ? null : option.value)}
           >
             <Check
-              className={cn("mr-2 h-4 w-4", option === value ? "opacity-100" : "opacity-0")}
+              className={cn(
+                "mr-2 h-4 w-4",
+                option.value === value ? "opacity-100" : "opacity-0",
+              )}
             />
-            {option}
+            {option.label}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
@@ -51,21 +70,37 @@ function FilterMenu({ label, options, value, onChange, showIcon }: FilterMenuPro
   );
 }
 
+/**
+ * Only filters the API can apply. Sector and firm used to be offered here, but
+ * they filtered the loaded page rather than the query, so results silently
+ * depended on how far you had paged.
+ */
 export type InvestorFilters = {
-  stage: string | null;
-  sector: string | null;
-  firm: string | null;
+  stage: PipelineStageId | null;
+  investorType: InvestorType | null;
 };
+
+const STAGE_OPTIONS: Option<PipelineStageId>[] = STAGES.map((stage) => ({
+  value: stage.id,
+  label: stage.label,
+}));
+
+const TYPE_OPTIONS: Option<InvestorType>[] = INVESTOR_TYPES.map((type) => ({
+  value: type,
+  label: INVESTOR_TYPE_LABELS[type],
+}));
 
 type InvestorsToolbarProps = {
   query: string;
   onQueryChange: (value: string) => void;
   filters: InvestorFilters;
-  onFilterChange: (key: keyof InvestorFilters, value: string | null) => void;
+  onFilterChange: <K extends keyof InvestorFilters>(
+    key: K,
+    value: InvestorFilters[K],
+  ) => void;
   onClearFilters: () => void;
-  stageOptions: string[];
-  sectorOptions: string[];
-  firmOptions: string[];
+  /** Stage only applies to contacts that are on the board. */
+  showStageFilter?: boolean;
   selectedCount: number;
 };
 
@@ -75,9 +110,7 @@ export function InvestorsToolbar({
   filters,
   onFilterChange,
   onClearFilters,
-  stageOptions,
-  sectorOptions,
-  firmOptions,
+  showStageFilter = true,
   selectedCount,
 }: InvestorsToolbarProps) {
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
@@ -89,30 +122,27 @@ export function InvestorsToolbar({
         <Input
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="Search investors, firms…"
+          placeholder="Search name, email or firm…"
           aria-label="Search investors"
           className="pl-9"
         />
       </div>
 
+      {showStageFilter && (
+        <FilterMenu
+          label="Stage"
+          showIcon
+          options={STAGE_OPTIONS}
+          value={filters.stage}
+          onChange={(value) => onFilterChange("stage", value)}
+        />
+      )}
       <FilterMenu
-        label="Stage"
-        showIcon
-        options={stageOptions}
-        value={filters.stage}
-        onChange={(value) => onFilterChange("stage", value)}
-      />
-      <FilterMenu
-        label="Sector"
-        options={sectorOptions}
-        value={filters.sector}
-        onChange={(value) => onFilterChange("sector", value)}
-      />
-      <FilterMenu
-        label="Firm"
-        options={firmOptions}
-        value={filters.firm}
-        onChange={(value) => onFilterChange("firm", value)}
+        label="Type"
+        showIcon={!showStageFilter}
+        options={TYPE_OPTIONS}
+        value={filters.investorType}
+        onChange={(value) => onFilterChange("investorType", value)}
       />
 
       {activeFilterCount > 0 && (

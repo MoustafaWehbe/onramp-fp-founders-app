@@ -88,6 +88,14 @@ export const listInvestorsQuerySchema = z.object({
     .optional(),
   investorType: investorTypeEnum.optional(),
   stage: pipelineStageEnum.optional(),
+  // Splits the directory in two: contacts this startup has actually engaged
+  // (they sit in the pipeline, or someone has logged an interaction with them)
+  // versus ones that were added or imported but never approached.
+  engagement: z
+    .enum(["engaged", "prospect"], {
+      errorMap: () => ({ message: "engagement must be 'engaged' or 'prospect'" }),
+    })
+    .optional(),
 });
 
 export const investorIdParamSchema = z.object({

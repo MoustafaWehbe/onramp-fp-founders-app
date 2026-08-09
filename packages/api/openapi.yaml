@@ -651,6 +651,35 @@ components:
       enum: [vc, angel, family_office, accelerator, other]
       example: vc
 
+    # Derived from activity rather than stored, so it cannot drift from what the
+    # team has actually done: a contact is "engaged" once it has a pipeline
+    # entry or at least one interaction log, and a "prospect" until then.
+    Engagement:
+      type: string
+      enum: [engaged, prospect]
+      example: engaged
+
+    InvestorListMeta:
+      allOf:
+        - $ref: "#/components/schemas/PaginationMeta"
+        - type: object
+          properties:
+            engagementCounts:
+              type: object
+              description: >
+                How many contacts fall on each side of the split. Both counts
+                honour the other active filters (search, investorType, stage)
+                but ignore `engagement` itself, so a client can label both tabs
+                from one request. `total` reflects the requested view: one of
+                the two counts when `engagement` is set, their sum when not.
+              properties:
+                engaged:
+                  type: integer
+                  example: 10
+                prospect:
+                  type: integer
+                  example: 8
+
     # An investor contact private to one startup. Contacts are never shared
     # between startups — two startups tracking the same person hold two
     # independent records.
@@ -2702,6 +2731,13 @@ paths:
           schema:
             $ref: "#/components/schemas/PipelineStage"
           description: Filter on the joined pipeline entry's stage
+        - name: engagement
+          in: query
+          schema:
+            $ref: "#/components/schemas/Engagement"
+          description: >
+            Splits the directory into contacts the startup has actually
+            approached and ones it has not. Omit to span both.
       responses:
         "200":
           description: List of investor contacts
@@ -2715,7 +2751,7 @@ paths:
                     items:
                       $ref: "#/components/schemas/InvestorListItem"
                   meta:
-                    $ref: "#/components/schemas/PaginationMeta"
+                    $ref: "#/components/schemas/InvestorListMeta"
         "401":
           description: Unauthorized
           content:

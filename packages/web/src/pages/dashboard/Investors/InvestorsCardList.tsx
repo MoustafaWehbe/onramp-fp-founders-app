@@ -9,6 +9,8 @@ type InvestorsCardListProps = {
   selectedIds: Set<string>;
   onToggleOne: (id: string) => void;
   onMoveToPipeline: (investor: InvestorRow) => void;
+  onEdit: (investor: InvestorRow) => void;
+  onDelete: (investor: InvestorRow) => void;
   movingInvestorId?: string | null;
 };
 
@@ -17,6 +19,8 @@ export function InvestorsCardList({
   selectedIds,
   onToggleOne,
   onMoveToPipeline,
+  onEdit,
+  onDelete,
   movingInvestorId = null,
 }: InvestorsCardListProps) {
   return (
@@ -65,6 +69,8 @@ export function InvestorsCardList({
             <InvestorActions
               investor={investor}
               onMoveToPipeline={onMoveToPipeline}
+              onEdit={onEdit}
+              onDelete={onDelete}
               moving={movingInvestorId === investor.id}
             />
           </li>

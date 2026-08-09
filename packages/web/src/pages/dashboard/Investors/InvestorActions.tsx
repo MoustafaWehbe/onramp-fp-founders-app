@@ -1,4 +1,4 @@
-import { Briefcase, Linkedin, Mail, MoreHorizontal } from "lucide-react";
+import { Briefcase, Linkedin, Mail, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import {
   DropdownMenu,
@@ -13,18 +13,23 @@ import type { InvestorRow } from "./investor-types";
 type InvestorActionsProps = {
   investor: InvestorRow;
   onMoveToPipeline?: (investor: InvestorRow) => void;
+  onEdit?: (investor: InvestorRow) => void;
+  onDelete?: (investor: InvestorRow) => void;
   moving?: boolean;
 };
 
 export function InvestorActions({
   investor,
   onMoveToPipeline,
+  onEdit,
+  onDelete,
   moving = false,
 }: InvestorActionsProps) {
   const { can } = usePermissions();
   const alreadyInPipeline = Boolean(investor.pipelineId);
   const canAddToPipeline = can("pipeline", "create");
-  const canArchive = can("pipeline", "delete");
+  const canEdit = can("pipeline", "update");
+  const canDelete = can("pipeline", "delete");
 
   return (
     <DropdownMenu>
@@ -53,6 +58,13 @@ export function InvestorActions({
             </a>
           </DropdownMenuItem>
         )}
+
+        {canEdit && (
+          <DropdownMenuItem onSelect={() => onEdit?.(investor)}>
+            <Pencil className="mr-2 h-4 w-4" /> Edit details
+          </DropdownMenuItem>
+        )}
+
         {canAddToPipeline && (
           <DropdownMenuItem
             disabled={alreadyInPipeline || moving || !onMoveToPipeline}
@@ -62,11 +74,15 @@ export function InvestorActions({
             {alreadyInPipeline ? "Already in pipeline" : moving ? "Adding…" : "Move to pipeline"}
           </DropdownMenuItem>
         )}
-        {canArchive && (
+
+        {canDelete && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive" disabled>
-              Archive
+            <DropdownMenuItem
+              className="text-destructive"
+              onSelect={() => onDelete?.(investor)}
+            >
+              <Trash2 className="mr-2 h-4 w-4" /> Delete investor
             </DropdownMenuItem>
           </>
         )}

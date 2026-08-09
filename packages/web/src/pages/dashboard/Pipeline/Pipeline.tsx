@@ -30,9 +30,9 @@ import {
   STAGES,
   type PipelineStageId,
 } from "../../../lib/mock-data";
+import { listInvestors } from "../../../lib/investor-api";
 import {
   createPipelineEntry,
-  listInvestorContacts,
   listPipelineEntries,
   updatePipelineEntry,
   type PipelineEntry,
@@ -75,7 +75,7 @@ export function Pipeline() {
 
   const contactsQuery = useQuery({
     queryKey: ["investors", startupId, "for-pipeline"],
-    queryFn: () => listInvestorContacts(startupId, { page: 1, limit: 100 }),
+    queryFn: () => listInvestors(startupId, { page: 1, limit: 100 }),
     enabled: addOpen,
   });
 
