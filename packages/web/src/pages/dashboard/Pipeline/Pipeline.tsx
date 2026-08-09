@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useCallback, useMemo, useState, type DragEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -76,18 +76,7 @@ export function Pipeline() {
   const canUpdate = can("pipeline", "update");
 
   const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
-  // dragover fires in a tight native loop that doesn't reliably wait for a
-  // React commit, so the id it reads must come from a ref, not state — a
-  // dragover right after dragstart can otherwise still see draggedDealId as
-  // null and skip computing the drop position entirely. State stays in sync
-  // for everything that renders (dimming the source card, filtering it out).
-  const draggedIdRef = useRef<string | null>(null);
   const [dropTarget, setDropTarget] = useState<PipelineStageId | null>(null);
-  // Where the dragged card would land if dropped right now — drives the
-  // insertion marker and the index handleDrop commits to.
-  const [dropPreview, setDropPreview] = useState<{ stage: PipelineStageId; index: number } | null>(
-    null,
-  );
   const [addOpen, setAddOpen] = useState(false);
   const [openDealId, setOpenDealId] = useState<string | null>(null);
   const [pendingRemove, setPendingRemove] = useState<PipelineEntry | null>(null);
@@ -130,22 +119,6 @@ export function Pipeline() {
   });
 
   const entries = useMemo(() => pipelineQuery.data?.data ?? [], [pipelineQuery.data]);
-  const entryById = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries]);
-
-  // Card position within a column, independent of the server's sort order
-  // (updatedAt desc) — otherwise a moved card always jumps to the top on
-  // refetch instead of staying where it was dropped. Reconciled against the
-  // server on every fetch: gone ids drop out, new ones land at the end.
-  const [cardOrder, setCardOrder] = useState<string[]>([]);
-  useEffect(() => {
-    setCardOrder((prev) => {
-      const currentIds = new Set(entries.map((entry) => entry.id));
-      const kept = prev.filter((id) => currentIds.has(id));
-      const known = new Set(kept);
-      const appended = entries.filter((entry) => !known.has(entry.id)).map((entry) => entry.id);
-      return [...kept, ...appended];
-    });
-  }, [entries]);
 
   const signalsByDeal = useMemo(() => {
     const logsByInvestor = groupLogsByInvestor(logsQuery.data?.data ?? []);
@@ -211,27 +184,17 @@ export function Pipeline() {
     [view.showPassed],
   );
 
-  const visibleIds = useMemo(
-    () => new Set(visibleEntries.map((entry) => entry.id)),
-    [visibleEntries],
-  );
-
-  // Grouped by walking cardOrder (not visibleEntries) so manual positioning
-  // survives filtering, searching and refetches.
   const dealsByStage = useMemo(() => {
     const grouped = new Map<PipelineStageId, PipelineEntry[]>(
       STAGES.map((stage) => [stage.id, []]),
     );
-    for (const id of cardOrder) {
-      if (!visibleIds.has(id)) continue;
-      const entry = entryById.get(id);
-      if (!entry) continue;
+    for (const entry of visibleEntries) {
       const bucket = grouped.get(entry.stage);
       if (bucket) bucket.push(entry);
       else grouped.get("sourced")?.push(entry);
     }
     return grouped;
-  }, [cardOrder, visibleIds, entryById]);
+  }, [visibleEntries]);
 
   const openDeal = useMemo(
     () => entries.find((entry) => entry.id === openDealId) ?? null,
@@ -305,7 +268,8 @@ export function Pipeline() {
     },
     onSettled: () => {
       invalidatePipeline();
-      clearDragState();
+      setDraggedDealId(null);
+      setDropTarget(null);
     },
   });
 
@@ -362,110 +326,27 @@ export function Pipeline() {
     onError: (err) => toast.error(pipelineErrorMessage(err, "Could not save the interaction")),
   });
 
-  /**
-   * Moves a deal within cardOrder, then persists a stage change if it crossed
-   * columns. targetIndex is measured against the target stage's own cards
-   * (the dragged one excluded), so it's the same index the drop preview shows.
-   */
-  const reorderDeal = useCallback(
-    (dealId: string, targetStage: PipelineStageId, targetIndex: number) => {
-      if (!canUpdate) return;
-      const source = entryById.get(dealId);
-      if (!source) return;
-
-      setCardOrder((prev) => {
-        const withoutDragged = prev.filter((id) => id !== dealId);
-        const stageOf = (id: string) => (id === dealId ? targetStage : entryById.get(id)?.stage);
-        const stageIds = withoutDragged.filter((id) => stageOf(id) === targetStage);
-        const clamped = Math.min(Math.max(targetIndex, 0), stageIds.length);
-        const beforeId = stageIds[clamped];
-        const insertAt = beforeId
-          ? withoutDragged.indexOf(beforeId)
-          : stageIds.length > 0
-            ? withoutDragged.indexOf(stageIds[stageIds.length - 1]) + 1
-            : withoutDragged.length;
-        const next = [...withoutDragged];
-        next.splice(insertAt, 0, dealId);
-        return next;
-      });
-
-      if (source.stage !== targetStage) {
-        moveMutation.mutate({ pipelineId: dealId, stage: targetStage });
-      }
-    },
-    [canUpdate, entryById, moveMutation],
-  );
-
   const moveDeal = useCallback(
     (pipelineId: string, stage: PipelineStageId) => {
-      const current = entryById.get(pipelineId);
+      if (!canUpdate) return;
+      const current = entries.find((entry) => entry.id === pipelineId);
       if (!current || current.stage === stage) return;
-      // Triggered from the card's menu, not a drag — there's no drop
-      // position, so the deal goes to the end of its new column.
-      reorderDeal(pipelineId, stage, (dealsByStage.get(stage) ?? []).length);
+      moveMutation.mutate({ pipelineId, stage });
     },
-    [entryById, dealsByStage, reorderDeal],
+    [canUpdate, entries, moveMutation],
   );
 
   const handleDragStart = (event: DragEvent<HTMLElement>, dealId: string) => {
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", dealId);
-    draggedIdRef.current = dealId;
     setDraggedDealId(dealId);
-  };
-
-  const clearDragState = () => {
-    draggedIdRef.current = null;
-    setDraggedDealId(null);
-    setDropTarget(null);
-    setDropPreview(null);
-  };
-
-  /**
-   * Finds the card nearest the pointer and whether it's above or below that
-   * card's midpoint, so the insertion marker — and the eventual drop — lands
-   * next to the cursor instead of always at the top of the column.
-   */
-  const handleColumnDragOver = (event: DragEvent<HTMLElement>, stageId: PipelineStageId) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    setDropTarget(stageId);
-
-    const draggedId = draggedIdRef.current;
-    if (!draggedId) return;
-
-    const cards = Array.from(
-      event.currentTarget.querySelectorAll<HTMLElement>("[data-deal-card]"),
-    ).filter((el) => el.dataset.dealCard !== draggedId);
-
-    let index = cards.length;
-    for (let i = 0; i < cards.length; i += 1) {
-      const rect = cards[i].getBoundingClientRect();
-      if (event.clientY < rect.top + rect.height / 2) {
-        index = i;
-        break;
-      }
-    }
-
-    // Skip the state write once it already matches — dragover fires dozens of
-    // times a second, and a new object every time would re-render for no
-    // visible change.
-    setDropPreview((prev) =>
-      prev && prev.stage === stageId && prev.index === index ? prev : { stage: stageId, index },
-    );
   };
 
   const handleDrop = (event: DragEvent<HTMLElement>, stageId: PipelineStageId) => {
     event.preventDefault();
-    const dealId = event.dataTransfer.getData("text/plain") || draggedIdRef.current;
-    if (dealId) {
-      const index =
-        dropPreview?.stage === stageId
-          ? dropPreview.index
-          : (dealsByStage.get(stageId) ?? []).length;
-      reorderDeal(dealId, stageId, index);
-    }
-    clearDragState();
+    const dealId = event.dataTransfer.getData("text/plain") || draggedDealId;
+    if (!dealId) return;
+    moveDeal(dealId, stageId);
   };
 
   const boardReady = !pipelineQuery.isLoading && !pipelineQuery.isError;
@@ -585,18 +466,6 @@ export function Pipeline() {
               return sum + amount * ((deal.probabilityPercentage ?? 0) / 100);
             }, 0);
 
-            // Lifted visually out of its own column while dragging, so the
-            // insertion marker's index lines up with what's actually on
-            // screen instead of double-counting the card being moved.
-            const displayDeals =
-              draggedDealId !== null
-                ? stageDeals.filter((deal) => deal.id !== draggedDealId)
-                : stageDeals;
-            const showMarkerAt =
-              draggedDealId !== null && dropPreview?.stage === stage.id
-                ? dropPreview.index
-                : null;
-
             return (
               <section
                 key={stage.id}
@@ -633,34 +502,39 @@ export function Pipeline() {
                     "scrollbar-slim h-[26rem] space-y-2 overflow-y-auto rounded-xl border border-border/70 bg-surface/50 p-2 transition-colors",
                     dropTarget === stage.id && "border-primary/50 bg-primary/[0.04]",
                   )}
-                  onDragEnter={(event) => handleColumnDragOver(event, stage.id)}
-                  onDragOver={(event) => handleColumnDragOver(event, stage.id)}
+                  onDragEnter={(event) => {
+                    event.preventDefault();
+                    setDropTarget(stage.id);
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                  }}
                   onDragLeave={(event) => {
                     if (!event.currentTarget.contains(event.relatedTarget as Node)) {
                       setDropTarget(null);
-                      setDropPreview(null);
                     }
                   }}
                   onDrop={(event) => handleDrop(event, stage.id)}
                 >
-                  {showMarkerAt === 0 && <DropMarker />}
-                  {displayDeals.map((deal, index) => (
-                    <Fragment key={deal.id}>
-                      <DealCard
-                        deal={deal}
-                        signals={signalsFor(deal.id)}
-                        canUpdate={canUpdate}
-                        isDragging={draggedDealId === deal.id}
-                        onOpen={() => setOpenDealId(deal.id)}
-                        onMove={(target) => moveDeal(deal.id, target)}
-                        onDragStart={(event) => handleDragStart(event, deal.id)}
-                        onDragEnd={clearDragState}
-                      />
-                      {showMarkerAt === index + 1 && <DropMarker />}
-                    </Fragment>
+                  {stageDeals.map((deal) => (
+                    <DealCard
+                      key={deal.id}
+                      deal={deal}
+                      signals={signalsFor(deal.id)}
+                      canUpdate={canUpdate}
+                      isDragging={draggedDealId === deal.id}
+                      onOpen={() => setOpenDealId(deal.id)}
+                      onMove={(target) => moveDeal(deal.id, target)}
+                      onDragStart={(event) => handleDragStart(event, deal.id)}
+                      onDragEnd={() => {
+                        setDraggedDealId(null);
+                        setDropTarget(null);
+                      }}
+                    />
                   ))}
 
-                  {displayDeals.length === 0 && showMarkerAt === null && (
+                  {stageDeals.length === 0 && (
                     <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
                       {view.attentionOnly || view.search.trim() !== ""
                         ? "Nothing matches here"
@@ -726,15 +600,5 @@ export function Pipeline() {
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-/** The glowing line that shows exactly where a dragged card will land. */
-function DropMarker() {
-  return (
-    <div
-      aria-hidden
-      className="h-1 shrink-0 rounded-full bg-primary shadow-[0_0_10px_2px_hsl(var(--primary)/0.55)]"
-    />
   );
 }

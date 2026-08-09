@@ -70,9 +70,6 @@ export function DealCard({
       draggable={canUpdate}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      // Read by the column's onDragOver to find which card the pointer is
-      // over, so a card drops next to the cursor instead of at the top.
-      data-deal-card={deal.id}
       className={cn(
         "relative border-border/70 bg-card/95 p-3 shadow-sm transition-[border-color,opacity,transform] hover:-translate-y-0.5 hover:border-primary/40",
         canUpdate && "cursor-grab active:cursor-grabbing",
