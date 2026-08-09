@@ -11,6 +11,9 @@ jest.mock("../../src/db/prisma", () => ({
       findUnique: jest.fn(),
       findMany: jest.fn(),
     },
+    role: {
+      findMany: jest.fn(),
+    },
     user: {
       updateMany: jest.fn(),
     },
@@ -122,6 +125,27 @@ describe("StartupService.deleteStartup", () => {
     await expect(service.deleteStartup(STARTUP_ID)).rejects.toMatchObject({
       statusCode: 404,
     });
+  });
+});
+
+describe("StartupService.listRoles", () => {
+  it("returns only the roles scoped to the startup, most privileged first", async () => {
+    const roles = [
+      { id: "role-owner", name: "owner", description: "Full access", isSystemRole: true },
+      { id: "role-collab", name: "collaborator", description: "Can edit", isSystemRole: true },
+      { id: "role-viewer", name: "viewer", description: "Read-only", isSystemRole: true },
+    ];
+    mockPrisma.role.findMany.mockResolvedValue(roles as never);
+
+    const result = await service.listRoles(STARTUP_ID);
+
+    expect(result).toEqual(roles);
+    expect(mockPrisma.role.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { startupId: STARTUP_ID },
+        orderBy: { createdAt: "asc" },
+      }),
+    );
   });
 });
 

@@ -21,6 +21,7 @@ jest.mock("../../src/services/startup.service", () => ({
     updateStartup: jest.fn(),
     deleteStartup: jest.fn(),
     listMembers: jest.fn(),
+    listRoles: jest.fn(),
   },
 }));
 
@@ -181,6 +182,34 @@ describe("DELETE /api/v1/startups/:startupId", () => {
 
     expect(res.status).toBe(403);
     expect(mockService.deleteStartup).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/v1/startups/:startupId/roles", () => {
+  it("returns the startup's assignable roles", async () => {
+    mockService.listRoles.mockResolvedValue([
+      { id: "role-owner", name: "owner", description: "Full access", isSystemRole: true },
+      { id: "role-viewer", name: "viewer", description: "Read-only", isSystemRole: true },
+    ] as never);
+
+    const res = await request(app)
+      .get(`/api/v1/startups/${STARTUP_ID}/roles`)
+      .set("Cookie", [accessCookie()]);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.roles).toHaveLength(2);
+    expect(res.body.data.roles[0].name).toBe("owner");
+  });
+
+  it("returns 403 without team:read permission", async () => {
+    mockPrisma.rolePermission.findFirst.mockResolvedValue(null);
+
+    const res = await request(app)
+      .get(`/api/v1/startups/${STARTUP_ID}/roles`)
+      .set("Cookie", [accessCookie()]);
+
+    expect(res.status).toBe(403);
+    expect(mockService.listRoles).not.toHaveBeenCalled();
   });
 });
 

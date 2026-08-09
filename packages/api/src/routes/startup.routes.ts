@@ -49,6 +49,16 @@ router.post(
   inviteController.inviteMember,
 );
 
+// GET /api/v1/startups/:startupId/roles — team:read
+router.get(
+  "/:startupId/roles",
+  authenticate,
+  validate(startupIdParamSchema, "params"),
+  requireMember,
+  requirePermission("team", "read"),
+  startupController.listRoles,
+);
+
 // GET /api/v1/startups/:startupId/members — team:read
 router.get(
   "/:startupId/members",

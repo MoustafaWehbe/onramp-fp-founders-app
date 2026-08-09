@@ -4,7 +4,7 @@
  */
 
 export interface paths {
-    "/auth/register": {
+    "/auth/register/initiate": {
         parameters: {
             query?: never;
             header?: never;
@@ -13,8 +13,68 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Register a new user */
-        post: operations["register"];
+        /**
+         * Start registration and email a verification code
+         * @description Stores a pending registration and emails a 6-digit OTP. No user account exists until POST /auth/register/verify succeeds. Responds 200 with the same body whether or not the email is already taken, so the endpoint cannot be used to enumerate accounts.
+         */
+        post: operations["registerInitiate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/register/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resend the registration verification code */
+        post: operations["registerResend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/register/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify the code, create the account and sign in
+         * @description On success the pending registration becomes a real user, auth cookies are set, and any unexpired invitations addressed to that email are claimed automatically — so an invited person lands in their workspace without visiting the invite link again.
+         */
+        post: operations["registerVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/google": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in or register with a Google ID token
+         * @description Verifies the Google credential, then links or creates the account and sets auth cookies. Returns 201 for a newly created user and 200 for an existing one. Like OTP registration, this claims any pending invitations for the verified email.
+         */
+        post: operations["googleAuth"];
         delete?: never;
         options?: never;
         head?: never;
@@ -95,71 +155,882 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/forgot-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request a password reset email
+         * @description Always returns 200 regardless of whether the email exists, to avoid leaking which addresses are registered. If found, an email is sent with a single-use token (10-minute family rotation tracked server-side).
+         */
+        post: operations["forgotPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/reset-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reset password using a token from the reset email */
+        post: operations["resetPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update the current user's profile */
+        patch: operations["updateMe"];
+        trace?: never;
+    };
+    "/startups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List startups the current user belongs to */
+        get: operations["listStartups"];
+        put?: never;
+        /**
+         * Create a new startup
+         * @description The creator automatically becomes a member with the default "Owner" system role.
+         */
+        post: operations["createStartup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        /** Get a startup by ID */
+        get: operations["getStartup"];
+        put?: never;
+        post?: never;
+        /** Delete a startup */
+        delete: operations["deleteStartup"];
+        options?: never;
+        head?: never;
+        /** Update a startup */
+        patch: operations["updateStartup"];
+        trace?: never;
+    };
+    "/users/me/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change the current user's password */
+        patch: operations["changePassword"];
+        trace?: never;
+    };
+    "/startups/{startupId}/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List the roles assignable within a startup
+         * @description Roles are created per startup, so their ids are not portable between workspaces. This is the only way to resolve the `roleId` required by the invite and role-change endpoints. Ordered most privileged first.
+         */
+        get: operations["listStartupRoles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List members of a startup
+         * @description Returns accepted members and pending invitations in one list, oldest first. The response is not paginated. The caller's own row is included, which is how a client determines its own role.
+         */
+        get: operations["listStartupMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invite a person to join the startup
+         * @description Creates a member row with status "pending" and emails a time-limited invite link (valid for 7 days). `userId` stays null until the invite is accepted. Assigning the owner role requires the caller to be an owner.
+         */
+        post: operations["inviteStartupMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/members/{memberId}/role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change a member's role
+         * @description Works on pending invitations as well as accepted members. The last active owner cannot be demoted, and only an owner may grant the owner role.
+         */
+        patch: operations["changeStartupMemberRole"];
+        trace?: never;
+    };
+    "/startups/{startupId}/members/{memberId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a member, or revoke a pending invitation
+         * @description Callers may remove themselves, which is how leaving a workspace works. The last active owner cannot be removed.
+         */
+        delete: operations["removeStartupMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/invites/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a startup membership invitation
+         * @description Public endpoint — no cookieAuth. The membership is resolved from the invited email carried by the token, not from the session, so the caller does not have to be signed in. When no account exists for that email yet the invite is left pending and 202 is returned; registering with that address later claims it automatically.
+         */
+        post: operations["acceptStartupInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List roles for the current startup */
+        get: operations["listRoles"];
+        put?: never;
+        /** Create a custom role */
+        post: operations["createRole"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/roles/{roleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roleId: string;
+            };
+            cookie?: never;
+        };
+        /** Get a role by ID */
+        get: operations["getRole"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a custom role
+         * @description System roles cannot be deleted; returns 403 if attempted.
+         */
+        delete: operations["deleteRole"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a role's name or description
+         * @description System roles cannot be renamed; returns 403 if attempted.
+         */
+        patch: operations["updateRole"];
+        trace?: never;
+    };
+    "/roles/{roleId}/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roleId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace the full set of permissions assigned to a role */
+        put: operations["setRolePermissions"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all available permissions in the system
+         * @description Global, non-tenant-scoped catalog used when building or editing roles.
+         */
+        get: operations["listPermissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/investors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List investor contacts for a startup
+         * @description Returns the startup's private investor contacts. Each row is joined to its pipeline entry (null when the contact has not been added to the pipeline) and to the earliest upcoming follow-up date across that contact's interaction logs, which is what the Investors screen renders.
+         */
+        get: operations["listInvestors"];
+        put?: never;
+        /**
+         * Create an investor contact
+         * @description Creates a contact private to this startup. Contacts are never shared between startups — two startups tracking the same person hold two independent records.
+         */
+        post: operations["createInvestor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/investors/{investorId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                investorId: string;
+            };
+            cookie?: never;
+        };
+        /** Get an investor contact by ID */
+        get: operations["getInvestor"];
+        put?: never;
+        post?: never;
+        /** Delete an investor contact */
+        delete: operations["deleteInvestor"];
+        options?: never;
+        head?: never;
+        /** Update an investor contact */
+        patch: operations["updateInvestor"];
+        trace?: never;
+    };
+    "/startups/{startupId}/investors/{investorId}/interaction-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                investorId: string;
+            };
+            cookie?: never;
+        };
+        /** List interaction logs for a specific investor */
+        get: operations["listInvestorInteractionLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/pipeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        /** List pipeline entries for a startup */
+        get: operations["listPipelineEntries"];
+        put?: never;
+        /** Add an investor contact to the pipeline */
+        post: operations["createPipelineEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/pipeline/{pipelineId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                pipelineId: string;
+            };
+            cookie?: never;
+        };
+        /** Get a pipeline entry by ID */
+        get: operations["getPipelineEntry"];
+        put?: never;
+        post?: never;
+        /** Remove a pipeline entry */
+        delete: operations["deletePipelineEntry"];
+        options?: never;
+        head?: never;
+        /** Update a pipeline entry (e.g. move stage) */
+        patch: operations["updatePipelineEntry"];
+        trace?: never;
+    };
+    "/startups/{startupId}/pipeline/{pipelineId}/interaction-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                pipelineId: string;
+            };
+            cookie?: never;
+        };
+        /** List interaction logs linked to a pipeline entry */
+        get: operations["listPipelineInteractionLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/interaction-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List every interaction log in a startup
+         * @description Newest first, across all of the startup's investor contacts.
+         */
+        get: operations["listInteractionLogs"];
+        put?: never;
+        /**
+         * Log an interaction with an investor
+         * @description `pipelineId` is optional, so interactions can be logged before an investor formally enters the pipeline. When it is supplied, the pipeline entry must belong to the same investor contact.
+         */
+        post: operations["createInteractionLog"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/interaction-logs/{logId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                logId: string;
+            };
+            cookie?: never;
+        };
+        /** Get an interaction log by ID */
+        get: operations["getInteractionLog"];
+        put?: never;
+        post?: never;
+        /** Delete an interaction log */
+        delete: operations["deleteInteractionLog"];
+        options?: never;
+        head?: never;
+        /** Update an interaction log */
+        patch: operations["updateInteractionLog"];
+        trace?: never;
+    };
+    "/fundraising-rounds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List fundraising rounds for the current startup */
+        get: operations["listFundraisingRounds"];
+        put?: never;
+        /** Create a fundraising round */
+        post: operations["createFundraisingRound"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/fundraising-rounds/{roundId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        /** Get a fundraising round by ID */
+        get: operations["getFundraisingRound"];
+        put?: never;
+        post?: never;
+        /** Delete a fundraising round */
+        delete: operations["deleteFundraisingRound"];
+        options?: never;
+        head?: never;
+        /** Update a fundraising round */
+        patch: operations["updateFundraisingRound"];
+        trace?: never;
+    };
+    "/fundraising-rounds/{roundId}/commitments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        /** List commitments for a specific fundraising round */
+        get: operations["listRoundCommitments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/commitments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List commitments for the current startup */
+        get: operations["listCommitments"];
+        put?: never;
+        /** Create a commitment */
+        post: operations["createCommitment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/commitments/{commitmentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                commitmentId: string;
+            };
+            cookie?: never;
+        };
+        /** Get a commitment by ID */
+        get: operations["getCommitment"];
+        put?: never;
+        post?: never;
+        /** Delete a commitment */
+        delete: operations["deleteCommitment"];
+        options?: never;
+        head?: never;
+        /** Update a commitment */
+        patch: operations["updateCommitment"];
+        trace?: never;
+    };
+    "/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List documents for the current startup */
+        get: operations["listDocuments"];
+        put?: never;
+        /**
+         * Create a new document
+         * @description Creates the document record only. Upload the first file via POST /documents/{documentId}/versions.
+         */
+        post: operations["createDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/documents/{documentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                documentId: string;
+            };
+            cookie?: never;
+        };
+        /** Get a document by ID */
+        get: operations["getDocument"];
+        put?: never;
+        post?: never;
+        /** Delete a document and all of its versions */
+        delete: operations["deleteDocument"];
+        options?: never;
+        head?: never;
+        /** Update a document's title or type */
+        patch: operations["updateDocument"];
+        trace?: never;
+    };
+    "/documents/{documentId}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                documentId: string;
+            };
+            cookie?: never;
+        };
+        /** List all versions of a document */
+        get: operations["listDocumentVersions"];
+        put?: never;
+        /**
+         * Upload a new version of a document
+         * @description Creates a new version and sets it as the document's current version (`isCurrent = true`). `fileUrl` should point to the already-uploaded file in object storage.
+         */
+        post: operations["createDocumentVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/documents/{documentId}/versions/{versionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                documentId: string;
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        /** Get a specific document version */
+        get: operations["getDocumentVersion"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a specific document version
+         * @description Cannot delete the version currently marked with `isCurrent = true` unless it is the document's only version (in which case the document is also deleted).
+         */
+        delete: operations["deleteDocumentVersion"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviewer-invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List reviewer invitations issued by the current startup */
+        get: operations["listReviewerInvitations"];
+        put?: never;
+        /**
+         * Create a reviewer invitation
+         * @description Sends an email containing a link with the invitation token plus a separate 6-digit OTP. Optionally linked to an existing `investorId` from the CRM so engagement (views, comments) shows on their timeline.
+         */
+        post: operations["createReviewerInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviewer-invitations/{invitationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invitationId: string;
+            };
+            cookie?: never;
+        };
+        /** Get a reviewer invitation by ID */
+        get: operations["getReviewerInvitation"];
+        put?: never;
+        post?: never;
+        /** Permanently delete a reviewer invitation */
+        delete: operations["deleteReviewerInvitation"];
+        options?: never;
+        head?: never;
+        /** Update a reviewer invitation's scope, expiry, or revoke it */
+        patch: operations["updateReviewerInvitation"];
+        trace?: never;
+    };
+    "/reviewer-invitations/{invitationId}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invitationId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List comments left under a specific reviewer invitation
+         * @description Owner-side view of feedback left by an external reviewer.
+         */
+        get: operations["listReviewerInvitationComments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviewer-portal/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start access with an invitation token (triggers OTP email)
+         * @description Validates the token and, if valid and not expired/revoked, emails a fresh 6-digit OTP (10-minute TTL) to the invitation's address. Does NOT grant access by itself — call POST /reviewer-portal/verify next.
+         */
+        post: operations["reviewerPortalAccess"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviewer-portal/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify the OTP and establish a reviewer session
+         * @description On success, sets an HttpOnly `reviewerSessionToken` cookie. All further Reviewer Portal calls require this cookie instead of the token/code.
+         */
+        post: operations["reviewerPortalVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviewer-portal/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the current reviewer session, startup, and accessible documents */
+        get: operations["getReviewerPortalSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviewer-portal/documents/{documentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                documentId: string;
+            };
+            cookie?: never;
+        };
+        /** Get a document (with its current version) the reviewer is scoped to */
+        get: operations["getReviewerPortalDocument"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviewer-portal/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Leave a comment as the authenticated reviewer */
+        post: operations["createReviewerPortalComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviewer-portal/comments/{commentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                commentId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a comment the reviewer authored */
+        delete: operations["deleteReviewerPortalComment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        RegisterBody: {
-            /**
-             * Format: email
-             * @example user@example.com
-             */
-            email: string;
-            /**
-             * @description Must contain at least one uppercase letter and one number
-             * @example Password1
-             */
-            password: string;
-            /** @example Jane Doe */
-            name: string;
-        };
-        LoginBody: {
-            /**
-             * Format: email
-             * @example user@example.com
-             */
-            email: string;
-            /** @example Password1 */
-            password: string;
-        };
-        User: {
-            /**
-             * Format: uuid
-             * @example 123e4567-e89b-12d3-a456-426614174000
-             */
-            id?: string;
-            /**
-             * Format: email
-             * @example user@example.com
-             */
-            email?: string;
-            /** @example Jane Doe */
-            name?: string;
-            /**
-             * @example user
-             * @enum {string}
-             */
-            role?: "user" | "admin";
-            /**
-             * Format: date-time
-             * @example 2024-01-01T00:00:00.000Z
-             */
-            createdAt?: string;
-            /**
-             * Format: date-time
-             * @example 2024-01-01T00:00:00.000Z
-             */
-            updatedAt?: string;
-        };
         ErrorResponse: {
             /** @example Invalid credentials */
             error?: string;
-        };
-        MessageResponse: {
-            data?: {
-                /** @example Success */
-                message?: string;
-            };
         };
         ValidationErrorResponse: {
             /** @example Validation failed */
@@ -171,16 +1042,787 @@ export interface components {
                 message?: string;
             }[];
         };
+        MessageResponse: {
+            data?: {
+                /** @example Success */
+                message?: string;
+            };
+        };
+        BareMessageResponse: {
+            /** @example Investor removed */
+            message?: string;
+        };
+        PaginationMeta: {
+            /** @example 1 */
+            page?: number;
+            /** @example 20 */
+            limit?: number;
+            /** @example 134 */
+            total?: number;
+            /** @example 7 */
+            totalPages?: number;
+        };
+        RegisterInitiateBody: {
+            /** @example Jane */
+            first_name: string;
+            /** @example Doe */
+            last_name: string;
+            /**
+             * Format: email
+             * @example user@example.com
+             */
+            email: string;
+            /**
+             * @description Must contain at least one uppercase letter, one lowercase letter and one number
+             * @example Password1
+             */
+            password: string;
+        };
+        RegisterResendBody: {
+            /**
+             * Format: email
+             * @example user@example.com
+             */
+            email: string;
+        };
+        RegisterVerifyBody: {
+            /**
+             * Format: email
+             * @example user@example.com
+             */
+            email: string;
+            /** @example 482915 */
+            otp: string;
+        };
+        GoogleAuthBody: {
+            /**
+             * @description Google Identity Services credential (JWT) from the browser
+             * @example eyJhbGciOiJSUzI1NiIsImtpZCI6IjE...
+             */
+            id_token: string;
+        };
+        OtpChallenge: {
+            /** @example Verification code sent to user@example.com */
+            message?: string;
+            /**
+             * Format: email
+             * @example user@example.com
+             */
+            email?: string;
+            /**
+             * @description Lifetime of the emailed OTP
+             * @example 600
+             */
+            expires_in_seconds?: number;
+        };
+        LoginBody: {
+            /**
+             * Format: email
+             * @example user@example.com
+             */
+            email: string;
+            /** @example Password1 */
+            password: string;
+        };
+        ForgotPasswordBody: {
+            /**
+             * Format: email
+             * @example user@example.com
+             */
+            email: string;
+        };
+        ResetPasswordBody: {
+            /**
+             * @description Raw reset token from the email link (hashed server-side for lookup)
+             * @example 8f14e45fceea167a5a36dedd4bea2543
+             */
+            token: string;
+            /**
+             * @description Must contain at least one uppercase letter, one lowercase letter and one number
+             * @example NewPassword1
+             */
+            new_password: string;
+        };
+        User: {
+            /**
+             * Format: uuid
+             * @example 123e4567-e89b-12d3-a456-426614174000
+             */
+            id?: string;
+            /** @example Jane */
+            firstName?: string;
+            /** @example Doe */
+            lastName?: string;
+            /**
+             * Format: email
+             * @example user@example.com
+             */
+            email?: string;
+            /**
+             * Format: uri
+             * @example https://cdn.example.com/avatars/123.png
+             */
+            avatarUrl?: string | null;
+            /**
+             * Format: date-time
+             * @example 2024-01-01T00:00:00.000Z
+             */
+            createdAt?: string;
+            /**
+             * Format: date-time
+             * @example 2024-01-01T00:00:00.000Z
+             */
+            updatedAt?: string;
+        };
+        UpdateUserBody: {
+            firstName?: string;
+            lastName?: string;
+            /** Format: uri */
+            avatarUrl?: string;
+        };
+        ChangePasswordBody: {
+            /** @example Password1 */
+            currentPassword: string;
+            /** @example NewPassword1 */
+            newPassword: string;
+        };
+        /**
+         * @example seed
+         * @enum {string}
+         */
+        FundingStage: "pre_seed" | "seed" | "series_a" | "series_b" | "series_c" | "growth" | "other";
+        Startup: {
+            /** Format: uuid */
+            id?: string;
+            /** @example Acme Inc. */
+            name?: string;
+            description?: string | null;
+            /** @example Fintech */
+            industry?: string | null;
+            /** Format: uri */
+            website?: string | null;
+            fundingStage?: components["schemas"]["FundingStage"];
+            /** Format: uuid */
+            createdBy?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        CreateStartupBody: {
+            /** @example Acme Inc. */
+            name: string;
+            description?: string;
+            /** @example Fintech */
+            industry?: string;
+            /** Format: uri */
+            website?: string;
+            fundingStage?: components["schemas"]["FundingStage"];
+        };
+        UpdateStartupBody: {
+            name?: string;
+            description?: string;
+            industry?: string;
+            /** Format: uri */
+            website?: string;
+            fundingStage?: components["schemas"]["FundingStage"];
+        };
+        Permission: {
+            /** Format: uuid */
+            id?: string;
+            /** @example documents */
+            resource?: string;
+            /** @example delete */
+            action?: string;
+            description?: string | null;
+        };
+        Role: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            startupId?: string;
+            /** @example Finance Lead */
+            name?: string;
+            description?: string | null;
+            /** @example false */
+            isSystemRole?: boolean;
+            permissions?: components["schemas"]["Permission"][];
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        CreateRoleBody: {
+            /** @example Finance Lead */
+            name: string;
+            description?: string;
+            permissionIds?: string[];
+        };
+        UpdateRoleBody: {
+            name?: string;
+            description?: string;
+        };
+        SetRolePermissionsBody: {
+            /** @description Full replacement set of permission IDs for this role */
+            permissionIds: string[];
+        };
+        /**
+         * @description A row is "pending" from the moment it is invited until the invite is accepted.
+         * @example active
+         * @enum {string}
+         */
+        MemberStatus: "pending" | "active";
+        StartupRoleSummary: {
+            /** Format: uuid */
+            id?: string;
+            /**
+             * @example collaborator
+             * @enum {string}
+             */
+            name?: "owner" | "collaborator" | "viewer";
+            /** @example Can edit pipeline and documents, no billing access */
+            description?: string | null;
+            /** @example true */
+            isSystemRole?: boolean;
+        };
+        StartupMember: {
+            /** Format: uuid */
+            id?: string;
+            status?: components["schemas"]["MemberStatus"];
+            /**
+             * @description Role name, not id. Use GET /startups/{startupId}/roles to resolve an id.
+             * @example owner
+             * @enum {string}
+             */
+            role?: "owner" | "collaborator" | "viewer";
+            /** Format: date-time */
+            joinedAt?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+            /** @description Present only once the invitation has been accepted. */
+            user?: {
+                /** Format: uuid */
+                id?: string;
+                firstName?: string;
+                lastName?: string;
+                /** Format: email */
+                email?: string;
+                /** Format: uri */
+                avatarUrl?: string | null;
+            };
+            /**
+             * Format: email
+             * @description Present instead of `user` while the invitation is still pending.
+             */
+            invitedEmail?: string | null;
+        };
+        MembershipRecord: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            startupId?: string;
+            /** Format: uuid */
+            userId?: string | null;
+            /** Format: uuid */
+            roleId?: string;
+            status?: components["schemas"]["MemberStatus"];
+            /** Format: email */
+            invitedEmail?: string | null;
+            /** Format: uuid */
+            invitedBy?: string | null;
+            /** Format: date-time */
+            joinedAt?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        InviteMemberBody: {
+            /**
+             * Format: email
+             * @example newmember@example.com
+             */
+            email: string;
+            /** Format: uuid */
+            roleId: string;
+        };
+        ChangeRoleBody: {
+            /**
+             * Format: uuid
+             * @description Must be a role belonging to the same startup
+             */
+            roleId: string;
+        };
+        AcceptInviteBody: {
+            /**
+             * @description Raw invite token from the email link
+             * @example 7c6a180b36896a0a8c02787eeafb0e4c
+             */
+            token: string;
+        };
+        /**
+         * @example vc
+         * @enum {string}
+         */
+        InvestorType: "vc" | "angel" | "family_office" | "accelerator" | "other";
+        Investor: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            startupId?: string;
+            /** @example John Smith */
+            fullName?: string;
+            /**
+             * Format: email
+             * @description Optional — a contact can be added before an address is known.
+             */
+            email?: string | null;
+            /** @example Acme Ventures */
+            ventureFirm?: string | null;
+            investorType?: components["schemas"]["InvestorType"] | null;
+            /** @example Fintech, SaaS */
+            sectorFocus?: string | null;
+            /** @example Seed, Series A */
+            investmentStagePreference?: string | null;
+            /** Format: uri */
+            linkedinUrl?: string | null;
+            notes?: string | null;
+            /** @example event */
+            source?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        InvestorListItem: components["schemas"]["Investor"] & {
+            /** @description Null when the contact has not been added to the pipeline. */
+            pipeline?: {
+                /** Format: uuid */
+                id?: string;
+                stage?: components["schemas"]["PipelineStage"];
+                /** Format: double */
+                expectedAmount?: number | null;
+                probabilityPercentage?: number | null;
+            } | null;
+            /**
+             * Format: date-time
+             * @description Earliest upcoming nextFollowupDate across this contact's interaction logs; null when none is scheduled.
+             */
+            nextFollowupDate?: string | null;
+        };
+        CreateInvestorBody: {
+            fullName: string;
+            /**
+             * Format: email
+             * @description Optional, but must be unique within the startup when given.
+             */
+            email?: string;
+            ventureFirm?: string;
+            investorType?: components["schemas"]["InvestorType"];
+            sectorFocus?: string;
+            investmentStagePreference?: string;
+            /**
+             * Format: uri
+             * @description Must use http or https.
+             */
+            linkedinUrl?: string;
+            notes?: string;
+            source?: string;
+        };
+        /** @description All fields optional; at least one required. */
+        UpdateInvestorBody: {
+            fullName?: string;
+            /** Format: email */
+            email?: string;
+            ventureFirm?: string;
+            investorType?: components["schemas"]["InvestorType"];
+            sectorFocus?: string;
+            investmentStagePreference?: string;
+            /** Format: uri */
+            linkedinUrl?: string;
+            notes?: string;
+            source?: string;
+        };
+        /**
+         * @example meeting_scheduled
+         * @enum {string}
+         */
+        PipelineStage: "sourced" | "contacted" | "meeting_scheduled" | "due_diligence" | "term_sheet" | "committed" | "passed";
+        PipelineEntry: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            startupId?: string;
+            /**
+             * Format: uuid
+             * @description The investor contact id (a startup-scoped contact record).
+             */
+            investorId?: string;
+            investor?: components["schemas"]["Investor"];
+            stage?: components["schemas"]["PipelineStage"];
+            /**
+             * Format: double
+             * @example 250000
+             */
+            expectedAmount?: number | null;
+            /** @example 60 */
+            probabilityPercentage?: number | null;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        CreatePipelineEntryBody: {
+            /**
+             * Format: uuid
+             * @description The investor contact id (a startup-scoped contact record).
+             */
+            investorId: string;
+            stage: components["schemas"]["PipelineStage"];
+            /** Format: double */
+            expectedAmount?: number;
+            probabilityPercentage?: number;
+        };
+        /** @description At least one field is required. */
+        UpdatePipelineEntryBody: {
+            stage?: components["schemas"]["PipelineStage"];
+            /** Format: double */
+            expectedAmount?: number | null;
+            probabilityPercentage?: number | null;
+        };
+        /**
+         * @example meeting
+         * @enum {string}
+         */
+        InteractionType: "call" | "email" | "meeting" | "note" | "other";
+        InteractionLog: {
+            /** Format: uuid */
+            id?: string;
+            /**
+             * Format: uuid
+             * @description The investor contact id (a startup-scoped contact record).
+             */
+            investorId?: string;
+            /** Format: uuid */
+            pipelineId?: string | null;
+            /** Format: uuid */
+            createdBy?: string;
+            type?: components["schemas"]["InteractionType"];
+            subject?: string | null;
+            description?: string | null;
+            /** Format: date-time */
+            interactionDate?: string | null;
+            /** Format: date-time */
+            nextFollowupDate?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        CreateInteractionLogBody: {
+            /**
+             * Format: uuid
+             * @description The investor contact id (a startup-scoped contact record).
+             */
+            investorId: string;
+            /** Format: uuid */
+            pipelineId?: string;
+            type: components["schemas"]["InteractionType"];
+            subject?: string;
+            description?: string;
+            /** Format: date-time */
+            interactionDate: string;
+            /** Format: date-time */
+            nextFollowupDate?: string;
+        };
+        UpdateInteractionLogBody: {
+            /**
+             * Format: uuid
+             * @description Must belong to the same investor contact as the log
+             */
+            pipelineId?: string | null;
+            type?: components["schemas"]["InteractionType"];
+            subject?: string | null;
+            description?: string | null;
+            /** Format: date-time */
+            interactionDate?: string | null;
+            /** Format: date-time */
+            nextFollowupDate?: string | null;
+        };
+        /**
+         * @example open
+         * @enum {string}
+         */
+        RoundStatus: "draft" | "open" | "closed" | "cancelled";
+        FundraisingRound: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            startupId?: string;
+            /** @example Seed Round */
+            roundName?: string;
+            /**
+             * Format: double
+             * @example 1500000
+             */
+            targetAmount?: number;
+            /**
+             * Format: double
+             * @example 25000
+             */
+            minimumTicketSize?: number | null;
+            /**
+             * Format: double
+             * @example 12.5
+             */
+            equityOfferedPercentage?: number | null;
+            /** @example USD */
+            currency?: string;
+            status?: components["schemas"]["RoundStatus"];
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        CreateFundraisingRoundBody: {
+            roundName: string;
+            /** Format: double */
+            targetAmount: number;
+            /** Format: double */
+            minimumTicketSize?: number;
+            /** Format: double */
+            equityOfferedPercentage?: number;
+            /** @example USD */
+            currency: string;
+            status?: components["schemas"]["RoundStatus"];
+        };
+        UpdateFundraisingRoundBody: {
+            roundName?: string;
+            /** Format: double */
+            targetAmount?: number;
+            /** Format: double */
+            minimumTicketSize?: number;
+            /** Format: double */
+            equityOfferedPercentage?: number;
+            currency?: string;
+            status?: components["schemas"]["RoundStatus"];
+        };
+        /**
+         * @example pending
+         * @enum {string}
+         */
+        CommitmentStatus: "pending" | "negotiating" | "confirmed" | "funded" | "withdrawn";
+        Commitment: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            startupId?: string;
+            /**
+             * Format: uuid
+             * @description The investor contact id (a startup-scoped contact record).
+             */
+            investorId?: string;
+            investor?: components["schemas"]["Investor"];
+            /** Format: uuid */
+            pipelineId?: string | null;
+            /** Format: uuid */
+            roundId?: string;
+            /**
+             * Format: double
+             * @example 50000
+             */
+            amount?: number;
+            status?: components["schemas"]["CommitmentStatus"];
+            /** Format: date */
+            expectedCloseDate?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        CreateCommitmentBody: {
+            /**
+             * Format: uuid
+             * @description The investor contact id (a startup-scoped contact record).
+             */
+            investorId: string;
+            /** Format: uuid */
+            pipelineId?: string;
+            /** Format: uuid */
+            roundId: string;
+            /** Format: double */
+            amount: number;
+            status?: components["schemas"]["CommitmentStatus"];
+            /** Format: date */
+            expectedCloseDate?: string;
+        };
+        UpdateCommitmentBody: {
+            /** Format: double */
+            amount?: number;
+            status?: components["schemas"]["CommitmentStatus"];
+            /** Format: date */
+            expectedCloseDate?: string;
+        };
+        /**
+         * @example pitch_deck
+         * @enum {string}
+         */
+        DocumentType: "pitch_deck" | "financial_model" | "cap_table" | "term_sheet" | "data_room" | "other";
+        Document: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            startupId?: string;
+            /** @example Series A Pitch Deck */
+            title?: string;
+            documentType?: components["schemas"]["DocumentType"];
+            /** Format: uuid */
+            createdBy?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        CreateDocumentBody: {
+            title: string;
+            documentType: components["schemas"]["DocumentType"];
+        };
+        UpdateDocumentBody: {
+            title?: string;
+            documentType?: components["schemas"]["DocumentType"];
+        };
+        DocumentVersion: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            documentId?: string;
+            /** @example 3 */
+            versionNumber?: number;
+            isCurrent?: boolean;
+            /** Format: uri */
+            fileUrl?: string;
+            /**
+             * @description File size in bytes
+             * @example 2485760
+             */
+            fileSize?: number;
+            /** @description Description of what changed in this version */
+            summary?: string | null;
+            /** Format: uuid */
+            uploadedBy?: string;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        CreateDocumentVersionBody: {
+            /** Format: uri */
+            fileUrl: string;
+            fileSize: number;
+            summary?: string;
+        };
+        /**
+         * @example pending
+         * @enum {string}
+         */
+        ReviewerInvitationStatus: "pending" | "accessed" | "expired" | "revoked";
+        ReviewerInvitation: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            startupId?: string;
+            /**
+             * Format: uuid
+             * @description Set when the reviewer is a known investor from the CRM
+             */
+            investorId?: string | null;
+            /** Format: email */
+            email?: string;
+            status?: components["schemas"]["ReviewerInvitationStatus"];
+            /** @description Documents this invitation grants access to */
+            documentIds?: string[];
+            /** Format: date-time */
+            expiresAt?: string;
+            /** Format: uuid */
+            createdBy?: string;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        CreateReviewerInvitationBody: {
+            /** Format: email */
+            email: string;
+            /**
+             * Format: uuid
+             * @description Optional — link to an existing CRM investor record
+             */
+            investorId?: string;
+            documentIds: string[];
+            /**
+             * Format: date-time
+             * @description Defaults to 14 days from creation if omitted
+             */
+            expiresAt?: string;
+        };
+        UpdateReviewerInvitationBody: {
+            documentIds?: string[];
+            /** Format: date-time */
+            expiresAt?: string;
+            /**
+             * @description Owners may only transition status to "revoked" via this endpoint
+             * @enum {string}
+             */
+            status?: "revoked";
+        };
+        ReviewerPortalAccessBody: {
+            /**
+             * @description Raw invitation token from the emailed link
+             * @example 3a7bd3e2360a3d29eea436fcfb7e44542f4e4cd2e3e4a3c
+             */
+            token: string;
+        };
+        ReviewerPortalVerifyBody: {
+            /** @example 3a7bd3e2360a3d29eea436fcfb7e44542f4e4cd2e3e4a3c */
+            token: string;
+            /**
+             * @description 6-digit OTP code emailed to the invitation address
+             * @example 482913
+             */
+            code: string;
+        };
+        ReviewerPortalSession: {
+            invitation?: components["schemas"]["ReviewerInvitation"];
+            startup?: components["schemas"]["Startup"];
+            documents?: components["schemas"]["Document"][];
+        };
+        ReviewerComment: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            invitationId?: string;
+            /** Format: uuid */
+            startupId?: string;
+            /** Format: uuid */
+            documentId?: string | null;
+            /** Format: uuid */
+            chunkId?: string | null;
+            commentText?: string;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        CreateReviewerCommentBody: {
+            /** Format: uuid */
+            documentId?: string | null;
+            /** Format: uuid */
+            chunkId?: string | null;
+            commentText: string;
+        };
     };
     responses: never;
-    parameters: never;
+    parameters: {
+        /** @description Page number (1-indexed) */
+        PageParam: number;
+        /** @description Number of items per page */
+        LimitParam: number;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    register: {
+    registerInitiate: {
         parameters: {
             query?: never;
             header?: never;
@@ -189,23 +1831,187 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RegisterBody"];
+                "application/json": components["schemas"]["RegisterInitiateBody"];
             };
         };
         responses: {
-            /** @description User registered successfully */
+            /** @description Verification code sent (or silently skipped for an existing account) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["OtpChallenge"];
+                    };
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Rate limited */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    registerResend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterResendBody"];
+            };
+        };
+        responses: {
+            /** @description A fresh code was sent if a pending registration exists */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["OtpChallenge"];
+                    };
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Rate limited */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    registerVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterVerifyBody"];
+            };
+        };
+        responses: {
+            /** @description Account created and signed in */
+            201: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: {
+                            user?: components["schemas"]["User"];
+                        };
+                    };
+                };
+            };
+            /** @description Invalid or expired code */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Rate limited */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    googleAuth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAuthBody"];
+            };
+        };
+        responses: {
+            /** @description Existing user signed in */
+            200: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: {
+                            user?: components["schemas"]["User"];
+                            /** @example false */
+                            is_new_user?: boolean;
+                        };
+                    };
+                };
+            };
+            /** @description New user created and signed in */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
-                        data?: components["schemas"]["User"];
+                        data?: {
+                            user?: components["schemas"]["User"];
+                            /** @example true */
+                            is_new_user?: boolean;
+                        };
                     };
                 };
             };
-            /** @description Email already in use */
-            409: {
+            /** @description Invalid Google token, or the Google email is not verified */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -351,6 +2157,3613 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    forgotPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForgotPasswordBody"];
+            };
+        };
+        responses: {
+            /** @description Reset email sent if the account exists */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    resetPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetPasswordBody"];
+            };
+        };
+        responses: {
+            /** @description Password reset successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Token expired or already used */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    updateMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateUserBody"];
+            };
+        };
+        responses: {
+            /** @description Profile updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["User"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    listStartups: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed) */
+                page?: components["parameters"]["PageParam"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of startups */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Startup"][];
+                        meta?: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createStartup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateStartupBody"];
+            };
+        };
+        responses: {
+            /** @description Startup created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Startup"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    getStartup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Startup details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Startup"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not a member of this startup */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Startup not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteStartup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Startup deleted (no body) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Startup not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateStartup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateStartupBody"];
+            };
+        };
+        responses: {
+            /** @description Startup updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Startup"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Startup not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    changePassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordBody"];
+            };
+        };
+        responses: {
+            /** @description Password changed successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Unauthorized or current password incorrect */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    listStartupRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Roles belonging to this startup */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: {
+                            roles?: components["schemas"]["StartupRoleSummary"][];
+                        };
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing team:read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listStartupMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Members and pending invitations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: {
+                            members?: components["schemas"]["StartupMember"][];
+                        };
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing team:read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    inviteStartupMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteMemberBody"];
+            };
+        };
+        responses: {
+            /** @description Invitation created. `emailQueued` is false when the member row was committed but the notification email could not be queued (e.g. a Redis outage) — the caller should tell the inviter to follow up with the person directly. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        message?: string;
+                        emailQueued?: boolean;
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing team:create, or OWNER_ONLY when assigning the owner role */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description ROLE_NOT_FOUND — the role does not belong to this startup */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description ALREADY_MEMBER — already a member or already invited */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    changeStartupMemberRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeRoleBody"];
+            };
+        };
+        responses: {
+            /** @description Role updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["MembershipRecord"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing team:update, or OWNER_ONLY when granting the owner role */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Member not found, or ROLE_NOT_FOUND in this startup */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description LAST_OWNER — cannot change the role of the last active owner */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    removeStartupMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Member removed (no body) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing team:delete */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Member not found in this startup */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description LAST_OWNER — cannot remove the last active owner */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    acceptStartupInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptInviteBody"];
+            };
+        };
+        responses: {
+            /** @description Invitation accepted and the membership activated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["MembershipRecord"];
+                    };
+                };
+            };
+            /** @description No account exists for the invited email yet. The invitation stays pending and is claimed on registration. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @example true */
+                        requiresRegistration?: boolean;
+                        /**
+                         * Format: email
+                         * @description The invited address — the account must be created with it
+                         */
+                        email?: string;
+                    };
+                };
+            };
+            /** @description INVALID_TOKEN — no invitation matches this token */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description ALREADY_ACCEPTED — this invitation has already been used */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description TOKEN_EXPIRED — the invitation is older than 7 days */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    listRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of roles */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Role"][];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRoleBody"];
+            };
+        };
+        responses: {
+            /** @description Role created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Role"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A role with this name already exists for this startup */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    getRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Role details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Role"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Role not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Role deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Insufficient permissions or attempting to delete a system role */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Role not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Role is still assigned to one or more members */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateRoleBody"];
+            };
+        };
+        responses: {
+            /** @description Role updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Role"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Insufficient permissions or attempting to modify a system role */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Role not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    setRolePermissions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetRolePermissionsBody"];
+            };
+        };
+        responses: {
+            /** @description Permissions updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Role"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Role not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    listPermissions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of permissions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Permission"][];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listInvestors: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed) */
+                page?: components["parameters"]["PageParam"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["LimitParam"];
+                /** @description Free-text search across fullName, email, ventureFirm */
+                search?: string;
+                investorType?: components["schemas"]["InvestorType"];
+                /** @description Filter on the joined pipeline entry's stage */
+                stage?: components["schemas"]["PipelineStage"];
+            };
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of investor contacts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["InvestorListItem"][];
+                        meta?: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createInvestor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInvestorBody"];
+            };
+        };
+        responses: {
+            /** @description Investor contact created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Investor"];
+                    };
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description This startup already has a contact with that email. Contacts without an email never conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getInvestor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                investorId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Investor contact details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["InvestorListItem"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Contact not found in this startup */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteInvestor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                investorId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Investor contact deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BareMessageResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Contact not found in this startup */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Contact has related pipeline entries, commitments or interaction logs and cannot be deleted. Every one of those foreign keys cascades on delete, so they are blocked explicitly rather than silently destroyed. The message names which are present. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateInvestor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                investorId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateInvestorBody"];
+            };
+        };
+        responses: {
+            /** @description Investor contact updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Investor"];
+                    };
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Contact not found in this startup */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description This startup already has another contact with that email */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listInvestorInteractionLogs: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed) */
+                page?: components["parameters"]["PageParam"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path: {
+                startupId: string;
+                investorId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of interaction logs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["InteractionLog"][];
+                        meta?: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Investor not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listPipelineEntries: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed) */
+                page?: components["parameters"]["PageParam"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["LimitParam"];
+                stage?: components["schemas"]["PipelineStage"];
+            };
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of pipeline entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["PipelineEntry"][];
+                        meta?: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createPipelineEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePipelineEntryBody"];
+            };
+        };
+        responses: {
+            /** @description Pipeline entry created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["PipelineEntry"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Investor contact not found for this startup */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description This investor already has a pipeline entry for this startup */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    getPipelineEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                pipelineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pipeline entry details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["PipelineEntry"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Pipeline entry not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deletePipelineEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                pipelineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pipeline entry removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BareMessageResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Pipeline entry not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Pipeline entry has related commitments and cannot be deleted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updatePipelineEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                pipelineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePipelineEntryBody"];
+            };
+        };
+        responses: {
+            /** @description Pipeline entry updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["PipelineEntry"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Pipeline entry not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    listPipelineInteractionLogs: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed) */
+                page?: components["parameters"]["PageParam"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path: {
+                startupId: string;
+                pipelineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of interaction logs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["InteractionLog"][];
+                        meta?: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Pipeline entry not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listInteractionLogs: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed) */
+                page?: components["parameters"]["PageParam"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of interaction logs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["InteractionLog"][];
+                        meta?: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing pipeline:read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createInteractionLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInteractionLogBody"];
+            };
+        };
+        responses: {
+            /** @description Interaction log created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["InteractionLog"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing pipeline:create */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description INVESTOR_NOT_FOUND — no such contact in this startup */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error, or PIPELINE_MISMATCH when the pipeline entry belongs to a different investor contact. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    getInteractionLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                logId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Interaction log details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["InteractionLog"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing pipeline:read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description LOG_NOT_FOUND — no such log in this startup */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteInteractionLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                logId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Interaction log deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BareMessageResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing pipeline:delete */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description LOG_NOT_FOUND — no such log in this startup */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateInteractionLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                logId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateInteractionLogBody"];
+            };
+        };
+        responses: {
+            /** @description Interaction log updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["InteractionLog"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing pipeline:update */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description LOG_NOT_FOUND — no such log in this startup */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error, or PIPELINE_MISMATCH when the new pipeline entry belongs to a different investor contact. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    listFundraisingRounds: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed) */
+                page?: components["parameters"]["PageParam"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["LimitParam"];
+                status?: components["schemas"]["RoundStatus"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of fundraising rounds */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["FundraisingRound"][];
+                        meta?: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createFundraisingRound: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFundraisingRoundBody"];
+            };
+        };
+        responses: {
+            /** @description Fundraising round created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["FundraisingRound"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    getFundraisingRound: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fundraising round details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["FundraisingRound"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Fundraising round not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteFundraisingRound: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fundraising round deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Fundraising round not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Round has related commitments and cannot be deleted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateFundraisingRound: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateFundraisingRoundBody"];
+            };
+        };
+        responses: {
+            /** @description Fundraising round updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["FundraisingRound"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Fundraising round not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    listRoundCommitments: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed) */
+                page?: components["parameters"]["PageParam"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path: {
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of commitments */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Commitment"][];
+                        meta?: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Fundraising round not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listCommitments: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed) */
+                page?: components["parameters"]["PageParam"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["LimitParam"];
+                status?: components["schemas"]["CommitmentStatus"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of commitments */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Commitment"][];
+                        meta?: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createCommitment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCommitmentBody"];
+            };
+        };
+        responses: {
+            /** @description Commitment created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Commitment"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Investor or fundraising round not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    getCommitment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                commitmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Commitment details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Commitment"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Commitment not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteCommitment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                commitmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Commitment deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Commitment not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateCommitment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                commitmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCommitmentBody"];
+            };
+        };
+        responses: {
+            /** @description Commitment updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Commitment"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Commitment not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    listDocuments: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed) */
+                page?: components["parameters"]["PageParam"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["LimitParam"];
+                documentType?: components["schemas"]["DocumentType"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of documents */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Document"][];
+                        meta?: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDocumentBody"];
+            };
+        };
+        responses: {
+            /** @description Document created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Document"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    getDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                documentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Document details, including its current version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Document"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Document not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                documentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Document deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Document not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Document is referenced by an active reviewer invitation and cannot be deleted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                documentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDocumentBody"];
+            };
+        };
+        responses: {
+            /** @description Document updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Document"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Document not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    listDocumentVersions: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed) */
+                page?: components["parameters"]["PageParam"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path: {
+                documentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of document versions, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["DocumentVersion"][];
+                        meta?: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Document not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createDocumentVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                documentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDocumentVersionBody"];
+            };
+        };
+        responses: {
+            /** @description Document version created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["DocumentVersion"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Document not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    getDocumentVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                documentId: string;
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Document version details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["DocumentVersion"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Document or version not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteDocumentVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                documentId: string;
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Document version deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Document or version not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Cannot delete the current version while other versions exist */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listReviewerInvitations: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed) */
+                page?: components["parameters"]["PageParam"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["LimitParam"];
+                status?: components["schemas"]["ReviewerInvitationStatus"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of reviewer invitations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["ReviewerInvitation"][];
+                        meta?: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createReviewerInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateReviewerInvitationBody"];
+            };
+        };
+        responses: {
+            /** @description Reviewer invitation created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["ReviewerInvitation"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description One or more documentIds (or investorId) not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    getReviewerInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invitationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reviewer invitation details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["ReviewerInvitation"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Reviewer invitation not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteReviewerInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invitationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reviewer invitation deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Reviewer invitation not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateReviewerInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invitationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateReviewerInvitationBody"];
+            };
+        };
+        responses: {
+            /** @description Reviewer invitation updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["ReviewerInvitation"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Reviewer invitation not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    listReviewerInvitationComments: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed) */
+                page?: components["parameters"]["PageParam"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path: {
+                invitationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of reviewer comments */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["ReviewerComment"][];
+                        meta?: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Reviewer invitation not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reviewerPortalAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewerPortalAccessBody"];
+            };
+        };
+        responses: {
+            /** @description OTP sent to the invitation email */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Token invalid, expired, or revoked */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    reviewerPortalVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewerPortalVerifyBody"];
+            };
+        };
+        responses: {
+            /** @description Verified — reviewer session established */
+            200: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["ReviewerPortalSession"];
+                    };
+                };
+            };
+            /** @description Code incorrect, expired, or token invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    getReviewerPortalSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current reviewer session details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["ReviewerPortalSession"];
+                    };
+                };
+            };
+            /** @description No active reviewer session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getReviewerPortalDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                documentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Document details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Document"];
+                    };
+                };
+            };
+            /** @description No active reviewer session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description This invitation does not grant access to this document */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Document not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createReviewerPortalComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateReviewerCommentBody"];
+            };
+        };
+        responses: {
+            /** @description Comment created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["ReviewerComment"];
+                    };
+                };
+            };
+            /** @description No active reviewer session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Target is outside this invitation's document scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteReviewerPortalComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                commentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Comment deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description No active reviewer session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Cannot delete a comment authored by another reviewer */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Comment not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

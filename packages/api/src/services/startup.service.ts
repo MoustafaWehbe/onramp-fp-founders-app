@@ -139,6 +139,19 @@ export class StartupService {
     ]);
   }
 
+  async listRoles(startupId: string) {
+    return prisma.role.findMany({
+      where: { startupId },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        isSystemRole: true,
+      },
+    });
+  }
+
   async listMembers(startupId: string) {
     const members = await prisma.startupMember.findMany({
       where: { startupId },

@@ -119,6 +119,14 @@ components:
               type: string
               example: Success
 
+    # CRM deletes answer with a bare message rather than wrapping it in `data`.
+    BareMessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Investor removed
+
     PaginationMeta:
       type: object
       properties:
@@ -136,10 +144,23 @@ components:
           example: 7
 
     # ── Auth ──────────────────────────────────────────────────────────
-    RegisterBody:
+    # Registration is a two-step OTP flow: /auth/register/initiate stores a
+    # pending registration and emails a code, /auth/register/verify turns it
+    # into a real user and signs them in. No user row exists in between.
+    RegisterInitiateBody:
       type: object
-      required: [email, password, firstName, lastName]
+      required: [first_name, last_name, email, password]
       properties:
+        first_name:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: Jane
+        last_name:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: Doe
         email:
           type: string
           format: email
@@ -147,18 +168,56 @@ components:
         password:
           type: string
           minLength: 8
-          description: Must contain at least one uppercase letter and one number
+          description: Must contain at least one uppercase letter, one lowercase letter and one number
           example: Password1
-        firstName:
+
+    RegisterResendBody:
+      type: object
+      required: [email]
+      properties:
+        email:
           type: string
-          minLength: 1
-          maxLength: 100
-          example: Jane
-        lastName:
+          format: email
+          example: user@example.com
+
+    RegisterVerifyBody:
+      type: object
+      required: [email, otp]
+      properties:
+        email:
           type: string
-          minLength: 1
-          maxLength: 100
-          example: Doe
+          format: email
+          example: user@example.com
+        otp:
+          type: string
+          minLength: 6
+          maxLength: 6
+          pattern: "^[0-9]{6}$"
+          example: "482915"
+
+    GoogleAuthBody:
+      type: object
+      required: [id_token]
+      properties:
+        id_token:
+          type: string
+          description: Google Identity Services credential (JWT) from the browser
+          example: eyJhbGciOiJSUzI1NiIsImtpZCI6IjE...
+
+    OtpChallenge:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Verification code sent to user@example.com
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        expires_in_seconds:
+          type: integer
+          description: Lifetime of the emailed OTP
+          example: 600
 
     LoginBody:
       type: object
@@ -184,15 +243,16 @@ components:
 
     ResetPasswordBody:
       type: object
-      required: [tokenHash, password]
+      required: [token, new_password]
       properties:
-        tokenHash:
+        token:
           type: string
-          description: Raw reset token received via email (hashed server-side for lookup)
+          description: Raw reset token from the email link (hashed server-side for lookup)
           example: 8f14e45fceea167a5a36dedd4bea2543
-        password:
+        new_password:
           type: string
           minLength: 8
+          description: Must contain at least one uppercase letter, one lowercase letter and one number
           example: NewPassword1
 
     User:
@@ -412,10 +472,80 @@ components:
     # ── Startup Members ───────────────────────────────────────────────
     MemberStatus:
       type: string
-      enum: [invited, active, suspended]
+      enum: [pending, active]
+      description: A row is "pending" from the moment it is invited until the invite is accepted.
       example: active
 
+    # The roles a member can hold within one startup. Roles are created per
+    # startup when the workspace is created, so ids are never portable between
+    # startups — this is the only way to resolve one for an invite or a role change.
+    StartupRoleSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          enum: [owner, collaborator, viewer]
+          example: collaborator
+        description:
+          type: string
+          nullable: true
+          example: Can edit pipeline and documents, no billing access
+        isSystemRole:
+          type: boolean
+          example: true
+
+    # A member row arrives in one of two shapes: someone who has accepted
+    # carries `user`, while a pending invite carries `invitedEmail` and has no
+    # account attached to it yet.
     StartupMember:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/MemberStatus"
+        role:
+          type: string
+          enum: [owner, collaborator, viewer]
+          description: Role name, not id. Use GET /startups/{startupId}/roles to resolve an id.
+          example: owner
+        joinedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        user:
+          type: object
+          description: Present only once the invitation has been accepted.
+          properties:
+            id:
+              type: string
+              format: uuid
+            firstName:
+              type: string
+            lastName:
+              type: string
+            email:
+              type: string
+              format: email
+            avatarUrl:
+              type: string
+              format: uri
+              nullable: true
+        invitedEmail:
+          type: string
+          format: email
+          nullable: true
+          description: Present instead of `user` while the invitation is still pending.
+
+    # The raw membership row returned by the role-change endpoint.
+    MembershipRecord:
       type: object
       properties:
         id:
@@ -428,15 +558,15 @@ components:
           type: string
           format: uuid
           nullable: true
+        roleId:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/MemberStatus"
         invitedEmail:
           type: string
           format: email
           nullable: true
-          description: Set when invited before the user has an account; cleared once accepted
-        role:
-          $ref: "#/components/schemas/Role"
-        status:
-          $ref: "#/components/schemas/MemberStatus"
         invitedBy:
           type: string
           format: uuid
@@ -461,34 +591,23 @@ components:
           type: string
           format: uuid
 
-    UpdateMemberBody:
+    ChangeRoleBody:
       type: object
+      required: [roleId]
       properties:
         roleId:
           type: string
           format: uuid
-        status:
-          $ref: "#/components/schemas/MemberStatus"
+          description: Must be a role belonging to the same startup
 
     AcceptInviteBody:
       type: object
-      required: [inviteTokenHash]
+      required: [token]
       properties:
-        inviteTokenHash:
+        token:
           type: string
           description: Raw invite token from the email link
           example: 7c6a180b36896a0a8c02787eeafb0e4c
-        password:
-          type: string
-          minLength: 8
-          description: Required only if the invited person does not yet have an account
-          example: Password1
-        firstName:
-          type: string
-          description: Required only if the invited person does not yet have an account
-        lastName:
-          type: string
-          description: Required only if the invited person does not yet have an account
 
     # ── CRM: Investors ────────────────────────────────────────────────
     InvestorType:
@@ -748,6 +867,7 @@ components:
         interactionDate:
           type: string
           format: date-time
+          nullable: true
         nextFollowupDate:
           type: string
           format: date-time
@@ -780,21 +900,33 @@ components:
           type: string
           format: date-time
 
+    # At least one field is required. Nullable fields accept an explicit null
+    # to clear the stored value.
     UpdateInteractionLogBody:
       type: object
+      minProperties: 1
       properties:
+        pipelineId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Must belong to the same investor contact as the log
         type:
           $ref: "#/components/schemas/InteractionType"
         subject:
           type: string
+          nullable: true
         description:
           type: string
+          nullable: true
         interactionDate:
           type: string
           format: date-time
+          nullable: true
         nextFollowupDate:
           type: string
           format: date-time
+          nullable: true
 
     # ── Financial: Fundraising Rounds ─────────────────────────────────
     RoundStatus:
@@ -1234,29 +1366,186 @@ paths:
   # ════════════════════════════════════════════════════════════════
   #  AUTH
   # ════════════════════════════════════════════════════════════════
-  /auth/register:
+  /auth/register/initiate:
     post:
       tags: [Auth]
-      summary: Register a new user
-      operationId: register
+      summary: Start registration and email a verification code
+      operationId: registerInitiate
+      description: >
+        Stores a pending registration and emails a 6-digit OTP. No user account
+        exists until POST /auth/register/verify succeeds. Responds 200 with the
+        same body whether or not the email is already taken, so the endpoint
+        cannot be used to enumerate accounts.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RegisterBody"
+              $ref: "#/components/schemas/RegisterInitiateBody"
       responses:
-        "201":
-          description: User registered successfully
+        "200":
+          description: Verification code sent (or silently skipped for an existing account)
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/User"
-        "409":
-          description: Email already in use
+                    $ref: "#/components/schemas/OtpChallenge"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "429":
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/register/resend:
+    post:
+      tags: [Auth]
+      summary: Resend the registration verification code
+      operationId: registerResend
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterResendBody"
+      responses:
+        "200":
+          description: A fresh code was sent if a pending registration exists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/OtpChallenge"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "429":
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/register/verify:
+    post:
+      tags: [Auth]
+      summary: Verify the code, create the account and sign in
+      operationId: registerVerify
+      description: >
+        On success the pending registration becomes a real user, auth cookies
+        are set, and any unexpired invitations addressed to that email are
+        claimed automatically — so an invited person lands in their workspace
+        without visiting the invite link again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterVerifyBody"
+      responses:
+        "201":
+          description: Account created and signed in
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: accessToken=...; HttpOnly; Path=/api/v1
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: "#/components/schemas/User"
+        "400":
+          description: Invalid or expired code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "429":
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/google:
+    post:
+      tags: [Auth]
+      summary: Sign in or register with a Google ID token
+      operationId: googleAuth
+      description: >
+        Verifies the Google credential, then links or creates the account and
+        sets auth cookies. Returns 201 for a newly created user and 200 for an
+        existing one. Like OTP registration, this claims any pending invitations
+        for the verified email.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoogleAuthBody"
+      responses:
+        "200":
+          description: Existing user signed in
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: accessToken=...; HttpOnly; Path=/api/v1
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: "#/components/schemas/User"
+                      is_new_user:
+                        type: boolean
+                        example: false
+        "201":
+          description: New user created and signed in
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: "#/components/schemas/User"
+                      is_new_user:
+                        type: boolean
+                        example: true
+        "401":
+          description: Invalid Google token, or the Google email is not verified
           content:
             application/json:
               schema:
@@ -1641,12 +1930,8 @@ paths:
       security:
         - cookieAuth: []
       responses:
-        "200":
-          description: Startup deleted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MessageResponse"
+        "204":
+          description: Startup deleted (no body)
         "401":
           description: Unauthorized
           content:
@@ -1702,50 +1987,114 @@ paths:
   # ════════════════════════════════════════════════════════════════
   #  STARTUP MEMBERS
   # ════════════════════════════════════════════════════════════════
-  /startup-members:
+  /startups/{startupId}/roles:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
     get:
       tags: [Startup Members]
-      summary: List members of the current startup
-      operationId: listStartupMembers
+      summary: List the roles assignable within a startup
+      operationId: listStartupRoles
+      description: >
+        Roles are created per startup, so their ids are not portable between
+        workspaces. This is the only way to resolve the `roleId` required by the
+        invite and role-change endpoints. Ordered most privileged first.
       security:
         - cookieAuth: []
-      parameters:
-        - $ref: "#/components/parameters/PageParam"
-        - $ref: "#/components/parameters/LimitParam"
-        - name: status
-          in: query
-          schema:
-            $ref: "#/components/schemas/MemberStatus"
       responses:
         "200":
-          description: List of startup members
+          description: Roles belonging to this startup
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/StartupMember"
-                  meta:
-                    $ref: "#/components/schemas/PaginationMeta"
+                    type: object
+                    properties:
+                      roles:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/StartupRoleSummary"
         "401":
           description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing team:read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
-  /startup-members/invite:
+  /startups/{startupId}/members:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Startup Members]
+      summary: List members of a startup
+      operationId: listStartupMembers
+      description: >
+        Returns accepted members and pending invitations in one list, oldest
+        first. The response is not paginated. The caller's own row is included,
+        which is how a client determines its own role.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Members and pending invitations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      members:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/StartupMember"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing team:read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /startups/{startupId}/invites:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
     post:
       tags: [Startup Members]
-      summary: Invite a person to join the current startup
+      summary: Invite a person to join the startup
       operationId: inviteStartupMember
       description: >
-        Creates a member record with status "invited". If the email does not
-        match an existing user, `invitedEmail` is set and `userId` remains null
-        until the invite is accepted. Sends an email with a time-limited invite link.
+        Creates a member row with status "pending" and emails a time-limited
+        invite link (valid for 7 days). `userId` stays null until the invite is
+        accepted. Assigning the owner role requires the caller to be an owner.
       security:
         - cookieAuth: []
       requestBody:
@@ -1757,10 +2106,10 @@ paths:
       responses:
         "201":
           description: >
-            Invitation created. `emailQueued` is false if the invite record was
-            created but the notification email could not be queued (e.g. Redis
-            outage) — the caller should tell the inviter to resend or notify the
-            person directly.
+            Invitation created. `emailQueued` is false when the member row was
+            committed but the notification email could not be queued (e.g. a
+            Redis outage) — the caller should tell the inviter to follow up with
+            the person directly.
           content:
             application/json:
               schema:
@@ -1777,13 +2126,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: Insufficient permissions
+          description: Missing team:create, or OWNER_ONLY when assigning the owner role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: ROLE_NOT_FOUND — the role does not belong to this startup
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Person is already a member or has a pending invite
+          description: ALREADY_MEMBER — already a member or already invited
           content:
             application/json:
               schema:
@@ -1795,57 +2150,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
 
-  /startup-members/accept-invite:
-    post:
-      tags: [Startup Members]
-      summary: Accept a startup membership invitation
-      operationId: acceptStartupInvite
-      description: >
-        Public endpoint (no cookieAuth required). If the invited person has no
-        account yet, `firstName`, `lastName`, and `password` must be provided to
-        create one. On success the member status becomes "active" and auth
-        cookies are set, logging the person in.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AcceptInviteBody"
-      responses:
-        "200":
-          description: Invitation accepted
-          headers:
-            Set-Cookie:
-              schema:
-                type: string
-                example: accessToken=...; HttpOnly; Path=/api
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      user:
-                        $ref: "#/components/schemas/User"
-                      member:
-                        $ref: "#/components/schemas/StartupMember"
-        "400":
-          description: Invite token expired or invalid
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
-
-  /startup-members/{memberId}:
+  /startups/{startupId}/members/{memberId}/role:
     parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
       - name: memberId
         in: path
         required: true
@@ -1854,8 +2166,12 @@ paths:
           format: uuid
     patch:
       tags: [Startup Members]
-      summary: Update a member's role or status
-      operationId: updateStartupMember
+      summary: Change a member's role
+      operationId: changeStartupMemberRole
+      description: >
+        Works on pending invitations as well as accepted members. The last
+        active owner cannot be demoted, and only an owner may grant the owner
+        role.
       security:
         - cookieAuth: []
       requestBody:
@@ -1863,17 +2179,17 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpdateMemberBody"
+              $ref: "#/components/schemas/ChangeRoleBody"
       responses:
         "200":
-          description: Member updated
+          description: Role updated
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/StartupMember"
+                    $ref: "#/components/schemas/MembershipRecord"
         "401":
           description: Unauthorized
           content:
@@ -1881,13 +2197,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: Insufficient permissions
+          description: Missing team:update, or OWNER_ONLY when granting the owner role
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Member not found
+          description: Member not found, or ROLE_NOT_FOUND in this startup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: LAST_OWNER — cannot change the role of the last active owner
           content:
             application/json:
               schema:
@@ -1898,19 +2220,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /startups/{startupId}/members/{memberId}:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: memberId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
     delete:
       tags: [Startup Members]
-      summary: Remove a member from the startup
+      summary: Remove a member, or revoke a pending invitation
       operationId: removeStartupMember
+      description: >
+        Callers may remove themselves, which is how leaving a workspace works.
+        The last active owner cannot be removed.
       security:
         - cookieAuth: []
       responses:
-        "200":
-          description: Member removed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MessageResponse"
+        "204":
+          description: Member removed (no body)
         "401":
           description: Unauthorized
           content:
@@ -1918,17 +2254,91 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: Insufficient permissions
+          description: Missing team:delete
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Member not found
+          description: Member not found in this startup
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: LAST_OWNER — cannot remove the last active owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /invites/accept:
+    post:
+      tags: [Startup Members]
+      summary: Accept a startup membership invitation
+      operationId: acceptStartupInvite
+      description: >
+        Public endpoint — no cookieAuth. The membership is resolved from the
+        invited email carried by the token, not from the session, so the caller
+        does not have to be signed in. When no account exists for that email yet
+        the invite is left pending and 202 is returned; registering with that
+        address later claims it automatically.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptInviteBody"
+      responses:
+        "200":
+          description: Invitation accepted and the membership activated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/MembershipRecord"
+        "202":
+          description: >
+            No account exists for the invited email yet. The invitation stays
+            pending and is claimed on registration.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requiresRegistration:
+                    type: boolean
+                    example: true
+                  email:
+                    type: string
+                    format: email
+                    description: The invited address — the account must be created with it
+        "404":
+          description: INVALID_TOKEN — no invitation matches this token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: ALREADY_ACCEPTED — this invitation has already been used
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: TOKEN_EXPIRED — the invitation is older than 7 days
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
 
   # ════════════════════════════════════════════════════════════════
   #  ROLES (RBAC)
@@ -2442,7 +2852,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MessageResponse"
+                $ref: "#/components/schemas/BareMessageResponse"
         "401":
           description: Unauthorized
           content:
@@ -2731,7 +3141,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MessageResponse"
+                $ref: "#/components/schemas/BareMessageResponse"
         "401":
           description: Unauthorized
           content:
@@ -2810,14 +3220,22 @@ paths:
   # ════════════════════════════════════════════════════════════════
   #  INTERACTION LOGS (CRM)
   # ════════════════════════════════════════════════════════════════
-  /interaction-logs:
+  /startups/{startupId}/interaction-logs:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
     post:
       tags: [Interaction Logs]
       summary: Log an interaction with an investor
       operationId: createInteractionLog
       description: >
-        `pipelineId` is optional, allowing interactions to be logged before an
-        investor formally enters the pipeline.
+        `pipelineId` is optional, so interactions can be logged before an
+        investor formally enters the pipeline. When it is supplied, the pipeline
+        entry must belong to the same investor contact.
       security:
         - cookieAuth: []
       requestBody:
@@ -2842,21 +3260,71 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing pipeline:create
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Investor or pipeline entry not found
+          description: INVESTOR_NOT_FOUND — no such contact in this startup
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "422":
-          description: Validation error
+          description: >
+            Validation error, or PIPELINE_MISMATCH when the pipeline entry
+            belongs to a different investor contact.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
+    get:
+      tags: [Interaction Logs]
+      summary: List every interaction log in a startup
+      operationId: listInteractionLogs
+      description: Newest first, across all of the startup's investor contacts.
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: List of interaction logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/InteractionLog"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing pipeline:read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
-  /interaction-logs/{logId}:
+  /startups/{startupId}/interaction-logs/{logId}:
     parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
       - name: logId
         in: path
         required: true
@@ -2885,8 +3353,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing pipeline:read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Interaction log not found
+          description: LOG_NOT_FOUND — no such log in this startup
           content:
             application/json:
               schema:
@@ -2919,14 +3393,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing pipeline:update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Interaction log not found
+          description: LOG_NOT_FOUND — no such log in this startup
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "422":
-          description: Validation error
+          description: >
+            Validation error, or PIPELINE_MISMATCH when the new pipeline entry
+            belongs to a different investor contact.
           content:
             application/json:
               schema:
@@ -2943,15 +3425,21 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MessageResponse"
+                $ref: "#/components/schemas/BareMessageResponse"
         "401":
           description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing pipeline:delete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Interaction log not found
+          description: LOG_NOT_FOUND — no such log in this startup
           content:
             application/json:
               schema:
