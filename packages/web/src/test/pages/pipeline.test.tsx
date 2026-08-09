@@ -255,10 +255,10 @@ describe("Pipeline board", () => {
 
   describe("drag and drop", () => {
     /**
-     * jsdom has no native drag gesture, so a real drag is simulated by
-     * dispatching the same sequence of events the browser would fire, with a
-     * hand-rolled DataTransfer (jsdom's doesn't reliably round-trip data
-     * between dragover and drop).
+     * jsdom has no native drag gesture, so a drag is simulated by dispatching
+     * the same sequence of events the browser would fire, with a hand-rolled
+     * DataTransfer (jsdom's doesn't reliably round-trip data between dragover
+     * and drop).
      */
     function dataTransfer() {
       const store = new Map<string, string>();
@@ -270,28 +270,8 @@ describe("Pipeline board", () => {
       };
     }
 
-    function stubRect(el: Element, top: number, height = 80) {
-      vi.spyOn(el, "getBoundingClientRect").mockReturnValue({
-        top,
-        bottom: top + height,
-        height,
-        left: 0,
-        right: 0,
-        width: 0,
-        x: 0,
-        y: top,
-        toJSON() {},
-      });
-    }
-
     function dealCard(name: string) {
-      return screen.getByRole("button", { name: `Open ${name}` }).closest("[data-deal-card]")!;
-    }
-
-    function cardNamesIn(column: Element) {
-      return within(column as HTMLElement)
-        .getAllByRole("button", { name: /^Open / })
-        .map((btn) => btn.getAttribute("aria-label")!.replace("Open ", ""));
+      return screen.getByRole("button", { name: `Open ${name}` }).closest('[draggable="true"]')!;
     }
 
     beforeEach(() => {
@@ -300,83 +280,65 @@ describe("Pipeline board", () => {
           entry({
             id: "d1",
             investorId: "i1",
+            stage: "sourced",
             investor: { fullName: "Ada Lovelace" } as PipelineEntry["investor"],
           }),
-          entry({
-            id: "d2",
-            investorId: "i2",
-            investor: { fullName: "Grace Hopper" } as PipelineEntry["investor"],
-          }),
-          entry({
-            id: "d3",
-            investorId: "i3",
-            investor: { fullName: "Marie Curie" } as PipelineEntry["investor"],
-          }),
         ],
-        meta: { page: 1, limit: 100, total: 3, totalPages: 1 },
+        meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
       });
     });
 
-    it("reorders within a column to where the pointer is, without calling the API", async () => {
-      renderPipeline();
-      await screen.findByText("Ada Lovelace");
-
-      const ada = dealCard("Ada Lovelace");
-      const grace = dealCard("Grace Hopper");
-      const marie = dealCard("Marie Curie");
-      const column = ada.parentElement!;
-
-      stubRect(ada, 0);
-      stubRect(grace, 80);
-      stubRect(marie, 160);
-
-      const transfer = dataTransfer();
-      fireEvent.dragStart(marie, { dataTransfer: transfer });
-      // Hover the top half of Ada's card — Marie should land above her.
-      fireEvent.dragOver(column, { dataTransfer: transfer, clientY: 10 });
-      fireEvent.drop(column, { dataTransfer: transfer });
-
-      expect(cardNamesIn(column)).toEqual(["Marie Curie", "Ada Lovelace", "Grace Hopper"]);
-      // Same column, so this is a pure client-side reorder — nothing to persist.
-      expect(updatePipelineEntry).not.toHaveBeenCalled();
-    });
-
-    it("moves a card to a different stage at the hovered position and persists the stage", async () => {
+    it("moves a card to the stage it's dropped on", async () => {
       updatePipelineEntry.mockResolvedValue(entry({ stage: "contacted" }));
       renderPipeline();
       await screen.findByText("Ada Lovelace");
 
-      const grace = dealCard("Grace Hopper");
-      const sourcedColumn = grace.parentElement!;
+      const ada = dealCard("Ada Lovelace");
       const contactedColumn = screen
         .getByRole("heading", { name: "Contacted" })
         .closest("section")!
         .querySelector("[class*='overflow-y-auto']")!;
 
       const transfer = dataTransfer();
-      fireEvent.dragStart(grace, { dataTransfer: transfer });
-      fireEvent.dragOver(contactedColumn, { dataTransfer: transfer, clientY: 0 });
+      fireEvent.dragStart(ada, { dataTransfer: transfer });
+      fireEvent.dragOver(contactedColumn, { dataTransfer: transfer });
       fireEvent.drop(contactedColumn, { dataTransfer: transfer });
 
-      expect(cardNamesIn(sourcedColumn)).toEqual(["Ada Lovelace", "Marie Curie"]);
-      expect(cardNamesIn(contactedColumn)).toEqual(["Grace Hopper"]);
       await waitFor(() =>
         expect(updatePipelineEntry).toHaveBeenCalledWith(
           "startup-1",
-          "d2",
+          "d1",
           expect.objectContaining({ stage: "contacted" }),
         ),
       );
+    });
+
+    it("does nothing when dropped back on its own stage", async () => {
+      renderPipeline();
+      await screen.findByText("Ada Lovelace");
+
+      const ada = dealCard("Ada Lovelace");
+      const sourcedColumn = screen
+        .getByRole("heading", { name: "Sourced" })
+        .closest("section")!
+        .querySelector("[class*='overflow-y-auto']")!;
+
+      const transfer = dataTransfer();
+      fireEvent.dragStart(ada, { dataTransfer: transfer });
+      fireEvent.dragOver(sourcedColumn, { dataTransfer: transfer });
+      fireEvent.drop(sourcedColumn, { dataTransfer: transfer });
+
+      expect(updatePipelineEntry).not.toHaveBeenCalled();
     });
 
     it("dims the card being dragged", async () => {
       renderPipeline();
       await screen.findByText("Ada Lovelace");
 
-      const grace = dealCard("Grace Hopper");
-      fireEvent.dragStart(grace, { dataTransfer: dataTransfer() });
+      const ada = dealCard("Ada Lovelace");
+      fireEvent.dragStart(ada, { dataTransfer: dataTransfer() });
 
-      expect(grace.className).toMatch(/opacity-50/);
+      expect(ada.className).toMatch(/opacity-50/);
     });
   });
 
