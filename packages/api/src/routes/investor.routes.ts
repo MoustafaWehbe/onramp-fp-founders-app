@@ -9,7 +9,9 @@ import {
   listInvestorsQuerySchema,
   investorIdParamSchema,
 } from "../validators/investor.schemas";
+import { listInteractionLogQuerySchema } from "../validators/interaction-log.schemas";
 import { investorController } from "../controllers/investor.controller";
+import { interactionLogController } from "../controllers/interaction-log.controller";
 
 // Mounted at /api/v1/startups/:startupId/investors — mergeParams keeps
 // :startupId visible to the RBAC middleware and the controllers.
@@ -66,6 +68,17 @@ router.delete(
   requireMember,
   requirePermission("pipeline", "delete"),
   investorController.deleteInvestor,
+);
+
+// GET /api/v1/startups/:startupId/investors/:investorId/interaction-logs — pipeline:read
+router.get(
+  "/:investorId/interaction-logs",
+  authenticate,
+  validate(investorIdParamSchema, "params"),
+  requireMember,
+  requirePermission("pipeline", "read"),
+  validate(listInteractionLogQuerySchema, "query"),
+  interactionLogController.listLogsByInvestor,
 );
 
 export { router as investorRouter };

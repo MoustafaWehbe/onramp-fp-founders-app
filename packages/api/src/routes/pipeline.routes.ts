@@ -9,7 +9,9 @@ import {
   listPipelineQuerySchema,
   pipelineIdParamSchema,
 } from "../validators/pipeline.schemas";
+import { listInteractionLogQuerySchema } from "../validators/interaction-log.schemas";
 import { pipelineController } from "../controllers/pipeline.controller";
+import { interactionLogController } from "../controllers/interaction-log.controller";
 
 // Mounted at /api/v1/startups/:startupId/pipeline — mergeParams keeps
 // :startupId visible to the RBAC middleware and the controllers.
@@ -66,6 +68,17 @@ router.delete(
   requireMember,
   requirePermission("pipeline", "delete"),
   pipelineController.deleteEntry,
+);
+
+// GET /api/v1/startups/:startupId/pipeline/:pipelineId/interaction-logs — pipeline:read
+router.get(
+  "/:pipelineId/interaction-logs",
+  authenticate,
+  validate(pipelineIdParamSchema, "params"),
+  requireMember,
+  requirePermission("pipeline", "read"),
+  validate(listInteractionLogQuerySchema, "query"),
+  interactionLogController.listLogsByPipeline,
 );
 
 export { router as pipelineRouter };
