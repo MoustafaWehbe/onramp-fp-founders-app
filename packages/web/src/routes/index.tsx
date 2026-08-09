@@ -7,6 +7,7 @@ import { Register } from "../pages/auth/Register";
 import { VerifyOtp } from "../pages/auth/verify";
 import { Forgot } from "../pages/auth/forgot-password";
 import { Reset } from "../pages/auth/reset-password";
+import { AcceptInvite } from "../pages/auth/accept-invite";
 import { Dashboard } from "../pages/dashboard/Dashboard";
 import { Notifications } from "../pages/dashboard/Notifications/Notifications";
 import { Pipeline } from "../pages/dashboard/Pipeline/Pipeline";
@@ -36,6 +37,8 @@ export function AppRoutes() {
         <Route path="/auth/verify" element={<VerifyOtp />} />
         <Route path="/auth/forgot-password" element={<Forgot />} />
         <Route path="/auth/reset-password" element={<Reset />} />
+        {/* Target of the invitation email link built in invite.controller.ts */}
+        <Route path="/accept-invite" element={<AcceptInvite />} />
       </Route>
 
       {/* Protected app routes */}
