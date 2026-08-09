@@ -11,8 +11,19 @@ function optionalText(max: number, label: string) {
     .optional();
 }
 
+// z.coerce.date() runs `new Date(input)` on whatever it's given — null, false,
+// and 0 all coerce to the 1970 epoch instead of failing. Only strings and Date
+// instances are legitimate wire representations of a datetime, so anything
+// else is forced to NaN first, which z.coerce.date() reliably rejects.
+function coercedDate(label: string) {
+  return z.preprocess(
+    (value) => (typeof value === "string" || value instanceof Date ? value : NaN),
+    z.coerce.date({ invalid_type_error: `${label} must be a valid datetime` }),
+  );
+}
+
 const optionalDatetime = z
-  .union([z.coerce.date(), z.null()])
+  .union([z.null(), coercedDate("nextFollowupDate")])
   .transform((value) => (value === null ? null : value))
   .optional();
 
@@ -20,9 +31,7 @@ export const createInteractionLogSchema = z.object({
   investorId: z.string().uuid("investorId must be a valid UUID"),
   pipelineId: z.string().uuid("pipelineId must be a valid UUID").optional(),
   type: interactionTypeEnum,
-  interactionDate: z.coerce.date({
-    invalid_type_error: "interactionDate must be a valid datetime",
-  }),
+  interactionDate: coercedDate("interactionDate"),
   subject: optionalText(200, "Subject"),
   description: optionalText(2000, "Description"),
   nextFollowupDate: optionalDatetime,
@@ -38,17 +47,13 @@ export const updateInteractionLogSchema = z
       .transform((value) => (value === "" || value === null ? null : value))
       .optional(),
     type: interactionTypeEnum.optional(),
-    interactionDate: z
-      .union([
-        z.coerce.date({
-          invalid_type_error: "interactionDate must be a valid datetime",
-        }),
-        z.null(),
-      ])
-      .optional(),
+    interactionDate: z.union([z.null(), coercedDate("interactionDate")]).optional(),
     subject: optionalText(200, "Subject"),
     description: optionalText(2000, "Description"),
-    nextFollowupDate: optionalDatetime,
+    nextFollowupDate: z
+      .union([z.null(), coercedDate("nextFollowupDate")])
+      .transform((value) => (value === null ? null : value))
+      .optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one field is required",

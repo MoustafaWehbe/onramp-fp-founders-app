@@ -70,6 +70,28 @@ describe("createInteractionLogSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it.each([null, false, 0, ""])(
+    "rejects %p for interactionDate instead of coercing it to the 1970 epoch",
+    (value) => {
+      const result = createInteractionLogSchema.safeParse({
+        ...validBody,
+        interactionDate: value,
+      });
+      expect(result.success).toBe(false);
+    },
+  );
+
+  it("accepts null for nextFollowupDate, not the 1970 epoch", () => {
+    const result = createInteractionLogSchema.safeParse({
+      ...validBody,
+      nextFollowupDate: null,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.nextFollowupDate).toBeNull();
+    }
+  });
+
   it("accepts all valid interaction types", () => {
     for (const type of ["call", "email", "meeting", "note", "other"]) {
       const result = createInteractionLogSchema.safeParse({ ...validBody, type });
@@ -93,6 +115,30 @@ describe("updateInteractionLogSchema", () => {
     const result = updateInteractionLogSchema.safeParse({ pipelineId: null });
     expect(result.success).toBe(true);
   });
+
+  it("accepts null for nextFollowupDate to clear it, not the 1970 epoch", () => {
+    const result = updateInteractionLogSchema.safeParse({ nextFollowupDate: null });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.nextFollowupDate).toBeNull();
+    }
+  });
+
+  it("accepts null for interactionDate to clear it, not the 1970 epoch", () => {
+    const result = updateInteractionLogSchema.safeParse({ interactionDate: null });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.interactionDate).toBeNull();
+    }
+  });
+
+  it.each([false, 0, ""])(
+    "rejects %p for interactionDate instead of coercing it to the 1970 epoch",
+    (value) => {
+      const result = updateInteractionLogSchema.safeParse({ interactionDate: value });
+      expect(result.success).toBe(false);
+    },
+  );
 
   it("rejects an invalid type", () => {
     const result = updateInteractionLogSchema.safeParse({ type: "invalid" });
