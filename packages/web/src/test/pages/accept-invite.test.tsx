@@ -29,11 +29,16 @@ const MEMBER = {
   createdAt: "2026-01-01T00:00:00.000Z",
 };
 
-function apiError(status: number, code: string, message: string) {
+function apiError(
+  status: number,
+  code: string,
+  message: string,
+  extra: Record<string, unknown> = {},
+) {
   return new AxiosError(message, String(status), undefined, null, {
     status,
     statusText: "",
-    data: { code, error: message },
+    data: { code, error: message, ...extra },
     headers: {},
     config: { headers: new AxiosHeaders() },
   });
@@ -75,29 +80,41 @@ describe("AcceptInvite", () => {
     expect(screen.getByRole("link", { name: "Go to dashboard" })).toHaveAttribute("href", "/dashboard");
   });
 
-  it("sends a signed-out visitor to sign in after accepting", async () => {
-    acceptInvite.mockResolvedValue({ status: "accepted", member: MEMBER });
+  it("sends a signed-out visitor to sign in and back to the invitation", async () => {
+    // Nothing has been accepted yet — the invite is still pending server-side.
+    acceptInvite.mockResolvedValue({ status: "requires_login", email: "bob@corp.io" });
 
     renderWithToken("tok");
 
-    expect(await screen.findByText("You're in")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Sign in to continue" })).toHaveAttribute(
+    expect(await screen.findByText("Sign in to accept")).toBeInTheDocument();
+    expect(setActiveStartupId).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
       "href",
-      "/auth/login",
+      "/auth/login?next=%2Faccept-invite%3Ftoken%3Dtok&email=bob%40corp.io",
     );
   });
 
-  it("does not switch workspace when the invite belongs to another account", async () => {
+  it("does not switch workspace when signed in as the wrong account", async () => {
     authState = {
       user: { id: "someone-else", email: "x@y.co", firstName: "X", lastName: "Y", avatarUrl: null },
       isLoading: false,
     };
-    acceptInvite.mockResolvedValue({ status: "accepted", member: MEMBER });
+    acceptInvite.mockRejectedValue(
+      apiError(403, "EMAIL_MISMATCH", "wrong account", {
+        invitedEmail: "bob@corp.io",
+        signedInAs: "x@y.co",
+      }),
+    );
 
     renderWithToken("tok");
 
-    expect(await screen.findByText("Invitation belongs to another account")).toBeInTheDocument();
+    expect(await screen.findByText("This invitation isn't for this account")).toBeInTheDocument();
+    expect(screen.getByText("bob@corp.io")).toBeInTheDocument();
     expect(setActiveStartupId).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: "Switch account" })).toHaveAttribute(
+      "href",
+      "/auth/login?next=%2Faccept-invite%3Ftoken%3Dtok&email=bob%40corp.io",
+    );
   });
 
   it("routes an unregistered invitee to register with the email prefilled", async () => {

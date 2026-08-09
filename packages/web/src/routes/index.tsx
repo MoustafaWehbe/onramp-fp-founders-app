@@ -1,7 +1,6 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { RequireWorkspace } from "./RequireWorkspace";
-import { CreateStartup } from "../pages/onboarding/CreateStartup";
 import { AppLayout } from "../layouts/AppLayout";
 import { AuthLayout } from "../layouts/AuthLayout";
 import { Login } from "../pages/auth/Login";
@@ -45,15 +44,20 @@ export function AppRoutes() {
 
       {/* Protected app routes */}
       <Route element={<ProtectedRoute />}>
-        {/* Outside RequireWorkspace on purpose: this is where someone with no
-            workspace is sent, and it doubles as "create another startup". */}
-        <Route path="/onboarding" element={<CreateStartup />} />
+        {/* Creating a startup is a dialog inside the dashboard now. The old
+            standalone route stays as a redirect so existing links still land
+            somewhere sensible. */}
+        <Route path="/onboarding" element={<Navigate to="/dashboard" replace />} />
 
-        <Route element={<RequireWorkspace />}>
-          <Route element={<AppLayout />}>
-            <Route path="/app" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/notifications" element={<Notifications />} />
+        <Route element={<AppLayout />}>
+          {/* Reachable with no workspace: this is where someone who skipped
+              creating a startup waits for an invitation. */}
+          <Route path="/app" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/notifications" element={<Notifications />} />
+
+          {/* Everything below needs a startup id to render at all. */}
+          <Route element={<RequireWorkspace />}>
             <Route path="/pipeline" element={<Pipeline />} />
             <Route path="/investors" element={<Investors />} />
             <Route path="/fundraising" element={<Fundraising />} />

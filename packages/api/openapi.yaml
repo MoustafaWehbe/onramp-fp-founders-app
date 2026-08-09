@@ -20,6 +20,8 @@ tags:
     description: Startup workspace management
   - name: Startup Members
     description: Team membership and invitations within a startup
+  - name: Notifications
+    description: Per-user notification feed, spanning every workspace they touch
   - name: Roles
     description: Custom and system roles (RBAC)
   - name: Permissions
@@ -654,6 +656,94 @@ components:
     # Derived from activity rather than stored, so it cannot drift from what the
     # team has actually done: a contact is "engaged" once it has a pipeline
     # entry or at least one interaction log, and a "prospect" until then.
+    PendingInvite:
+      type: object
+      description: An invitation waiting for the signed-in user.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The membership id — what the accept and decline paths take
+        createdAt:
+          type: string
+          format: date-time
+        inviteExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        startup:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            industry:
+              type: string
+            fundingStage:
+              type: string
+        role:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+        inviter:
+          type: object
+          nullable: true
+          properties:
+            firstName:
+              type: string
+            lastName:
+              type: string
+            email:
+              type: string
+              format: email
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          description: >
+            Rendered specially when known; "team_invite" is the only type the
+            API currently emits.
+          example: team_invite
+        title:
+          type: string
+        body:
+          type: string
+          nullable: true
+        entityType:
+          type: string
+          nullable: true
+          description: What entityId points at, e.g. "startup_member"
+        entityId:
+          type: string
+          nullable: true
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        startup:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+
     Engagement:
       type: string
       enum: [engaged, prospect]
@@ -2440,17 +2530,250 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /invites/mine:
+    get:
+      tags: [Startup Members]
+      summary: Invitations waiting for the signed-in user
+      operationId: listMyInvites
+      description: >
+        Pending, unexpired invitations addressed to the caller's own email.
+        Someone who was already signed in when the invitation arrived accepts it
+        from inside the app; the emailed token is only one of two routes in.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: The caller's pending invitations, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PendingInvite"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /invites/mine/{memberId}/accept:
+    post:
+      tags: [Startup Members]
+      summary: Accept an invitation addressed to you
+      operationId: acceptMyInvite
+      description: >
+        Accepts by membership id rather than by token — the session already
+        proves who the caller is. An invitation addressed to anybody else is
+        reported as 404, not 403: the caller has no business learning it exists.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The membership, now active
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/MembershipRecord"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: NOT_FOUND — no pending invitation for this caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: ALREADY_ACCEPTED — the invitation is no longer pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: TOKEN_EXPIRED — the invitation is older than 7 days
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /invites/mine/{memberId}/decline:
+    post:
+      tags: [Startup Members]
+      summary: Decline an invitation addressed to you
+      operationId: declineMyInvite
+      description: >
+        Removes the pending membership. An owner may send a fresh invitation
+        afterwards.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Invitation declined
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: NOT_FOUND — no pending invitation for this caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ════════════════════════════════════════════════════════════════
+  #  NOTIFICATIONS
+  # ════════════════════════════════════════════════════════════════
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: List the signed-in user's notifications
+      operationId: listNotifications
+      description: >
+        Notifications belong to a user, not to a workspace — someone who has
+        been invited but has not joined anything yet still sees the invitation
+        on their otherwise empty dashboard. There is therefore no startupId in
+        the path and no membership check.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
+        - name: unread
+          in: query
+          description: Restrict to unread notifications.
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Notifications, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Notification"
+                  meta:
+                    type: object
+                    properties:
+                      unreadCount:
+                        type: integer
+                        description: Total unread, independent of limit and filter
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /notifications/read-all:
+    post:
+      tags: [Notifications]
+      summary: Mark every notification read
+      operationId: markAllNotificationsRead
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: How many were marked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      updated:
+                        type: integer
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /notifications/{notificationId}/read:
+    patch:
+      tags: [Notifications]
+      summary: Mark one notification read
+      operationId: markNotificationRead
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Marked read
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: NOT_FOUND — no such notification for this user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /invites/accept:
     post:
       tags: [Startup Members]
       summary: Accept a startup membership invitation
       operationId: acceptStartupInvite
       description: >
-        Public endpoint — no cookieAuth. The membership is resolved from the
-        invited email carried by the token, not from the session, so the caller
-        does not have to be signed in. When no account exists for that email yet
-        the invite is left pending and 202 is returned; registering with that
-        address later claims it automatically.
+        Reachable signed-out, but the membership is only ever activated for a
+        signed-in user whose account email matches the invited address. Holding
+        the link is not enough: an anonymous caller, or one signed in as anybody
+        else, gets a 202 or 403 and the invitation is left untouched.
+
+
+        Accepting is idempotent — the invited member may open the link again
+        (including after registration already claimed the invite) and gets 200
+        with the same membership rather than an error.
+      security:
+        - cookieAuth: []
+        - {}
       requestBody:
         required: true
         content:
@@ -2459,7 +2782,9 @@ paths:
               $ref: "#/components/schemas/AcceptInviteBody"
       responses:
         "200":
-          description: Invitation accepted and the membership activated
+          description: >
+            The membership was activated for the signed-in user, or already
+            belonged to them.
           content:
             application/json:
               schema:
@@ -2469,20 +2794,52 @@ paths:
                     $ref: "#/components/schemas/MembershipRecord"
         "202":
           description: >
-            No account exists for the invited email yet. The invitation stays
-            pending and is claimed on registration.
+            Nobody is signed in as the invited person yet, so nothing was
+            changed. `requiresRegistration` means no account exists for the
+            invited address — registering with it claims the invite
+            automatically. `requiresLogin` means the account exists and only
+            needs to sign in.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  requiresRegistration:
-                    type: boolean
-                    example: true
-                  email:
-                    type: string
-                    format: email
-                    description: The invited address — the account must be created with it
+                oneOf:
+                  - type: object
+                    required: [requiresRegistration, email]
+                    properties:
+                      requiresRegistration:
+                        type: boolean
+                        example: true
+                      email:
+                        type: string
+                        format: email
+                        description: The invited address — the account must be created with it
+                  - type: object
+                    required: [requiresLogin, email]
+                    properties:
+                      requiresLogin:
+                        type: boolean
+                        example: true
+                      email:
+                        type: string
+                        format: email
+                        description: The invited address — sign in as this account to accept
+        "403":
+          description: >
+            EMAIL_MISMATCH — signed in as someone other than the invited person.
+            The invitation stays pending.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    properties:
+                      invitedEmail:
+                        type: string
+                        format: email
+                      signedInAs:
+                        type: string
+                        format: email
         "404":
           description: INVALID_TOKEN — no invitation matches this token
           content:
@@ -2490,7 +2847,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: ALREADY_ACCEPTED — this invitation has already been used
+          description: >
+            ALREADY_ACCEPTED — this invitation was already used by the person it
+            was sent to.
           content:
             application/json:
               schema:

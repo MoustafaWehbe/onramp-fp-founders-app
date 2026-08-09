@@ -9,8 +9,9 @@ import { acceptInvite } from "../../lib/invite-api";
 type Screen =
   | { kind: "loading" }
   | { kind: "accepted" }
-  | { kind: "accepted_other_account" }
+  | { kind: "requires_login"; email: string }
   | { kind: "requires_registration"; email: string }
+  | { kind: "email_mismatch"; invitedEmail: string; signedInAs: string }
   | { kind: "already_accepted" }
   | { kind: "expired" }
   | { kind: "invalid" }
@@ -18,7 +19,9 @@ type Screen =
 
 function toErrorScreen(err: unknown): Screen {
   if (isAxiosError(err)) {
-    const data = err.response?.data as { code?: string; error?: string } | undefined;
+    const data = err.response?.data as
+      | { code?: string; error?: string; invitedEmail?: string; signedInAs?: string }
+      | undefined;
 
     switch (data?.code) {
       case "TOKEN_EXPIRED":
@@ -27,6 +30,12 @@ function toErrorScreen(err: unknown): Screen {
         return { kind: "already_accepted" };
       case "INVALID_TOKEN":
         return { kind: "invalid" };
+      case "EMAIL_MISMATCH":
+        return {
+          kind: "email_mismatch",
+          invitedEmail: data.invitedEmail ?? "another address",
+          signedInAs: data.signedInAs ?? "this account",
+        };
     }
 
     return {
@@ -70,13 +79,22 @@ function AcceptInvite() {
   );
   const requestedRef = useRef(false);
 
+  // Sign-in and registration both come back here so the invitation can finish
+  // in one pass instead of stranding the user on the dashboard.
+  const returnTo = `/accept-invite?token=${encodeURIComponent(token)}`;
+  const loginHref = (email: string) =>
+    `/auth/login?next=${encodeURIComponent(returnTo)}&email=${encodeURIComponent(email)}`;
+  // Registration claims a matching pending invite on email verification, so it
+  // lands in the workspace on its own — there is nothing to come back for.
+  const registerHref = (email: string) => `/auth/register?email=${encodeURIComponent(email)}`;
+
   useEffect(() => {
-    // Wait for the session probe: whether the accepted membership belongs to
-    // the signed-in user decides which screen we show.
+    // Wait for the session probe: the server decides what to do based on who
+    // is signed in, so asking before the cookie is settled gets the wrong answer.
     if (!token || isAuthLoading || requestedRef.current) return;
 
-    // StrictMode runs effects twice in dev and the token is single-use — the
-    // second call would come back as ALREADY_ACCEPTED and mask the real result.
+    // StrictMode runs effects twice in dev. Accepting is idempotent server-side
+    // now, but there is still no reason to send the request twice.
     requestedRef.current = true;
 
     acceptInvite(token)
@@ -86,19 +104,18 @@ function AcceptInvite() {
           return;
         }
 
-        // The endpoint activates the membership for whoever owns the invited
-        // email, not for whoever opened the link. Only adopt the workspace when
-        // it actually belongs to the signed-in account.
-        if (user && result.member.userId !== user.id) {
-          setScreen({ kind: "accepted_other_account" });
+        if (result.status === "requires_login") {
+          setScreen({ kind: "requires_login", email: result.email });
           return;
         }
 
+        // The server only ever returns a membership that belongs to the
+        // signed-in user, so adopting the workspace here is safe.
         setActiveStartupId(result.member.startupId);
         setScreen({ kind: "accepted" });
       })
       .catch((err) => setScreen(toErrorScreen(err)));
-  }, [token, isAuthLoading, user, setActiveStartupId]);
+  }, [token, isAuthLoading, setActiveStartupId]);
 
   switch (screen.kind) {
     case "loading":
@@ -112,26 +129,26 @@ function AcceptInvite() {
           title="You're in"
           description="Your invitation has been accepted and you now have access to the workspace."
         >
-          {user ? (
-            <Button asChild className="w-full">
-              <Link to="/dashboard">Go to dashboard</Link>
-            </Button>
-          ) : (
-            <Button asChild className="w-full">
-              <Link to="/auth/login">Sign in to continue</Link>
-            </Button>
-          )}
+          <Button asChild className="w-full">
+            <Link to="/dashboard">Go to dashboard</Link>
+          </Button>
         </Panel>
       );
 
-    case "accepted_other_account":
+    case "requires_login":
       return (
         <Panel
-          title="Invitation belongs to another account"
-          description="This invitation was issued to a different email address than the one you're signed in with. Sign out and sign back in as the invited person to access the workspace."
+          title="Sign in to accept"
+          description={
+            <>
+              This invitation was sent to{" "}
+              <strong className="font-medium text-foreground">{screen.email}</strong>. Sign in with
+              that account and we'll finish adding you to the workspace.
+            </>
+          }
         >
-          <Button asChild variant="outline" className="w-full">
-            <Link to="/dashboard">Back to dashboard</Link>
+          <Button asChild className="w-full">
+            <Link to={loginHref(screen.email)}>Sign in</Link>
           </Button>
         </Panel>
       );
@@ -149,9 +166,30 @@ function AcceptInvite() {
           }
         >
           <Button asChild className="w-full">
-            <Link to={`/auth/register?email=${encodeURIComponent(screen.email)}`}>
-              Create account
-            </Link>
+            <Link to={registerHref(screen.email)}>Create account</Link>
+          </Button>
+        </Panel>
+      );
+
+    case "email_mismatch":
+      return (
+        <Panel
+          title="This invitation isn't for this account"
+          description={
+            <>
+              It was sent to{" "}
+              <strong className="font-medium text-foreground">{screen.invitedEmail}</strong>, but
+              you're signed in as{" "}
+              <strong className="font-medium text-foreground">{screen.signedInAs}</strong>. The
+              invitation is still waiting — sign in as the invited person to accept it.
+            </>
+          }
+        >
+          <Button asChild className="w-full">
+            <Link to={loginHref(screen.invitedEmail)}>Switch account</Link>
+          </Button>
+          <Button asChild variant="outline" className="w-full">
+            <Link to="/dashboard">Back to dashboard</Link>
           </Button>
         </Panel>
       );
@@ -160,7 +198,7 @@ function AcceptInvite() {
       return (
         <Panel
           title="Already accepted"
-          description="This invitation has already been used. Sign in to reach the workspace."
+          description="This invitation has already been used by the person it was sent to."
         >
           <Button asChild className="w-full">
             <Link to={user ? "/dashboard" : "/auth/login"}>

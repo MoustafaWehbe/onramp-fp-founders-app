@@ -428,6 +428,120 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/invites/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Invitations waiting for the signed-in user
+         * @description Pending, unexpired invitations addressed to the caller's own email. Someone who was already signed in when the invitation arrived accepts it from inside the app; the emailed token is only one of two routes in.
+         */
+        get: operations["listMyInvites"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/invites/mine/{memberId}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept an invitation addressed to you
+         * @description Accepts by membership id rather than by token — the session already proves who the caller is. An invitation addressed to anybody else is reported as 404, not 403: the caller has no business learning it exists.
+         */
+        post: operations["acceptMyInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/invites/mine/{memberId}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline an invitation addressed to you
+         * @description Removes the pending membership. An owner may send a fresh invitation afterwards.
+         */
+        post: operations["declineMyInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the signed-in user's notifications
+         * @description Notifications belong to a user, not to a workspace — someone who has been invited but has not joined anything yet still sees the invitation on their otherwise empty dashboard. There is therefore no startupId in the path and no membership check.
+         */
+        get: operations["listNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark every notification read */
+        post: operations["markAllNotificationsRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/{notificationId}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Mark one notification read */
+        patch: operations["markNotificationRead"];
+        trace?: never;
+    };
     "/invites/accept": {
         parameters: {
             query?: never;
@@ -439,7 +553,9 @@ export interface paths {
         put?: never;
         /**
          * Accept a startup membership invitation
-         * @description Public endpoint — no cookieAuth. The membership is resolved from the invited email carried by the token, not from the session, so the caller does not have to be signed in. When no account exists for that email yet the invite is left pending and 202 is returned; registering with that address later claims it automatically.
+         * @description Reachable signed-out, but the membership is only ever activated for a signed-in user whose account email matches the invited address. Holding the link is not enough: an anonymous caller, or one signed in as anybody else, gets a 202 or 403 and the invitation is left untouched.
+         *
+         *     Accepting is idempotent — the invited member may open the link again (including after registration already claimed the invite) and gets 200 with the same membership rather than an error.
          */
         post: operations["acceptStartupInvite"];
         delete?: never;
@@ -1427,6 +1543,59 @@ export interface components {
          * @enum {string}
          */
         InvestorType: "vc" | "angel" | "family_office" | "accelerator" | "other";
+        /** @description An invitation waiting for the signed-in user. */
+        PendingInvite: {
+            /**
+             * Format: uuid
+             * @description The membership id — what the accept and decline paths take
+             */
+            id?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            inviteExpiresAt?: string | null;
+            startup?: {
+                /** Format: uuid */
+                id?: string;
+                name?: string;
+                industry?: string;
+                fundingStage?: string;
+            };
+            role?: {
+                /** Format: uuid */
+                id?: string;
+                name?: string;
+            };
+            inviter?: {
+                firstName?: string;
+                lastName?: string;
+                /** Format: email */
+                email?: string;
+            } | null;
+        };
+        Notification: {
+            /** Format: uuid */
+            id?: string;
+            /**
+             * @description Rendered specially when known; "team_invite" is the only type the API currently emits.
+             * @example team_invite
+             */
+            type?: string;
+            title?: string;
+            body?: string | null;
+            /** @description What entityId points at, e.g. "startup_member" */
+            entityType?: string | null;
+            entityId?: string | null;
+            /** Format: date-time */
+            readAt?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+            startup?: {
+                /** Format: uuid */
+                id?: string;
+                name?: string;
+            } | null;
+        };
         /**
          * @example engaged
          * @enum {string}
@@ -3039,6 +3208,245 @@ export interface operations {
             };
         };
     };
+    listMyInvites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's pending invitations, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["PendingInvite"][];
+                    };
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    acceptMyInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The membership, now active */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["MembershipRecord"];
+                    };
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description NOT_FOUND — no pending invitation for this caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description ALREADY_ACCEPTED — the invitation is no longer pending */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description TOKEN_EXPIRED — the invitation is older than 7 days */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    declineMyInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invitation declined */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description NOT_FOUND — no pending invitation for this caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listNotifications: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Restrict to unread notifications. */
+                unread?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Notifications, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Notification"][];
+                        meta?: {
+                            /** @description Total unread, independent of limit and filter */
+                            unreadCount?: number;
+                        };
+                    };
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    markAllNotificationsRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description How many were marked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: {
+                            updated?: number;
+                        };
+                    };
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    markNotificationRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notificationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Marked read */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description NOT_FOUND — no such notification for this user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     acceptStartupInvite: {
         parameters: {
             query?: never;
@@ -3052,7 +3460,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Invitation accepted and the membership activated */
+            /** @description The membership was activated for the signed-in user, or already belonged to them. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3063,7 +3471,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description No account exists for the invited email yet. The invitation stays pending and is claimed on registration. */
+            /** @description Nobody is signed in as the invited person yet, so nothing was changed. `requiresRegistration` means no account exists for the invited address — registering with it claims the invite automatically. `requiresLogin` means the account exists and only needs to sign in. */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -3071,12 +3479,34 @@ export interface operations {
                 content: {
                     "application/json": {
                         /** @example true */
-                        requiresRegistration?: boolean;
+                        requiresRegistration: boolean;
                         /**
                          * Format: email
                          * @description The invited address — the account must be created with it
                          */
-                        email?: string;
+                        email: string;
+                    } | {
+                        /** @example true */
+                        requiresLogin: boolean;
+                        /**
+                         * Format: email
+                         * @description The invited address — sign in as this account to accept
+                         */
+                        email: string;
+                    };
+                };
+            };
+            /** @description EMAIL_MISMATCH — signed in as someone other than the invited person. The invitation stays pending. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"] & {
+                        /** Format: email */
+                        invitedEmail?: string;
+                        /** Format: email */
+                        signedInAs?: string;
                     };
                 };
             };
@@ -3089,7 +3519,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description ALREADY_ACCEPTED — this invitation has already been used */
+            /** @description ALREADY_ACCEPTED — this invitation was already used by the person it was sent to. */
             409: {
                 headers: {
                     [name: string]: unknown;

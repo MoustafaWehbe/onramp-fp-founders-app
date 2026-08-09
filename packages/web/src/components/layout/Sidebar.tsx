@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -22,6 +23,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { useWorkspace } from "../../hooks/useWorkspace";
+import { CreateStartupDialog } from "../startup/CreateStartupDialog";
 import { cn, getInitials } from "../../lib/utils";
 import {
   DropdownMenu,
@@ -215,6 +217,7 @@ function StartupSwitcher({ onNavigate }: { onNavigate?: () => void }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { startups, activeStartup, setActiveStartupId } = useWorkspace();
+  const [createOpen, setCreateOpen] = useState(false);
 
   if (!activeStartup) return null;
 
@@ -269,15 +272,20 @@ function StartupSwitcher({ onNavigate }: { onNavigate?: () => void }) {
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onSelect={() => {
-            onNavigate?.();
-            navigate("/onboarding");
-          }}
-        >
+        <DropdownMenuItem onSelect={() => setCreateOpen(true)}>
           <Plus className="mr-2 h-4 w-4" /> New startup
         </DropdownMenuItem>
       </DropdownMenuContent>
+
+      <CreateStartupDialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          // The dialog switches into the new workspace itself; closing it is
+          // the moment the mobile nav has finished its job.
+          if (!open) onNavigate?.();
+        }}
+      />
     </DropdownMenu>
   );
 }

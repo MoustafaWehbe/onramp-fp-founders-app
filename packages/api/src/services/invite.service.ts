@@ -19,6 +19,31 @@ const MEMBER_SELECT = {
   createdAt: true,
 } as const;
 
+const ACCEPTED_MEMBER_SELECT = {
+  id: true,
+  startupId: true,
+  userId: true,
+  roleId: true,
+  status: true,
+  joinedAt: true,
+  createdAt: true,
+} as const;
+
+type AcceptedMember = { [K in keyof typeof ACCEPTED_MEMBER_SELECT]: unknown };
+
+/** Narrows an already-loaded row to the fields the accept response exposes. */
+function toAcceptedMember<T extends AcceptedMember>(member: T) {
+  return {
+    id: member.id,
+    startupId: member.startupId,
+    userId: member.userId,
+    roleId: member.roleId,
+    status: member.status,
+    joinedAt: member.joinedAt,
+    createdAt: member.createdAt,
+  } as Pick<T, keyof typeof ACCEPTED_MEMBER_SELECT>;
+}
+
 const INVITE_EXPIRATION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export class InviteService {
@@ -74,7 +99,7 @@ export class InviteService {
       select: MEMBER_SELECT,
     });
 
-    return { member, rawToken, inviteExpiresAt };
+    return { member, rawToken, inviteExpiresAt, roleName: role.name };
   }
 
   /**
@@ -112,7 +137,13 @@ export class InviteService {
     return { rawToken, email: member.invitedEmail, inviteExpiresAt };
   }
 
-  async acceptInvite(input: AcceptInviteInput) {
+  /**
+   * Accepting an invitation is an act by the invited person, not by whoever
+   * happens to hold the link. `viewerUserId` is the signed-in user, or null
+   * when nobody is signed in; nothing is mutated until the two are known to
+   * match, so a forwarded link cannot join someone else to a workspace.
+   */
+  async acceptInvite(input: AcceptInviteInput, viewerUserId: string | null) {
     const tokenHash = hashToken(input.token);
 
     const member = await prisma.startupMember.findUnique({
@@ -124,12 +155,19 @@ export class InviteService {
       throw createError("Invalid invitation token", 404, "INVALID_TOKEN");
     }
 
-    if (member.inviteExpiresAt && member.inviteExpiresAt < new Date()) {
-      throw createError("This invitation has expired", 410, "TOKEN_EXPIRED");
+    // Accepting is idempotent for the person it belongs to. The link survives
+    // activation precisely so that opening it a second time — or opening it
+    // after registration already claimed the invite — says "you're in" rather
+    // than "invalid link".
+    if (member.status === "active") {
+      if (viewerUserId && member.userId === viewerUserId) {
+        return { data: toAcceptedMember(member) };
+      }
+      throw createError("This invitation has already been accepted", 409, "ALREADY_ACCEPTED");
     }
 
-    if (member.status === "active") {
-      throw createError("This invitation has already been accepted", 409, "ALREADY_ACCEPTED");
+    if (member.inviteExpiresAt && member.inviteExpiresAt < new Date()) {
+      throw createError("This invitation has expired", 410, "TOKEN_EXPIRED");
     }
 
     const invitedEmail = member.invitedEmail;
@@ -137,49 +175,151 @@ export class InviteService {
       throw createError("Invalid invitation", 404, "INVALID_TOKEN");
     }
 
-    // Find a registered user by the invited email (normalized comparison)
-    const user = await prisma.user.findUnique({
-      where: { email: invitedEmail },
+    if (!viewerUserId) {
+      // Whether an account already exists decides where we send them, but the
+      // invitation stays pending either way.
+      const registered = await prisma.user.findUnique({
+        where: { email: invitedEmail },
+        select: { id: true },
+      });
+
+      return registered
+        ? { requiresLogin: true as const, email: invitedEmail }
+        : { requiresRegistration: true as const, email: invitedEmail };
+    }
+
+    // Read the address from the database rather than the access token, which
+    // may predate an email change.
+    const viewer = await prisma.user.findUnique({
+      where: { id: viewerUserId },
       select: { id: true, email: true },
     });
 
-    if (!user) {
-      // User is not registered yet — keep invitation pending
-      return { requiresRegistration: true, email: invitedEmail };
+    if (!viewer) {
+      throw createError("Authentication required", 401, "AUTH_REQUIRED");
     }
 
-    // Activate membership
-    const updatedMember = await prisma.$transaction(async (tx) => {
-      const activated = await tx.startupMember.update({
-        where: { id: member.id },
+    if (viewer.email.toLowerCase() !== invitedEmail.toLowerCase()) {
+      return { emailMismatch: true as const, invitedEmail, signedInAs: viewer.email };
+    }
+
+    return { data: await this.activateMembership(member.id, viewer.id) };
+  }
+
+  /**
+   * Flips a pending row to active for `userId`. Callers are responsible for
+   * having established that the row belongs to that person.
+   */
+  private async activateMembership(memberId: string, userId: string) {
+    return prisma.$transaction(async (tx) => {
+      // Re-check status inside the transaction so two concurrent accepts cannot
+      // both activate — the second finds nothing pending and bails.
+      const claimed = await tx.startupMember.updateMany({
+        where: { id: memberId, status: "pending" },
         data: {
-          userId: user.id,
+          userId,
           status: "active",
           joinedAt: new Date(),
-          inviteTokenHash: null,
           inviteExpiresAt: null,
         },
-        select: {
-          id: true,
-          startupId: true,
-          userId: true,
-          roleId: true,
-          status: true,
-          joinedAt: true,
-          createdAt: true,
-        },
+      });
+
+      if (claimed.count === 0) {
+        throw createError("This invitation has already been accepted", 409, "ALREADY_ACCEPTED");
+      }
+
+      const activated = await tx.startupMember.findUniqueOrThrow({
+        where: { id: memberId },
+        select: ACCEPTED_MEMBER_SELECT,
       });
 
       // Set this as user's active startup if they don't have one
       await tx.user.updateMany({
-        where: { id: user.id, lastActiveStartupId: null },
+        where: { id: userId, lastActiveStartupId: null },
         data: { lastActiveStartupId: activated.startupId },
       });
 
       return activated;
     });
+  }
 
-    return { data: updatedMember };
+  /**
+   * Invitations waiting for the signed-in user, so someone who was already
+   * logged in when the invite arrived can accept it from inside the app instead
+   * of having to dig the link out of their email.
+   */
+  async listMyInvites(userId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    if (!user) return [];
+
+    const invites = await prisma.startupMember.findMany({
+      where: {
+        invitedEmail: user.email,
+        status: "pending",
+        userId: null,
+        inviteExpiresAt: { gt: new Date() },
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        inviteExpiresAt: true,
+        startup: { select: { id: true, name: true, industry: true, fundingStage: true } },
+        role: { select: { id: true, name: true } },
+        inviter: { select: { firstName: true, lastName: true, email: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return invites;
+  }
+
+  /**
+   * Accepts by membership id rather than token — the caller proved who they are
+   * with their session, so no secret from the email is needed.
+   */
+  async acceptMyInvite(memberId: string, userId: string) {
+    const member = await this.findMyPendingInvite(memberId, userId);
+    return this.activateMembership(member.id, userId);
+  }
+
+  /** Turning an invitation down removes it; the owner may send a new one. */
+  async declineMyInvite(memberId: string, userId: string) {
+    const member = await this.findMyPendingInvite(memberId, userId);
+    await prisma.startupMember.deleteMany({ where: { id: member.id, status: "pending" } });
+  }
+
+  private async findMyPendingInvite(memberId: string, userId: string) {
+    const [member, user] = await Promise.all([
+      prisma.startupMember.findUnique({
+        where: { id: memberId },
+        select: { id: true, status: true, invitedEmail: true, inviteExpiresAt: true },
+      }),
+      prisma.user.findUnique({ where: { id: userId }, select: { email: true } }),
+    ]);
+
+    // A membership addressed to somebody else is reported as missing rather
+    // than forbidden: the caller has no business knowing it exists.
+    if (
+      !member ||
+      !user ||
+      !member.invitedEmail ||
+      member.invitedEmail.toLowerCase() !== user.email.toLowerCase()
+    ) {
+      throw createError("Invitation not found", 404, "NOT_FOUND");
+    }
+
+    if (member.status !== "pending") {
+      throw createError("This invitation has already been accepted", 409, "ALREADY_ACCEPTED");
+    }
+
+    if (member.inviteExpiresAt && member.inviteExpiresAt < new Date()) {
+      throw createError("This invitation has expired", 410, "TOKEN_EXPIRED");
+    }
+
+    return member;
   }
 
   async changeRole(startupId: string, memberId: string, input: ChangeRoleInput, actorMemberId: string) {
@@ -320,7 +460,8 @@ export class InviteService {
           userId,
           status: "active",
           joinedAt: now,
-          inviteTokenHash: null,
+          // The hash stays put so the link already sitting in their inbox
+          // resolves to "you're in" instead of "invalid invitation".
           inviteExpiresAt: null,
         },
       });

@@ -1,14 +1,20 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { useAuthContext } from "../../providers/AuthProvider";
+import { safeRedirect } from "../../lib/safe-redirect";
 import { toast } from "sonner";
 import type { AxiosError } from "axios";
 
 function Login() {
-  const [email, setEmail] = useState("");
+  // Arriving from /accept-invite: `next` returns to the invitation so it can be
+  // accepted in one pass, and `email` prefills the address it was sent to.
+  const [searchParams] = useSearchParams();
+  const destination = safeRedirect(searchParams.get("next"));
+
+  const [email, setEmail] = useState(searchParams.get("email") ?? "");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [gsiReady, setGsiReady] = useState(false);
@@ -26,7 +32,7 @@ function Login() {
       callback: async ({ credential }) => {
         try {
           await googleAuth(credential);
-          navigate("/dashboard");
+          navigate(destination);
         } catch (err) {
           const msg =
             (err as AxiosError<{ error: string }>)?.response?.data?.error ??
@@ -36,14 +42,14 @@ function Login() {
       },
     });
     setGsiReady(true);
-  }, [googleAuth, navigate]);
+  }, [googleAuth, navigate, destination]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setIsSubmitting(true);
     try {
       await login(email, password);
-      navigate("/dashboard");
+      navigate(destination);
     } catch (err) {
       const msg =
         (err as AxiosError<{ error: string }>)?.response?.data?.error ??

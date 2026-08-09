@@ -1,18 +1,25 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Rocket } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "../../components/ui/button";
+import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "../../components/ui/dropdown-menu";
-import { Input } from "../../components/ui/input";
-import { Label } from "../../components/ui/label";
-import { Textarea } from "../../components/ui/textarea";
+} from "../ui/dropdown-menu";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { Textarea } from "../ui/textarea";
 import { useWorkspace, MY_STARTUPS_KEY } from "../../hooks/useWorkspace";
 import { apiErrorMessage } from "../../lib/api-error";
 import { createStartup, type FundingStage } from "../../lib/startup-api";
@@ -30,8 +37,17 @@ const FUNDING_STAGES: { id: FundingStage; label: string }[] = [
 // a toast after a round trip.
 const LIMITS = { name: 100, description: 500, industry: 100 };
 
-export function CreateStartup() {
-  const navigate = useNavigate();
+type CreateStartupDialogProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+};
+
+/**
+ * Creating a workspace is a step inside the app, not a place you get sent to.
+ * Someone with no startup can dismiss this and sit on an empty dashboard until
+ * an invitation arrives — so nothing here may trap them.
+ */
+export function CreateStartupDialog({ open, onOpenChange }: CreateStartupDialogProps) {
   const queryClient = useQueryClient();
   const { startups, setActiveStartupId } = useWorkspace();
 
@@ -43,6 +59,16 @@ export function CreateStartup() {
 
   const isFirstWorkspace = startups.length === 0;
   const selectedStage = FUNDING_STAGES.find((s) => s.id === fundingStage)!;
+
+  // A dismissed half-filled form should not greet them on the way back in.
+  useEffect(() => {
+    if (open) return;
+    setName("");
+    setDescription("");
+    setIndustry("");
+    setWebsite("");
+    setFundingStage("pre_seed");
+  }, [open]);
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -58,7 +84,7 @@ export function CreateStartup() {
       setActiveStartupId(startup.id);
       await queryClient.invalidateQueries({ queryKey: MY_STARTUPS_KEY });
       toast.success(`${startup.name} is ready`);
-      navigate("/dashboard", { replace: true });
+      onOpenChange(false);
     },
     onError: (err) => toast.error(apiErrorMessage(err, "Could not create the startup")),
   });
@@ -79,25 +105,20 @@ export function CreateStartup() {
   }
 
   return (
-    <div className="min-h-screen bg-background px-4 py-10 sm:py-16">
-      <div className="mx-auto w-full max-w-xl">
-        <div className="mb-8 flex items-center gap-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
-            <Rocket className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="font-display text-2xl font-semibold tracking-tight">
-              {isFirstWorkspace ? "Create your startup" : "Create another startup"}
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {isFirstWorkspace
-                ? "Your account is ready — this is the workspace your pipeline, investors and team will live in."
-                : "You'll be switched into the new workspace once it's created."}
-            </p>
-          </div>
-        </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            {isFirstWorkspace ? "Create your startup" : "Create another startup"}
+          </DialogTitle>
+          <DialogDescription>
+            {isFirstWorkspace
+              ? "This is the workspace your pipeline, investors and team will live in."
+              : "You'll be switched into the new workspace once it's created."}
+          </DialogDescription>
+        </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="card-elevated space-y-5 p-5 sm:p-6">
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-2">
             <Label htmlFor="startup-name">Startup name</Label>
             <Input
@@ -184,28 +205,16 @@ export function CreateStartup() {
             )}
           </div>
 
-          <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-            {!isFirstWorkspace && (
-              <Button type="button" variant="ghost" onClick={() => navigate(-1)}>
-                Cancel
-              </Button>
-            )}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+              {isFirstWorkspace ? "Skip for now" : "Cancel"}
+            </Button>
             <Button type="submit" disabled={!canSubmit}>
               {mutation.isPending ? "Creating…" : "Create startup"}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
-
-        {isFirstWorkspace && (
-          <p className="mt-6 text-center text-sm text-muted-foreground">
-            Waiting on a teammate's invitation instead? Open the link from your email — or{" "}
-            <Link to="/auth/login" className="text-primary hover:underline">
-              sign in as someone else
-            </Link>
-            .
-          </p>
-        )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

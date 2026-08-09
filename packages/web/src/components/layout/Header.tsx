@@ -2,8 +2,7 @@ import type { ComponentType } from "react";
 import { Bell, CheckCheck, Clock, LogOut, Menu, Plus, Search, Shield, Sparkles, Users, Wallet } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
-import { useAppStore, useUnreadNotificationCount } from "../../lib/app-store";
-import type { NotificationType } from "../../lib/mock-data";
+import { useNotifications } from "../../hooks/useNotifications";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import {
@@ -65,7 +64,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   );
 }
 
-const iconMap: Record<NotificationType, ComponentType<{ className?: string }>> = {
+const iconMap: Record<string, ComponentType<{ className?: string }>> = {
   ai: Sparkles,
   reviewer: Shield,
   commitment: Wallet,
@@ -74,10 +73,7 @@ const iconMap: Record<NotificationType, ComponentType<{ className?: string }>> =
 };
 
 function NotificationsMenu() {
-  const items = useAppStore((state) => state.notifications);
-  const markRead = useAppStore((state) => state.markNotificationRead);
-  const markAllRead = useAppStore((state) => state.markAllNotificationsRead);
-  const unreadCount = useUnreadNotificationCount();
+  const { items, unreadCount, markRead, markAllRead } = useNotifications();
   const recent = items.slice(0, 5);
 
   return (
@@ -105,7 +101,7 @@ function NotificationsMenu() {
             {unreadCount > 0 && (
               <button
                 type="button"
-                onClick={markAllRead}
+                onClick={() => markAllRead()}
                 className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
               >
                 <CheckCheck className="h-3.5 w-3.5" /> Mark all read

@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
+import { useWorkspace } from "../../hooks/useWorkspace";
+import { LoadingSpinner } from "../../components/shared/LoadingSpinner";
+import { NoWorkspaceHome } from "./NoWorkspaceHome";
+import { CreateStartupDialog } from "../../components/startup/CreateStartupDialog";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { Progress } from "../../components/ui/progress";
@@ -80,33 +84,28 @@ const stageData = [
 const stageColors = ["#8B949E", "#3B82F6", "#A78BFA", "#F97316"];
 
 export function Dashboard() {
-  const { user } = useAuth();
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    description: "",
-    industry: "",
-    fundingStage: "Seed",
-    website: "",
-  });
+  const { isLoading: isWorkspaceLoading, hasNoWorkspace } = useWorkspace();
 
-  useEffect(() => {
-    const hasSeen = window.localStorage.getItem("fp:welcome-modal-dismissed");
-    if (!hasSeen) {
-      const timer = window.setTimeout(() => setOpen(true), 350);
-      return () => window.clearTimeout(timer);
-    }
-  }, []);
-
-  const canSubmit = useMemo(() => form.name.trim().length > 0, [form.name]);
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!canSubmit) return;
-    window.localStorage.setItem("fp:welcome-modal-dismissed", "1");
-    setOpen(false);
-    toast.success(`${form.name} is ready for your next step`);
+  if (isWorkspaceLoading) {
+    return (
+      <div className="grid min-h-[60vh] place-items-center">
+        <LoadingSpinner />
+      </div>
+    );
   }
+
+  // Nothing below this point means anything without a workspace — every panel
+  // is scoped to one.
+  if (hasNoWorkspace) {
+    return <NoWorkspaceHome />;
+  }
+
+  return <WorkspaceDashboard />;
+}
+
+function WorkspaceDashboard() {
+  const { user } = useAuth();
+  const [createOpen, setCreateOpen] = useState(false);
 
   return (
     <div className="space-y-6">
@@ -318,7 +317,7 @@ export function Dashboard() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => setCreateOpen(true)}
           className="card-elevated group flex items-center gap-3 p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-surface-hover"
         >
           <div className="grid h-10 w-10 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
@@ -326,7 +325,7 @@ export function Dashboard() {
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium text-foreground">Create startup</div>
-            <div className="text-xs text-muted-foreground">Open your onboarding popup</div>
+            <div className="text-xs text-muted-foreground">Start another workspace</div>
           </div>
         </button>
 
@@ -372,112 +371,7 @@ export function Dashboard() {
         </Link>
       </div>
 
-      <Dialog open={open} onOpenChange={(next: boolean) => {
-        if (!next) window.localStorage.setItem("fp:welcome-modal-dismissed", "1");
-        setOpen(next);
-      }}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-primary">
-              <Sparkles className="h-4 w-4" />
-              Welcome aboard
-            </div>
-            <DialogTitle>Create your first startup workspace</DialogTitle>
-            <DialogDescription>
-              Set up your company profile to start tracking investors, pipeline, and fundraising momentum.
-            </DialogDescription>
-          </DialogHeader>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="startup-name">Company name</Label>
-                <Input
-                  id="startup-name"
-                  value={form.name}
-                  onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-                  placeholder="Northwind AI"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Funding stage</Label>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button type="button" variant="outline" className="w-full justify-between">
-                      {form.fundingStage}
-                      <ChevronDown className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="start"
-                    className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-[240px]"
-                  >
-                    <DropdownMenuLabel>Choose stage</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {startupStageOptions.map((option) => (
-                      <DropdownMenuItem
-                        key={option}
-                        onClick={() => setForm((prev) => ({ ...prev, fundingStage: option }))}
-                      >
-                        {option}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="startup-industry">Industry</Label>
-                <Input
-                  id="startup-industry"
-                  value={form.industry}
-                  onChange={(e) => setForm((prev) => ({ ...prev, industry: e.target.value }))}
-                  placeholder="AI / SaaS"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="startup-website">Website</Label>
-                <Input
-                  id="startup-website"
-                  value={form.website}
-                  onChange={(e) => setForm((prev) => ({ ...prev, website: e.target.value }))}
-                  placeholder="https://"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="startup-description">Short description</Label>
-              <Textarea
-                id="startup-description"
-                value={form.description}
-                onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-                placeholder="What problem are you solving?"
-                rows={4}
-              />
-            </div>
-
-            <DialogFooter className="pt-2">
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full sm:w-auto"
-                onClick={() => {
-                  window.localStorage.setItem("fp:welcome-modal-dismissed", "1");
-                  setOpen(false);
-                }}
-              >
-                Skip for now
-              </Button>
-              <Button type="submit" disabled={!canSubmit} className="w-full sm:w-auto">
-                Create startup
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <CreateStartupDialog open={createOpen} onOpenChange={setCreateOpen} />
     </div>
   );
 }

@@ -38,6 +38,13 @@ if (process.env.NODE_ENV !== "test") {
   app.use(morgan("dev"));
 }
 
+// Every API response is scoped to the caller's session. Letting a browser or
+// an intermediary hold on to one risks replaying it for whoever signs in next.
+app.use("/api/v1", (_req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
+
 // Rate limiting
 app.use("/api/v1/", rateLimiter);
 
