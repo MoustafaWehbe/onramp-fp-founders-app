@@ -1,4 +1,12 @@
-import { Briefcase, Linkedin, Mail, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import {
+  Briefcase,
+  History,
+  Linkedin,
+  Mail,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import {
   DropdownMenu,
@@ -15,6 +23,7 @@ type InvestorActionsProps = {
   onMoveToPipeline?: (investor: InvestorRow) => void;
   onEdit?: (investor: InvestorRow) => void;
   onDelete?: (investor: InvestorRow) => void;
+  onViewHistory?: (investor: InvestorRow) => void;
   moving?: boolean;
 };
 
@@ -23,6 +32,7 @@ export function InvestorActions({
   onMoveToPipeline,
   onEdit,
   onDelete,
+  onViewHistory,
   moving = false,
 }: InvestorActionsProps) {
   const { can } = usePermissions();
@@ -44,6 +54,9 @@ export function InvestorActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-48">
+        <DropdownMenuItem onSelect={() => onViewHistory?.(investor)}>
+          <History className="mr-2 h-4 w-4" /> View history
+        </DropdownMenuItem>
         {investor.email && (
           <DropdownMenuItem asChild>
             <a href={`mailto:${investor.email}`}>

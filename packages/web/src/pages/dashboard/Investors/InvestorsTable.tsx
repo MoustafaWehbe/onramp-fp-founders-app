@@ -12,6 +12,7 @@ type InvestorsTableProps = {
   onMoveToPipeline: (investor: InvestorRow) => void;
   onEdit: (investor: InvestorRow) => void;
   onDelete: (investor: InvestorRow) => void;
+  onViewHistory: (investor: InvestorRow) => void;
   movingInvestorId?: string | null;
 };
 
@@ -23,6 +24,7 @@ export function InvestorsTable({
   onMoveToPipeline,
   onEdit,
   onDelete,
+  onViewHistory,
   movingInvestorId = null,
 }: InvestorsTableProps) {
   const allSelected = investors.length > 0 && investors.every((inv) => selectedIds.has(inv.id));
@@ -106,6 +108,7 @@ export function InvestorsTable({
                     onMoveToPipeline={onMoveToPipeline}
                     onEdit={onEdit}
                     onDelete={onDelete}
+                    onViewHistory={onViewHistory}
                     moving={movingInvestorId === investor.id}
                   />
                 </td>

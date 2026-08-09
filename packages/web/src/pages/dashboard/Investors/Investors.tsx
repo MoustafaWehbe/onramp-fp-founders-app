@@ -27,6 +27,7 @@ import {
 } from "../../../lib/investor-api";
 import { createPipelineEntry } from "../../../lib/pipeline-api";
 import { cn } from "../../../lib/utils";
+import { InvestorDetailDialog } from "./InvestorDetailDialog";
 import { InvestorFormDialog } from "./InvestorFormDialog";
 import { InvestorsCardList } from "./InvestorsCardList";
 import { mapContactToRow, type InvestorRow } from "./investor-types";
@@ -83,6 +84,7 @@ export function Investors() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<InvestorRow | null>(null);
   const [pendingDelete, setPendingDelete] = useState<InvestorRow | null>(null);
+  const [viewing, setViewing] = useState<InvestorRow | null>(null);
 
   // Typing shouldn't fire a request per keystroke now that search runs server-side.
   useEffect(() => {
@@ -334,6 +336,7 @@ export function Investors() {
                 onMoveToPipeline={(investor) => moveMutation.mutate(investor)}
                 onEdit={openEdit}
                 onDelete={setPendingDelete}
+                onViewHistory={setViewing}
                 movingInvestorId={moveMutation.isPending ? moveMutation.variables?.id : null}
               />
             </div>
@@ -346,6 +349,7 @@ export function Investors() {
                 onMoveToPipeline={(investor) => moveMutation.mutate(investor)}
                 onEdit={openEdit}
                 onDelete={setPendingDelete}
+                onViewHistory={setViewing}
                 movingInvestorId={moveMutation.isPending ? moveMutation.variables?.id : null}
               />
             </div>
@@ -381,6 +385,17 @@ export function Investors() {
           </>
         )}
       </div>
+
+      <InvestorDetailDialog
+        startupId={startupId}
+        investor={viewing}
+        onOpenChange={(open) => !open && setViewing(null)}
+        onEditInvestor={(investor) => {
+          // Editing takes over the screen; the history dialog would sit behind it.
+          setViewing(null);
+          openEdit(investor);
+        }}
+      />
 
       <InvestorFormDialog
         open={formOpen}
