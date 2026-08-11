@@ -13,6 +13,19 @@ import { apiErrorMessage } from "../../../lib/api-error";
 import { runWithConcurrency } from "../../../lib/concurrency";
 import { parseCsv } from "../../../lib/csv";
 import { createInvestor, INVESTOR_TYPES, type InvestorInput, type InvestorType } from "../../../lib/investor-api";
+import { cn } from "../../../lib/utils";
+
+const COLUMN_GUIDE: { label: string; required?: boolean; example: string }[] = [
+  { label: "name", required: true, example: "Ada Lovelace" },
+  { label: "email", example: "ada@fund.com" },
+  { label: "firm", example: "Analytical Ventures" },
+  { label: "type", example: "vc" },
+  { label: "sector", example: "Fintech" },
+  { label: "stage", example: "Seed" },
+  { label: "linkedin", example: "https://linkedin.com/in/ada" },
+  { label: "source", example: "Conference" },
+  { label: "notes", example: "" },
+];
 
 const HEADER_ALIASES: Record<string, keyof InvestorInput> = {
   fullname: "fullName",
@@ -205,12 +218,56 @@ export function ImportInvestorsDialog({
         <DialogHeader>
           <DialogTitle>Import investors from CSV</DialogTitle>
           <DialogDescription>
-            Columns recognized: name, email, firm, type ({INVESTOR_TYPES.join(", ")}), sector,
-            stage, linkedin, source, notes. Only "name" is required.
+            Upload a CSV of investor contacts — columns are matched automatically.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
+          <div className="min-w-0 rounded-lg border border-border/70 bg-surface/40 p-3">
+            <div className="flex flex-wrap gap-1.5">
+              {COLUMN_GUIDE.map((col) => (
+                <span
+                  key={col.label}
+                  className={cn(
+                    "rounded-full px-2 py-0.5 font-mono text-[10px] font-medium",
+                    col.required ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {col.label}
+                  {col.required && " *"}
+                </span>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Only <span className="font-medium text-foreground">name</span> is required — column
+              order doesn't matter, and unrecognized columns are ignored. Valid types:{" "}
+              {INVESTOR_TYPES.join(", ")}.
+            </p>
+
+            <div className="scrollbar-slim mt-3 min-w-0 overflow-x-auto rounded-md border border-border/60">
+              <table className="min-w-full text-left font-mono text-[11px]">
+                <thead className="bg-surface/70 text-muted-foreground">
+                  <tr>
+                    {COLUMN_GUIDE.map((col) => (
+                      <th key={col.label} className="whitespace-nowrap px-2 py-1 font-medium">
+                        {col.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="text-foreground/80">
+                    {COLUMN_GUIDE.map((col) => (
+                      <td key={col.label} className="whitespace-nowrap px-2 py-1">
+                        {col.example || "—"}
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <input
             ref={fileInputRef}
             type="file"

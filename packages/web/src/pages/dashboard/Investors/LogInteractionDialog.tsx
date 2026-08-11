@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Button } from "../../../components/ui/button";
+import { DateTimePicker } from "../../../components/ui/date-time-picker";
 import {
   Dialog,
   DialogContent,
@@ -43,24 +44,6 @@ type LogInteractionDialogProps = {
   onSubmit: (values: LogFormValues) => void;
 };
 
-/**
- * <input type="datetime-local"> speaks "YYYY-MM-DDTHH:mm" in local time, while
- * the API sends and receives ISO strings in UTC. These two convert between them
- * without dragging in a date library.
- */
-function toLocalInputValue(iso: string | null | undefined): string {
-  const date = iso ? new Date(iso) : new Date();
-  if (Number.isNaN(date.getTime())) return "";
-  const offsetMs = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
-}
-
-function fromLocalInputValue(value: string): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
 export function LogInteractionDialog({
   open,
   onOpenChange,
@@ -70,10 +53,10 @@ export function LogInteractionDialog({
   onSubmit,
 }: LogInteractionDialogProps) {
   const [type, setType] = useState<InteractionType>("call");
-  const [interactionDate, setInteractionDate] = useState("");
+  const [interactionDate, setInteractionDate] = useState<Date | null>(null);
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
-  const [nextFollowupDate, setNextFollowupDate] = useState("");
+  const [nextFollowupDate, setNextFollowupDate] = useState<Date | null>(null);
 
   const isEditing = Boolean(log);
 
@@ -82,28 +65,25 @@ export function LogInteractionDialog({
     setType(log?.type ?? "call");
     // A new entry defaults to now — most interactions are logged just after
     // they happen.
-    setInteractionDate(toLocalInputValue(log?.interactionDate));
+    setInteractionDate(log?.interactionDate ? new Date(log.interactionDate) : new Date());
     setSubject(log?.subject ?? "");
     setDescription(log?.description ?? "");
-    setNextFollowupDate(log?.nextFollowupDate ? toLocalInputValue(log.nextFollowupDate) : "");
+    setNextFollowupDate(log?.nextFollowupDate ? new Date(log.nextFollowupDate) : null);
   }, [open, log]);
 
-  const canSubmit = interactionDate !== "" && !isSubmitting;
+  const canSubmit = interactionDate !== null && !isSubmitting;
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!canSubmit) return;
 
-    const when = fromLocalInputValue(interactionDate);
-    if (!when) return;
-
     onSubmit({
       type,
-      interactionDate: when,
+      interactionDate: interactionDate.toISOString(),
       // Empty strings become null so clearing a field actually clears it.
       subject: subject.trim() === "" ? null : subject.trim(),
       description: description.trim() === "" ? null : description.trim(),
-      nextFollowupDate: fromLocalInputValue(nextFollowupDate),
+      nextFollowupDate: nextFollowupDate ? nextFollowupDate.toISOString() : null,
     });
   }
 
@@ -149,13 +129,7 @@ export function LogInteractionDialog({
 
             <div className="space-y-2">
               <Label htmlFor="log-date">When</Label>
-              <Input
-                id="log-date"
-                type="datetime-local"
-                value={interactionDate}
-                onChange={(e) => setInteractionDate(e.target.value)}
-                required
-              />
+              <DateTimePicker id="log-date" value={interactionDate} onChange={setInteractionDate} />
             </div>
           </div>
 
@@ -184,11 +158,11 @@ export function LogInteractionDialog({
 
           <div className="space-y-2">
             <Label htmlFor="log-followup">Next follow-up (optional)</Label>
-            <Input
+            <DateTimePicker
               id="log-followup"
-              type="datetime-local"
               value={nextFollowupDate}
-              onChange={(e) => setNextFollowupDate(e.target.value)}
+              onChange={setNextFollowupDate}
+              placeholder="No follow-up scheduled"
             />
             <p className="text-xs text-muted-foreground">
               The earliest upcoming follow-up shows on the investor list.
