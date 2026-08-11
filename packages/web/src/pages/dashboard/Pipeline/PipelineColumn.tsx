@@ -72,7 +72,7 @@ export const PipelineColumn = memo(function PipelineColumn({
       <div
         ref={setNodeRef}
         className={cn(
-          "scrollbar-slim h-[26rem] space-y-2 overflow-y-auto rounded-xl border border-border/70 bg-surface/50 p-2 transition-colors",
+          "scrollbar-none h-[26rem] space-y-2 overflow-y-auto rounded-xl border border-border/70 bg-surface/50 p-2 transition-colors",
           isOver && "border-primary/50 bg-primary/[0.04]",
         )}
       >
