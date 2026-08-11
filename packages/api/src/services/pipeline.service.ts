@@ -330,9 +330,31 @@ export class PipelineService {
       currentByStage.set(entry.stage, bucket);
     }
 
+    // A deal added directly at, say, Diligence has no recorded "sourced" or
+    // "meeting_scheduled" events — only its highest rank reached tells us it
+    // implicitly cleared every earlier stage too. Without this, funnel counts
+    // stop being monotonic (a later stage can outnumber an earlier one) the
+    // moment any deal skips stages, which breaks the funnel shape itself.
+    const maxRankByDeal = new Map<string, number>();
+    for (const [dealId, reached] of reachedByDeal) {
+      let maxRank = -1;
+      for (const s of reached) {
+        const rank = rankOf.get(s);
+        if (rank !== undefined && rank > maxRank) maxRank = rank;
+      }
+      if (maxRank >= 0) maxRankByDeal.set(dealId, maxRank);
+    }
+
     const everReached = (stage: string) => {
+      if (stage === "passed") {
+        let count = 0;
+        for (const reached of reachedByDeal.values()) if (reached.has("passed")) count += 1;
+        return count;
+      }
+      const rank = rankOf.get(stage);
+      if (rank === undefined) return 0;
       let count = 0;
-      for (const reached of reachedByDeal.values()) if (reached.has(stage)) count += 1;
+      for (const maxRank of maxRankByDeal.values()) if (maxRank >= rank) count += 1;
       return count;
     };
 
@@ -341,16 +363,7 @@ export class PipelineService {
       const rank = rankOf.get(stage);
       if (rank === undefined) return 0;
       let count = 0;
-      for (const reached of reachedByDeal.values()) {
-        if (!reached.has(stage)) continue;
-        for (const other of reached) {
-          const otherRank = rankOf.get(other);
-          if (otherRank !== undefined && otherRank > rank) {
-            count += 1;
-            break;
-          }
-        }
-      }
+      for (const maxRank of maxRankByDeal.values()) if (maxRank > rank) count += 1;
       return count;
     };
 

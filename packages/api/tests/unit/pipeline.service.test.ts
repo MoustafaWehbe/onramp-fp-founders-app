@@ -433,6 +433,31 @@ describe("PipelineService.getAnalytics", () => {
     expect(data.funnel.find((row) => row.stage === "contacted")!.medianDaysInStage).toBeNull();
   });
 
+  it("credits a deal that skipped straight to a later stage to every earlier stage too", async () => {
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([]);
+    (mockPrisma.pipelineStageEvent.findMany as jest.Mock).mockResolvedValue([
+      // p1 goes through every stage normally.
+      event("p1", "sourced", 1),
+      event("p1", "contacted", 2),
+      event("p1", "meeting_scheduled", 3),
+      event("p1", "due_diligence", 4),
+      // p2 was added directly at due diligence — no sourced/contacted/meeting
+      // events exist for it, but it plainly cleared those stages too.
+      event("p2", "due_diligence", 1),
+    ]);
+
+    const { data } = await service.getAnalytics(STARTUP_ID);
+
+    const byStage = (stage: string) => data.funnel.find((row) => row.stage === stage)!.everReached;
+    // Every earlier stage must count both deals, not just the one with a
+    // matching literal event — otherwise a later stage can end up with a
+    // higher count than an earlier one, which isn't a funnel anymore.
+    expect(byStage("sourced")).toBe(2);
+    expect(byStage("contacted")).toBe(2);
+    expect(byStage("meeting_scheduled")).toBe(2);
+    expect(byStage("due_diligence")).toBe(2);
+  });
+
   it("returns null rates rather than dividing by zero on an empty board", async () => {
     (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([]);
     (mockPrisma.pipelineStageEvent.findMany as jest.Mock).mockResolvedValue([]);
