@@ -123,15 +123,6 @@ export function PipelineAnalyticsView({ analytics }: PipelineAnalyticsViewProps)
             ))}
         </div>
       </section>
-
-      <p className="flex items-start gap-2 rounded-xl border border-border/70 bg-surface/50 p-3 text-xs text-muted-foreground">
-        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        <span>
-          Deals added before stage tracking started count once, at the stage they were in — they
-          show no movement until the next time you move them, so early conversion numbers will
-          read low.
-        </span>
-      </p>
     </div>
   );
 }
