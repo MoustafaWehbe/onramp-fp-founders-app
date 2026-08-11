@@ -28,6 +28,7 @@ import {
 import { usePermissions } from "../../../hooks/usePermissions";
 import { useActiveStartupId } from "../../../hooks/useWorkspace";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
+import { cn } from "../../../lib/utils";
 import {
   completeFollowup,
   createInteractionLog,
@@ -540,12 +541,27 @@ export function Pipeline() {
         <DndContext
           sensors={sensors}
           collisionDetection={collisionDetection}
+          // The board itself is the scrollable ancestor that needs to move
+          // when a drag reaches an off-screen stage; a wider edge zone and
+          // steady acceleration keep that scroll going continuously instead
+          // of starting and stopping as the pointer wobbles near the edge.
+          autoScroll={{ threshold: { x: 0.25, y: 0.15 }, acceleration: 20 }}
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
           onDragCancel={() => setActiveId(null)}
         >
-          <div className="scrollbar-none flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1">
+          <div
+            className={cn(
+              "scrollbar-none flex touch-pan-x gap-3 overflow-x-auto scroll-smooth pb-1",
+              // Mandatory snap fights dnd-kit's own scrollLeft updates while
+              // it's auto-scrolling toward an off-screen column — the browser
+              // keeps snapping back to the nearest card, which is what made
+              // the drag-to-edge scroll feel stuck rather than smooth. Only
+              // snap when nothing is being dragged.
+              activeId === null && "snap-x snap-proximity",
+            )}
+          >
             {visibleStages.map((stage) => {
               const dealIds = columns[stage.id] ?? [];
               const weightedTotal = dealIds.reduce((sum, id) => {
