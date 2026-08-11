@@ -23,6 +23,7 @@ import {
 } from "../../../lib/interaction-log-api";
 import { INVESTOR_TYPE_LABELS } from "../../../lib/investor-api";
 import { fetchAllPages } from "../../../lib/pagination";
+import { listPipelineStageEvents } from "../../../lib/pipeline-api";
 import { listMembers } from "../../../lib/team-api";
 import { cn, getInitials } from "../../../lib/utils";
 import { InteractionTimeline } from "./InteractionTimeline";
@@ -77,6 +78,15 @@ export function InvestorDetailDialog({
         listLogsForInvestor(startupId, investorId!, { page, limit }),
       ).then((data) => ({ data })),
     enabled: investorId !== null,
+  });
+
+  const pipelineId = investor?.pipelineId ?? null;
+
+  // Only contacts on the board have stage history; a prospect has none yet.
+  const stageEventsQuery = useQuery({
+    queryKey: ["pipeline-stage-events", startupId, pipelineId],
+    queryFn: () => listPipelineStageEvents(startupId, pipelineId!),
+    enabled: pipelineId !== null,
   });
 
   // Logs carry only a createdBy user id. The members list is already cached by
@@ -241,8 +251,15 @@ export function InvestorDetailDialog({
               <div className={cn("max-h-[40vh] overflow-y-auto pr-1", "scrollbar-slim")}>
                 <InteractionTimeline
                   logs={logs}
+                  stageEvents={stageEventsQuery.data ?? []}
                   authorNames={authorNames}
-                  isLoading={logsQuery.isPending}
+                  // stageEventsQuery is disabled for a prospect with no pipeline
+                  // entry — isPending stays true forever on a disabled query, so
+                  // it must not count as "loading" while fetchStatus is idle.
+                  isLoading={
+                    logsQuery.isPending ||
+                    (stageEventsQuery.isPending && stageEventsQuery.fetchStatus !== "idle")
+                  }
                   onEdit={(log) => {
                     setEditingLog(log);
                     setLogOpen(true);

@@ -92,4 +92,14 @@ router.get(
   interactionLogController.listLogsByPipeline,
 );
 
+// GET /api/v1/startups/:startupId/pipeline/:pipelineId/stage-events — pipeline:read
+router.get(
+  "/:pipelineId/stage-events",
+  authenticate,
+  validate(pipelineIdParamSchema, "params"),
+  requireMember,
+  requirePermission("pipeline", "read"),
+  pipelineController.listStageEvents,
+);
+
 export { router as pipelineRouter };

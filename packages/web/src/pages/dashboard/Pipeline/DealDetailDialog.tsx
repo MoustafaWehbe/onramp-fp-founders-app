@@ -26,7 +26,11 @@ import {
 import { INVESTOR_TYPE_LABELS, type InvestorType } from "../../../lib/investor-api";
 import { DEFAULT_PROBABILITY_BY_STAGE, STAGES, type PipelineStageId } from "../../../lib/mock-data";
 import { fetchAllPages } from "../../../lib/pagination";
-import { updatePipelineEntry, type PipelineEntry } from "../../../lib/pipeline-api";
+import {
+  listPipelineStageEvents,
+  updatePipelineEntry,
+  type PipelineEntry,
+} from "../../../lib/pipeline-api";
 import { listMembers } from "../../../lib/team-api";
 import { cn, formatCompactUsd, getInitials } from "../../../lib/utils";
 import { InteractionTimeline } from "../Investors/InteractionTimeline";
@@ -104,6 +108,14 @@ export function DealDetailDialog({
     enabled: investorId !== null,
   });
 
+  // Who added this deal and who's moved its stage since — shown alongside
+  // the logged interactions so "what happened" always answers "who did it".
+  const stageEventsQuery = useQuery({
+    queryKey: ["pipeline-stage-events", startupId, deal?.id],
+    queryFn: () => listPipelineStageEvents(startupId, deal!.id),
+    enabled: deal !== null,
+  });
+
   // Logs carry only a createdBy user id; the members list puts a name on each.
   const membersQuery = useQuery({
     queryKey: ["team-members", startupId],
@@ -127,6 +139,7 @@ export function DealDetailDialog({
     void queryClient.invalidateQueries({ queryKey: ["interaction-logs", startupId] });
     void queryClient.invalidateQueries({ queryKey: ["pipeline", startupId] });
     void queryClient.invalidateQueries({ queryKey: ["investors", startupId] });
+    void queryClient.invalidateQueries({ queryKey: ["pipeline-stage-events", startupId] });
   };
 
   const dealMutation = useMutation({
@@ -423,8 +436,14 @@ export function DealDetailDialog({
                 <div className="scrollbar-slim max-h-[36vh] overflow-y-auto pr-1">
                   <InteractionTimeline
                     logs={logs}
+                    stageEvents={stageEventsQuery.data ?? []}
                     authorNames={authorNames}
-                    isLoading={logsQuery.isPending}
+                    // Same guard as InvestorDetailDialog: a disabled query's
+                    // isPending never flips to false on its own.
+                    isLoading={
+                      logsQuery.isPending ||
+                      (stageEventsQuery.isPending && stageEventsQuery.fetchStatus !== "idle")
+                    }
                     onEdit={(log) => {
                       setEditingLog(log);
                       setLogOpen(true);

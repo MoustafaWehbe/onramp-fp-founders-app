@@ -54,4 +54,12 @@ export const pipelineController = {
     );
     res.json({ message: "Pipeline entry removed" });
   }),
+
+  listStageEvents: asyncHandler(async (req, res) => {
+    const result = await pipelineService.listStageEvents(
+      req.params.startupId as string,
+      req.params.pipelineId as string,
+    );
+    res.json(result);
+  }),
 };

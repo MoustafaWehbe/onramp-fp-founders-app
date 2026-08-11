@@ -378,6 +378,28 @@ export class PipelineService {
     };
   }
 
+  /**
+   * The full stage history for one deal — who added it (the first event,
+   * fromStage null) and who moved it since. Exposed so the UI can answer
+   * "who did this" instead of just "what changed", which the board alone
+   * cannot show.
+   */
+  async listStageEvents(startupId: string, pipelineId: string) {
+    const entry = await prisma.pipeline.findUnique({
+      where: { startupId_id: { startupId, id: pipelineId } },
+      select: { id: true },
+    });
+    if (!entry) throw createError("Pipeline entry not found", 404, "PIPELINE_NOT_FOUND");
+
+    const events = await prisma.pipelineStageEvent.findMany({
+      where: { startupId, pipelineId },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, fromStage: true, toStage: true, changedBy: true, createdAt: true },
+    });
+
+    return { data: events };
+  }
+
   private translateDuplicatePipeline(err: unknown): unknown {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       return createError(

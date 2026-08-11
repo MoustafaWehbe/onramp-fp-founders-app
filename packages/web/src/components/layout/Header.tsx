@@ -70,6 +70,7 @@ const iconMap: Record<string, ComponentType<{ className?: string }>> = {
   commitment: Wallet,
   task: Clock,
   team: Users,
+  followup_due: Clock,
 };
 
 function NotificationsMenu() {

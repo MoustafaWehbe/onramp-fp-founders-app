@@ -23,6 +23,7 @@ jest.mock("../../src/services/pipeline.service", () => ({
     updateEntry: jest.fn(),
     deleteEntry: jest.fn(),
     getAnalytics: jest.fn(),
+    listStageEvents: jest.fn(),
   },
 }));
 
@@ -217,5 +218,27 @@ describe("DELETE /api/v1/startups/:startupId/pipeline/:pipelineId", () => {
 
     expect(res.status).toBe(403);
     expect(mockService.deleteEntry).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/v1/startups/:startupId/pipeline/:pipelineId/stage-events", () => {
+  it("returns 200 with the stage history", async () => {
+    mockService.listStageEvents.mockResolvedValue({
+      data: [{ id: "e1", fromStage: null, toStage: "sourced" }],
+    } as never);
+
+    const res = await request(app)
+      .get(`${BASE}/${PIPELINE_ID}/stage-events`)
+      .set("Cookie", [accessCookie()]);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(mockService.listStageEvents).toHaveBeenCalledWith(STARTUP_ID, PIPELINE_ID);
+  });
+
+  it("returns 401 without an auth cookie", async () => {
+    const res = await request(app).get(`${BASE}/${PIPELINE_ID}/stage-events`);
+    expect(res.status).toBe(401);
+    expect(mockService.listStageEvents).not.toHaveBeenCalled();
   });
 });

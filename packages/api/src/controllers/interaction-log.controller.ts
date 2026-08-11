@@ -1,5 +1,6 @@
 import { asyncHandler } from "../utils/errors";
 import { interactionLogService } from "../services/interaction-log.service";
+import { notificationService } from "../services/notification.service";
 import type {
   CreateInteractionLogInput,
   UpdateInteractionLogInput,
@@ -33,19 +34,28 @@ export const interactionLogController = {
   }),
 
   updateLog: asyncHandler(async (req, res) => {
+    const logId = req.params.logId as string;
+    const input = req.body as UpdateInteractionLogInput;
     const result = await interactionLogService.updateLog(
       req.params.startupId as string,
-      req.params.logId as string,
-      req.body as UpdateInteractionLogInput,
+      logId,
+      input,
     );
+
+    // Completing or rescheduling clears whatever "this is overdue" notification
+    // is sitting on the old due date — a fresh one fires later if the new date
+    // also passes unattended.
+    if (input.followupCompletedAt !== undefined || input.nextFollowupDate !== undefined) {
+      void notificationService.clearFollowupNotifications([logId]);
+    }
+
     res.json(result);
   }),
 
   deleteLog: asyncHandler(async (req, res) => {
-    await interactionLogService.deleteLog(
-      req.params.startupId as string,
-      req.params.logId as string,
-    );
+    const logId = req.params.logId as string;
+    await interactionLogService.deleteLog(req.params.startupId as string, logId);
+    void notificationService.clearFollowupNotifications([logId]);
     res.json({ message: "Interaction log removed" });
   }),
 

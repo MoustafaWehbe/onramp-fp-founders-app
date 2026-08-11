@@ -129,3 +129,21 @@ export async function deletePipelineEntry(startupId: string, pipelineId: string)
   return data;
 }
 
+export type PipelineStageEvent = {
+  id: string;
+  /** Null for the first event — the deal being added to the pipeline. */
+  fromStage: PipelineStageId | null;
+  toStage: PipelineStageId;
+  /** Null if the member who made this change has since been removed. */
+  changedBy: string | null;
+  createdAt: string;
+};
+
+/** Who added this deal and who moved it since — oldest first. */
+export async function listPipelineStageEvents(startupId: string, pipelineId: string) {
+  const { data } = await apiClient.get<{ data: PipelineStageEvent[] }>(
+    `/startups/${startupId}/pipeline/${pipelineId}/stage-events`,
+  );
+  return data.data;
+}
+

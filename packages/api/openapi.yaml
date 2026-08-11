@@ -712,8 +712,9 @@ components:
         type:
           type: string
           description: >
-            Rendered specially when known; "team_invite" is the only type the
-            API currently emits.
+            Rendered specially when known. The API currently emits
+            "team_invite" and "followup_due"; anything else falls back to a
+            generic icon on the client.
           example: team_invite
         title:
           type: string
@@ -723,7 +724,10 @@ components:
         entityType:
           type: string
           nullable: true
-          description: What entityId points at, e.g. "startup_member"
+          description: >
+            What entityId points at, e.g. "startup_member" for a
+            "team_invite" notification or "interaction_log" for a
+            "followup_due" one
         entityId:
           type: string
           nullable: true
@@ -1107,6 +1111,28 @@ components:
             Null while the follow-up is outstanding. Set when it is marked done,
             or automatically when a later interaction is logged for the same
             contact that satisfies it (logged on or after the follow-up date).
+        createdAt:
+          type: string
+          format: date-time
+
+    PipelineStageEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        fromStage:
+          allOf:
+            - $ref: "#/components/schemas/PipelineStage"
+          nullable: true
+          description: Null for the first event — the deal being added to the pipeline.
+        toStage:
+          $ref: "#/components/schemas/PipelineStage"
+        changedBy:
+          type: string
+          format: uuid
+          nullable: true
+          description: Null if the member who made this change has since been removed.
         createdAt:
           type: string
           format: date-time
@@ -3915,6 +3941,55 @@ paths:
                       $ref: "#/components/schemas/InteractionLog"
                   meta:
                     $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pipeline entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /startups/{startupId}/pipeline/{pipelineId}/stage-events:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: pipelineId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Pipeline]
+      summary: List a deal's stage history
+      description: >
+        Chronological record of every stage change on this deal, including
+        who made each one. The first event (fromStage null) is when the deal
+        was added to the pipeline.
+      operationId: listPipelineStageEvents
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: List of stage events, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PipelineStageEvent"
         "401":
           description: Unauthorized
           content:

@@ -1,8 +1,10 @@
+import { useMemo } from "react";
 import {
   CalendarClock,
   CheckCircle2,
   Mail,
   MessageSquare,
+  Milestone,
   Phone,
   StickyNote,
   Users,
@@ -22,6 +24,8 @@ import {
   type InteractionLog,
   type InteractionType,
 } from "../../../lib/interaction-log-api";
+import { getStage } from "../../../lib/mock-data";
+import type { PipelineStageEvent } from "../../../lib/pipeline-api";
 import { cn } from "../../../lib/utils";
 
 const TYPE_ICONS: Record<InteractionType, LucideIcon> = {
@@ -53,9 +57,20 @@ function formatWhen(iso: string | null): string {
   }).format(date);
 }
 
+/** The name is the part someone actually scans for — give it real weight. */
+function Author({ name }: { name: string }) {
+  return <span className="font-medium text-foreground">{name}</span>;
+}
+
+type ActivityItem =
+  | { kind: "log"; at: number; log: InteractionLog }
+  | { kind: "stage"; at: number; event: PipelineStageEvent };
+
 type InteractionTimelineProps = {
   logs: InteractionLog[];
-  /** Maps createdBy user ids to display names; falls back to "A teammate". */
+  /** Stage moves for this deal, oldest first — omit where there's no pipeline entry to show. */
+  stageEvents?: PipelineStageEvent[];
+  /** Maps createdBy/changedBy user ids to display names; falls back to "A teammate". */
   authorNames: Map<string, string>;
   isLoading: boolean;
   onEdit: (log: InteractionLog) => void;
@@ -64,6 +79,7 @@ type InteractionTimelineProps = {
 
 export function InteractionTimeline({
   logs,
+  stageEvents = [],
   authorNames,
   isLoading,
   onEdit,
@@ -74,13 +90,27 @@ export function InteractionTimeline({
   const canDelete = can("pipeline", "delete");
   const now = Date.now();
 
+  const items = useMemo<ActivityItem[]>(() => {
+    const logItems: ActivityItem[] = logs.map((log) => ({
+      kind: "log",
+      at: new Date(log.interactionDate ?? log.createdAt).getTime(),
+      log,
+    }));
+    const stageItems: ActivityItem[] = stageEvents.map((event) => ({
+      kind: "stage",
+      at: new Date(event.createdAt).getTime(),
+      event,
+    }));
+    return [...logItems, ...stageItems].sort((a, b) => b.at - a.at);
+  }, [logs, stageEvents]);
+
   if (isLoading) {
     return (
       <p className="px-1 py-6 text-center text-sm text-muted-foreground">Loading history…</p>
     );
   }
 
-  if (logs.length === 0) {
+  if (items.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border/70 px-6 py-8 text-center">
         <div className="grid h-9 w-9 place-items-center rounded-xl bg-surface text-muted-foreground">
@@ -95,11 +125,35 @@ export function InteractionTimeline({
   }
 
   return (
-    <ol className="relative space-y-4 pl-6">
-      {/* Spine, tucked behind the markers. */}
-      <span aria-hidden className="absolute bottom-2 left-[11px] top-2 w-px bg-border/70" />
+    <ol className="space-y-3">
+      {items.map((item) => {
+        if (item.kind === "stage") {
+          const { event } = item;
+          const author = authorNames.get(event.changedBy ?? "") ?? "A teammate";
+          const title =
+            event.fromStage === null
+              ? `Added to pipeline in ${getStage(event.toStage).label}`
+              : `Moved from ${getStage(event.fromStage).label} to ${getStage(event.toStage).label}`;
 
-      {logs.map((log) => {
+          return (
+            <li
+              key={`stage-${event.id}`}
+              className="flex items-center gap-3 rounded-xl border border-dashed border-border/70 bg-surface/20 p-3.5"
+            >
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
+                <Milestone className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <span className="text-sm font-semibold text-foreground">{title}</span>
+                <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {formatWhen(event.createdAt)} · <Author name={author} />
+                </div>
+              </div>
+            </li>
+          );
+        }
+
+        const { log } = item;
         const Icon = TYPE_ICONS[log.type] ?? MessageSquare;
         const author = authorNames.get(log.createdBy) ?? "A teammate";
         const followupDone = log.followupCompletedAt !== null;
@@ -107,89 +161,87 @@ export function InteractionTimeline({
           log.nextFollowupDate !== null && new Date(log.nextFollowupDate).getTime() > now;
 
         return (
-          <li key={log.id} className="relative">
-            <span
-              className={cn(
-                "absolute -left-6 grid h-6 w-6 place-items-center rounded-full ring-4 ring-card",
-                TYPE_TONES[log.type] ?? TYPE_TONES.other,
-              )}
-            >
-              <Icon className="h-3 w-3" />
-            </span>
-
-            <div className="rounded-xl border border-border/70 bg-surface/50 p-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium text-foreground">
-                      {log.subject || INTERACTION_TYPE_LABELS[log.type]}
-                    </span>
-                    <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                      {INTERACTION_TYPE_LABELS[log.type]}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">
-                    {formatWhen(log.interactionDate)} · {author}
-                  </div>
-                </div>
-
-                {(canEdit || canDelete) && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 shrink-0"
-                        aria-label={`Actions for ${log.subject || INTERACTION_TYPE_LABELS[log.type]}`}
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="min-w-40">
-                      {canEdit && (
-                        <DropdownMenuItem onSelect={() => onEdit(log)}>Edit</DropdownMenuItem>
-                      )}
-                      {canDelete && (
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onSelect={() => onDelete(log)}
-                        >
-                          Delete
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+          <li
+            key={log.id}
+            className="rounded-xl border border-border/70 bg-surface/40 p-4 transition-colors hover:bg-surface/70"
+          >
+            <div className="flex items-center gap-3">
+              <span
+                className={cn(
+                  "grid h-9 w-9 shrink-0 place-items-center rounded-full",
+                  TYPE_TONES[log.type] ?? TYPE_TONES.other,
                 )}
+              >
+                <Icon className="h-4 w-4" />
+              </span>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="truncate text-sm font-semibold text-foreground">
+                    {log.subject || INTERACTION_TYPE_LABELS[log.type]}
+                  </span>
+                  <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {INTERACTION_TYPE_LABELS[log.type]}
+                  </span>
+                </div>
+                <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {formatWhen(log.interactionDate)} · <Author name={author} />
+                </div>
               </div>
 
-              {log.description && (
-                <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
-                  {log.description}
-                </p>
-              )}
-
-              {log.nextFollowupDate && (
-                <div
-                  className={cn(
-                    "mt-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs",
-                    followupDone
-                      ? "bg-success/15 text-success"
-                      : followupUpcoming
-                        ? "bg-warning/15 text-warning"
-                        : "bg-destructive/15 text-destructive",
-                  )}
-                >
-                  {followupDone ? (
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                  ) : (
-                    <CalendarClock className="h-3.5 w-3.5" />
-                  )}
-                  {followupDone
-                    ? `Followed up · was due ${formatWhen(log.nextFollowupDate)}`
-                    : `${followupUpcoming ? "Follow up" : "Overdue since"} ${formatWhen(log.nextFollowupDate)}`}
-                </div>
+              {(canEdit || canDelete) && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0"
+                      aria-label={`Actions for ${log.subject || INTERACTION_TYPE_LABELS[log.type]}`}
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-40">
+                    {canEdit && (
+                      <DropdownMenuItem onSelect={() => onEdit(log)}>Edit</DropdownMenuItem>
+                    )}
+                    {canDelete && (
+                      <DropdownMenuItem className="text-destructive" onSelect={() => onDelete(log)}>
+                        Delete
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
             </div>
+
+            {log.description && (
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground/80">
+                {log.description}
+              </p>
+            )}
+
+            {log.nextFollowupDate && (
+              <div
+                className={cn(
+                  "mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+                  followupDone
+                    ? "bg-success/15 text-success"
+                    : followupUpcoming
+                      ? "bg-warning/15 text-warning"
+                      : "bg-destructive/15 text-destructive",
+                )}
+              >
+                {followupDone ? (
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                ) : (
+                  <CalendarClock className="h-3.5 w-3.5" />
+                )}
+                {followupDone
+                  ? `Followed up · was due ${formatWhen(log.nextFollowupDate)}`
+                  : `${followupUpcoming ? "Follow up" : "Overdue since"} ${formatWhen(log.nextFollowupDate)}`}
+              </div>
+            )}
           </li>
         );
       })}

@@ -8,6 +8,7 @@ import { notificationBus } from "../events/notification-bus";
  */
 export const NOTIFICATION_TYPES = {
   TEAM_INVITE: "team_invite",
+  FOLLOWUP_DUE: "followup_due",
 } as const;
 
 const NOTIFICATION_SELECT = {
@@ -144,6 +145,82 @@ export class NotificationService {
       }
     } catch (err) {
       console.error("[clearInviteNotification] failed:", err);
+    }
+  }
+
+  /**
+   * One notification per overdue follow-up, not one per day it stays
+   * overdue — skips silently if this log already has one, so the daily cron
+   * can run every day without duplicating what it already told someone.
+   */
+  async notifyFollowupDue(input: {
+    userId: string;
+    startupId: string;
+    logId: string;
+    investorName: string;
+    dueDate: Date;
+  }): Promise<void> {
+    try {
+      const existing = await prisma.notification.findFirst({
+        where: {
+          userId: input.userId,
+          type: NOTIFICATION_TYPES.FOLLOWUP_DUE,
+          entityType: "interaction_log",
+          entityId: input.logId,
+        },
+        select: { id: true },
+      });
+      if (existing) return;
+
+      const created = await prisma.notification.create({
+        data: {
+          userId: input.userId,
+          startupId: input.startupId,
+          type: NOTIFICATION_TYPES.FOLLOWUP_DUE,
+          title: `Follow-up with ${input.investorName} is overdue`,
+          body: `You planned to follow up by ${input.dueDate.toISOString().slice(0, 10)}.`,
+          entityType: "interaction_log",
+          entityId: input.logId,
+        },
+        select: { id: true, type: true, title: true, body: true },
+      });
+
+      notificationBus.publish(input.userId, {
+        type: "notification.created",
+        notification: created,
+      });
+    } catch (err) {
+      console.error("[notifyFollowupDue] failed:", err);
+    }
+  }
+
+  /**
+   * Clears pending overdue-follow-up notifications once their log stops
+   * being open — completed, rescheduled, or deleted. Takes a batch because
+   * logging a new interaction can auto-close several older follow-ups at once.
+   */
+  async clearFollowupNotifications(logIds: string[]): Promise<void> {
+    if (logIds.length === 0) return;
+    try {
+      const existing = await prisma.notification.findMany({
+        where: {
+          type: NOTIFICATION_TYPES.FOLLOWUP_DUE,
+          entityType: "interaction_log",
+          entityId: { in: logIds },
+        },
+        select: { id: true, userId: true },
+      });
+      if (existing.length === 0) return;
+
+      await prisma.notification.deleteMany({
+        where: { id: { in: existing.map((n) => n.id) } },
+      });
+
+      for (const userId of new Set(existing.map((n) => n.userId))) {
+        notificationBus.publish(userId, { type: "notifications.changed" });
+      }
+    } catch (err) {
+      console.error("[clearFollowupNotifications] failed:", err);
     }
   }
 }

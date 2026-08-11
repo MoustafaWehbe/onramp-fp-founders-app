@@ -1,6 +1,12 @@
 import { Prisma } from "@prisma/client";
 import { InteractionLogService } from "../../src/services/interaction-log.service";
 
+// Clearing overdue-follow-up notifications is a side effect of closing
+// follow-ups; these tests only care about the follow-up bookkeeping itself.
+jest.mock("../../src/services/notification.service", () => ({
+  notificationService: { clearFollowupNotifications: jest.fn() },
+}));
+
 jest.mock("../../src/db/prisma", () => ({
   prisma: {
     startupInvestor: {
@@ -41,6 +47,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   // Creating a log closes the follow-ups it satisfies; tests that don't care
   // about that still need the sweep to resolve.
+  (mockPrisma.interactionLog.findMany as jest.Mock).mockResolvedValue([]);
   (mockPrisma.interactionLog.updateMany as jest.Mock).mockResolvedValue({ count: 0 });
 });
 
@@ -303,13 +310,16 @@ describe("InteractionLogService follow-up completion", () => {
   });
 
   it("closes only the follow-ups the new interaction actually satisfies", async () => {
+    const CLOSED_LOG_ID = "00000000-0000-0000-0000-000000000008";
+    (mockPrisma.interactionLog.findMany as jest.Mock).mockResolvedValue([{ id: CLOSED_LOG_ID }]);
+
     await service.createLog(
       STARTUP_ID,
       { investorId: CONTACT_ID, type: "call", interactionDate: LOGGED_AT } as never,
       USER_ID,
     );
 
-    expect(mockPrisma.interactionLog.updateMany).toHaveBeenCalledWith({
+    expect(mockPrisma.interactionLog.findMany).toHaveBeenCalledWith({
       where: {
         startupInvestorId: CONTACT_ID,
         id: { not: LOG_ID },
@@ -317,6 +327,10 @@ describe("InteractionLogService follow-up completion", () => {
         // A reminder set for next month must survive a note logged today.
         nextFollowupDate: { not: null, lte: LOGGED_AT },
       },
+      select: { id: true },
+    });
+    expect(mockPrisma.interactionLog.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: [CLOSED_LOG_ID] } },
       data: { followupCompletedAt: LOGGED_AT },
     });
   });
@@ -333,7 +347,7 @@ describe("InteractionLogService follow-up completion", () => {
       USER_ID,
     );
 
-    const [{ where }] = (mockPrisma.interactionLog.updateMany as jest.Mock).mock.calls[0];
+    const [{ where }] = (mockPrisma.interactionLog.findMany as jest.Mock).mock.calls[0];
     expect(where.id).toEqual({ not: LOG_ID });
   });
 

@@ -14,6 +14,7 @@ const iconMap: Record<string, ComponentType<{ className?: string }>> = {
   commitment: Wallet,
   task: Clock,
   team: Users,
+  followup_due: Clock,
 };
 
 export function Notifications() {
@@ -63,6 +64,7 @@ export function Notifications() {
             {items.map((n) => {
               const Icon = iconMap[n.type] ?? Bell;
               const isInvite = n.type === "team_invite";
+              const isFollowupDue = n.type === "followup_due";
 
               return (
                 <li
@@ -75,7 +77,7 @@ export function Notifications() {
                   <div
                     className={cn(
                       "grid h-9 w-9 shrink-0 place-items-center rounded-md",
-                      isInvite
+                      isInvite || isFollowupDue
                         ? "bg-primary/15 text-primary"
                         : "bg-surface text-muted-foreground",
                     )}
@@ -114,6 +116,14 @@ export function Notifications() {
                         className="mt-1.5 inline-block text-sm text-primary hover:underline"
                       >
                         Review invitation
+                      </Link>
+                    )}
+                    {isFollowupDue && (
+                      <Link
+                        to="/pipeline"
+                        className="mt-1.5 inline-block text-sm text-primary hover:underline"
+                      >
+                        Open pipeline
                       </Link>
                     )}
                   </div>

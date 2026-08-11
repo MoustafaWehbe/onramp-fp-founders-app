@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
+import { notificationService } from "./notification.service";
 import type {
   CreateInteractionLogInput,
   UpdateInteractionLogInput,
@@ -103,17 +104,29 @@ export class InteractionLogService {
   ): Promise<number> {
     const satisfiedThrough = interactionDate ?? new Date();
 
-    const { count } = await prisma.interactionLog.updateMany({
+    const toClose = await prisma.interactionLog.findMany({
       where: {
         startupInvestorId,
         id: { not: newLogId },
         followupCompletedAt: null,
         nextFollowupDate: { not: null, lte: satisfiedThrough },
       },
+      select: { id: true },
+    });
+    if (toClose.length === 0) return 0;
+
+    const closedIds = toClose.map((log) => log.id);
+    await prisma.interactionLog.updateMany({
+      where: { id: { in: closedIds } },
       data: { followupCompletedAt: satisfiedThrough },
     });
 
-    return count;
+    // Best-effort: an overdue-follow-up notification for one of these would
+    // now point at a follow-up that is already done, so it has to go — but
+    // losing it must not fail the log that just satisfied it.
+    void notificationService.clearFollowupNotifications(closedIds);
+
+    return closedIds.length;
   }
 
   async createLog(startupId: string, input: CreateInteractionLogInput, userId: string) {

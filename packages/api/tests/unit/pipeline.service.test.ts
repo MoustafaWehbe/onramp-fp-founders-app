@@ -409,3 +409,34 @@ describe("PipelineService.deleteEntry", () => {
     });
   });
 });
+
+describe("PipelineService.listStageEvents", () => {
+  it("returns the history oldest first", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({ id: PIPELINE_ID });
+    const events = [
+      { id: "e1", fromStage: null, toStage: "sourced", changedBy: USER_ID, createdAt: new Date("2026-01-01") },
+      { id: "e2", fromStage: "sourced", toStage: "contacted", changedBy: USER_ID, createdAt: new Date("2026-01-05") },
+    ];
+    (mockPrisma.pipelineStageEvent.findMany as jest.Mock).mockResolvedValue(events);
+
+    const result = await service.listStageEvents(STARTUP_ID, PIPELINE_ID);
+
+    expect(mockPrisma.pipelineStageEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { startupId: STARTUP_ID, pipelineId: PIPELINE_ID },
+        orderBy: { createdAt: "asc" },
+      }),
+    );
+    expect(result.data).toEqual(events);
+  });
+
+  it("throws PIPELINE_NOT_FOUND for a missing or cross-tenant id", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue(null);
+
+    await expect(service.listStageEvents(OTHER_STARTUP, PIPELINE_ID)).rejects.toMatchObject({
+      statusCode: 404,
+      code: "PIPELINE_NOT_FOUND",
+    });
+    expect(mockPrisma.pipelineStageEvent.findMany).not.toHaveBeenCalled();
+  });
+});
