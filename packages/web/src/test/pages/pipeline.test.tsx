@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { InteractionLog } from "../../lib/interaction-log-api";
@@ -75,6 +75,7 @@ function entry(overrides: Partial<PipelineEntry> = {}): PipelineEntry {
     stage: "contacted" as PipelineStageId,
     expectedAmount: 200_000,
     probabilityPercentage: 25,
+    sortOrder: 1000,
     stageChangedAt: daysFromNow(-3),
     createdAt: daysFromNow(-3),
     updatedAt: daysFromNow(-3),
@@ -253,27 +254,13 @@ describe("Pipeline board", () => {
     expect(listPipelineEntries).toHaveBeenCalledTimes(1);
   });
 
-  describe("drag and drop", () => {
-    /**
-     * jsdom has no native drag gesture, so a drag is simulated by dispatching
-     * the same sequence of events the browser would fire, with a hand-rolled
-     * DataTransfer (jsdom's doesn't reliably round-trip data between dragover
-     * and drop).
-     */
-    function dataTransfer() {
-      const store = new Map<string, string>();
-      return {
-        effectAllowed: "",
-        dropEffect: "",
-        setData: (type: string, value: string) => store.set(type, value),
-        getData: (type: string) => store.get(type) ?? "",
-      };
-    }
-
-    function dealCard(name: string) {
-      return screen.getByRole("button", { name: `Open ${name}` }).closest('[draggable="true"]')!;
-    }
-
+  // The board moves cards via dnd-kit (pointer-based drag, real
+  // getBoundingClientRect measurement for collision detection), which jsdom
+  // can't meaningfully simulate — there's no layout engine behind it. The
+  // reordering/column math itself is covered directly, without any DOM, in
+  // src/test/pages/board-columns.test.ts. Here we only exercise the
+  // non-drag path to the same mutation: the card's own "move to stage" menu.
+  describe("moving a deal without dragging", () => {
     beforeEach(() => {
       listPipelineEntries.mockResolvedValue({
         data: [
@@ -281,6 +268,7 @@ describe("Pipeline board", () => {
             id: "d1",
             investorId: "i1",
             stage: "sourced",
+            sortOrder: 1000,
             investor: { fullName: "Ada Lovelace" } as PipelineEntry["investor"],
           }),
         ],
@@ -288,57 +276,22 @@ describe("Pipeline board", () => {
       });
     });
 
-    it("moves a card to the stage it's dropped on", async () => {
+    it("moves a card to a new stage from its own menu, landing at the bottom of that column", async () => {
       updatePipelineEntry.mockResolvedValue(entry({ stage: "contacted" }));
+      const user = userEvent.setup();
       renderPipeline();
       await screen.findByText("Ada Lovelace");
 
-      const ada = dealCard("Ada Lovelace");
-      const contactedColumn = screen
-        .getByRole("heading", { name: "Contacted" })
-        .closest("section")!
-        .querySelector("[class*='overflow-y-auto']")!;
-
-      const transfer = dataTransfer();
-      fireEvent.dragStart(ada, { dataTransfer: transfer });
-      fireEvent.dragOver(contactedColumn, { dataTransfer: transfer });
-      fireEvent.drop(contactedColumn, { dataTransfer: transfer });
+      await user.click(screen.getByRole("button", { name: "Move Ada Lovelace to another stage" }));
+      await user.click(await screen.findByRole("menuitem", { name: /Contacted/ }));
 
       await waitFor(() =>
         expect(updatePipelineEntry).toHaveBeenCalledWith(
           "startup-1",
           "d1",
-          expect.objectContaining({ stage: "contacted" }),
+          expect.objectContaining({ stage: "contacted", sortOrder: 1000 }),
         ),
       );
-    });
-
-    it("does nothing when dropped back on its own stage", async () => {
-      renderPipeline();
-      await screen.findByText("Ada Lovelace");
-
-      const ada = dealCard("Ada Lovelace");
-      const sourcedColumn = screen
-        .getByRole("heading", { name: "Sourced" })
-        .closest("section")!
-        .querySelector("[class*='overflow-y-auto']")!;
-
-      const transfer = dataTransfer();
-      fireEvent.dragStart(ada, { dataTransfer: transfer });
-      fireEvent.dragOver(sourcedColumn, { dataTransfer: transfer });
-      fireEvent.drop(sourcedColumn, { dataTransfer: transfer });
-
-      expect(updatePipelineEntry).not.toHaveBeenCalled();
-    });
-
-    it("dims the card being dragged", async () => {
-      renderPipeline();
-      await screen.findByText("Ada Lovelace");
-
-      const ada = dealCard("Ada Lovelace");
-      fireEvent.dragStart(ada, { dataTransfer: dataTransfer() });
-
-      expect(ada.className).toMatch(/opacity-50/);
     });
   });
 

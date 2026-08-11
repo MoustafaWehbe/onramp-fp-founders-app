@@ -290,6 +290,7 @@ model Pipeline {
   stage                 String   @default("sourced")
   expectedAmount        Decimal? @map("expected_amount")
   probabilityPercentage Int?     @map("probability_percentage")
+  sortOrder             Float    @default(0) @map("sort_order")
   stageChangedAt        DateTime @default(now()) @map("stage_changed_at")
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")

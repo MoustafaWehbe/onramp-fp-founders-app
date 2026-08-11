@@ -31,11 +31,16 @@ const ENTRY_SELECT = {
   stage: true,
   expectedAmount: true,
   probabilityPercentage: true,
+  sortOrder: true,
   stageChangedAt: true,
   createdAt: true,
   updatedAt: true,
   startupInvestor: { select: CONTACT_SELECT },
 } as const;
+
+/** Gap between freshly-appended cards — wide enough that inserting between two
+ *  of them by averaging never needs a follow-up renumbering pass. */
+const SORT_ORDER_STEP = 1000;
 
 type EntryRow = {
   id: string;
@@ -44,6 +49,7 @@ type EntryRow = {
   stage: string;
   expectedAmount: Prisma.Decimal | null;
   probabilityPercentage: number | null;
+  sortOrder: number;
   stageChangedAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -74,6 +80,7 @@ function serializeEntry(entry: EntryRow) {
     stage: entry.stage,
     expectedAmount: entry.expectedAmount === null ? null : Number(entry.expectedAmount),
     probabilityPercentage: entry.probabilityPercentage,
+    sortOrder: entry.sortOrder,
     stageChangedAt: entry.stageChangedAt,
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
@@ -102,11 +109,20 @@ export class PipelineService {
       // The entry and its opening history row must land together, or analytics
       // silently under-counts every deal whose event write failed.
       const entry = await prisma.$transaction(async (tx) => {
+        // New cards join the bottom of their column, same as a fresh Trello/Asana
+        // card — after whatever currently has the highest position there.
+        const bottom = await tx.pipeline.aggregate({
+          where: { startupId, stage: input.stage },
+          _max: { sortOrder: true },
+        });
+        const sortOrder = (bottom._max.sortOrder ?? 0) + SORT_ORDER_STEP;
+
         const created = await tx.pipeline.create({
           data: {
             startupId,
             startupInvestorId: input.investorId,
             stage: input.stage,
+            sortOrder,
             stageChangedAt: new Date(),
             ...(input.expectedAmount !== undefined && { expectedAmount: input.expectedAmount }),
             ...(input.probabilityPercentage !== undefined && {
@@ -148,7 +164,9 @@ export class PipelineService {
       prisma.pipeline.count({ where }),
       prisma.pipeline.findMany({
         where,
-        orderBy: { updatedAt: "desc" },
+        // sortOrder is the manually-arranged position within a stage; it's the
+        // canonical order for a Kanban board, not a byproduct of last edit time.
+        orderBy: { sortOrder: "asc" },
         skip: (page - 1) * limit,
         take: limit,
         select: ENTRY_SELECT,

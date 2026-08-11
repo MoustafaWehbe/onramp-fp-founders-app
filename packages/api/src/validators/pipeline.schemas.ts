@@ -45,6 +45,13 @@ export const updatePipelineEntrySchema = z
         z.null(),
       ])
       .optional(),
+    // Board position within a stage. The client computes this — typically the
+    // midpoint of the two cards it was dropped between — so the server just
+    // stores whatever value places it there; it doesn't renumber anything.
+    sortOrder: z
+      .number({ invalid_type_error: "sortOrder must be a number" })
+      .finite("sortOrder must be a finite number")
+      .optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one field is required",

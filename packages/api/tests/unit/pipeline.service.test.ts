@@ -11,6 +11,7 @@ jest.mock("../../src/db/prisma", () => {
       count: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
+      aggregate: jest.fn(),
     },
     pipelineStageEvent: { create: jest.fn(), findMany: jest.fn() },
     commitment: { count: jest.fn() },
@@ -67,6 +68,7 @@ function entryRow(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   jest.clearAllMocks();
   (mockPrisma.pipelineStageEvent.create as jest.Mock).mockResolvedValue({});
+  (mockPrisma.pipeline.aggregate as jest.Mock).mockResolvedValue({ _max: { sortOrder: null } });
 });
 
 describe("PipelineService.createEntry", () => {
@@ -157,6 +159,34 @@ describe("PipelineService.createEntry", () => {
 
     expect(result.expectedAmount).toBeNull();
   });
+
+  it("joins the bottom of an empty column at sortOrder 1000", async () => {
+    (mockPrisma.startupInvestor.findUnique as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
+    (mockPrisma.pipeline.aggregate as jest.Mock).mockResolvedValue({ _max: { sortOrder: null } });
+    (mockPrisma.pipeline.create as jest.Mock).mockResolvedValue(entryRow());
+
+    await service.createEntry(STARTUP_ID, { investorId: CONTACT_ID, stage: "sourced" } as never);
+
+    expect(mockPrisma.pipeline.aggregate).toHaveBeenCalledWith({
+      where: { startupId: STARTUP_ID, stage: "sourced" },
+      _max: { sortOrder: true },
+    });
+    expect(mockPrisma.pipeline.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ sortOrder: 1000 }) }),
+    );
+  });
+
+  it("joins the bottom below the current highest sortOrder in that stage", async () => {
+    (mockPrisma.startupInvestor.findUnique as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
+    (mockPrisma.pipeline.aggregate as jest.Mock).mockResolvedValue({ _max: { sortOrder: 3500 } });
+    (mockPrisma.pipeline.create as jest.Mock).mockResolvedValue(entryRow());
+
+    await service.createEntry(STARTUP_ID, { investorId: CONTACT_ID, stage: "sourced" } as never);
+
+    expect(mockPrisma.pipeline.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ sortOrder: 4500 }) }),
+    );
+  });
 });
 
 describe("PipelineService.listEntries", () => {
@@ -244,6 +274,47 @@ describe("PipelineService.updateEntry", () => {
     ).rejects.toMatchObject({ statusCode: 404, code: "PIPELINE_NOT_FOUND" });
 
     expect(mockPrisma.pipeline.update).not.toHaveBeenCalled();
+  });
+
+  it("reorders within the same stage without touching stage history", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({
+      id: PIPELINE_ID,
+      stage: "sourced",
+    });
+    (mockPrisma.pipeline.update as jest.Mock).mockResolvedValue(entryRow({ sortOrder: 1500 }));
+
+    const result = await service.updateEntry(STARTUP_ID, PIPELINE_ID, {
+      sortOrder: 1500,
+    } as never);
+
+    expect(mockPrisma.pipeline.update).toHaveBeenCalledWith({
+      where: { id: PIPELINE_ID },
+      data: { sortOrder: 1500 },
+      select: expect.any(Object),
+    });
+    expect(mockPrisma.pipelineStageEvent.create).not.toHaveBeenCalled();
+    expect(result.sortOrder).toBe(1500);
+  });
+
+  it("carries the new sortOrder alongside a real stage move", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({
+      id: PIPELINE_ID,
+      stage: "contacted",
+    });
+    (mockPrisma.pipeline.update as jest.Mock).mockResolvedValue(
+      entryRow({ stage: "meeting_scheduled", sortOrder: 500 }),
+    );
+
+    await service.updateEntry(STARTUP_ID, PIPELINE_ID, {
+      stage: "meeting_scheduled",
+      sortOrder: 500,
+    } as never);
+
+    expect(mockPrisma.pipeline.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ stage: "meeting_scheduled", sortOrder: 500 }),
+      }),
+    );
   });
 
   it("appends a stage event and advances stageChangedAt on a real move", async () => {

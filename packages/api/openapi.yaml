@@ -951,6 +951,14 @@ components:
           maximum: 100
           nullable: true
           example: 60
+        sortOrder:
+          type: number
+          format: double
+          description: >-
+            Manual position within its stage's column, ascending. Not
+            necessarily contiguous — the client places a moved card by
+            averaging the sortOrder of its new neighbors.
+          example: 2000
         stageChangedAt:
           type: string
           format: date-time
@@ -1063,6 +1071,12 @@ components:
           minimum: 0
           maximum: 100
           nullable: true
+        sortOrder:
+          type: number
+          format: double
+          description: >-
+            New position within its (possibly new) stage. Usually the
+            midpoint of the sortOrder of the two cards it now sits between.
 
     # ── CRM: Interaction Logs ─────────────────────────────────────────
     InteractionType:

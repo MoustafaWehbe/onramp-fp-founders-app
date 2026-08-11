@@ -1,4 +1,17 @@
-import { useCallback, useMemo, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  closestCenter,
+  pointerWithin,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -34,13 +47,20 @@ import {
   type PipelineEntry,
 } from "../../../lib/pipeline-api";
 import { fetchAllPages } from "../../../lib/pagination";
-import { cn, formatCompactUsd } from "../../../lib/utils";
 import { LogInteractionDialog, type LogFormValues } from "../Investors/LogInteractionDialog";
 import { AddDealDialog, type AddDealValues } from "./AddDealDialog";
-import { DealCard } from "./DealCard";
+import {
+  buildColumns,
+  columnOf,
+  computeDropOrder,
+  moveWithinColumns,
+  type BoardColumns,
+} from "./board-columns";
+import { DealCardOverlay } from "./DealCard";
 import { DealDetailDialog } from "./DealDetailDialog";
 import { FocusList, type FocusItem } from "./FocusList";
 import { PipelineAnalyticsView } from "./PipelineAnalyticsView";
+import { PipelineColumn } from "./PipelineColumn";
 import { PipelineSummary, type PipelineTotals } from "./PipelineSummary";
 import { PipelineToolbar, type PipelineView } from "./PipelineToolbar";
 import { ViewTabs, type PipelineViewId } from "./ViewTabs";
@@ -67,6 +87,20 @@ function pipelineErrorMessage(err: unknown, fallback: string): string {
   }
 }
 
+/**
+ * closestCorners (or closestCenter alone) recomputes a distance to every
+ * droppable on each pointer move, so hovering near the boundary between two
+ * cards makes the "closest" one flip back and forth with tiny movements —
+ * that's the rapid neighbor-swapping this was reported as. pointerWithin
+ * only counts a collision when the pointer is actually inside a card's
+ * bounds, which is far more stable; closestCenter is only a fallback for
+ * when the pointer has left every droppable (e.g. past the last card).
+ */
+const collisionDetection: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args);
+  return pointerCollisions.length > 0 ? pointerCollisions : closestCenter(args);
+};
+
 export function Pipeline() {
   const startupId = useActiveStartupId();
   const { can } = usePermissions();
@@ -75,8 +109,8 @@ export function Pipeline() {
   const canCreate = can("pipeline", "create");
   const canUpdate = can("pipeline", "update");
 
-  const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<PipelineStageId | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [columns, setColumns] = useState<BoardColumns>(() => buildColumns([]));
   const [addOpen, setAddOpen] = useState(false);
   const [openDealId, setOpenDealId] = useState<string | null>(null);
   const [pendingRemove, setPendingRemove] = useState<PipelineEntry | null>(null);
@@ -88,6 +122,12 @@ export function Pipeline() {
     attentionOnly: false,
     showPassed: true,
   });
+
+  const sensors = useSensors(
+    // A short drag threshold before a pointer-down counts as a drag, so
+    // clicking the card to open it (or its move menu) isn't swallowed.
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
 
   const pipelineQuery = useQuery({
     queryKey: ["pipeline", startupId],
@@ -184,17 +224,15 @@ export function Pipeline() {
     [view.showPassed],
   );
 
-  const dealsByStage = useMemo(() => {
-    const grouped = new Map<PipelineStageId, PipelineEntry[]>(
-      STAGES.map((stage) => [stage.id, []]),
-    );
-    for (const entry of visibleEntries) {
-      const bucket = grouped.get(entry.stage);
-      if (bucket) bucket.push(entry);
-      else grouped.get("sourced")?.push(entry);
-    }
-    return grouped;
-  }, [visibleEntries]);
+  const entriesById = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries]);
+
+  // The live board arrangement. Rebuilt from server truth whenever it's safe
+  // to — not while a drag or its mutation owns the arrangement, or the board
+  // would snap back to the pre-drag order for a frame before catching up.
+  useEffect(() => {
+    if (activeId !== null) return;
+    setColumns(buildColumns(visibleEntries));
+  }, [visibleEntries, activeId]);
 
   const openDeal = useMemo(
     () => entries.find((entry) => entry.id === openDealId) ?? null,
@@ -227,12 +265,22 @@ export function Pipeline() {
   }, [queryClient, startupId]);
 
   const moveMutation = useMutation({
-    mutationFn: ({ pipelineId, stage }: { pipelineId: string; stage: PipelineStageId }) =>
+    mutationFn: ({
+      pipelineId,
+      stage,
+      sortOrder,
+      changedStage,
+    }: {
+      pipelineId: string;
+      stage: PipelineStageId;
+      sortOrder: number;
+      changedStage: boolean;
+    }) =>
       updatePipelineEntry(startupId, pipelineId, {
-        stage,
-        probabilityPercentage: DEFAULT_PROBABILITY_BY_STAGE[stage],
+        sortOrder,
+        ...(changedStage && { stage, probabilityPercentage: DEFAULT_PROBABILITY_BY_STAGE[stage] }),
       }),
-    onMutate: async ({ pipelineId, stage }) => {
+    onMutate: async ({ pipelineId, stage, sortOrder, changedStage }) => {
       await queryClient.cancelQueries({ queryKey: ["pipeline", startupId] });
       const previous = queryClient.getQueryData<{ data: PipelineEntry[] }>([
         "pipeline",
@@ -249,8 +297,11 @@ export function Pipeline() {
               entry.id === pipelineId
                 ? {
                     ...entry,
-                    stage,
-                    probabilityPercentage: DEFAULT_PROBABILITY_BY_STAGE[stage],
+                    sortOrder,
+                    ...(changedStage && {
+                      stage,
+                      probabilityPercentage: DEFAULT_PROBABILITY_BY_STAGE[stage],
+                    }),
                   }
                 : entry,
             ),
@@ -268,8 +319,6 @@ export function Pipeline() {
     },
     onSettled: () => {
       invalidatePipeline();
-      setDraggedDealId(null);
-      setDropTarget(null);
     },
   });
 
@@ -326,28 +375,58 @@ export function Pipeline() {
     onError: (err) => toast.error(pipelineErrorMessage(err, "Could not save the interaction")),
   });
 
+  /** Used by the card's "Move to stage" menu — always lands at the bottom of the target column. */
   const moveDeal = useCallback(
     (pipelineId: string, stage: PipelineStageId) => {
       if (!canUpdate) return;
-      const current = entries.find((entry) => entry.id === pipelineId);
+      const current = entriesById.get(pipelineId);
       if (!current || current.stage === stage) return;
-      moveMutation.mutate({ pipelineId, stage });
+
+      const maxOrderInStage = entries.reduce(
+        (max, entry) => (entry.stage === stage ? Math.max(max, entry.sortOrder) : max),
+        0,
+      );
+
+      moveMutation.mutate({
+        pipelineId,
+        stage,
+        sortOrder: maxOrderInStage + 1000,
+        changedStage: true,
+      });
     },
-    [canUpdate, entries, moveMutation],
+    [canUpdate, entries, entriesById, moveMutation],
   );
 
-  const handleDragStart = (event: DragEvent<HTMLElement>, dealId: string) => {
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", dealId);
-    setDraggedDealId(dealId);
+  const handleDragStart = (event: DragStartEvent) => {
+    if (!canUpdate) return;
+    setActiveId(String(event.active.id));
   };
 
-  const handleDrop = (event: DragEvent<HTMLElement>, stageId: PipelineStageId) => {
-    event.preventDefault();
-    const dealId = event.dataTransfer.getData("text/plain") || draggedDealId;
-    if (!dealId) return;
-    moveDeal(dealId, stageId);
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+    setColumns((current) => moveWithinColumns(current, String(active.id), String(over.id)));
   };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const dealId = activeId;
+    setActiveId(null);
+    if (!dealId || !event.over) return;
+
+    const deal = entriesById.get(dealId);
+    const stage = columnOf(columns, dealId);
+    if (!deal || !stage) return;
+
+    const sortOrder = computeDropOrder(columns, dealId, (id) => entriesById.get(id)?.sortOrder);
+    moveMutation.mutate({
+      pipelineId: dealId,
+      stage,
+      sortOrder,
+      changedStage: stage !== deal.stage,
+    });
+  };
+
+  const activeDeal = activeId ? (entriesById.get(activeId) ?? null) : null;
 
   const boardReady = !pipelineQuery.isLoading && !pipelineQuery.isError;
 
@@ -458,94 +537,57 @@ export function Pipeline() {
       )}
 
       {boardReady && activeView === "board" && (
-        <div className="scrollbar-none flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1">
-          {visibleStages.map((stage) => {
-            const stageDeals = dealsByStage.get(stage.id) ?? [];
-            const weightedTotal = stageDeals.reduce((sum, deal) => {
-              const amount = deal.expectedAmount ?? 0;
-              return sum + amount * ((deal.probabilityPercentage ?? 0) / 100);
-            }, 0);
+        <DndContext
+          sensors={sensors}
+          collisionDetection={collisionDetection}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+          onDragCancel={() => setActiveId(null)}
+        >
+          <div className="scrollbar-none flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1">
+            {visibleStages.map((stage) => {
+              const dealIds = columns[stage.id] ?? [];
+              const weightedTotal = dealIds.reduce((sum, id) => {
+                const deal = entriesById.get(id);
+                if (!deal) return sum;
+                const amount = deal.expectedAmount ?? 0;
+                return sum + amount * ((deal.probabilityPercentage ?? 0) / 100);
+              }, 0);
 
-            return (
-              <section
-                key={stage.id}
-                className="w-[min(18rem,85vw)] flex-none snap-start sm:w-72"
-                aria-labelledby={`pipeline-stage-${stage.id}`}
-              >
-                <div className="mb-2 flex items-center justify-between gap-3 px-1">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className={cn("h-2 w-2 shrink-0 rounded-full", stage.dotClass)} />
-                    <h2
-                      id={`pipeline-stage-${stage.id}`}
-                      className="truncate font-display text-sm font-semibold text-foreground"
-                    >
-                      {stage.label}
-                    </h2>
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {stageDeals.length}
-                    </span>
-                  </div>
-                  {weightedTotal > 0 && (
-                    <span
-                      className="shrink-0 font-mono text-xs text-muted-foreground"
-                      title="Probability-weighted forecast"
-                    >
-                      {formatCompactUsd(Math.round(weightedTotal))}
-                    </span>
-                  )}
-                </div>
+              return (
+                <PipelineColumn
+                  key={stage.id}
+                  stage={stage}
+                  dealIds={dealIds}
+                  entriesById={entriesById}
+                  signalsFor={signalsFor}
+                  canUpdate={canUpdate}
+                  weightedTotal={weightedTotal}
+                  emptyMessage={
+                    view.attentionOnly || view.search.trim() !== ""
+                      ? "Nothing matches here"
+                      : "Drop an investor here"
+                  }
+                  onOpen={setOpenDealId}
+                  onMove={moveDeal}
+                />
+              );
+            })}
+          </div>
 
-                {/* Fixed height — about three cards — so no column ever grows
-                    past its neighbours; anything beyond that scrolls inside. */}
-                <div
-                  className={cn(
-                    "scrollbar-slim h-[26rem] space-y-2 overflow-y-auto rounded-xl border border-border/70 bg-surface/50 p-2 transition-colors",
-                    dropTarget === stage.id && "border-primary/50 bg-primary/[0.04]",
-                  )}
-                  onDragEnter={(event) => {
-                    event.preventDefault();
-                    setDropTarget(stage.id);
-                  }}
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = "move";
-                  }}
-                  onDragLeave={(event) => {
-                    if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-                      setDropTarget(null);
-                    }
-                  }}
-                  onDrop={(event) => handleDrop(event, stage.id)}
-                >
-                  {stageDeals.map((deal) => (
-                    <DealCard
-                      key={deal.id}
-                      deal={deal}
-                      signals={signalsFor(deal.id)}
-                      canUpdate={canUpdate}
-                      isDragging={draggedDealId === deal.id}
-                      onOpen={() => setOpenDealId(deal.id)}
-                      onMove={(target) => moveDeal(deal.id, target)}
-                      onDragStart={(event) => handleDragStart(event, deal.id)}
-                      onDragEnd={() => {
-                        setDraggedDealId(null);
-                        setDropTarget(null);
-                      }}
-                    />
-                  ))}
-
-                  {stageDeals.length === 0 && (
-                    <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
-                      {view.attentionOnly || view.search.trim() !== ""
-                        ? "Nothing matches here"
-                        : "Drop an investor here"}
-                    </div>
-                  )}
-                </div>
-              </section>
-            );
-          })}
-        </div>
+          <DragOverlay>
+            {activeDeal && (
+              <DealCardOverlay
+                deal={activeDeal}
+                signals={signalsFor(activeDeal.id)}
+                canUpdate={canUpdate}
+                onOpen={() => {}}
+                onMove={() => {}}
+              />
+            )}
+          </DragOverlay>
+        </DndContext>
       )}
 
       <DealDetailDialog

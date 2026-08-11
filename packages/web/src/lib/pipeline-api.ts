@@ -25,6 +25,8 @@ export type PipelineEntry = {
   stage: PipelineStageId;
   expectedAmount: number | null;
   probabilityPercentage: number | null;
+  /** Manual position within its stage's column, ascending. */
+  sortOrder: number;
   /**
    * When the deal last moved stage. Distinct from updatedAt, which also moves
    * when the amount or probability is edited — so only this can measure how
@@ -101,6 +103,7 @@ export async function updatePipelineEntry(
     stage?: PipelineStageId;
     expectedAmount?: number | null;
     probabilityPercentage?: number | null;
+    sortOrder?: number;
   },
 ) {
   const { data } = await apiClient.patch<{ data: PipelineEntry }>(

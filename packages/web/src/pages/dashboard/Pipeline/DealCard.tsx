@@ -1,4 +1,5 @@
-import type { DragEvent } from "react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   CalendarClock,
   Mail,
@@ -39,44 +40,23 @@ const FOLLOWUP_TONES: Record<string, string> = {
   upcoming: "bg-muted text-muted-foreground",
 };
 
-type DealCardProps = {
+type DealCardBodyProps = {
   deal: PipelineEntry;
   signals: DealSignals;
   canUpdate: boolean;
-  isDragging: boolean;
   onOpen: () => void;
   onMove: (stage: PipelineStageId) => void;
-  onDragStart: (event: DragEvent<HTMLElement>) => void;
-  onDragEnd: () => void;
 };
 
-export function DealCard({
-  deal,
-  signals,
-  canUpdate,
-  isDragging,
-  onOpen,
-  onMove,
-  onDragStart,
-  onDragEnd,
-}: DealCardProps) {
+/** Everything a deal card shows — shared between the live sortable card and the floating drag copy. */
+function DealCardBody({ deal, signals, canUpdate, onOpen, onMove }: DealCardBodyProps) {
   const investor = deal.investor;
   const probability = deal.probabilityPercentage ?? 0;
   const followup = followupLabel(signals);
   const TouchIcon = signals.lastTouchType ? TOUCH_ICONS[signals.lastTouchType] : null;
 
   return (
-    <Card
-      draggable={canUpdate}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      className={cn(
-        "relative border-border/70 bg-card/95 p-3 shadow-sm transition-[border-color,opacity,transform] hover:-translate-y-0.5 hover:border-primary/40",
-        canUpdate && "cursor-grab active:cursor-grabbing",
-        isDragging && "opacity-50",
-        signals.needsAttention && "border-l-2 border-l-warning",
-      )}
-    >
+    <>
       <div className="flex items-center gap-2">
         <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/15 font-display text-[10px] font-semibold text-primary">
           {getInitials(investor.fullName)}
@@ -183,6 +163,51 @@ export function DealCard({
           )}
         </span>
       </div>
+    </>
+  );
+}
+
+type DealCardProps = DealCardBodyProps;
+
+/** The card as it sits in a column — draggable via dnd-kit, wherever you want to drop it. */
+export function DealCard(props: DealCardProps) {
+  const { deal, signals, canUpdate } = props;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: deal.id,
+    disabled: !canUpdate,
+    // Slower and easing-out rather than dnd-kit's snappy default (200ms
+    // linear-ish) — the neighbors sliding out of the way to make room reads
+    // as considerably calmer at this pace.
+    transition: { duration: 300, easing: "cubic-bezier(0.25, 1, 0.5, 1)" },
+  });
+
+  return (
+    <Card
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      {...attributes}
+      {...listeners}
+      className={cn(
+        "relative touch-none border-border/70 bg-card/95 p-3 shadow-sm transition-[border-color,opacity] hover:-translate-y-0.5 hover:border-primary/40",
+        canUpdate && "cursor-grab active:cursor-grabbing",
+        // The dragged card stays in the DOM (dnd-kit needs its layout to keep
+        // measuring), hidden here in favor of the DragOverlay copy that
+        // actually follows the cursor.
+        isDragging && "opacity-0",
+        signals.needsAttention && "border-l-2 border-l-warning",
+      )}
+    >
+      <DealCardBody {...props} />
+    </Card>
+  );
+}
+
+/** The floating copy that follows the cursor while dragging — no sortable
+ *  bindings of its own, just the same visuals lifted off the board. */
+export function DealCardOverlay(props: DealCardProps) {
+  return (
+    <Card className="relative rotate-2 cursor-grabbing border-primary/50 bg-card p-3 shadow-2xl">
+      <DealCardBody {...props} />
     </Card>
   );
 }
