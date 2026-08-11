@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import type { PipelineStage, PipelineStageId } from "../../../lib/mock-data";
@@ -19,7 +20,13 @@ type PipelineColumnProps = {
   onMove: (dealId: string, stage: PipelineStageId) => void;
 };
 
-export function PipelineColumn({
+/**
+ * Memoized for the same reason DealCard is: a drag re-derives `columns` on
+ * every pointer move, but only the from/to columns actually get a new
+ * dealIds array — every other column's props stay referentially identical
+ * and can skip re-rendering entirely.
+ */
+export const PipelineColumn = memo(function PipelineColumn({
   stage,
   dealIds,
   entriesById,
@@ -79,8 +86,8 @@ export function PipelineColumn({
                 deal={deal}
                 signals={signalsFor(dealId)}
                 canUpdate={canUpdate}
-                onOpen={() => onOpen(dealId)}
-                onMove={(target) => onMove(dealId, target)}
+                onOpen={onOpen}
+                onMove={onMove}
               />
             );
           })}
@@ -94,4 +101,4 @@ export function PipelineColumn({
       </div>
     </section>
   );
-}
+});

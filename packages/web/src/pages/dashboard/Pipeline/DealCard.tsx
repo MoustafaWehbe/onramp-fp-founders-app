@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
@@ -44,8 +45,14 @@ type DealCardBodyProps = {
   deal: PipelineEntry;
   signals: DealSignals;
   canUpdate: boolean;
-  onOpen: () => void;
-  onMove: (stage: PipelineStageId) => void;
+  /**
+   * Both callbacks take the deal id rather than being pre-bound per card, so
+   * a parent list can hand every card the exact same function reference
+   * instead of a fresh closure each render — that's what lets DealCard's
+   * memo actually skip re-rendering cards a drag never touched.
+   */
+  onOpen: (dealId: string) => void;
+  onMove: (dealId: string, stage: PipelineStageId) => void;
 };
 
 /** Everything a deal card shows — shared between the live sortable card and the floating drag copy. */
@@ -66,7 +73,7 @@ function DealCardBody({ deal, signals, canUpdate, onOpen, onMove }: DealCardBody
             menu stay clickable because they sit outside this button. */}
         <button
           type="button"
-          onClick={onOpen}
+          onClick={() => onOpen(deal.id)}
           className="min-w-0 flex-1 text-left after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
           aria-label={`Open ${investor.fullName}`}
         >
@@ -96,7 +103,7 @@ function DealCardBody({ deal, signals, canUpdate, onOpen, onMove }: DealCardBody
                 <DropdownMenuItem
                   key={target.id}
                   disabled={target.id === deal.stage}
-                  onSelect={() => onMove(target.id)}
+                  onSelect={() => onMove(deal.id, target.id)}
                 >
                   <span className={cn("mr-2 h-2 w-2 rounded-full", target.dotClass)} />
                   {target.label}
@@ -169,8 +176,14 @@ function DealCardBody({ deal, signals, canUpdate, onOpen, onMove }: DealCardBody
 
 type DealCardProps = DealCardBodyProps;
 
-/** The card as it sits in a column — draggable via dnd-kit, wherever you want to drop it. */
-export function DealCard(props: DealCardProps) {
+/**
+ * The card as it sits in a column — draggable via dnd-kit, wherever you want
+ * to drop it. Memoized: onDragOver fires on every pointer move and updates
+ * the board's column state, which would otherwise re-render every card in
+ * every column on every frame rather than just the ones whose position
+ * actually changed.
+ */
+export const DealCard = memo(function DealCard(props: DealCardProps) {
   const { deal, signals, canUpdate } = props;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: deal.id,
@@ -200,7 +213,7 @@ export function DealCard(props: DealCardProps) {
       <DealCardBody {...props} />
     </Card>
   );
-}
+});
 
 /** The floating copy that follows the cursor while dragging — no sortable
  *  bindings of its own, just the same visuals lifted off the board. */
