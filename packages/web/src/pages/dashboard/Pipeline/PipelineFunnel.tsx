@@ -22,8 +22,8 @@ const STAGE_ACCENT: Record<string, string> = {
   sourced: "var(--muted-foreground)",
   contacted: "var(--info)",
   meeting_scheduled: "var(--warning)",
-  due_diligence: "var(--primary)",
-  term_sheet: "var(--primary-light)",
+  due_diligence: "var(--chart-5)",
+  term_sheet: "var(--chart-6)",
   committed: "var(--success)",
 };
 

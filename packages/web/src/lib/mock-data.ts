@@ -36,16 +36,19 @@ export const STAGES: PipelineStage[] = [
     dotClass: "bg-warning",
   },
   {
+    // Distinct from "meeting" (amber) and "term sheet" (rose) below — these
+    // two used to both be plain "primary" orange and were nearly
+    // indistinguishable as small dots next to meeting's amber.
     id: "due_diligence",
     label: "Diligence",
-    badgeClass: "bg-primary/15 text-primary",
-    dotClass: "bg-primary",
+    badgeClass: "bg-chart-5/15 text-chart-5",
+    dotClass: "bg-chart-5",
   },
   {
     id: "term_sheet",
     label: "Term sheet",
-    badgeClass: "bg-primary/20 text-primary",
-    dotClass: "bg-primary",
+    badgeClass: "bg-chart-6/15 text-chart-6",
+    dotClass: "bg-chart-6",
   },
   {
     id: "committed",

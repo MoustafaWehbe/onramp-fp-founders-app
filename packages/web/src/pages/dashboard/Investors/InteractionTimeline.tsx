@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import {
+  ArrowRight,
   CalendarClock,
   CheckCircle2,
   Mail,
@@ -24,9 +25,9 @@ import {
   type InteractionLog,
   type InteractionType,
 } from "../../../lib/interaction-log-api";
-import { getStage } from "../../../lib/mock-data";
 import type { PipelineStageEvent } from "../../../lib/pipeline-api";
 import { cn } from "../../../lib/utils";
+import { StageBadge } from "./StageBadge";
 
 const TYPE_ICONS: Record<InteractionType, LucideIcon> = {
   call: Phone,
@@ -130,22 +131,34 @@ export function InteractionTimeline({
         if (item.kind === "stage") {
           const { event } = item;
           const author = authorNames.get(event.changedBy ?? "") ?? "A teammate";
-          const title =
-            event.fromStage === null
-              ? `Added to pipeline in ${getStage(event.toStage).label}`
-              : `Moved from ${getStage(event.fromStage).label} to ${getStage(event.toStage).label}`;
 
           return (
             <li
               key={`stage-${event.id}`}
-              className="flex items-center gap-3 rounded-xl border border-dashed border-border/70 bg-surface/20 p-3.5"
+              className="flex items-center gap-3 rounded-xl border border-dashed border-border/60 px-3.5 py-3"
             >
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
-                <Milestone className="h-4 w-4" />
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-surface text-muted-foreground/80">
+                <Milestone className="h-3.5 w-3.5" />
               </span>
               <div className="min-w-0 flex-1">
-                <span className="text-sm font-semibold text-foreground">{title}</span>
-                <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                {/* The stage badges carry the weight here — surrounding words
+                    stay quiet so this reads as a lightweight system note
+                    rather than competing with real interaction logs below. */}
+                <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                  {event.fromStage === null ? (
+                    <>
+                      <span>Added in</span>
+                      <StageBadge stageId={event.toStage} />
+                    </>
+                  ) : (
+                    <>
+                      <StageBadge stageId={event.fromStage} />
+                      <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />
+                      <StageBadge stageId={event.toStage} />
+                    </>
+                  )}
+                </div>
+                <div className="mt-1 truncate text-xs text-muted-foreground/70">
                   {formatWhen(event.createdAt)} · <Author name={author} />
                 </div>
               </div>
