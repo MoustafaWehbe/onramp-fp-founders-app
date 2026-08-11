@@ -49,12 +49,14 @@ export function AddDealDialog({
   const [investorId, setInvestorId] = useState("");
   const [stage, setStage] = useState<PipelineStageId>("sourced");
   const [amount, setAmount] = useState("");
+  const [contactQuery, setContactQuery] = useState("");
 
   useEffect(() => {
     if (open) return;
     setInvestorId("");
     setStage("sourced");
     setAmount("");
+    setContactQuery("");
   }, [open]);
 
   const contactsQuery = useQuery({
@@ -65,10 +67,20 @@ export function AddDealDialog({
     enabled: open,
   });
 
-  const availableContacts = useMemo(
+  const unassignedContacts = useMemo(
     () => (contactsQuery.data ?? []).filter((contact) => !contact.pipeline),
     [contactsQuery.data],
   );
+
+  const availableContacts = useMemo(() => {
+    const needle = contactQuery.trim().toLowerCase();
+    if (needle === "") return unassignedContacts;
+    return unassignedContacts.filter((contact) =>
+      `${contact.fullName} ${contact.ventureFirm ?? ""} ${contact.email ?? ""}`
+        .toLowerCase()
+        .includes(needle),
+    );
+  }, [unassignedContacts, contactQuery]);
 
   const selectedContact = availableContacts.find((contact) => contact.id === investorId);
   const selectedStage = STAGES.find((item) => item.id === stage) ?? STAGES[0];
@@ -110,38 +122,56 @@ export function AddDealDialog({
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="start"
-                className="max-h-64 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto"
+                className="w-[var(--radix-dropdown-menu-trigger-width)] max-h-80"
+                onCloseAutoFocus={(event) => event.preventDefault()}
               >
                 <DropdownMenuLabel>Available contacts</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {contactsQuery.isError && (
-                  <DropdownMenuItem disabled>
-                    Failed to load contacts — check you are signed in
-                  </DropdownMenuItem>
+                {unassignedContacts.length > 5 && (
+                  <div className="px-1 pb-1">
+                    <Input
+                      value={contactQuery}
+                      onChange={(event) => setContactQuery(event.target.value)}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      placeholder="Filter by name, firm or email…"
+                      className="h-8"
+                      autoFocus
+                    />
+                  </div>
                 )}
-                {!contactsQuery.isLoading &&
-                  !contactsQuery.isError &&
-                  availableContacts.length === 0 && (
+                <DropdownMenuSeparator />
+                <div className="scrollbar-slim max-h-56 overflow-y-auto">
+                  {contactsQuery.isError && (
+                    <DropdownMenuItem disabled>
+                      Failed to load contacts — check you are signed in
+                    </DropdownMenuItem>
+                  )}
+                  {!contactsQuery.isLoading && !contactsQuery.isError && unassignedContacts.length === 0 && (
                     <DropdownMenuItem disabled>
                       Every contact already has a pipeline entry
                     </DropdownMenuItem>
                   )}
-                {availableContacts.map((contact) => (
-                  <DropdownMenuItem key={contact.id} onSelect={() => setInvestorId(contact.id)}>
-                    <div className="min-w-0">
-                      <div className="truncate font-medium">{contact.fullName}</div>
-                      <div className="truncate text-xs text-muted-foreground">
-                        {contact.ventureFirm ?? contact.email ?? "No firm"}
+                  {!contactsQuery.isLoading &&
+                    unassignedContacts.length > 0 &&
+                    availableContacts.length === 0 && (
+                      <DropdownMenuItem disabled>No contacts match "{contactQuery}"</DropdownMenuItem>
+                    )}
+                  {availableContacts.map((contact) => (
+                    <DropdownMenuItem key={contact.id} onSelect={() => setInvestorId(contact.id)}>
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{contact.fullName}</div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {contact.ventureFirm ?? contact.email ?? "No firm"}
+                        </div>
                       </div>
-                    </div>
-                  </DropdownMenuItem>
-                ))}
+                    </DropdownMenuItem>
+                  ))}
+                </div>
               </DropdownMenuContent>
             </DropdownMenu>
-            {!contactsQuery.isLoading && availableContacts.length > 0 && (
+            {!contactsQuery.isLoading && unassignedContacts.length > 0 && (
               <p className="text-xs text-muted-foreground">
-                {availableContacts.length} contact
-                {availableContacts.length === 1 ? "" : "s"} ready to add
+                {unassignedContacts.length} contact
+                {unassignedContacts.length === 1 ? "" : "s"} ready to add
               </p>
             )}
           </div>

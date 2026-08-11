@@ -1,4 +1,4 @@
-import { Check, Filter, Search, X } from "lucide-react";
+import { Check, Filter, Search, Trash2, X } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import {
   DropdownMenu,
@@ -102,6 +102,8 @@ type InvestorsToolbarProps = {
   /** Stage only applies to contacts that are on the board. */
   showStageFilter?: boolean;
   selectedCount: number;
+  onBulkDelete?: () => void;
+  bulkDeleting?: boolean;
 };
 
 export function InvestorsToolbar({
@@ -112,6 +114,8 @@ export function InvestorsToolbar({
   onClearFilters,
   showStageFilter = true,
   selectedCount,
+  onBulkDelete,
+  bulkDeleting = false,
 }: InvestorsToolbarProps) {
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
@@ -153,9 +157,21 @@ export function InvestorsToolbar({
       )}
 
       {selectedCount > 0 && (
-        <span className="ml-auto font-mono text-xs text-muted-foreground">
-          {selectedCount} selected
-        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="font-mono text-xs text-muted-foreground">{selectedCount} selected</span>
+          {onBulkDelete && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              disabled={bulkDeleting}
+              onClick={onBulkDelete}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {bulkDeleting ? "Deleting…" : "Delete"}
+            </Button>
+          )}
+        </div>
       )}
     </div>
   );

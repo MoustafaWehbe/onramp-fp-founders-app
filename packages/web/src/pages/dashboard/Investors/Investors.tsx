@@ -16,6 +16,7 @@ import {
 import { usePermissions } from "../../../hooks/usePermissions";
 import { useActiveStartupId } from "../../../hooks/useWorkspace";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
+import { runWithConcurrency } from "../../../lib/concurrency";
 import { DEFAULT_PROBABILITY_BY_STAGE } from "../../../lib/mock-data";
 import {
   createInvestor,
@@ -27,6 +28,7 @@ import {
 } from "../../../lib/investor-api";
 import { createPipelineEntry } from "../../../lib/pipeline-api";
 import { cn } from "../../../lib/utils";
+import { ImportInvestorsDialog } from "./ImportInvestorsDialog";
 import { InvestorDetailDialog } from "./InvestorDetailDialog";
 import { InvestorFormDialog } from "./InvestorFormDialog";
 import { InvestorsCardList } from "./InvestorsCardList";
@@ -85,6 +87,8 @@ export function Investors() {
   const [editing, setEditing] = useState<InvestorRow | null>(null);
   const [pendingDelete, setPendingDelete] = useState<InvestorRow | null>(null);
   const [viewing, setViewing] = useState<InvestorRow | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
 
   // Typing shouldn't fire a request per keystroke now that search runs server-side.
   useEffect(() => {
@@ -156,6 +160,29 @@ export function Investors() {
     onError: (err) => toast.error(mutationErrorMessage(err, "Could not delete the investor")),
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const settled = await runWithConcurrency(ids, 5, (id) => deleteInvestor(startupId, id));
+      const failedIds = ids.filter((_, index) => settled[index].status === "rejected");
+      const firstFailure = settled.find(
+        (result): result is PromiseRejectedResult => result.status === "rejected",
+      )?.reason;
+      return { succeeded: ids.length - failedIds.length, failedIds, firstFailure };
+    },
+    onSuccess: ({ succeeded, failedIds, firstFailure }) => {
+      setBulkDeleteConfirm(false);
+      setSelectedIds(new Set(failedIds));
+      invalidateInvestors();
+      if (failedIds.length === 0) {
+        toast.success(`${succeeded} investor${succeeded === 1 ? "" : "s"} deleted`);
+      } else {
+        toast.error(
+          `${succeeded} deleted, ${failedIds.length} could not be removed — ${mutationErrorMessage(firstFailure, "some have related records")}`,
+        );
+      }
+    },
+  });
+
   const moveMutation = useMutation({
     mutationFn: (investor: InvestorRow) =>
       createPipelineEntry(startupId, {
@@ -222,7 +249,7 @@ export function Investors() {
         actions={
           canCreate ? (
             <>
-              <Button variant="outline" size="sm" disabled>
+              <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
                 <Upload className="h-4 w-4" />
                 Import CSV
               </Button>
@@ -292,6 +319,8 @@ export function Investors() {
         onClearFilters={() => setFilters(emptyFilters)}
         showStageFilter={tab === "engaged"}
         selectedCount={selectedIds.size}
+        onBulkDelete={() => setBulkDeleteConfirm(true)}
+        bulkDeleting={bulkDeleteMutation.isPending}
       />
 
       <div className="card-elevated overflow-hidden">
@@ -396,6 +425,38 @@ export function Investors() {
           openEdit(investor);
         }}
       />
+
+      <ImportInvestorsDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        startupId={startupId}
+        onImported={invalidateInvestors}
+      />
+
+      <Dialog open={bulkDeleteConfirm} onOpenChange={setBulkDeleteConfirm}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete {selectedIds.size} investors?</DialogTitle>
+            <DialogDescription>
+              Contacts with pipeline entries, commitments or logged interactions will be skipped
+              and stay selected so you can see which ones need those removed first.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setBulkDeleteConfirm(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={bulkDeleteMutation.isPending}
+              onClick={() => bulkDeleteMutation.mutate(Array.from(selectedIds))}
+            >
+              {bulkDeleteMutation.isPending ? "Deleting…" : `Delete ${selectedIds.size}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <InvestorFormDialog
         open={formOpen}
