@@ -13,6 +13,14 @@ import {
 } from "../../../components/ui/dialog";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "../../../components/ui/sheet";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
 import {
@@ -250,24 +258,24 @@ export function DealDetailDialog({
 
   return (
     <>
-      <Dialog open={deal !== null} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+      <Sheet open={deal !== null} onOpenChange={onOpenChange}>
+        <SheetContent>
           {deal && investor && (
             <>
-              <DialogHeader>
+              <SheetHeader>
                 <div className="flex items-start gap-3">
                   <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary/15 font-display text-sm font-semibold text-primary">
                     {getInitials(investor.fullName)}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <DialogTitle className="truncate">{investor.fullName}</DialogTitle>
-                    <DialogDescription className="truncate">
+                    <SheetTitle className="truncate">{investor.fullName}</SheetTitle>
+                    <SheetDescription className="truncate">
                       {investor.ventureFirm ?? "Independent"}
                       {investor.email ? ` · ${investor.email}` : ""}
-                    </DialogDescription>
+                    </SheetDescription>
                   </div>
                 </div>
-              </DialogHeader>
+              </SheetHeader>
 
               <div className="flex flex-wrap items-center gap-2">
                 {investor.email && (
@@ -433,28 +441,28 @@ export function DealDetailDialog({
 
               <div>
                 <h3 className="mb-2 font-display text-sm font-semibold">Interaction history</h3>
-                <div className="scrollbar-slim max-h-[36vh] overflow-y-auto pr-1">
-                  <InteractionTimeline
-                    logs={logs}
-                    stageEvents={stageEventsQuery.data ?? []}
-                    authorNames={authorNames}
-                    // Same guard as InvestorDetailDialog: a disabled query's
-                    // isPending never flips to false on its own.
-                    isLoading={
-                      logsQuery.isPending ||
-                      (stageEventsQuery.isPending && stageEventsQuery.fetchStatus !== "idle")
-                    }
-                    onEdit={(log) => {
-                      setEditingLog(log);
-                      setLogOpen(true);
-                    }}
-                    onDelete={setPendingLogDelete}
-                  />
-                </div>
+                {/* The sheet itself scrolls now that it's full-height, so the
+                    timeline no longer needs its own bounded scroll area. */}
+                <InteractionTimeline
+                  logs={logs}
+                  stageEvents={stageEventsQuery.data ?? []}
+                  authorNames={authorNames}
+                  // Same guard as InvestorDetailDialog: a disabled query's
+                  // isPending never flips to false on its own.
+                  isLoading={
+                    logsQuery.isPending ||
+                    (stageEventsQuery.isPending && stageEventsQuery.fetchStatus !== "idle")
+                  }
+                  onEdit={(log) => {
+                    setEditingLog(log);
+                    setLogOpen(true);
+                  }}
+                  onDelete={setPendingLogDelete}
+                />
               </div>
 
               {canDelete && (
-                <DialogFooter className="sm:justify-start">
+                <SheetFooter className="sm:justify-start">
                   <Button
                     type="button"
                     variant="ghost"
@@ -464,12 +472,12 @@ export function DealDetailDialog({
                     <Trash2 className="h-4 w-4" />
                     Remove from pipeline
                   </Button>
-                </DialogFooter>
+                </SheetFooter>
               )}
             </>
           )}
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
 
       <LogInteractionDialog
         open={logOpen}
