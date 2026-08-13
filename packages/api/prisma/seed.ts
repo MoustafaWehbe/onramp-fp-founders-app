@@ -32,25 +32,56 @@ interface ContactSeed {
   followupInDays?: number;
 }
 
-/** Derives a stable interaction-log id from a contact id, so re-seeding is idempotent. */
+/** Derives the demo follow-up interaction id from a contact id. */
 const followupLogId = (contactId: string): string => `0000ff00${contactId.slice(8)}`;
 
 // ─── Seed ─────────────────────────────────────────────────────────────────────
 
 async function main() {
+  // This command is deliberately for local/demo environments: it removes every
+  // application row, then recreates the complete deterministic demo dataset.
+  // Delete children explicitly so this remains correct if a relation changes
+  // from cascade to restrict in a future schema migration.
+  await prisma.$transaction(async (tx) => {
+    await tx.aiChatMessage.deleteMany();
+    await tx.aiChatSession.deleteMany();
+    await tx.personaQuestion.deleteMany();
+    await tx.investorPersona.deleteMany();
+    await tx.aiGapAnalysis.deleteMany();
+    await tx.aiAnalysis.deleteMany();
+    await tx.reviewerComment.deleteMany();
+    await tx.reviewerSession.deleteMany();
+    await tx.reviewerInvitationDocument.deleteMany();
+    await tx.reviewerInvitation.deleteMany();
+    await tx.documentChunk.deleteMany();
+    await tx.documentVersion.deleteMany();
+    await tx.document.deleteMany();
+    await tx.commitment.deleteMany();
+    await tx.interactionLog.deleteMany();
+    await tx.pipelineStageEvent.deleteMany();
+    await tx.pipeline.deleteMany();
+    await tx.fundraisingRound.deleteMany();
+    await tx.startupInvestor.deleteMany();
+    await tx.auditLog.deleteMany();
+    await tx.notification.deleteMany();
+    await tx.startupMember.deleteMany();
+    await tx.rolePermission.deleteMany();
+    await tx.role.deleteMany();
+    await tx.passwordReset.deleteMany();
+    await tx.refreshToken.updateMany({ data: { replacedById: null } });
+    await tx.refreshToken.deleteMany();
+    await tx.pendingRegistration.deleteMany();
+    await tx.permission.deleteMany();
+    await tx.user.updateMany({ data: { lastActiveStartupId: null } });
+    await tx.startup.deleteMany();
+    await tx.user.deleteMany();
+  });
+
   // 1. Founder user
   const passwordHash = await hashPassword("Founder1234!");
 
-  const founder = await prisma.user.upsert({
-    where: { email: "founder@example.com" },
-    update: {
-      firstName: "Jane",
-      lastName: "Doe",
-      passwordHash,
-      authProvider: "local",
-      emailVerifiedAt: new Date(),
-    },
-    create: {
+  const founder = await prisma.user.create({
+    data: {
       id: "00000000-0000-0000-0000-000000000001",
       firstName: "Jane",
       lastName: "Doe",
@@ -62,10 +93,8 @@ async function main() {
   });
 
   // 2. Startup
-  const startup = await prisma.startup.upsert({
-    where: { id: "00000000-0000-0000-0000-000000000002" },
-    update: {},
-    create: {
+  const startup = await prisma.startup.create({
+    data: {
       id: "00000000-0000-0000-0000-000000000002",
       name: "Acme Corp",
       description: "AI-powered fundraising platform for early-stage startups.",
@@ -83,15 +112,13 @@ async function main() {
   });
 
   // 3. Permissions
-  await prisma.permission.createMany({ data: PERMISSIONS, skipDuplicates: true });
+  await prisma.permission.createMany({ data: PERMISSIONS });
 
   const allPermissions = await prisma.permission.findMany();
 
   // 4. System roles
-  const ownerRole = await prisma.role.upsert({
-    where: { startupId_name: { startupId: startup.id, name: "owner" } },
-    update: {},
-    create: {
+  const ownerRole = await prisma.role.create({
+    data: {
       id: "00000000-0000-0000-0000-000000000010",
       startupId: startup.id,
       name: "owner",
@@ -100,10 +127,8 @@ async function main() {
     },
   });
 
-  const collaboratorRole = await prisma.role.upsert({
-    where: { startupId_name: { startupId: startup.id, name: "collaborator" } },
-    update: {},
-    create: {
+  const collaboratorRole = await prisma.role.create({
+    data: {
       id: "00000000-0000-0000-0000-000000000011",
       startupId: startup.id,
       name: "collaborator",
@@ -112,10 +137,8 @@ async function main() {
     },
   });
 
-  const viewerRole = await prisma.role.upsert({
-    where: { startupId_name: { startupId: startup.id, name: "viewer" } },
-    update: {},
-    create: {
+  const viewerRole = await prisma.role.create({
+    data: {
       id: "00000000-0000-0000-0000-000000000012",
       startupId: startup.id,
       name: "viewer",
@@ -137,19 +160,13 @@ async function main() {
     for (const key of keys) {
       const perm = permByKey[key];
       if (!perm) continue;
-      await prisma.rolePermission.upsert({
-        where: { roleId_permissionId: { roleId: role.id, permissionId: perm.id } },
-        update: {},
-        create: { roleId: role.id, permissionId: perm.id },
-      });
+      await prisma.rolePermission.create({ data: { roleId: role.id, permissionId: perm.id } });
     }
   }
 
   // 6. Founder as owner member
-  await prisma.startupMember.upsert({
-    where: { startupId_userId: { startupId: startup.id, userId: founder.id } },
-    update: {},
-    create: {
+  await prisma.startupMember.create({
+    data: {
       startupId: startup.id,
       userId: founder.id,
       roleId: ownerRole.id,
@@ -404,12 +421,9 @@ async function main() {
     },
   ];
 
-  // The pipeline belongs to this active raise. Create it before pipeline rows
-  // so both fresh and re-seeded databases satisfy the round relationship.
-  const round = await prisma.fundraisingRound.upsert({
-    where: { startupId_id: { startupId: startup.id, id: "00000000-0000-0000-0000-000000000031" } },
-    update: {},
-    create: {
+  // The pipeline belongs to this active raise. Create it before pipeline rows.
+  const round = await prisma.fundraisingRound.create({
+    data: {
       id: "00000000-0000-0000-0000-000000000031",
       startupId: startup.id,
       roundName: "Pre-Seed",
@@ -427,22 +441,15 @@ async function main() {
   for (const seed of CONTACTS) {
     const { pipeline: pipelineSeed, followupInDays, ...contactFields } = seed;
 
-    // Upsert by id (not email) so re-seeding refreshes an existing row in place
-    // rather than leaving a stale duplicate behind when a field changes.
-    const contact = await prisma.startupInvestor.upsert({
-      where: { id: seed.id },
-      update: { ...contactFields, startupId: startup.id },
-      create: { ...contactFields, startupId: startup.id },
+    const contact = await prisma.startupInvestor.create({
+      data: { ...contactFields, startupId: startup.id },
     });
     contactsById.set(seed.id, contact);
 
     if (!pipelineSeed) continue;
 
-    // Keyed on the fixed id rather than [startupId, startupInvestorId] so a
-    // re-seed repoints an existing entry instead of colliding on the id.
-    const entry = await prisma.pipeline.upsert({
-      where: { id: pipelineSeed.id },
-      update: {
+    const entry = await prisma.pipeline.create({
+      data: {
         roundId: round.id,
         startupInvestorId: contact.id,
         stage: pipelineSeed.stage,
@@ -465,10 +472,8 @@ async function main() {
 
     // Only future follow-ups surface on the Investors screen, so keep these
     // relative to now — a fixed date would silently go stale.
-    await prisma.interactionLog.upsert({
-      where: { id: followupLogId(seed.id) },
-      update: { nextFollowupDate: days(followupInDays) },
-      create: {
+    await prisma.interactionLog.create({
+      data: {
         id: followupLogId(seed.id),
         startupInvestorId: contact.id,
         pipelineId: entry.id,
@@ -487,10 +492,8 @@ async function main() {
   const pipeline = pipelinesById.get("00000000-0000-0000-0000-000000000020")!;
 
   // 9. Commitment linking the investor to the round
-  await prisma.commitment.upsert({
-    where: { id: "00000000-0000-0000-0000-000000000032" },
-    update: {},
-    create: {
+  await prisma.commitment.create({
+    data: {
       id: "00000000-0000-0000-0000-000000000032",
       startupId: startup.id,
       startupInvestorId: startupInvestor.id,
@@ -502,10 +505,8 @@ async function main() {
   });
 
   // 11. Interaction log — first touchpoint with the investor
-  await prisma.interactionLog.upsert({
-    where: { id: "00000000-0000-0000-0000-000000000033" },
-    update: {},
-    create: {
+  await prisma.interactionLog.create({
+    data: {
       id: "00000000-0000-0000-0000-000000000033",
       startupInvestorId: startupInvestor.id,
       pipelineId: pipeline.id,
@@ -518,10 +519,8 @@ async function main() {
   });
 
   // 12. Audit logs
-  await prisma.auditLog.upsert({
-    where: { id: "00000000-0000-0000-0000-000000000040" },
-    update: {},
-    create: {
+  await prisma.auditLog.create({
+    data: {
       id: "00000000-0000-0000-0000-000000000040",
       startupId: startup.id,
       userId: founder.id,
@@ -533,10 +532,8 @@ async function main() {
     },
   });
 
-  await prisma.auditLog.upsert({
-    where: { id: "00000000-0000-0000-0000-000000000041" },
-    update: {},
-    create: {
+  await prisma.auditLog.create({
+    data: {
       id: "00000000-0000-0000-0000-000000000041",
       startupId: startup.id,
       userId: founder.id,
@@ -548,10 +545,8 @@ async function main() {
     },
   });
 
-  await prisma.auditLog.upsert({
-    where: { id: "00000000-0000-0000-0000-000000000042" },
-    update: {},
-    create: {
+  await prisma.auditLog.create({
+    data: {
       id: "00000000-0000-0000-0000-000000000042",
       startupId: startup.id,
       userId: founder.id,
@@ -564,10 +559,8 @@ async function main() {
   });
 
   // 13. Notifications
-  await prisma.notification.upsert({
-    where: { id: "00000000-0000-0000-0000-000000000050" },
-    update: {},
-    create: {
+  await prisma.notification.create({
+    data: {
       id: "00000000-0000-0000-0000-000000000050",
       startupId: startup.id,
       userId: founder.id,
@@ -579,10 +572,8 @@ async function main() {
     },
   });
 
-  await prisma.notification.upsert({
-    where: { id: "00000000-0000-0000-0000-000000000051" },
-    update: {},
-    create: {
+  await prisma.notification.create({
+    data: {
       id: "00000000-0000-0000-0000-000000000051",
       startupId: startup.id,
       userId: founder.id,
