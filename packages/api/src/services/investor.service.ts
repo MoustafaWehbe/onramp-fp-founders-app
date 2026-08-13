@@ -239,8 +239,9 @@ export class InvestorService {
   }
 
   /**
-   * Earliest upcoming follow-up per contact, in one grouped query so the list
-   * endpoint does not fan out per row.
+   * Earliest open follow-up per contact, in one grouped query so the list
+   * endpoint does not fan out per row. This intentionally includes overdue
+   * dates: an overdue next step is more important than a later upcoming one.
    */
   private async nextFollowupsFor(contactIds: string[]): Promise<Map<string, Date | null>> {
     if (contactIds.length === 0) return new Map();
@@ -249,7 +250,8 @@ export class InvestorService {
       by: ["startupInvestorId"],
       where: {
         startupInvestorId: { in: contactIds },
-        nextFollowupDate: { gt: new Date() },
+        nextFollowupDate: { not: null },
+        followupCompletedAt: null,
       },
       _min: { nextFollowupDate: true },
     });

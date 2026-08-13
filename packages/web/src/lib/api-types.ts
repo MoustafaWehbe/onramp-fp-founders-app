@@ -762,6 +762,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/startups/{startupId}/pipeline/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        /** Funnel, conversion and stage velocity for the whole board */
+        get: operations["getPipelineAnalytics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/startups/{startupId}/pipeline/{pipelineId}": {
         parameters: {
             query?: never;
@@ -796,6 +815,29 @@ export interface paths {
         };
         /** List interaction logs linked to a pipeline entry */
         get: operations["listPipelineInteractionLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/pipeline/{pipelineId}/stage-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                pipelineId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List a deal's stage history
+         * @description Chronological record of every stage change on this deal, including who made each one. The first event (fromStage null) is when the deal was added to the pipeline.
+         */
+        get: operations["listPipelineStageEvents"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1603,13 +1645,13 @@ export interface components {
             /** Format: uuid */
             id?: string;
             /**
-             * @description Rendered specially when known; "team_invite" is the only type the API currently emits.
+             * @description Rendered specially when known. The API currently emits "team_invite" and "followup_due"; anything else falls back to a generic icon on the client.
              * @example team_invite
              */
             type?: string;
             title?: string;
             body?: string | null;
-            /** @description What entityId points at, e.g. "startup_member" */
+            /** @description What entityId points at, e.g. "startup_member" for a "team_invite" notification or "interaction_log" for a "followup_due" one */
             entityType?: string | null;
             entityId?: string | null;
             /** Format: date-time */
@@ -1726,6 +1768,11 @@ export interface components {
             startupId?: string;
             /**
              * Format: uuid
+             * @description Fundraising round this opportunity belongs to.
+             */
+            roundId?: string;
+            /**
+             * Format: uuid
              * @description The investor contact id (a startup-scoped contact record).
              */
             investorId?: string;
@@ -1738,12 +1785,68 @@ export interface components {
             expectedAmount?: number | null;
             /** @example 60 */
             probabilityPercentage?: number | null;
+            /**
+             * Format: double
+             * @description Manual position within its stage's column, ascending. Not necessarily contiguous — the client places a moved card by averaging the sortOrder of its new neighbors.
+             * @example 2000
+             */
+            sortOrder?: number;
+            /**
+             * Format: date-time
+             * @description When the deal last moved stage. Distinct from updatedAt, which also moves when the amount or probability is edited.
+             */
+            stageChangedAt?: string;
             /** Format: date-time */
             createdAt?: string;
             /** Format: date-time */
             updatedAt?: string;
         };
+        /** @description Funnel and velocity derived from append-only stage history. Deals created before stage history existed contribute a single backfilled "joined" event, so they count toward reach but show no movement until next moved. */
+        PipelineAnalytics: {
+            totalDeals?: number;
+            funnel?: {
+                stage?: components["schemas"]["PipelineStage"];
+                /** @description Deals sitting in this stage right now. */
+                current?: number;
+                /** Format: double */
+                currentValue?: number;
+                /** @description Deals that have ever occupied this stage. */
+                everReached?: number;
+                /**
+                 * Format: double
+                 * @description Median length of completed visits to this stage. The current occupancy is still running so it is excluded.
+                 */
+                medianDaysInStage?: number | null;
+            }[];
+            conversion?: {
+                fromStage?: components["schemas"]["PipelineStage"];
+                toStage?: components["schemas"]["PipelineStage"];
+                reached?: number;
+                /** @description Of those that reached fromStage, how many went further. */
+                advanced?: number;
+                /**
+                 * Format: double
+                 * @description advanced / reached; null when nothing reached the stage.
+                 */
+                rate?: number | null;
+            }[];
+            outcomes?: {
+                open?: number;
+                committed?: number;
+                passed?: number;
+                /**
+                 * Format: double
+                 * @description committed / (committed + passed); null before anything is decided.
+                 */
+                winRate?: number | null;
+            };
+        };
         CreatePipelineEntryBody: {
+            /**
+             * Format: uuid
+             * @description Fundraising round for this opportunity. Optional only when the startup has exactly one active round; otherwise it is required.
+             */
+            roundId?: string;
             /**
              * Format: uuid
              * @description The investor contact id (a startup-scoped contact record).
@@ -1760,6 +1863,11 @@ export interface components {
             /** Format: double */
             expectedAmount?: number | null;
             probabilityPercentage?: number | null;
+            /**
+             * Format: double
+             * @description New position within its (possibly new) stage. Usually the midpoint of the sortOrder of the two cards it now sits between.
+             */
+            sortOrder?: number;
         };
         /**
          * @example meeting
@@ -1785,6 +1893,25 @@ export interface components {
             interactionDate?: string | null;
             /** Format: date-time */
             nextFollowupDate?: string | null;
+            /**
+             * Format: date-time
+             * @description Null while the follow-up is outstanding. Set when it is marked done, or automatically when a later interaction is logged for the same contact that satisfies it (logged on or after the follow-up date).
+             */
+            followupCompletedAt?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        PipelineStageEvent: {
+            /** Format: uuid */
+            id?: string;
+            /** @description Null for the first event — the deal being added to the pipeline. */
+            fromStage?: components["schemas"]["PipelineStage"] | null;
+            toStage?: components["schemas"]["PipelineStage"];
+            /**
+             * Format: uuid
+             * @description Null if the member who made this change has since been removed.
+             */
+            changedBy?: string | null;
             /** Format: date-time */
             createdAt?: string;
         };
@@ -1815,8 +1942,16 @@ export interface components {
             description?: string | null;
             /** Format: date-time */
             interactionDate?: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description Setting a new date reopens the follow-up, clearing any prior followupCompletedAt unless one is sent in the same request.
+             */
             nextFollowupDate?: string | null;
+            /**
+             * Format: date-time
+             * @description Marks the follow-up done; null reopens it.
+             */
+            followupCompletedAt?: string | null;
         };
         /**
          * @example open
@@ -4327,6 +4462,8 @@ export interface operations {
                 /** @description Number of items per page */
                 limit?: components["parameters"]["LimitParam"];
                 stage?: components["schemas"]["PipelineStage"];
+                /** @description Fundraising round to show. Optional only when the startup has exactly one active round. */
+                roundId?: string;
             };
             header?: never;
             path: {
@@ -4421,7 +4558,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description This investor already has a pipeline entry for this startup */
+            /** @description This investor already has a pipeline entry for this fundraising round */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4437,6 +4574,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    getPipelineAnalytics: {
+        parameters: {
+            query?: {
+                /** @description Fundraising round to analyse. Optional only when the startup has exactly one active round. */
+                roundId?: string;
+            };
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Analytics computed from stage history */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["PipelineAnalytics"];
+                    };
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing pipeline:read permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4643,6 +4825,49 @@ export interface operations {
                     "application/json": {
                         data?: components["schemas"]["InteractionLog"][];
                         meta?: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Pipeline entry not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listPipelineStageEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                pipelineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of stage events, oldest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["PipelineStageEvent"][];
                     };
                 };
             };

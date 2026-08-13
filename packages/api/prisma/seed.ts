@@ -404,6 +404,23 @@ async function main() {
     },
   ];
 
+  // The pipeline belongs to this active raise. Create it before pipeline rows
+  // so both fresh and re-seeded databases satisfy the round relationship.
+  const round = await prisma.fundraisingRound.upsert({
+    where: { startupId_id: { startupId: startup.id, id: "00000000-0000-0000-0000-000000000031" } },
+    update: {},
+    create: {
+      id: "00000000-0000-0000-0000-000000000031",
+      startupId: startup.id,
+      roundName: "Pre-Seed",
+      targetAmount: 500000,
+      minimumTicketSize: 25000,
+      equityOfferedPercentage: 10,
+      currency: "USD",
+      status: "active",
+    },
+  });
+
   const contactsById = new Map<string, { id: string; fullName: string; ventureFirm: string | null }>();
   const pipelinesById = new Map<string, { id: string }>();
 
@@ -426,6 +443,7 @@ async function main() {
     const entry = await prisma.pipeline.upsert({
       where: { id: pipelineSeed.id },
       update: {
+        roundId: round.id,
         startupInvestorId: contact.id,
         stage: pipelineSeed.stage,
         expectedAmount: pipelineSeed.expectedAmount ?? null,
@@ -434,6 +452,7 @@ async function main() {
       create: {
         id: pipelineSeed.id,
         startupId: startup.id,
+        roundId: round.id,
         startupInvestorId: contact.id,
         stage: pipelineSeed.stage,
         expectedAmount: pipelineSeed.expectedAmount ?? null,
@@ -463,27 +482,11 @@ async function main() {
     });
   }
 
-  // Anchor records the fundraising round, audit logs and notifications hang off.
+  // Anchor records for commitments, audit logs and notifications.
   const startupInvestor = contactsById.get("00000000-0000-0000-0000-000000000020")!;
   const pipeline = pipelinesById.get("00000000-0000-0000-0000-000000000020")!;
 
-  // 9. Fundraising round
-  const round = await prisma.fundraisingRound.upsert({
-    where: { startupId_id: { startupId: startup.id, id: "00000000-0000-0000-0000-000000000031" } },
-    update: {},
-    create: {
-      id: "00000000-0000-0000-0000-000000000031",
-      startupId: startup.id,
-      roundName: "Pre-Seed",
-      targetAmount: 500000,
-      minimumTicketSize: 25000,
-      equityOfferedPercentage: 10,
-      currency: "USD",
-      status: "active",
-    },
-  });
-
-  // 10. Commitment linking the investor to the round
+  // 9. Commitment linking the investor to the round
   await prisma.commitment.upsert({
     where: { id: "00000000-0000-0000-0000-000000000032" },
     update: {},

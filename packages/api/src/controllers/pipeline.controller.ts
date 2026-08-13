@@ -17,7 +17,10 @@ export const pipelineController = {
   }),
 
   getAnalytics: asyncHandler(async (req, res) => {
-    const result = await pipelineService.getAnalytics(req.params.startupId as string);
+    const result = await pipelineService.getAnalytics(
+      req.params.startupId as string,
+      req.query.roundId as string | undefined,
+    );
     res.json(result);
   }),
 

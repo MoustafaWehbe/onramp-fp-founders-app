@@ -7,6 +7,7 @@ import {
   createPipelineEntrySchema,
   updatePipelineEntrySchema,
   listPipelineQuerySchema,
+  pipelineAnalyticsQuerySchema,
   pipelineIdParamSchema,
 } from "../validators/pipeline.schemas";
 import { listInteractionLogQuerySchema } from "../validators/interaction-log.schemas";
@@ -47,6 +48,7 @@ router.get(
   validate(startupIdParamSchema, "params"),
   requireMember,
   requirePermission("pipeline", "read"),
+  validate(pipelineAnalyticsQuerySchema, "query"),
   pipelineController.getAnalytics,
 );
 

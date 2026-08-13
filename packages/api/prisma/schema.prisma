@@ -286,6 +286,7 @@ model StartupInvestor {
 model Pipeline {
   id                    String   @id @default(uuid())
   startupId             String   @map("startup_id")
+  roundId               String   @map("round_id")
   startupInvestorId     String   @map("startup_investor_id")
   stage                 String   @default("sourced")
   expectedAmount        Decimal? @map("expected_amount")
@@ -296,14 +297,18 @@ model Pipeline {
   updatedAt             DateTime @updatedAt @map("updated_at")
 
   startup         Startup         @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  round           FundraisingRound @relation("PipelineRound", fields: [roundId, startupId], references: [id, startupId], onDelete: Restrict)
   startupInvestor StartupInvestor @relation("PipelineInvestor", fields: [startupInvestorId, startupId], references: [id, startupId], onDelete: Cascade)
   interactionLogs InteractionLog[]
   commitments     Commitment[]    @relation("CommitmentPipeline")
   stageEvents     PipelineStageEvent[]
 
-  @@unique([startupId, startupInvestorId])
+  @@unique([roundId, startupInvestorId])
   @@unique([id, startupInvestorId])
+  @@unique([id, startupInvestorId, roundId])
   @@unique([startupId, id])
+  @@index([startupId, roundId, stage, sortOrder])
+  @@index([startupId, roundId, stageChangedAt])
   @@map("pipeline")
 }
 
@@ -360,6 +365,7 @@ model FundraisingRound {
   updatedAt               DateTime @updatedAt @map("updated_at")
 
   startup     Startup      @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  pipeline    Pipeline[]   @relation("PipelineRound")
   commitments Commitment[] @relation("CommitmentRound")
 
   @@unique([startupId, id])
@@ -380,9 +386,10 @@ model Commitment {
 
   startup         Startup          @relation(fields: [startupId], references: [id], onDelete: Cascade)
   startupInvestor StartupInvestor  @relation("CommitmentInvestor", fields: [startupInvestorId, startupId], references: [id, startupId], onDelete: Cascade)
-  pipeline        Pipeline         @relation("CommitmentPipeline", fields: [pipelineId, startupId], references: [id, startupId])
+  pipeline        Pipeline         @relation("CommitmentPipeline", fields: [pipelineId, startupInvestorId, roundId], references: [id, startupInvestorId, roundId])
   round           FundraisingRound @relation("CommitmentRound", fields: [roundId, startupId], references: [id, startupId])
 
+  @@index([startupId, roundId, status])
   @@map("commitments")
 }
 

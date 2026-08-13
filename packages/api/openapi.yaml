@@ -932,6 +932,10 @@ components:
         startupId:
           type: string
           format: uuid
+        roundId:
+          type: string
+          format: uuid
+          description: Fundraising round this opportunity belongs to.
         investorId:
           type: string
           format: uuid
@@ -1042,6 +1046,12 @@ components:
       type: object
       required: [investorId, stage]
       properties:
+        roundId:
+          type: string
+          format: uuid
+          description: >-
+            Fundraising round for this opportunity. Optional only when the
+            startup has exactly one active round; otherwise it is required.
         investorId:
           type: string
           format: uuid
@@ -3670,6 +3680,14 @@ paths:
           in: query
           schema:
             $ref: "#/components/schemas/PipelineStage"
+        - name: roundId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: >-
+            Fundraising round to show. Optional only when the startup has
+            exactly one active round.
       responses:
         "200":
           description: List of pipeline entries
@@ -3737,7 +3755,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: This investor already has a pipeline entry for this startup
+          description: This investor already has a pipeline entry for this fundraising round
           content:
             application/json:
               schema:
@@ -3763,6 +3781,15 @@ paths:
       operationId: getPipelineAnalytics
       security:
         - bearerAuth: []
+      parameters:
+        - name: roundId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: >-
+            Fundraising round to analyse. Optional only when the startup has
+            exactly one active round.
       responses:
         "200":
           description: Analytics computed from stage history

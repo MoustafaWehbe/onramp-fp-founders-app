@@ -71,6 +71,7 @@ function entry(overrides: Partial<PipelineEntry> = {}): PipelineEntry {
   return {
     id,
     startupId: "startup-1",
+    roundId: "round-1",
     investorId,
     stage: "contacted" as PipelineStageId,
     expectedAmount: 200_000,

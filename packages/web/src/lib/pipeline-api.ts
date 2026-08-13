@@ -20,6 +20,7 @@ export type PipelineContact = {
 export type PipelineEntry = {
   id: string;
   startupId: string;
+  roundId: string;
   investorId: string;
   investor: PipelineContact;
   stage: PipelineStageId;
@@ -71,7 +72,7 @@ export type PaginationMeta = {
 
 export async function listPipelineEntries(
   startupId: string,
-  params?: { page?: number; limit?: number; stage?: PipelineStageId },
+  params?: { page?: number; limit?: number; stage?: PipelineStageId; roundId?: string },
 ) {
   const { data } = await apiClient.get<{ data: PipelineEntry[]; meta: PaginationMeta }>(
     `/startups/${startupId}/pipeline`,
@@ -83,6 +84,7 @@ export async function listPipelineEntries(
 export async function createPipelineEntry(
   startupId: string,
   body: {
+    roundId?: string;
     investorId: string;
     stage: PipelineStageId;
     expectedAmount?: number;
@@ -118,9 +120,10 @@ export async function updatePipelineEntry(
  * stage history rather than from the current board — a deal now marked passed
  * still counts toward every stage it once reached.
  */
-export async function getPipelineAnalytics(startupId: string) {
+export async function getPipelineAnalytics(startupId: string, roundId?: string) {
   const { data } = await apiClient.get<{ data: PipelineAnalytics }>(
     `/startups/${startupId}/pipeline/analytics`,
+    { params: roundId ? { roundId } : undefined },
   );
   return data.data;
 }

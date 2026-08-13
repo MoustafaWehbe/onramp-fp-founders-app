@@ -12,6 +12,7 @@ function entry(id: string, stage: PipelineEntry["stage"], sortOrder: number): Pi
   return {
     id,
     startupId: "startup-1",
+    roundId: "round-1",
     investorId: `inv-${id}`,
     investor: {
       id: `inv-${id}`,

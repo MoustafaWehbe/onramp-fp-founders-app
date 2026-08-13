@@ -8,6 +8,7 @@ const pipelineStageEnum = z.enum(PIPELINE_STAGES, {
 const optionalExpectedAmount = z
   .number({ invalid_type_error: "expectedAmount must be a number" })
   .finite("expectedAmount must be a finite number")
+  .min(0, "expectedAmount must be at least 0")
   .optional();
 
 const optionalProbability = z
@@ -18,6 +19,7 @@ const optionalProbability = z
   .optional();
 
 export const createPipelineEntrySchema = z.object({
+  roundId: z.string().uuid("roundId must be a valid UUID").optional(),
   investorId: z.string().uuid("investorId must be a valid UUID"),
   stage: pipelineStageEnum,
   expectedAmount: optionalExpectedAmount,
@@ -31,7 +33,8 @@ export const updatePipelineEntrySchema = z
       .union([
         z
           .number({ invalid_type_error: "expectedAmount must be a number" })
-          .finite("expectedAmount must be a finite number"),
+          .finite("expectedAmount must be a finite number")
+          .min(0, "expectedAmount must be at least 0"),
         z.null(),
       ])
       .optional(),
@@ -58,6 +61,7 @@ export const updatePipelineEntrySchema = z
   });
 
 export const listPipelineQuerySchema = z.object({
+  roundId: z.string().uuid("roundId must be a valid UUID").optional(),
   page: z.coerce.number().int().min(1, "page must be at least 1").default(1),
   limit: z.coerce
     .number()
@@ -66,6 +70,10 @@ export const listPipelineQuerySchema = z.object({
     .max(100, "limit must be at most 100")
     .default(20),
   stage: pipelineStageEnum.optional(),
+});
+
+export const pipelineAnalyticsQuerySchema = z.object({
+  roundId: z.string().uuid("roundId must be a valid UUID").optional(),
 });
 
 export const pipelineIdParamSchema = z.object({

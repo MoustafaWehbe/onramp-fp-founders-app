@@ -269,8 +269,8 @@ describe("InvestorService.listInvestors", () => {
     expect(result.data[0]!.nextFollowupDate).toBeNull();
   });
 
-  it("attaches the earliest upcoming follow-up date", async () => {
-    const followup = new Date("2030-01-01T00:00:00.000Z");
+  it("attaches the earliest open follow-up date, including overdue dates", async () => {
+    const followup = new Date("2020-01-01T00:00:00.000Z");
     (mockPrisma.startupInvestor.count as jest.Mock).mockResolvedValue(1);
     (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([
       { id: CONTACT_ID, fullName: "Ada", pipeline: [] },
@@ -282,6 +282,15 @@ describe("InvestorService.listInvestors", () => {
     const result = await service.listInvestors(STARTUP_ID, DEFAULT_QUERY as never);
 
     expect(result.data[0]!.nextFollowupDate).toEqual(followup);
+    expect(mockPrisma.interactionLog.groupBy).toHaveBeenCalledWith({
+      by: ["startupInvestorId"],
+      where: {
+        startupInvestorId: { in: [CONTACT_ID] },
+        nextFollowupDate: { not: null },
+        followupCompletedAt: null,
+      },
+      _min: { nextFollowupDate: true },
+    });
   });
 
   it("resolves follow-ups in one grouped query rather than per row", async () => {

@@ -27,6 +27,7 @@ const CONTACT_SELECT = {
 const ENTRY_SELECT = {
   id: true,
   startupId: true,
+  roundId: true,
   startupInvestorId: true,
   stage: true,
   expectedAmount: true,
@@ -45,6 +46,7 @@ const SORT_ORDER_STEP = 1000;
 type EntryRow = {
   id: string;
   startupId: string;
+  roundId: string;
   startupInvestorId: string;
   stage: string;
   expectedAmount: Prisma.Decimal | null;
@@ -75,6 +77,7 @@ function serializeEntry(entry: EntryRow) {
   return {
     id: entry.id,
     startupId: entry.startupId,
+    roundId: entry.roundId,
     investorId: entry.startupInvestorId,
     investor: entry.startupInvestor,
     stage: entry.stage,
@@ -105,6 +108,8 @@ export class PipelineService {
     });
     if (!contact) throw createError("Investor contact not found", 404, "INVESTOR_NOT_FOUND");
 
+    const roundId = await this.resolveRoundId(startupId, input.roundId);
+
     try {
       // The entry and its opening history row must land together, or analytics
       // silently under-counts every deal whose event write failed.
@@ -112,7 +117,7 @@ export class PipelineService {
         // New cards join the bottom of their column, same as a fresh Trello/Asana
         // card — after whatever currently has the highest position there.
         const bottom = await tx.pipeline.aggregate({
-          where: { startupId, stage: input.stage },
+          where: { startupId, roundId, stage: input.stage },
           _max: { sortOrder: true },
         });
         const sortOrder = (bottom._max.sortOrder ?? 0) + SORT_ORDER_STEP;
@@ -120,6 +125,7 @@ export class PipelineService {
         const created = await tx.pipeline.create({
           data: {
             startupId,
+            roundId,
             startupInvestorId: input.investorId,
             stage: input.stage,
             sortOrder,
@@ -154,9 +160,11 @@ export class PipelineService {
 
   async listEntries(startupId: string, query: ListPipelineQuery) {
     const { page, limit, stage } = query;
+    const roundId = await this.resolveRoundId(startupId, query.roundId);
 
     const where: Prisma.PipelineWhereInput = {
       startupId,
+      roundId,
       ...(stage && { stage }),
     };
 
@@ -276,14 +284,15 @@ export class PipelineService {
    * from the backfill, so they count toward funnel reach but show no movement
    * until they are next touched.
    */
-  async getAnalytics(startupId: string) {
+  async getAnalytics(startupId: string, requestedRoundId?: string) {
+    const roundId = await this.resolveRoundId(startupId, requestedRoundId);
     const [entries, events] = await Promise.all([
       prisma.pipeline.findMany({
-        where: { startupId },
+        where: { startupId, roundId },
         select: { id: true, stage: true, expectedAmount: true, stageChangedAt: true },
       }),
       prisma.pipelineStageEvent.findMany({
-        where: { startupId },
+        where: { startupId, pipeline: { roundId } },
         orderBy: { createdAt: "asc" },
         select: { pipelineId: true, toStage: true, createdAt: true },
       }),
@@ -434,12 +443,44 @@ export class PipelineService {
   private translateDuplicatePipeline(err: unknown): unknown {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       return createError(
-        "This investor already has a pipeline entry for this startup",
+        "This investor already has a pipeline entry for this fundraising round",
         409,
         "ALREADY_IN_PIPELINE",
       );
     }
     return err;
+  }
+
+  /**
+   * Pre-round clients did not send a round id. Retain that path only when it
+   * is unambiguous: exactly one active round. Picking an arbitrary active
+   * round would silently put outreach into the wrong raise.
+   */
+  private async resolveRoundId(startupId: string, requestedRoundId?: string): Promise<string> {
+    if (requestedRoundId) {
+      const round = await prisma.fundraisingRound.findUnique({
+        where: { startupId_id: { startupId, id: requestedRoundId } },
+        select: { id: true },
+      });
+      if (!round) {
+        throw createError("Fundraising round not found", 404, "FUNDRAISING_ROUND_NOT_FOUND");
+      }
+      return round.id;
+    }
+
+    const activeRounds = await prisma.fundraisingRound.findMany({
+      where: { startupId, status: "active" },
+      orderBy: { createdAt: "desc" },
+      take: 2,
+      select: { id: true },
+    });
+    if (activeRounds.length === 1) return activeRounds[0].id;
+
+    throw createError(
+      "Specify roundId because this startup does not have exactly one active fundraising round",
+      409,
+      "FUNDRAISING_ROUND_REQUIRED",
+    );
   }
 }
 

@@ -78,6 +78,24 @@ describe("createPipelineEntrySchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("accepts an optional roundId for an explicitly selected fundraising round", () => {
+    const result = createPipelineEntrySchema.safeParse({
+      investorId: UUID,
+      roundId: "00000000-0000-0000-0000-000000000099",
+      stage: "sourced",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a negative expectedAmount", () => {
+    const result = createPipelineEntrySchema.safeParse({
+      investorId: UUID,
+      stage: "sourced",
+      expectedAmount: -1,
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("updatePipelineEntrySchema", () => {
@@ -101,6 +119,11 @@ describe("updatePipelineEntrySchema", () => {
 
   it("rejects an unknown stage", () => {
     const result = updatePipelineEntrySchema.safeParse({ stage: "lead" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a negative expectedAmount", () => {
+    const result = updatePipelineEntrySchema.safeParse({ expectedAmount: -1 });
     expect(result.success).toBe(false);
   });
 });
@@ -127,6 +150,13 @@ describe("listPipelineQuerySchema", () => {
   it("accepts a valid stage filter", () => {
     const result = listPipelineQuerySchema.safeParse({ stage: "due_diligence" });
     expect(result.success).toBe(true);
+  });
+
+  it("accepts a fundraising round filter", () => {
+    expect(
+      listPipelineQuerySchema.safeParse({ roundId: "00000000-0000-0000-0000-000000000099" })
+        .success,
+    ).toBe(true);
   });
 
   it("rejects an unknown stage filter", () => {

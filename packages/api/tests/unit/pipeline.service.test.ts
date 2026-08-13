@@ -15,6 +15,7 @@ jest.mock("../../src/db/prisma", () => {
     },
     pipelineStageEvent: { create: jest.fn(), findMany: jest.fn() },
     commitment: { count: jest.fn() },
+    fundraisingRound: { findUnique: jest.fn(), findMany: jest.fn() },
   };
   // Stage writes run in a transaction; hand the callback the same mock client so
   // assertions still see prisma.pipeline.create et al.
@@ -32,6 +33,7 @@ const OTHER_STARTUP = "00000000-0000-0000-0000-000000000099";
 const CONTACT_ID = "00000000-0000-0000-0000-000000000002";
 const PIPELINE_ID = "00000000-0000-0000-0000-000000000003";
 const USER_ID = "00000000-0000-0000-0000-000000000004";
+const ROUND_ID = "00000000-0000-0000-0000-000000000005";
 
 const CONTACT = {
   id: CONTACT_ID,
@@ -53,6 +55,7 @@ function entryRow(overrides: Record<string, unknown> = {}) {
   return {
     id: PIPELINE_ID,
     startupId: STARTUP_ID,
+    roundId: ROUND_ID,
     startupInvestorId: CONTACT_ID,
     stage: "sourced",
     expectedAmount: new Prisma.Decimal(250000),
@@ -69,6 +72,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   (mockPrisma.pipelineStageEvent.create as jest.Mock).mockResolvedValue({});
   (mockPrisma.pipeline.aggregate as jest.Mock).mockResolvedValue({ _max: { sortOrder: null } });
+  (mockPrisma.fundraisingRound.findMany as jest.Mock).mockResolvedValue([{ id: ROUND_ID }]);
 });
 
 describe("PipelineService.createEntry", () => {
@@ -91,6 +95,7 @@ describe("PipelineService.createEntry", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           startupId: STARTUP_ID,
+          roundId: ROUND_ID,
           startupInvestorId: CONTACT_ID,
           stage: "sourced",
           expectedAmount: 250000,
@@ -115,6 +120,33 @@ describe("PipelineService.createEntry", () => {
     ).rejects.toMatchObject({ statusCode: 404, code: "INVESTOR_NOT_FOUND" });
 
     expect(mockPrisma.pipeline.create).not.toHaveBeenCalled();
+  });
+
+  it("accepts an explicit round only when it belongs to this startup", async () => {
+    (mockPrisma.startupInvestor.findUnique as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
+    (mockPrisma.fundraisingRound.findUnique as jest.Mock).mockResolvedValue(null);
+
+    await expect(
+      service.createEntry(STARTUP_ID, {
+        investorId: CONTACT_ID,
+        roundId: ROUND_ID,
+        stage: "sourced",
+      } as never),
+    ).rejects.toMatchObject({ statusCode: 404, code: "FUNDRAISING_ROUND_NOT_FOUND" });
+
+    expect(mockPrisma.pipeline.create).not.toHaveBeenCalled();
+  });
+
+  it("uses a legacy client request only when exactly one active round exists", async () => {
+    (mockPrisma.startupInvestor.findUnique as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
+    (mockPrisma.fundraisingRound.findMany as jest.Mock).mockResolvedValue([
+      { id: "round-a" },
+      { id: "round-b" },
+    ]);
+
+    await expect(
+      service.createEntry(STARTUP_ID, { investorId: CONTACT_ID, stage: "sourced" } as never),
+    ).rejects.toMatchObject({ statusCode: 409, code: "FUNDRAISING_ROUND_REQUIRED" });
   });
 
   it("translates a unique-constraint race into ALREADY_IN_PIPELINE", async () => {
@@ -168,7 +200,7 @@ describe("PipelineService.createEntry", () => {
     await service.createEntry(STARTUP_ID, { investorId: CONTACT_ID, stage: "sourced" } as never);
 
     expect(mockPrisma.pipeline.aggregate).toHaveBeenCalledWith({
-      where: { startupId: STARTUP_ID, stage: "sourced" },
+      where: { startupId: STARTUP_ID, roundId: ROUND_ID, stage: "sourced" },
       _max: { sortOrder: true },
     });
     expect(mockPrisma.pipeline.create).toHaveBeenCalledWith(
@@ -213,7 +245,7 @@ describe("PipelineService.listEntries", () => {
     } as never);
 
     expect(mockPrisma.pipeline.count).toHaveBeenCalledWith({
-      where: { startupId: STARTUP_ID, stage: "due_diligence" },
+      where: { startupId: STARTUP_ID, roundId: ROUND_ID, stage: "due_diligence" },
     });
   });
 
