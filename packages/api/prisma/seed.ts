@@ -450,13 +450,6 @@ async function main() {
 
     const entry = await prisma.pipeline.create({
       data: {
-        roundId: round.id,
-        startupInvestorId: contact.id,
-        stage: pipelineSeed.stage,
-        expectedAmount: pipelineSeed.expectedAmount ?? null,
-        probabilityPercentage: pipelineSeed.probabilityPercentage ?? null,
-      },
-      create: {
         id: pipelineSeed.id,
         startupId: startup.id,
         roundId: round.id,
