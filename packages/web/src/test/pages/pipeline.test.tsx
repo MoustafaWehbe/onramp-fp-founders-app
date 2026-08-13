@@ -39,6 +39,11 @@ vi.mock("../../lib/interaction-log-api", async (importOriginal) => ({
 
 const getPipelineAnalytics = vi.fn();
 
+const listFundraisingRounds = vi.fn();
+vi.mock("../../lib/fundraising-api", () => ({
+  listFundraisingRounds: (...a: unknown[]) => listFundraisingRounds(...a),
+}));
+
 vi.mock("../../lib/investor-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/investor-api")>()),
   listInvestors: vi.fn().mockResolvedValue({ data: [], meta: {} }),
@@ -130,6 +135,23 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers({ shouldAdvanceTime: true, now: NOW });
   role = "owner";
+  listFundraisingRounds.mockResolvedValue({
+    data: [
+      {
+        id: "round-1",
+        startupId: "startup-1",
+        roundName: "Seed",
+        targetAmount: 1_000_000,
+        minimumTicketSize: null,
+        equityOfferedPercentage: null,
+        currency: "USD",
+        status: "active",
+        createdAt: daysFromNow(-30),
+        updatedAt: daysFromNow(-30),
+      },
+    ],
+    meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
+  });
   listPipelineEntries.mockResolvedValue({
     data: [entry()],
     meta: { page: 1, limit: 100, total: 1, totalPages: 1 },

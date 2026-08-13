@@ -1224,8 +1224,8 @@ components:
     # ── Financial: Fundraising Rounds ─────────────────────────────────
     RoundStatus:
       type: string
-      enum: [draft, open, closed, cancelled]
-      example: open
+      enum: [draft, active, closed, cancelled]
+      example: active
 
     FundraisingRound:
       type: object
@@ -1341,7 +1341,6 @@ components:
         pipelineId:
           type: string
           format: uuid
-          nullable: true
         roundId:
           type: string
           format: uuid
@@ -1353,7 +1352,7 @@ components:
           $ref: "#/components/schemas/CommitmentStatus"
         expectedCloseDate:
           type: string
-          format: date
+          format: date-time
           nullable: true
         createdAt:
           type: string
@@ -1364,7 +1363,7 @@ components:
 
     CreateCommitmentBody:
       type: object
-      required: [investorId, roundId, amount]
+      required: [investorId, pipelineId, roundId, amount]
       properties:
         investorId:
           type: string
@@ -1384,7 +1383,7 @@ components:
           $ref: "#/components/schemas/CommitmentStatus"
         expectedCloseDate:
           type: string
-          format: date
+          format: date-time
 
     UpdateCommitmentBody:
       type: object
@@ -1397,7 +1396,7 @@ components:
           $ref: "#/components/schemas/CommitmentStatus"
         expectedCloseDate:
           type: string
-          format: date
+          format: date-time
 
     # ── Documents ───────────────────────────────────────────────────
     DocumentType:
@@ -4275,7 +4274,14 @@ paths:
   # ════════════════════════════════════════════════════════════════
   #  FUNDRAISING ROUNDS (Financial)
   # ════════════════════════════════════════════════════════════════
-  /fundraising-rounds:
+  /startups/{startupId}/fundraising-rounds:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
     get:
       tags: [Fundraising Rounds]
       summary: List fundraising rounds for the current startup
@@ -4344,8 +4350,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
 
-  /fundraising-rounds/{roundId}:
+  /startups/{startupId}/fundraising-rounds/{roundId}:
     parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
       - name: roundId
         in: path
         required: true
@@ -4452,8 +4464,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /fundraising-rounds/{roundId}/commitments:
+  /startups/{startupId}/fundraising-rounds/{roundId}/commitments:
     parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
       - name: roundId
         in: path
         required: true
@@ -4499,7 +4517,14 @@ paths:
   # ════════════════════════════════════════════════════════════════
   #  COMMITMENTS (Financial)
   # ════════════════════════════════════════════════════════════════
-  /commitments:
+  /startups/{startupId}/commitments:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
     get:
       tags: [Commitments]
       summary: List commitments for the current startup
@@ -4574,8 +4599,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
 
-  /commitments/{commitmentId}:
+  /startups/{startupId}/commitments/{commitmentId}:
     parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
       - name: commitmentId
         in: path
         required: true

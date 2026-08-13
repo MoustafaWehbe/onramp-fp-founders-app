@@ -17,6 +17,7 @@ import { inviteController } from "../controllers/invite.controller";
 import { investorRouter } from "./investor.routes";
 import { pipelineRouter } from "./pipeline.routes";
 import { interactionLogRouter } from "./interaction-log.routes";
+import { fundraisingRouter } from "./fundraising.routes";
 
 const router = Router();
 
@@ -28,6 +29,9 @@ router.use("/:startupId/pipeline", pipelineRouter);
 
 // /api/v1/startups/:startupId/interaction-logs — declares its own middleware chain
 router.use("/:startupId/interaction-logs", interactionLogRouter);
+
+// Financial resources are startup-scoped just like the CRM resources.
+router.use("/:startupId", fundraisingRouter);
 
 // GET /api/v1/startups
 // authenticate only — this is scoped by the caller's memberships, and it is

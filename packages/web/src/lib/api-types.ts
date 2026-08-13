@@ -894,11 +894,13 @@ export interface paths {
         patch: operations["updateInteractionLog"];
         trace?: never;
     };
-    "/fundraising-rounds": {
+    "/startups/{startupId}/fundraising-rounds": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                startupId: string;
+            };
             cookie?: never;
         };
         /** List fundraising rounds for the current startup */
@@ -912,11 +914,12 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/fundraising-rounds/{roundId}": {
+    "/startups/{startupId}/fundraising-rounds/{roundId}": {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                startupId: string;
                 roundId: string;
             };
             cookie?: never;
@@ -933,11 +936,12 @@ export interface paths {
         patch: operations["updateFundraisingRound"];
         trace?: never;
     };
-    "/fundraising-rounds/{roundId}/commitments": {
+    "/startups/{startupId}/fundraising-rounds/{roundId}/commitments": {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                startupId: string;
                 roundId: string;
             };
             cookie?: never;
@@ -952,11 +956,13 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/commitments": {
+    "/startups/{startupId}/commitments": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                startupId: string;
+            };
             cookie?: never;
         };
         /** List commitments for the current startup */
@@ -970,11 +976,12 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/commitments/{commitmentId}": {
+    "/startups/{startupId}/commitments/{commitmentId}": {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                startupId: string;
                 commitmentId: string;
             };
             cookie?: never;
@@ -1954,10 +1961,10 @@ export interface components {
             followupCompletedAt?: string | null;
         };
         /**
-         * @example open
+         * @example active
          * @enum {string}
          */
-        RoundStatus: "draft" | "open" | "closed" | "cancelled";
+        RoundStatus: "draft" | "active" | "closed" | "cancelled";
         FundraisingRound: {
             /** Format: uuid */
             id?: string;
@@ -2028,7 +2035,7 @@ export interface components {
             investorId?: string;
             investor?: components["schemas"]["Investor"];
             /** Format: uuid */
-            pipelineId?: string | null;
+            pipelineId?: string;
             /** Format: uuid */
             roundId?: string;
             /**
@@ -2037,7 +2044,7 @@ export interface components {
              */
             amount?: number;
             status?: components["schemas"]["CommitmentStatus"];
-            /** Format: date */
+            /** Format: date-time */
             expectedCloseDate?: string | null;
             /** Format: date-time */
             createdAt?: string;
@@ -2051,20 +2058,20 @@ export interface components {
              */
             investorId: string;
             /** Format: uuid */
-            pipelineId?: string;
+            pipelineId: string;
             /** Format: uuid */
             roundId: string;
             /** Format: double */
             amount: number;
             status?: components["schemas"]["CommitmentStatus"];
-            /** Format: date */
+            /** Format: date-time */
             expectedCloseDate?: string;
         };
         UpdateCommitmentBody: {
             /** Format: double */
             amount?: number;
             status?: components["schemas"]["CommitmentStatus"];
-            /** Format: date */
+            /** Format: date-time */
             expectedCloseDate?: string;
         };
         /**
@@ -5180,7 +5187,9 @@ export interface operations {
                 status?: components["schemas"]["RoundStatus"];
             };
             header?: never;
-            path?: never;
+            path: {
+                startupId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -5212,7 +5221,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                startupId: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -5257,6 +5268,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                startupId: string;
                 roundId: string;
             };
             cookie?: never;
@@ -5299,6 +5311,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                startupId: string;
                 roundId: string;
             };
             cookie?: never;
@@ -5348,6 +5361,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                startupId: string;
                 roundId: string;
             };
             cookie?: never;
@@ -5408,6 +5422,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                startupId: string;
                 roundId: string;
             };
             cookie?: never;
@@ -5456,7 +5471,9 @@ export interface operations {
                 status?: components["schemas"]["CommitmentStatus"];
             };
             header?: never;
-            path?: never;
+            path: {
+                startupId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -5488,7 +5505,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                startupId: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -5542,6 +5561,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                startupId: string;
                 commitmentId: string;
             };
             cookie?: never;
@@ -5584,6 +5604,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                startupId: string;
                 commitmentId: string;
             };
             cookie?: never;
@@ -5624,6 +5645,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                startupId: string;
                 commitmentId: string;
             };
             cookie?: never;

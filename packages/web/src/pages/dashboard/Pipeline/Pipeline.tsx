@@ -27,6 +27,7 @@ import {
 } from "../../../components/ui/dialog";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { useActiveStartupId } from "../../../hooks/useWorkspace";
+import { useAppStore } from "../../../lib/app-store";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
 import { cn } from "../../../lib/utils";
 import {
@@ -47,6 +48,7 @@ import {
   updatePipelineEntry,
   type PipelineEntry,
 } from "../../../lib/pipeline-api";
+import { listFundraisingRounds, type FundraisingRound } from "../../../lib/fundraising-api";
 import { fetchAllPages } from "../../../lib/pagination";
 import { LogInteractionDialog, type LogFormValues } from "../Investors/LogInteractionDialog";
 import { AddDealDialog, type AddDealValues } from "./AddDealDialog";
@@ -106,6 +108,8 @@ export function Pipeline() {
   const startupId = useActiveStartupId();
   const { can } = usePermissions();
   const queryClient = useQueryClient();
+  const preferredRoundId = useAppStore((s) => s.activeRoundIds[startupId]);
+  const setActiveRoundId = useAppStore((s) => s.setActiveRoundId);
   // Collaborators may add and move deals; viewers may only look.
   const canCreate = can("pipeline", "create");
   const canUpdate = can("pipeline", "update");
@@ -130,14 +134,28 @@ export function Pipeline() {
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
 
+  const roundsQuery = useQuery({
+    queryKey: ["fundraising-rounds", startupId],
+    queryFn: () => listFundraisingRounds(startupId),
+  });
+  const activeRound = useMemo<FundraisingRound | null>(() => {
+    const rounds = roundsQuery.data?.data ?? [];
+    return rounds.find((round) => round.id === preferredRoundId) ?? rounds.find((round) => round.status === "active") ?? rounds[0] ?? null;
+  }, [preferredRoundId, roundsQuery.data]);
+
+  useEffect(() => {
+    if (activeRound && activeRound.id !== preferredRoundId) setActiveRoundId(startupId, activeRound.id);
+  }, [activeRound, preferredRoundId, setActiveRoundId, startupId]);
+
   const pipelineQuery = useQuery({
-    queryKey: ["pipeline", startupId],
+    queryKey: ["pipeline", startupId, activeRound?.id],
     // The whole board has to be on screen at once for a Kanban to make sense,
     // so page through in batches of 10 rather than asking for everything at once.
     queryFn: () =>
-      fetchAllPages((page, limit) => listPipelineEntries(startupId, { page, limit })).then(
+      fetchAllPages((page, limit) => listPipelineEntries(startupId, { page, limit, roundId: activeRound?.id })).then(
         (data) => ({ data }),
       ),
+    enabled: Boolean(activeRound),
   });
 
   // The board's follow-up and last-touch signals come from interaction logs.
@@ -152,11 +170,11 @@ export function Pipeline() {
   });
 
   const analyticsQuery = useQuery({
-    queryKey: ["pipeline-analytics", startupId],
-    queryFn: () => getPipelineAnalytics(startupId),
+    queryKey: ["pipeline-analytics", startupId, activeRound?.id],
+    queryFn: () => getPipelineAnalytics(startupId, activeRound?.id),
     // Only fetched once the tab is actually opened; nothing else on the page
     // needs it.
-    enabled: activeView === "analytics",
+    enabled: activeView === "analytics" && Boolean(activeRound),
   });
 
   const entries = useMemo(() => pipelineQuery.data?.data ?? [], [pipelineQuery.data]);
@@ -283,13 +301,11 @@ export function Pipeline() {
       }),
     onMutate: async ({ pipelineId, stage, sortOrder, changedStage }) => {
       await queryClient.cancelQueries({ queryKey: ["pipeline", startupId] });
-      const previous = queryClient.getQueryData<{ data: PipelineEntry[] }>([
-        "pipeline",
-        startupId,
-      ]);
+      const pipelineKey = ["pipeline", startupId, activeRound?.id] as const;
+      const previous = queryClient.getQueryData<{ data: PipelineEntry[] }>(pipelineKey);
 
       queryClient.setQueryData<{ data: PipelineEntry[]; meta?: unknown }>(
-        ["pipeline", startupId],
+        pipelineKey,
         (current) => {
           if (!current) return current;
           return {
@@ -314,7 +330,7 @@ export function Pipeline() {
     },
     onError: (err, _vars, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(["pipeline", startupId], context.previous);
+        queryClient.setQueryData(["pipeline", startupId, activeRound?.id], context.previous);
       }
       toast.error(pipelineErrorMessage(err, "Could not move deal"));
     },
@@ -326,6 +342,7 @@ export function Pipeline() {
   const createMutation = useMutation({
     mutationFn: (values: AddDealValues) =>
       createPipelineEntry(startupId, {
+        roundId: activeRound?.id,
         investorId: values.investorId,
         stage: values.stage,
         expectedAmount: values.expectedAmount,
@@ -449,6 +466,25 @@ export function Pipeline() {
           ) : null
         }
       />
+
+      {roundsQuery.isSuccess && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/70 bg-surface/50 px-3 py-2 text-sm">
+          <span className="text-muted-foreground">Viewing round</span>
+          <select
+            aria-label="Active fundraising round"
+            value={activeRound?.id ?? ""}
+            onChange={(event) => setActiveRoundId(startupId, event.target.value)}
+            className="h-8 rounded-md border border-border bg-background px-2 font-medium outline-none focus:ring-1 focus:ring-ring"
+          >
+            {(roundsQuery.data?.data ?? []).map((round) => (
+              <option key={round.id} value={round.id}>
+                {round.roundName} ({round.status})
+              </option>
+            ))}
+          </select>
+          {!activeRound && <span className="text-muted-foreground">Create a round before adding pipeline deals.</span>}
+        </div>
+      )}
 
       {pipelineQuery.isLoading && (
         <div className="rounded-xl border border-border/70 bg-surface/50 px-4 py-10 text-center text-sm text-muted-foreground">
