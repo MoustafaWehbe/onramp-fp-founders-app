@@ -1067,9 +1067,96 @@ describe("Pipeline board", () => {
 
     expect(screen.queryByRole("button", { name: /Add to pipeline/ })).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /Move Ada Lovelace to another stage/ }),
+      screen.queryByRole("button", { name: /Actions for Ada Lovelace/ }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Remove from pipeline/ })).not.toBeInTheDocument();
     expect(await screen.findByLabelText("Expected amount")).toBeDisabled();
+  });
+
+  // Touch drag-reordering between narrow columns is fiddly on a phone, so
+  // below the board's compact breakpoint it drops pointer/keyboard drag
+  // entirely in favor of a single-stage tap list — see MobilePipelineBoard.
+  describe("on a small screen", () => {
+    const originalMatchMedia = window.matchMedia;
+    let restoreViewport: (() => void) | null = null;
+
+    function mockViewport(matches: boolean) {
+      window.matchMedia = ((query: string) => ({
+        matches,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      })) as typeof window.matchMedia;
+      restoreViewport = () => {
+        window.matchMedia = originalMatchMedia;
+      };
+    }
+
+    afterEach(() => {
+      restoreViewport?.();
+      restoreViewport = null;
+    });
+
+    it("shows a single-stage tap list instead of the drag board", async () => {
+      mockViewport(true);
+      listPipelineEntries.mockResolvedValue({
+        data: [
+          // The mobile board opens on the first visible stage — Sourced —
+          // so this deal has to actually be there for the default tab to
+          // show anything.
+          entry({ id: "d1", investorId: "i1", stage: "sourced" }),
+          entry({
+            id: "d2",
+            investorId: "i2",
+            stage: "meeting_scheduled",
+            investor: { fullName: "Grace Hopper" } as never,
+          }),
+        ],
+        meta: { page: 1, limit: 100, total: 2, totalPages: 1 },
+      });
+      const user = userEvent.setup();
+      renderPipeline();
+
+      // Both the tablist and the card list settle in together, so gating on
+      // the card text (the same data-dependent render every other test in
+      // this file waits on) is enough to know the tablist is there too.
+      expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
+      expect(screen.getByRole("tablist", { name: "Pipeline stage" })).toBeInTheDocument();
+      // The desktop-only bulk-selection control has nowhere to act on this view.
+      expect(screen.queryByRole("button", { name: /^Select$/ })).not.toBeInTheDocument();
+      expect(screen.queryByText("Grace Hopper")).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("tab", { name: /Meeting/ }));
+
+      expect(await screen.findByText("Grace Hopper")).toBeInTheDocument();
+      expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
+    });
+
+    it("moves a card to a new stage from the same menu the desktop board uses", async () => {
+      mockViewport(true);
+      listPipelineEntries.mockResolvedValue({
+        data: [entry({ stage: "sourced" })],
+        meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
+      });
+      updatePipelineEntry.mockResolvedValue(entry({ stage: "contacted" }));
+      const user = userEvent.setup();
+      renderPipeline();
+      await screen.findByText("Ada Lovelace");
+
+      await user.click(screen.getByRole("button", { name: "Actions for Ada Lovelace" }));
+      await user.click(await screen.findByRole("menuitem", { name: "Contacted" }));
+
+      await waitFor(() =>
+        expect(updatePipelineEntry).toHaveBeenCalledWith(
+          "startup-1",
+          "deal-1",
+          expect.objectContaining({ stage: "contacted" }),
+        ),
+      );
+    });
   });
 });

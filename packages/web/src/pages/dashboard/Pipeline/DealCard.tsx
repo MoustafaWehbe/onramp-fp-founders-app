@@ -62,10 +62,23 @@ type DealCardBodyProps = {
   /** Opens the task composer for this deal without opening the deal itself. */
   onAddTask?: (dealId: string) => void;
   onToggleSelected?: (dealId: string) => void;
+  /**
+   * True only for the floating copy that follows the cursor while dragging.
+   * That copy is purely presentational — its menu and checkbox can never be
+   * clicked — so it skips mounting the interactive dropdown (a Radix portal)
+   * and always shows the plain avatar, trading nothing visible for less
+   * dragged-frame render weight.
+   */
+  dragOverlay?: boolean;
 };
 
-/** Everything a deal card shows — shared between the live sortable card and the floating drag copy. */
-function DealCardBody({
+/**
+ * Everything a deal card shows — shared between the live sortable card, the
+ * floating drag copy, and the mobile list row (none of which is the card
+ * being dragged in place, which renders a bare placeholder instead — see
+ * DealCard below).
+ */
+export function DealCardBody({
   deal,
   signals,
   focusReason,
@@ -76,6 +89,7 @@ function DealCardBody({
   onMove,
   onAddTask,
   onToggleSelected,
+  dragOverlay = false,
 }: DealCardBodyProps) {
   const investor = deal.investor;
   const probability = deal.probabilityPercentage ?? 0;
@@ -84,7 +98,7 @@ function DealCardBody({
   return (
     <>
       <div className="flex items-center gap-2">
-        {selected == null ? (
+        {selected == null || dragOverlay ? (
           <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/15 font-display text-[10px] font-semibold text-primary">
             {getInitials(investor.fullName)}
           </div>
@@ -126,7 +140,13 @@ function DealCardBody({
           </div>
         </button>
 
-        {canUpdate && (
+        {canUpdate && dragOverlay && (
+          <span className="relative z-10 grid h-7 w-7 shrink-0 place-items-center text-muted-foreground">
+            <MoveRight className="h-4 w-4" />
+          </span>
+        )}
+
+        {canUpdate && !dragOverlay && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -264,17 +284,22 @@ export const DealCard = memo(function DealCard(props: DealCardProps) {
       {...attributes}
       {...listeners}
       className={cn(
-        "relative touch-none border-border/70 bg-card/95 p-3 shadow-sm transition-[border-color,opacity] hover:border-primary/40",
+        // A fixed floor means the placeholder below never has to measure the
+        // card it's standing in for, and no card visibly resizes as its
+        // owner badge or focus-reason chip come and go.
+        "relative min-h-[128px] touch-none border-border/70 bg-card/95 p-3 shadow-sm transition-[border-color,opacity,background-color] hover:border-primary/40",
         canUpdate && "cursor-grab active:cursor-grabbing",
-        // The dragged card stays in the DOM (dnd-kit needs its layout to keep
-        // measuring), hidden here in favor of the DragOverlay copy that
-        // actually follows the cursor.
-        isDragging && "opacity-0",
-        focusReason && "border-l-2 border-l-warning",
-        selected && "border-primary ring-1 ring-primary/40",
+        isDragging
+          ? // The card being dragged stays in the DOM (dnd-kit needs its layout
+            // to keep measuring), but shows only a dashed outline in the slot
+            // it's about to fill — the drop position, not just a blank gap —
+            // while the DragOverlay copy follows the cursor instead.
+            "border-2 border-dashed border-primary/40 bg-primary/[0.04] shadow-none"
+          : focusReason && "border-l-2 border-l-warning",
+        selected && !isDragging && "border-primary ring-1 ring-primary/40",
       )}
     >
-      <DealCardBody {...props} />
+      {!isDragging && <DealCardBody {...props} />}
     </Card>
   );
 });
@@ -283,8 +308,8 @@ export const DealCard = memo(function DealCard(props: DealCardProps) {
  *  bindings of its own, just the same visuals lifted off the board. */
 export function DealCardOverlay(props: DealCardProps) {
   return (
-    <Card className="relative scale-[1.02] cursor-grabbing border-primary/50 bg-card p-3 shadow-2xl will-change-transform">
-      <DealCardBody {...props} />
+    <Card className="relative min-h-[128px] scale-[1.02] cursor-grabbing border-primary/50 bg-card p-3 shadow-2xl will-change-transform">
+      <DealCardBody {...props} dragOverlay />
     </Card>
   );
 }

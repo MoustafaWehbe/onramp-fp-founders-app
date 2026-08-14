@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   closestCenter,
   pointerWithin,
@@ -12,6 +13,7 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Crown, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -27,6 +29,7 @@ import {
 } from "../../../components/ui/dialog";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { useAuth } from "../../../hooks/useAuth";
+import { useMediaQuery } from "../../../hooks/useMediaQuery";
 import { useActiveStartupId } from "../../../hooks/useWorkspace";
 import { useAppStore } from "../../../lib/app-store";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
@@ -77,6 +80,7 @@ import { CommitDialog } from "./CommitDialog";
 import { DealCardOverlay } from "./DealCard";
 import { DealDetailDialog } from "./DealDetailDialog";
 import { FocusList } from "./FocusList";
+import { MobilePipelineBoard } from "./MobilePipelineBoard";
 import { PassReasonDialog } from "./PassReasonDialog";
 import { PipelineAnalyticsView } from "./PipelineAnalyticsView";
 import { PipelineColumn } from "./PipelineColumn";
@@ -137,6 +141,9 @@ export function Pipeline() {
   // Collaborators may add and move deals; viewers may only look.
   const canCreate = can("pipeline", "create");
   const canUpdate = can("pipeline", "update");
+  // Below this, the board becomes the tap-driven single-stage list — see
+  // MobilePipelineBoard for why pointer/keyboard drag isn't offered there.
+  const isCompactBoard = useMediaQuery("(max-width: 767px)");
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [columns, setColumns] = useState<BoardColumns>(() => buildColumns([]));
@@ -180,6 +187,13 @@ export function Pipeline() {
     // A short drag threshold before a pointer-down counts as a drag, so
     // clicking the card to open it (or its move menu) isn't swallowed.
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    // Tabbing to a card and pressing space picks it up; arrow keys step to
+    // the nearest droppable in that direction — including across into a
+    // neighboring column — and space/enter drops it there, Escape cancels.
+    // Same drag/drop handlers below as a pointer drag, so a keyboard move
+    // persists identically. Each card's "Move to stage" menu remains the
+    // more explicit, no-spatial-reasoning-required fallback.
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
   const roundsQuery = useQuery({
@@ -334,6 +348,16 @@ export function Pipeline() {
   );
 
   const entriesById = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries]);
+
+  // Rebuilt straight from visibleEntries rather than the drag-frozen `columns`
+  // state above — the mobile list never drags, so it has no reason to hold
+  // still mid-gesture the way the desktop board's columns do.
+  const entriesByStage = useMemo(() => {
+    const map = new Map<PipelineStageId, PipelineEntry[]>();
+    for (const stage of visibleStages) map.set(stage.id, []);
+    for (const entry of visibleEntries) map.get(entry.stage)?.push(entry);
+    return map;
+  }, [visibleEntries, visibleStages]);
 
   // Passed deals cannot be leading the round they walked away from.
   const leads = useMemo(
@@ -774,7 +798,7 @@ export function Pipeline() {
             onChange={(key, value) => setView((prev) => ({ ...prev, [key]: value }))}
             visibleCount={visibleEntries.length}
             totalCount={entries.length}
-            canSelect={canUpdate || canCreate}
+            canSelect={(canUpdate || canCreate) && !isCompactBoard}
             selectionActive={selectedIds !== null}
             onToggleSelection={() =>
               setSelectedIds((current) => (current === null ? new Set() : null))
@@ -794,7 +818,26 @@ export function Pipeline() {
         </>
       )}
 
-      {boardReady && activeView === "board" && (
+      {boardReady && activeView === "board" && isCompactBoard && (
+        <MobilePipelineBoard
+          stages={visibleStages}
+          entriesByStage={entriesByStage}
+          signalsFor={signalsFor}
+          focusReasonFor={focusReasonFor}
+          ownerNameFor={ownerNameFor}
+          canUpdate={canUpdate}
+          emptyMessage={
+            view.attentionOnly || view.mineOnly || view.search.trim() !== ""
+              ? "Nothing matches here"
+              : "Nothing in this stage yet"
+          }
+          onOpen={setOpenDealId}
+          onMove={moveDeal}
+          onAddTask={canCreate ? setQuickTaskDealId : undefined}
+        />
+      )}
+
+      {boardReady && activeView === "board" && !isCompactBoard && (
         <DndContext
           sensors={sensors}
           collisionDetection={collisionDetection}

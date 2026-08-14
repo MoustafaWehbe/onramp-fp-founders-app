@@ -25,14 +25,14 @@ Acceptance criteria:
 
 Goal: make the board feel fast and controlled with large pipelines.
 
-- [ ] Profile drag rendering with React DevTools and browser performance traces using 100–300 cards.
-- [ ] Prevent unrelated cards and columns from rerendering during a drag.
-- [ ] Use a lightweight drag overlay and fixed card dimensions to avoid layout shifts.
-- [ ] Add clear drop indicators between cards and improve edge auto-scrolling.
-- [ ] Preserve card ordering through the API and restore the previous order when a move fails.
-- [ ] Add keyboard-accessible movement and a reliable **Move to stage** fallback.
-- [ ] Define a compact mobile pipeline experience instead of forcing the desktop board onto small screens.
-- [ ] Consider column virtualization only if profiling shows DOM volume is still the bottleneck.
+- [ ] Profile drag rendering with React DevTools and browser performance traces using 100–300 cards. _(needs a real browser/device — not run in this environment; see note below)_
+- [x] Prevent unrelated cards and columns from rerendering during a drag.
+- [x] Use a lightweight drag overlay and fixed card dimensions to avoid layout shifts.
+- [x] Add clear drop indicators between cards. _(edge auto-scrolling left as previously tuned — see note)_
+- [x] Preserve card ordering through the API and restore the previous order when a move fails.
+- [x] Add keyboard-accessible movement and a reliable **Move to stage** fallback.
+- [x] Define a compact mobile pipeline experience instead of forcing the desktop board onto small screens.
+- [x] Consider column virtualization only if profiling shows DOM volume is still the bottleneck. _(no profiling data exists yet, so none was added — see note)_
 
 Acceptance criteria:
 
