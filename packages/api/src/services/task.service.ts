@@ -168,10 +168,16 @@ export class TaskService {
   async updateTask(startupId: string, taskId: string, input: UpdateTaskInput, userId?: string) {
     const existing = await prisma.task.findUnique({
       where: { id: taskId },
-      select: { id: true, startupId: true, status: true, assigneeId: true },
+      select: { id: true, startupId: true, status: true, assigneeId: true, pipelineId: true },
     });
     if (!existing || existing.startupId !== startupId) {
       throw createError("Task not found", 404, "TASK_NOT_FOUND");
+    }
+
+    // Relinking to another deal is only legal within the same startup, which
+    // verifyPipeline enforces through the composite key.
+    if (input.pipelineId !== undefined && input.pipelineId !== existing.pipelineId) {
+      await this.verifyPipeline(startupId, input.pipelineId);
     }
 
     // Only a genuine hand-over is worth announcing — editing a due date on a
@@ -197,6 +203,7 @@ export class TaskService {
     const task = await prisma.task.update({
       where: { id: taskId },
       data: {
+        ...(input.pipelineId !== undefined && { pipelineId: input.pipelineId }),
         ...(input.title !== undefined && { title: input.title }),
         ...(input.description !== undefined && { description: input.description }),
         ...(input.status !== undefined && { status: input.status }),

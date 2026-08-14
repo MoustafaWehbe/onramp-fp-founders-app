@@ -24,11 +24,13 @@ import {
 import { INVESTOR_TYPE_LABELS } from "../../../lib/investor-api";
 import { fetchAllPages } from "../../../lib/pagination";
 import { listPipelineStageEvents } from "../../../lib/pipeline-api";
+import { invalidateInteractionData, qk } from "../../../lib/query-keys";
 import { listMembers } from "../../../lib/team-api";
 import { cn, getInitials } from "../../../lib/utils";
 import { TaskList } from "../Pipeline/TaskList";
 import { InteractionTimeline } from "./InteractionTimeline";
 import { LogInteractionDialog, type LogFormValues } from "./LogInteractionDialog";
+import { NoteByline } from "./NoteByline";
 import { StageBadge } from "./StageBadge";
 import type { InvestorRow } from "./investor-types";
 
@@ -78,7 +80,7 @@ export function InvestorDetailDialog({
   }, [investorId]);
 
   const logsQuery = useQuery({
-    queryKey: ["interaction-logs", startupId, investorId],
+    queryKey: qk.logsForInvestor(startupId, investorId),
     queryFn: () =>
       fetchAllPages((page, limit) =>
         listLogsForInvestor(startupId, investorId!, { page, limit }),
@@ -90,7 +92,7 @@ export function InvestorDetailDialog({
 
   // Only contacts on the board have stage history; a prospect has none yet.
   const stageEventsQuery = useQuery({
-    queryKey: ["pipeline-stage-events", startupId, pipelineId],
+    queryKey: qk.stageEvents(startupId, pipelineId),
     queryFn: () => listPipelineStageEvents(startupId, pipelineId!),
     enabled: pipelineId !== null,
   });
@@ -99,7 +101,7 @@ export function InvestorDetailDialog({
   // the Team page and readable by every role, so reuse it to put a name on each
   // entry rather than showing a raw uuid.
   const membersQuery = useQuery({
-    queryKey: ["team-members", startupId],
+    queryKey: qk.members(startupId),
     queryFn: () => listMembers(startupId),
     enabled: investorId !== null,
   });
@@ -116,12 +118,9 @@ export function InvestorDetailDialog({
 
   const logs = logsQuery.data?.data ?? [];
 
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ["interaction-logs", startupId, investorId] });
-    // Logging an interaction is what moves a contact out of Prospects, and it
-    // also feeds nextFollowupDate on the list — both come from the list query.
-    void queryClient.invalidateQueries({ queryKey: ["investors", startupId] });
-  };
+  // Logging an interaction is what moves a contact out of Prospects, and it
+  // also feeds nextFollowupDate on the list — both come from the list query.
+  const invalidate = () => invalidateInteractionData(queryClient, startupId);
 
   const saveMutation = useMutation({
     mutationFn: (values: LogFormValues) =>
@@ -257,11 +256,11 @@ export function InvestorDetailDialog({
                 ))}
               </dl>
 
-              <section className="rounded-xl border border-border/70 bg-surface/40 p-4"><div className="flex items-center gap-2"><div className="grid h-8 w-8 place-items-center rounded-lg bg-muted text-muted-foreground"><StickyNote className="h-4 w-4" /></div><div><h3 className="text-sm font-semibold">Investor notes</h3><p className="text-xs text-muted-foreground">Shared relationship context for your team.</p></div></div><p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{investor.contact.notes || "No notes have been added for this investor."}</p></section>
+              <section className="rounded-xl border border-border/70 bg-surface/40 p-4"><div className="flex items-center gap-2"><div className="grid h-8 w-8 place-items-center rounded-lg bg-muted text-muted-foreground"><StickyNote className="h-4 w-4" /></div><div><h3 className="text-sm font-semibold">Investor notes</h3><p className="text-xs text-muted-foreground">Shared relationship context for your team.</p></div></div><p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{investor.contact.notes || "No notes have been added for this investor."}</p>{investor.contact.notes && <NoteByline contact={investor.contact} authorNames={authorNames} />}</section>
               </>}
 
               {/* Only a contact already on the board has a deal to attach tasks to. */}
-              {activeTab === "tasks" && (pipelineId ? <TaskList startupId={startupId} pipelineId={pipelineId} /> : <div className="rounded-2xl border border-dashed border-border px-6 py-12 text-center"><ListChecks className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-3 text-sm font-semibold">Tasks start on the pipeline</p><p className="mt-1 text-xs text-muted-foreground">Add this investor to a fundraising round before assigning deal work.</p></div>)}
+              {activeTab === "tasks" && (pipelineId ? <TaskList startupId={startupId} pipelineId={pipelineId} dealLabel={investor?.name ?? "this investor"} /> : <div className="rounded-2xl border border-dashed border-border px-6 py-12 text-center"><ListChecks className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-3 text-sm font-semibold">Tasks start on the pipeline</p><p className="mt-1 text-xs text-muted-foreground">Add this investor to a fundraising round before assigning deal work.</p></div>)}
 
               {activeTab === "activity" && <>
               <div className="flex items-center justify-between gap-2">

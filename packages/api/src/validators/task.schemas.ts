@@ -43,6 +43,9 @@ export const createTaskSchema = z.object({
 
 export const updateTaskSchema = z
   .object({
+    // A task filed against the wrong deal used to have to be deleted and
+    // retyped; relinking keeps its history, assignee and due date intact.
+    pipelineId: z.string().uuid("pipelineId must be a valid UUID").optional(),
     title: z
       .string()
       .trim()

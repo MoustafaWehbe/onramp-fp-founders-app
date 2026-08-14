@@ -1,4 +1,4 @@
-import { Eye, EyeOff, Search, UserRoundCheck, X } from "lucide-react";
+import { CheckSquare, Eye, EyeOff, Search, UserRoundCheck, X } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 import { cn } from "../../../lib/utils";
@@ -16,6 +16,10 @@ type PipelineToolbarProps = {
   /** Deals left after filtering, against the board total. */
   visibleCount: number;
   totalCount: number;
+  /** Hidden for viewers, who have nothing to apply to a selection. */
+  canSelect: boolean;
+  selectionActive: boolean;
+  onToggleSelection: () => void;
 };
 
 export function PipelineToolbar({
@@ -23,6 +27,9 @@ export function PipelineToolbar({
   onChange,
   visibleCount,
   totalCount,
+  canSelect,
+  selectionActive,
+  onToggleSelection,
 }: PipelineToolbarProps) {
   const filtered = visibleCount !== totalCount;
 
@@ -72,6 +79,24 @@ export function PipelineToolbar({
         {view.showPassed ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
         {view.showPassed ? "Passed shown" : "Passed hidden"}
       </Button>
+
+      {canSelect && (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          aria-pressed={selectionActive}
+          onClick={onToggleSelection}
+          className={cn(
+            selectionActive
+              ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15"
+              : "text-muted-foreground",
+          )}
+        >
+          <CheckSquare className="h-4 w-4" />
+          {selectionActive ? "Selecting" : "Select"}
+        </Button>
+      )}
 
       <span className="ml-auto shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
         {filtered ? `${visibleCount} of ${totalCount}` : `${totalCount}`} deal

@@ -1,14 +1,18 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, Check, CheckCircle2 } from "lucide-react";
+import { CalendarClock, Check, CheckCircle2, Pencil, Plus, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "../../../components/ui/button";
 import { useAuth } from "../../../hooks/useAuth";
 import { usePermissions } from "../../../hooks/usePermissions";
+import { useRoundTasks } from "../../../hooks/useRoundTasks";
 import { apiErrorMessage } from "../../../lib/api-error";
 import type { PipelineEntry } from "../../../lib/pipeline-api";
+import { invalidateTaskData, qk } from "../../../lib/query-keys";
 import { listMembers } from "../../../lib/team-api";
-import { PRIORITY_LABELS, listTasks, setTaskStatus, type Task } from "../../../lib/task-api";
+import { PRIORITY_LABELS, setTaskStatus, type Task } from "../../../lib/task-api";
 import { cn } from "../../../lib/utils";
+import { TaskDialog } from "./TaskDialog";
 
 type TaskQueueProps = {
   startupId: string;
@@ -18,7 +22,51 @@ type TaskQueueProps = {
   onOpenDeal: (pipelineId: string) => void;
 };
 
-type Scope = "mine" | "everyone";
+const VIEWS = ["mine", "overdue", "today", "everyone", "completed"] as const;
+type ViewId = (typeof VIEWS)[number];
+
+const VIEW_LABELS: Record<ViewId, string> = {
+  mine: "Mine",
+  overdue: "Overdue",
+  today: "Today",
+  everyone: "Everyone",
+  completed: "Completed",
+};
+
+const EMPTY_MESSAGES: Record<ViewId, { title: string; detail: string }> = {
+  mine: {
+    title: "Nothing assigned to you",
+    detail: "Work assigned to you in this round shows up here.",
+  },
+  overdue: {
+    title: "Nothing overdue",
+    detail: "Every dated next step in this round is still ahead of its deadline.",
+  },
+  today: {
+    title: "Nothing due today",
+    detail: "No next step in this round is due before the end of the day.",
+  },
+  everyone: {
+    title: "No open tasks in this round",
+    detail: "Add a next step from a deal so nothing goes quiet.",
+  },
+  completed: {
+    title: "Nothing finished yet",
+    detail: "Completed tasks in this round are kept here as a record of what was done.",
+  },
+};
+
+function isOverdue(task: Task, now: number): boolean {
+  return task.dueDate !== null && new Date(task.dueDate).getTime() < now;
+}
+
+function isDueToday(task: Task, now: number): boolean {
+  if (!task.dueDate) return false;
+  const due = new Date(task.dueDate).getTime();
+  const endOfToday = new Date(now);
+  endOfToday.setHours(23, 59, 59, 999);
+  return due >= now && due <= endOfToday.getTime();
+}
 
 function dueLabel(dueDate: string | null, now: number): { text: string; tone: string } {
   if (!dueDate) return { text: "No due date", tone: "text-muted-foreground" };
@@ -34,19 +82,22 @@ function dueLabel(dueDate: string | null, now: number): { text: string; tone: st
 }
 
 /**
- * Every open task across the round in one list. Tasks were only reachable by
+ * Every task across the round in one list. Tasks were only reachable by
  * opening the one deal that owned them, so work assigned to you was invisible
- * unless you already knew where to look.
+ * unless you already knew where to look — and what was overdue across the
+ * whole raise could not be answered at all.
  */
 export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQueueProps) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { can } = usePermissions();
+  const canCreate = can("pipeline", "create");
   const canUpdate = can("pipeline", "update");
-  const [scope, setScope] = useState<Scope>("mine");
+  const [view, setView] = useState<ViewId>("mine");
+  const [editing, setEditing] = useState<Task | "new" | null>(null);
 
   const membersQuery = useQuery({
-    queryKey: ["team-members", startupId],
+    queryKey: qk.members(startupId),
     queryFn: () => listMembers(startupId),
   });
 
@@ -65,67 +116,82 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
       : (member.invitedEmail ?? null);
   };
 
-  const tasksQuery = useQuery({
-    queryKey: ["tasks", startupId, "round", roundId],
-    queryFn: () => listTasks(startupId, { roundId: roundId!, status: "open", limit: 100 }),
-    enabled: roundId !== null,
-  });
+  const tasksQuery = useRoundTasks(startupId, roundId);
 
   const toggleMutation = useMutation({
-    mutationFn: (task: Task) => setTaskStatus(startupId, task.id, "completed"),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["tasks", startupId] });
-      void queryClient.invalidateQueries({ queryKey: ["pipeline-focus", startupId] });
+    mutationFn: (task: Task) =>
+      setTaskStatus(startupId, task.id, task.status === "completed" ? "open" : "completed"),
+    onSuccess: (_result, task) => {
+      toast.success(task.status === "completed" ? "Task reopened" : "Task completed");
+      invalidateTaskData(queryClient, startupId);
     },
     onError: (err) => toast.error(apiErrorMessage(err, "Could not update the task")),
   });
 
   const now = Date.now();
-  const all = tasksQuery.data?.data ?? [];
-  const mineCount = myMemberId
-    ? all.filter((task) => task.assigneeId === myMemberId).length
-    : 0;
-  const tasks = scope === "mine"
-    ? myMemberId
-      ? all.filter((task) => task.assigneeId === myMemberId)
-      : []
-    : all;
+  const all = useMemo(() => tasksQuery.data?.data ?? [], [tasksQuery.data]);
+
+  // Counted from the same list the tabs filter, so a badge can never disagree
+  // with what opening the tab actually shows.
+  const buckets = useMemo(() => {
+    const open = all.filter((task) => task.status === "open");
+    return {
+      mine: myMemberId ? open.filter((task) => task.assigneeId === myMemberId) : [],
+      overdue: open.filter((task) => isOverdue(task, now)),
+      today: open.filter((task) => isDueToday(task, now)),
+      everyone: open,
+      completed: all.filter((task) => task.status === "completed"),
+    } satisfies Record<ViewId, Task[]>;
+  }, [all, myMemberId, now]);
+
+  const tasks = buckets[view];
+
+  // A task can be relinked to any other deal in the round from here.
+  const dealOptions = useMemo(
+    () =>
+      [...entriesById.values()]
+        .map((entry) => ({ id: entry.id, label: entry.investor.fullName }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [entriesById],
+  );
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-      <div
-        role="tablist"
-        aria-label="Task scope"
-        className="inline-flex items-center gap-1 rounded-xl border border-border/70 bg-surface/60 p-1"
-      >
-        {(
-          [
-            { id: "mine" as const, label: "Assigned to me", count: mineCount },
-            { id: "everyone" as const, label: "Everyone", count: all.length },
-          ]
-        ).map((option) => (
-          <button
-            key={option.id}
-            role="tab"
-            type="button"
-            aria-selected={scope === option.id}
-            onClick={() => setScope(option.id)}
-            className={cn(
-              "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors",
-              scope === option.id
-                ? "bg-card font-medium text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {option.label}
-            <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-              {option.count}
-            </span>
-          </button>
-        ))}
-      </div>
-      <p className="text-xs text-muted-foreground">Showing open tasks for this round</p>
+        <div
+          role="tablist"
+          aria-label="Task view"
+          className="inline-flex flex-wrap items-center gap-1 rounded-xl border border-border/70 bg-surface/60 p-1"
+        >
+          {VIEWS.map((id) => (
+            <button
+              key={id}
+              role="tab"
+              type="button"
+              aria-selected={view === id}
+              onClick={() => setView(id)}
+              className={cn(
+                "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors",
+                view === id
+                  ? "bg-card font-medium text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+                // Overdue is the one count worth colouring even when unselected.
+                id === "overdue" && buckets.overdue.length > 0 && view !== id && "text-destructive",
+              )}
+            >
+              {VIEW_LABELS[id]}
+              <span className="font-mono text-[11px] tabular-nums opacity-75">
+                {buckets[id].length}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {canCreate && dealOptions.length > 0 && (
+          <Button type="button" size="sm" onClick={() => setEditing("new")}>
+            <Plus className="h-4 w-4" /> New task
+          </Button>
+        )}
       </div>
 
       {tasksQuery.isPending && (
@@ -139,12 +205,8 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
           <div className="grid h-10 w-10 place-items-center rounded-xl bg-success/15 text-success">
             <CheckCircle2 className="h-5 w-5" />
           </div>
-          <p className="font-display text-base font-semibold">
-            {scope === "mine" ? "Nothing assigned to you" : "No open tasks in this round"}
-          </p>
-          <p className="max-w-sm text-sm text-muted-foreground">
-            Tasks are added from a deal — open one from the board to set its next step.
-          </p>
+          <p className="font-display text-base font-semibold">{EMPTY_MESSAGES[view].title}</p>
+          <p className="max-w-sm text-sm text-muted-foreground">{EMPTY_MESSAGES[view].detail}</p>
         </div>
       )}
 
@@ -154,6 +216,7 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
             const deal = entriesById.get(task.pipelineId);
             const due = dueLabel(task.dueDate, now);
             const assignee = memberName(task.assigneeId);
+            const busy = toggleMutation.isPending && toggleMutation.variables?.id === task.id;
 
             return (
               <li
@@ -161,7 +224,27 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
                 className="flex flex-wrap items-center gap-3 rounded-xl border border-border/70 bg-surface/50 p-3"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{task.title}</p>
+                  {canUpdate ? (
+                    <button
+                      type="button"
+                      onClick={() => setEditing(task)}
+                      className={cn(
+                        "block max-w-full truncate text-left text-sm font-medium hover:text-primary hover:underline",
+                        task.status === "completed" && "text-muted-foreground line-through",
+                      )}
+                    >
+                      {task.title}
+                    </button>
+                  ) : (
+                    <p
+                      className={cn(
+                        "truncate text-sm font-medium",
+                        task.status === "completed" && "text-muted-foreground line-through",
+                      )}
+                    >
+                      {task.title}
+                    </p>
+                  )}
                   <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                     {deal && (
                       <button
@@ -173,8 +256,7 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
                       </button>
                     )}
                     <span>· {PRIORITY_LABELS[task.priority]}</span>
-                    {assignee && <span>· {assignee}</span>}
-                    {!task.assigneeId && <span>· Unassigned</span>}
+                    <span>· {assignee ?? "Unassigned"}</span>
                   </div>
                 </div>
 
@@ -182,24 +264,63 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
                   <CalendarClock className="h-3.5 w-3.5" />
                   {due.text}
                 </span>
+
                 {canUpdate && (
-                  <button
-                    type="button"
-                    role="checkbox"
-                    aria-checked="false"
-                    aria-label={`Complete task ${task.title}`}
-                    disabled={toggleMutation.isPending}
-                    onClick={() => toggleMutation.mutate(task)}
-                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-success/30 bg-success/[0.06] px-3 text-xs font-semibold text-success transition-colors hover:border-success/50 hover:bg-success/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40 disabled:pointer-events-none disabled:opacity-50"
-                  >
-                    <Check className="h-3.5 w-3.5" /> Mark done
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={task.status === "completed"}
+                      aria-label={
+                        task.status === "completed"
+                          ? `Reopen task ${task.title}`
+                          : `Complete task ${task.title}`
+                      }
+                      disabled={busy}
+                      onClick={() => toggleMutation.mutate(task)}
+                      className={cn(
+                        "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50",
+                        task.status === "completed"
+                          ? "border-border bg-card text-muted-foreground hover:text-foreground focus-visible:ring-ring"
+                          : "border-success/30 bg-success/[0.06] text-success hover:border-success/50 hover:bg-success/15 focus-visible:ring-success/40",
+                      )}
+                    >
+                      {task.status === "completed" ? (
+                        <>
+                          <RotateCcw className="h-3.5 w-3.5" /> Reopen
+                        </>
+                      ) : (
+                        <>
+                          <Check className="h-3.5 w-3.5" /> Mark done
+                        </>
+                      )}
+                    </button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+                      onClick={() => setEditing(task)}
+                      aria-label={`Edit task ${task.title}`}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  </>
                 )}
               </li>
             );
           })}
         </ul>
       )}
+
+      <TaskDialog
+        open={editing !== null}
+        onOpenChange={(next) => !next && setEditing(null)}
+        startupId={startupId}
+        task={editing === "new" ? null : editing}
+        pipelineId={dealOptions[0]?.id ?? null}
+        deals={dealOptions}
+      />
     </div>
   );
 }

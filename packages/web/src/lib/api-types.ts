@@ -1722,13 +1722,13 @@ export interface components {
             /** Format: uuid */
             id?: string;
             /**
-             * @description Rendered specially when known. The API emits "team_invite", "task_assigned", "task_overdue" and "task_due_today"; anything else falls back to a generic icon on the client. "followup_due" is legacy — no new one is created now that tasks have superseded follow-ups, but old rows may still be present.
+             * @description Rendered specially when known. The API emits "team_invite", "task_assigned", "task_overdue", "task_due_today", "lead_stale" and "deal_no_next_step"; anything else falls back to a generic icon on the client. "followup_due" is legacy — no new one is created now that tasks have superseded follow-ups, but old rows may still be present.
              * @example team_invite
              */
             type?: string;
             title?: string;
             body?: string | null;
-            /** @description What entityId points at, e.g. "startup_member" for a "team_invite" notification or "task" for any of the task ones */
+            /** @description What entityId points at, e.g. "startup_member" for a "team_invite" notification, "task" for any of the task ones, or "pipeline" for the deal reminders */
             entityType?: string | null;
             entityId?: string | null;
             /** Format: date-time */
@@ -1777,6 +1777,26 @@ export interface components {
             /** Format: uri */
             linkedinUrl?: string | null;
             notes?: string | null;
+            /**
+             * Format: date-time
+             * @description When the current note was first written. Cleared with the note.
+             */
+            notesCreatedAt?: string | null;
+            /**
+             * Format: uuid
+             * @description User id who wrote the current note. Server-derived, never accepted from the client. Null for notes written before authorship was recorded, or when that user has since been deleted.
+             */
+            notesCreatedBy?: string | null;
+            /**
+             * Format: date-time
+             * @description When the note was last changed. Equal to notesCreatedAt until it is edited.
+             */
+            notesUpdatedAt?: string | null;
+            /**
+             * Format: uuid
+             * @description User id who last changed the note. Server-derived.
+             */
+            notesUpdatedBy?: string | null;
             /** @example event */
             source?: string | null;
             /** Format: date-time */
@@ -2116,6 +2136,11 @@ export interface components {
         };
         /** @description At least one field is required. */
         UpdateTaskBody: {
+            /**
+             * Format: uuid
+             * @description Relinks the task to another deal in the same startup, keeping its history, assignee and due date. 404 PIPELINE_NOT_FOUND if the deal does not exist in this startup.
+             */
+            pipelineId?: string;
             title?: string;
             description?: string | null;
             status?: components["schemas"]["TaskStatus"];

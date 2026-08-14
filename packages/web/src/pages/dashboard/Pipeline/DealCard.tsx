@@ -4,6 +4,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   CalendarClock,
   Crown,
+  ListPlus,
   Mail,
   MessageSquare,
   MoveRight,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
+import { Checkbox } from "../../../components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,18 +49,34 @@ type DealCardBodyProps = {
    */
   ownerName: string | null;
   canUpdate: boolean;
+  /** Whether this card is picked for a bulk action; null hides selection entirely. */
+  selected?: boolean | null;
   /**
-   * Both callbacks take the deal id rather than being pre-bound per card, so
+   * Every callback takes the deal id rather than being pre-bound per card, so
    * a parent list can hand every card the exact same function reference
    * instead of a fresh closure each render — that's what lets DealCard's
    * memo actually skip re-rendering cards a drag never touched.
    */
   onOpen: (dealId: string) => void;
   onMove: (dealId: string, stage: PipelineStageId) => void;
+  /** Opens the task composer for this deal without opening the deal itself. */
+  onAddTask?: (dealId: string) => void;
+  onToggleSelected?: (dealId: string) => void;
 };
 
 /** Everything a deal card shows — shared between the live sortable card and the floating drag copy. */
-function DealCardBody({ deal, signals, focusReason, ownerName, canUpdate, onOpen, onMove }: DealCardBodyProps) {
+function DealCardBody({
+  deal,
+  signals,
+  focusReason,
+  ownerName,
+  canUpdate,
+  selected,
+  onOpen,
+  onMove,
+  onAddTask,
+  onToggleSelected,
+}: DealCardBodyProps) {
   const investor = deal.investor;
   const probability = deal.probabilityPercentage ?? 0;
   const TouchIcon = signals.lastTouchType ? TOUCH_ICONS[signals.lastTouchType] : null;
@@ -66,9 +84,25 @@ function DealCardBody({ deal, signals, focusReason, ownerName, canUpdate, onOpen
   return (
     <>
       <div className="flex items-center gap-2">
-        <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/15 font-display text-[10px] font-semibold text-primary">
-          {getInitials(investor.fullName)}
-        </div>
+        {selected == null ? (
+          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/15 font-display text-[10px] font-semibold text-primary">
+            {getInitials(investor.fullName)}
+          </div>
+        ) : (
+          // In selection mode the avatar gives up its slot: a checkbox in the
+          // same place keeps the card's height and layout identical, so
+          // entering selection never reflows the board.
+          <Checkbox
+            checked={selected}
+            onChange={() => onToggleSelected?.(deal.id)}
+            // The card body is a drag handle and the identity button covers
+            // the whole card, so the checkbox has to stop both.
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+            aria-label={`Select ${investor.fullName}`}
+            className="relative z-10 h-7 w-7 shrink-0"
+          />
+        )}
 
         {/* The whole identity block opens the deal; the drag handle and the move
             menu stay clickable because they sit outside this button. */}
@@ -100,12 +134,23 @@ function DealCardBody({ deal, signals, focusReason, ownerName, canUpdate, onOpen
                 variant="ghost"
                 size="icon"
                 className="relative z-10 h-7 w-7 shrink-0 text-muted-foreground"
-                aria-label={`Move ${investor.fullName} to another stage`}
+                aria-label={`Actions for ${investor.fullName}`}
               >
                 <MoveRight className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-48">
+              {onAddTask && (
+                <>
+                  {/* Setting the next step is the most common thing to do to a
+                      card, and it used to mean opening the deal first. */}
+                  <DropdownMenuItem onSelect={() => onAddTask(deal.id)}>
+                    <ListPlus className="mr-2 h-4 w-4" />
+                    Add task
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
               <DropdownMenuLabel>Move to stage</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {STAGES.map((target) => (
@@ -199,7 +244,7 @@ type DealCardProps = DealCardBodyProps;
  * actually changed.
  */
 export const DealCard = memo(function DealCard(props: DealCardProps) {
-  const { deal, focusReason, canUpdate } = props;
+  const { deal, focusReason, canUpdate, selected } = props;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: deal.id,
     disabled: !canUpdate,
@@ -226,6 +271,7 @@ export const DealCard = memo(function DealCard(props: DealCardProps) {
         // actually follows the cursor.
         isDragging && "opacity-0",
         focusReason && "border-l-2 border-l-warning",
+        selected && "border-primary ring-1 ring-primary/40",
       )}
     >
       <DealCardBody {...props} />

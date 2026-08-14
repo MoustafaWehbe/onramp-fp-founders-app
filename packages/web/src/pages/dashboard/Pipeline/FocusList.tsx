@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, Crown, Mail, Plus, Sparkles } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Crown, ListPlus, Mail, Plus, Sparkles } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { StageBadge } from "../Investors/StageBadge";
 import type { PipelineFocusEntry } from "../../../lib/pipeline-api";
@@ -11,6 +11,8 @@ type FocusListProps = {
   canCreate: boolean;
   onOpen: (deal: PipelineFocusEntry) => void;
   onLog: (deal: PipelineFocusEntry) => void;
+  /** Sets the next step straight from the row — most of this queue is here for want of one. */
+  onAddTask: (deal: PipelineFocusEntry) => void;
 };
 
 function dueLabel(nextTaskDueDate: string | null, now = Date.now()): string | null {
@@ -22,7 +24,7 @@ function dueLabel(nextTaskDueDate: string | null, now = Date.now()): string | nu
   return `Due in ${days}d`;
 }
 
-export function FocusList({ items, canCreate, onOpen, onLog }: FocusListProps) {
+export function FocusList({ items, canCreate, onOpen, onLog, onAddTask }: FocusListProps) {
   const [leadsOnly, setLeadsOnly] = useState(false);
   const leadCount = items.filter((deal) => deal.isLead).length;
   const visibleItems = leadsOnly ? items.filter((deal) => deal.isLead) : items;
@@ -143,10 +145,16 @@ export function FocusList({ items, canCreate, onOpen, onLog }: FocusListProps) {
                 </Button>
               )}
               {canCreate && (
-                <Button size="sm" variant="outline" onClick={() => onLog(deal)}>
-                  <Plus className="h-4 w-4" />
-                  Log
-                </Button>
+                <>
+                  <Button size="sm" variant="outline" onClick={() => onLog(deal)}>
+                    <Plus className="h-4 w-4" />
+                    Log
+                  </Button>
+                  <Button size="sm" onClick={() => onAddTask(deal)}>
+                    <ListPlus className="h-4 w-4" />
+                    Task
+                  </Button>
+                </>
               )}
             </div>
           </li>

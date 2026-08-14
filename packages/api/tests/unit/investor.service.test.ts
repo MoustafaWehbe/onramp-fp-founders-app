@@ -503,6 +503,105 @@ describe("InvestorService.updateInvestor", () => {
       expect.objectContaining({ data: { ventureFirm: null } }),
     );
   });
+
+  // Note authorship is derived from the authenticated caller, never trusted
+  // from the body — the same rule completedAt follows on tasks.
+  describe("note authorship", () => {
+    const USER_ID = "00000000-0000-0000-0000-000000000009";
+    const EDITOR_ID = "00000000-0000-0000-0000-00000000000a";
+
+    function updateData() {
+      return (mockPrisma.startupInvestor.update as jest.Mock).mock.calls[0][0].data;
+    }
+
+    it("records author and editor when the first note is written", async () => {
+      mockFindUnique({ byId: { id: CONTACT_ID, email: null, notes: null, notesCreatedAt: null } });
+      (mockPrisma.startupInvestor.update as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
+
+      await service.updateInvestor(STARTUP_ID, CONTACT_ID, { notes: "warm" } as never, USER_ID);
+
+      expect(updateData()).toMatchObject({
+        notes: "warm",
+        notesCreatedBy: USER_ID,
+        notesUpdatedBy: USER_ID,
+        notesCreatedAt: expect.any(Date),
+        notesUpdatedAt: expect.any(Date),
+      });
+    });
+
+    it("keeps the original author when someone else edits the note", async () => {
+      mockFindUnique({
+        byId: {
+          id: CONTACT_ID,
+          email: null,
+          notes: "warm",
+          notesCreatedAt: new Date("2026-01-01"),
+        },
+      });
+      (mockPrisma.startupInvestor.update as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
+
+      await service.updateInvestor(STARTUP_ID, CONTACT_ID, { notes: "warmer" } as never, EDITOR_ID);
+
+      const data = updateData();
+      expect(data).toMatchObject({ notesUpdatedBy: EDITOR_ID, notesUpdatedAt: expect.any(Date) });
+      expect(data).not.toHaveProperty("notesCreatedBy");
+      expect(data).not.toHaveProperty("notesCreatedAt");
+    });
+
+    it("clears authorship with the note, so a new note never inherits a byline", async () => {
+      mockFindUnique({
+        byId: {
+          id: CONTACT_ID,
+          email: null,
+          notes: "warm",
+          notesCreatedAt: new Date("2026-01-01"),
+        },
+      });
+      (mockPrisma.startupInvestor.update as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
+
+      await service.updateInvestor(STARTUP_ID, CONTACT_ID, { notes: null } as never, USER_ID);
+
+      expect(updateData()).toMatchObject({
+        notes: null,
+        notesCreatedAt: null,
+        notesCreatedBy: null,
+        notesUpdatedAt: null,
+        notesUpdatedBy: null,
+      });
+    });
+
+    it("does not touch the timestamps when the note is resubmitted unchanged", async () => {
+      mockFindUnique({
+        byId: {
+          id: CONTACT_ID,
+          email: null,
+          notes: "warm",
+          notesCreatedAt: new Date("2026-01-01"),
+        },
+      });
+      (mockPrisma.startupInvestor.update as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
+
+      await service.updateInvestor(
+        STARTUP_ID,
+        CONTACT_ID,
+        { notes: "warm", ventureFirm: "Acme" } as never,
+        USER_ID,
+      );
+
+      expect(updateData()).toEqual({ notes: "warm", ventureFirm: "Acme" });
+    });
+
+    it("leaves authorship alone when the update does not mention the note", async () => {
+      mockFindUnique({
+        byId: { id: CONTACT_ID, email: null, notes: "warm", notesCreatedAt: new Date("2026-01-01") },
+      });
+      (mockPrisma.startupInvestor.update as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
+
+      await service.updateInvestor(STARTUP_ID, CONTACT_ID, { sectorFocus: "Fintech" } as never, USER_ID);
+
+      expect(updateData()).toEqual({ sectorFocus: "Fintech" });
+    });
+  });
 });
 
 describe("InvestorService.deleteInvestor", () => {

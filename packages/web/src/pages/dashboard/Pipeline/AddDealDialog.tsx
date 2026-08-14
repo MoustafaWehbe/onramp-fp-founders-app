@@ -23,6 +23,7 @@ import { Label } from "../../../components/ui/label";
 import { listInvestors } from "../../../lib/investor-api";
 import { STAGES, type PipelineStageId } from "../../../lib/mock-data";
 import { fetchAllPages } from "../../../lib/pagination";
+import { qk } from "../../../lib/query-keys";
 import { cn } from "../../../lib/utils";
 
 export type AddDealValues = {
@@ -60,7 +61,7 @@ export function AddDealDialog({
   }, [open]);
 
   const contactsQuery = useQuery({
-    queryKey: ["investors", startupId, "for-pipeline"],
+    queryKey: qk.investors(startupId, "for-pipeline"),
     // Every unassigned contact has to be in this list for the picker to be
     // useful, so page through in small batches rather than asking for one big one.
     queryFn: () => fetchAllPages((page, limit) => listInvestors(startupId, { page, limit })),

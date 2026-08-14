@@ -1,5 +1,6 @@
 import cron from "node-cron";
 import { prisma } from "../db/prisma";
+import { notifyStaleLeadsAndIdleDeals } from "./pipeline-reminders";
 import { notifyOverdueAndDueTodayTasks } from "./task-notifications";
 
 export function startCronJobs(): void {
@@ -24,6 +25,14 @@ export function startCronJobs(): void {
       await notifyOverdueAndDueTodayTasks();
     } catch (err) {
       console.error("[cron] Failed to notify overdue/due-today tasks:", err);
+    }
+
+    // Deliberately after the task pass and in its own try: a deal reminder is
+    // less urgent than a dated task, and neither may take the other down.
+    try {
+      await notifyStaleLeadsAndIdleDeals();
+    } catch (err) {
+      console.error("[cron] Failed to notify stale leads / deals without a next step:", err);
     }
   });
 

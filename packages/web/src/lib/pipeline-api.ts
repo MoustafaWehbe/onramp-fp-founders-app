@@ -14,6 +14,11 @@ export type PipelineContact = {
   investmentStagePreference: string | null;
   linkedinUrl: string | null;
   notes: string | null;
+  /** Authorship of `notes`, all server-derived. Null before anyone wrote one. */
+  notesCreatedAt: string | null;
+  notesCreatedBy: string | null;
+  notesUpdatedAt: string | null;
+  notesUpdatedBy: string | null;
   source: string | null;
   createdAt: string;
   updatedAt: string;

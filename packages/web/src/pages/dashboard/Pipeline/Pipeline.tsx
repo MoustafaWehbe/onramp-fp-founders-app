@@ -55,9 +55,17 @@ import {
 } from "../../../lib/fundraising-api";
 import { Select } from "../../../components/ui/select";
 import { fetchAllPages } from "../../../lib/pagination";
+import {
+  invalidateDealData,
+  invalidateFinancialData,
+  invalidateInteractionData,
+  qk,
+} from "../../../lib/query-keys";
 import { listMembers } from "../../../lib/team-api";
 import { LogInteractionDialog, type LogFormValues } from "../Investors/LogInteractionDialog";
 import { AddDealDialog, type AddDealValues } from "./AddDealDialog";
+import { BulkActionsBar } from "./BulkActionsBar";
+import { TaskDialog } from "./TaskDialog";
 import {
   buildColumns,
   columnOf,
@@ -144,6 +152,12 @@ export function Pipeline() {
   });
   // Logging straight from the focus list, without opening the deal first.
   const [quickLogDeal, setQuickLogDeal] = useState<PipelineEntry | null>(null);
+  // Same idea for the next step: a card or focus row can set one without the
+  // detour through the deal sheet.
+  const [quickTaskDealId, setQuickTaskDealId] = useState<string | null>(null);
+  // null means the board is not in selection mode at all; an empty set means
+  // it is, with nothing picked yet.
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string> | null>(null);
   // A move into Passed is held here until a reason is given — the server
   // rejects the transition without one, whichever way it was triggered.
   const [pendingPass, setPendingPass] = useState<{
@@ -169,7 +183,7 @@ export function Pipeline() {
   );
 
   const roundsQuery = useQuery({
-    queryKey: ["fundraising-rounds", startupId],
+    queryKey: qk.rounds(startupId),
     queryFn: () => listFundraisingRounds(startupId),
   });
   const activeRound = useMemo<FundraisingRound | null>(() => {
@@ -182,7 +196,7 @@ export function Pipeline() {
   }, [activeRound, preferredRoundId, setActiveRoundId, startupId]);
 
   const pipelineQuery = useQuery({
-    queryKey: ["pipeline", startupId, activeRound?.id],
+    queryKey: qk.pipeline(startupId, activeRound?.id),
     // The whole board has to be on screen at once for a Kanban to make sense,
     // so page through in batches of 10 rather than asking for everything at once.
     queryFn: () =>
@@ -196,7 +210,7 @@ export function Pipeline() {
   // One workspace-wide fetch beats a request per card; logs come back
   // newest-first so the freshest signals always survive.
   const logsQuery = useQuery({
-    queryKey: ["interaction-logs", startupId, "board"],
+    queryKey: qk.logsForBoard(startupId),
     queryFn: () =>
       fetchAllPages((page, limit) => listInteractionLogs(startupId, { page, limit })).then(
         (data) => ({ data }),
@@ -204,7 +218,7 @@ export function Pipeline() {
   });
 
   const analyticsQuery = useQuery({
-    queryKey: ["pipeline-analytics", startupId, activeRound?.id],
+    queryKey: qk.pipelineAnalytics(startupId, activeRound?.id),
     queryFn: () => getPipelineAnalytics(startupId, activeRound?.id),
     // Only fetched once the tab is actually opened; nothing else on the page
     // needs it.
@@ -215,7 +229,7 @@ export function Pipeline() {
   // dates — never a page-through of every interaction log. Fetched whenever
   // the board itself is (not just the Focus tab) so cards can flag it too.
   const focusQuery = useQuery({
-    queryKey: ["pipeline-focus", startupId, activeRound?.id],
+    queryKey: qk.pipelineFocus(startupId, activeRound?.id),
     queryFn: () => getPipelineFocus(startupId, activeRound?.id),
     enabled: Boolean(activeRound),
   });
@@ -250,7 +264,7 @@ export function Pipeline() {
 
   // Deals carry a StartupMember id; the board wants a name to initial.
   const membersQuery = useQuery({
-    queryKey: ["team-members", startupId],
+    queryKey: qk.members(startupId),
     queryFn: () => listMembers(startupId),
   });
 
@@ -353,19 +367,16 @@ export function Pipeline() {
   // Already pre-sorted by urgency server-side.
   const focusItems = focusQuery.data ?? [];
 
-  const invalidatePipeline = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ["pipeline", startupId] });
-    void queryClient.invalidateQueries({ queryKey: ["investors", startupId] });
-    void queryClient.invalidateQueries({ queryKey: ["pipeline-analytics", startupId] });
-    void queryClient.invalidateQueries({ queryKey: ["pipeline-focus", startupId] });
-  }, [queryClient, startupId]);
+  const invalidatePipeline = useCallback(
+    () => invalidateDealData(queryClient, startupId),
+    [queryClient, startupId],
+  );
 
   /** Last-touch signals live in the logs, so the board's signals must refetch too. */
-  const invalidateLogs = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ["interaction-logs", startupId] });
-    void queryClient.invalidateQueries({ queryKey: ["investors", startupId] });
-    void queryClient.invalidateQueries({ queryKey: ["pipeline-focus", startupId] });
-  }, [queryClient, startupId]);
+  const invalidateLogs = useCallback(
+    () => invalidateInteractionData(queryClient, startupId),
+    [queryClient, startupId],
+  );
 
   const moveMutation = useMutation({
     mutationFn: ({
@@ -392,8 +403,8 @@ export function Pipeline() {
         ...(commitment && { commitment }),
       }),
     onMutate: async ({ pipelineId, stage, sortOrder, changedStage }) => {
-      await queryClient.cancelQueries({ queryKey: ["pipeline", startupId] });
-      const pipelineKey = ["pipeline", startupId, activeRound?.id] as const;
+      await queryClient.cancelQueries({ queryKey: qk.pipeline(startupId, activeRound?.id) });
+      const pipelineKey = qk.pipeline(startupId, activeRound?.id);
       const previous = queryClient.getQueryData<{ data: PipelineEntry[] }>(pipelineKey);
 
       queryClient.setQueryData<{ data: PipelineEntry[]; meta?: unknown }>(
@@ -422,7 +433,7 @@ export function Pipeline() {
     },
     onError: (err, _vars, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(["pipeline", startupId, activeRound?.id], context.previous);
+        queryClient.setQueryData(qk.pipeline(startupId, activeRound?.id), context.previous);
       }
       toast.error(pipelineErrorMessage(err, "Could not move deal"));
     },
@@ -504,6 +515,30 @@ export function Pipeline() {
     },
     [canUpdate, entries, entriesById, moveMutation],
   );
+
+  const toggleSelected = useCallback((dealId: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current ?? []);
+      if (next.has(dealId)) next.delete(dealId);
+      else next.add(dealId);
+      return next;
+    });
+  }, []);
+
+  // Only what's on screen: selecting behind an active filter would act on
+  // deals the founder cannot see.
+  const selectAllVisible = useCallback(
+    () => setSelectedIds(new Set(visibleEntries.map((entry) => entry.id))),
+    [visibleEntries],
+  );
+
+  const selectedDeals = useMemo(
+    () =>
+      selectedIds === null ? [] : visibleEntries.filter((entry) => selectedIds.has(entry.id)),
+    [selectedIds, visibleEntries],
+  );
+
+  const quickTaskDeal = quickTaskDealId ? (entriesById.get(quickTaskDealId) ?? null) : null;
 
   const handleDragStart = (event: DragStartEvent) => {
     if (!canUpdate) return;
@@ -589,7 +624,7 @@ export function Pipeline() {
         onSuccess: () => {
           setPendingCommit(null);
           // The round page reads the same commitment this just wrote.
-          void queryClient.invalidateQueries({ queryKey: ["commitments", startupId] });
+          invalidateFinancialData(queryClient, startupId);
           toast.success("Commitment recorded against the round");
         },
       },
@@ -698,6 +733,7 @@ export function Pipeline() {
           canCreate={canCreate}
           onOpen={(deal) => setOpenDealId(deal.id)}
           onLog={setQuickLogDeal}
+          onAddTask={(deal) => setQuickTaskDealId(deal.id)}
         />
       )}
 
@@ -732,12 +768,30 @@ export function Pipeline() {
       )}
 
       {boardReady && activeView === "board" && entries.length > 0 && (
-        <PipelineToolbar
-          view={view}
-          onChange={(key, value) => setView((prev) => ({ ...prev, [key]: value }))}
-          visibleCount={visibleEntries.length}
-          totalCount={entries.length}
-        />
+        <>
+          <PipelineToolbar
+            view={view}
+            onChange={(key, value) => setView((prev) => ({ ...prev, [key]: value }))}
+            visibleCount={visibleEntries.length}
+            totalCount={entries.length}
+            canSelect={canUpdate || canCreate}
+            selectionActive={selectedIds !== null}
+            onToggleSelection={() =>
+              setSelectedIds((current) => (current === null ? new Set() : null))
+            }
+          />
+
+          {selectedIds !== null && (
+            <BulkActionsBar
+              startupId={startupId}
+              selected={selectedDeals}
+              canUpdate={canUpdate}
+              canCreate={canCreate}
+              onSelectAll={selectAllVisible}
+              onClear={() => setSelectedIds(null)}
+            />
+          )}
+        </>
       )}
 
       {boardReady && activeView === "board" && (
@@ -795,8 +849,11 @@ export function Pipeline() {
                       ? "Nothing matches here"
                       : "Drop an investor here"
                   }
+                  selectedIds={selectedIds}
                   onOpen={setOpenDealId}
                   onMove={moveDeal}
+                  onAddTask={canCreate ? setQuickTaskDealId : undefined}
+                  onToggleSelected={toggleSelected}
                 />
               );
             })}
@@ -825,8 +882,22 @@ export function Pipeline() {
         focusReason={openDealId ? focusReasonFor(openDealId) : null}
         roundName={activeRound?.roundName ?? "this round"}
         rounds={roundsQuery.data?.data ?? []}
+        otherLeadNames={leads
+          .filter((entry) => entry.id !== openDealId)
+          .map((entry) => entry.investor.fullName)}
         onOpenChange={(open) => !open && setOpenDealId(null)}
         onRemove={setPendingRemove}
+      />
+
+      <TaskDialog
+        open={quickTaskDeal !== null}
+        onOpenChange={(open) => !open && setQuickTaskDealId(null)}
+        startupId={startupId}
+        task={null}
+        pipelineId={quickTaskDeal?.id ?? null}
+        deals={
+          quickTaskDeal ? [{ id: quickTaskDeal.id, label: quickTaskDeal.investor.fullName }] : []
+        }
       />
 
       <LogInteractionDialog

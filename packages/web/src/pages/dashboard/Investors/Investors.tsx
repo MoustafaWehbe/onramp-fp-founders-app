@@ -27,6 +27,7 @@ import {
   type InvestorInput,
 } from "../../../lib/investor-api";
 import { createPipelineEntry } from "../../../lib/pipeline-api";
+import { invalidateDealData, qk } from "../../../lib/query-keys";
 import { cn } from "../../../lib/utils";
 import { ImportInvestorsDialog } from "./ImportInvestorsDialog";
 import { InvestorDetailDialog } from "./InvestorDetailDialog";
@@ -103,11 +104,7 @@ export function Investors() {
   }, [tab, debouncedSearch, filters.stage, filters.investorType]);
 
   const investorsQuery = useQuery({
-    queryKey: [
-      "investors",
-      startupId,
-      { tab, search: debouncedSearch, ...filters, page },
-    ],
+    queryKey: qk.investors(startupId, { tab, search: debouncedSearch, ...filters, page }),
     queryFn: () =>
       listInvestors(startupId, {
         page,
@@ -131,10 +128,7 @@ export function Investors() {
   const counts = meta?.engagementCounts ?? { engaged: 0, prospect: 0 };
   const totalPages = meta?.totalPages ?? 1;
 
-  const invalidateInvestors = () => {
-    void queryClient.invalidateQueries({ queryKey: ["investors", startupId] });
-    void queryClient.invalidateQueries({ queryKey: ["pipeline", startupId] });
-  };
+  const invalidateInvestors = () => invalidateDealData(queryClient, startupId);
 
   const saveMutation = useMutation({
     mutationFn: (input: InvestorInput) =>

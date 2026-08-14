@@ -300,6 +300,69 @@ describe("TaskService.updateTask", () => {
     expect(call.data).not.toHaveProperty("completedAt");
   });
 
+  // A task filed against the wrong investor used to have to be deleted and
+  // retyped, losing its assignee, due date and completion history.
+  it("relinks a task to another deal once that deal is verified in the same startup", async () => {
+    const OTHER_PIPELINE = "00000000-0000-0000-0000-000000000077";
+    (mockPrisma.task.findUnique as jest.Mock).mockResolvedValue({
+      id: TASK_ID,
+      startupId: STARTUP_ID,
+      status: "open",
+      assigneeId: null,
+      pipelineId: PIPELINE_ID,
+    });
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({ id: OTHER_PIPELINE });
+    (mockPrisma.task.update as jest.Mock).mockResolvedValue(taskRow({ pipelineId: OTHER_PIPELINE }));
+
+    await service.updateTask(STARTUP_ID, TASK_ID, { pipelineId: OTHER_PIPELINE } as never);
+
+    expect(mockPrisma.pipeline.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { startupId_id: { startupId: STARTUP_ID, id: OTHER_PIPELINE } },
+      }),
+    );
+    expect(mockPrisma.task.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ pipelineId: OTHER_PIPELINE }) }),
+    );
+  });
+
+  it("refuses to relink a task to a deal in another startup", async () => {
+    const FOREIGN_PIPELINE = "00000000-0000-0000-0000-000000000078";
+    (mockPrisma.task.findUnique as jest.Mock).mockResolvedValue({
+      id: TASK_ID,
+      startupId: STARTUP_ID,
+      status: "open",
+      assigneeId: null,
+      pipelineId: PIPELINE_ID,
+    });
+    // The composite key is what makes a foreign deal simply not exist here.
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue(null);
+
+    await expect(
+      service.updateTask(STARTUP_ID, TASK_ID, { pipelineId: FOREIGN_PIPELINE } as never),
+    ).rejects.toMatchObject({ statusCode: 404, code: "PIPELINE_NOT_FOUND" });
+
+    expect(mockPrisma.task.update).not.toHaveBeenCalled();
+  });
+
+  it("does not re-verify the deal when the link is unchanged", async () => {
+    (mockPrisma.task.findUnique as jest.Mock).mockResolvedValue({
+      id: TASK_ID,
+      startupId: STARTUP_ID,
+      status: "open",
+      assigneeId: null,
+      pipelineId: PIPELINE_ID,
+    });
+    (mockPrisma.task.update as jest.Mock).mockResolvedValue(taskRow());
+
+    await service.updateTask(STARTUP_ID, TASK_ID, {
+      pipelineId: PIPELINE_ID,
+      title: "Same deal, new title",
+    } as never);
+
+    expect(mockPrisma.pipeline.findUnique).not.toHaveBeenCalled();
+  });
+
   it("verifies a reassigned assignee belongs to the same startup", async () => {
     (mockPrisma.task.findUnique as jest.Mock).mockResolvedValue({
       id: TASK_ID,

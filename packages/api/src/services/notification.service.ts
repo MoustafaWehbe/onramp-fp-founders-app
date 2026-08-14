@@ -12,7 +12,17 @@ export const NOTIFICATION_TYPES = {
   TASK_OVERDUE: "task_overdue",
   TASK_DUE_TODAY: "task_due_today",
   TASK_ASSIGNED: "task_assigned",
+  LEAD_STALE: "lead_stale",
+  DEAL_NO_NEXT_STEP: "deal_no_next_step",
 } as const;
+
+/**
+ * How long a deal reminder suppresses the next one for the same deal. Unlike
+ * an overdue task, a quiet lead never "completes" — it simply stays quiet — so
+ * these cannot dedupe on the entity forever or a deal that goes cold again in
+ * three months would never be mentioned twice.
+ */
+const DEAL_REMINDER_COOLDOWN_DAYS = 7;
 
 const NOTIFICATION_SELECT = {
   id: true,
@@ -301,6 +311,85 @@ export class NotificationService {
       });
     } catch (err) {
       console.error("[notifyTaskAssigned] failed:", err);
+    }
+  }
+
+  /**
+   * A lead investor who has gone quiet. A priced round does not happen
+   * without its lead, so this is the one deal whose silence is worth
+   * interrupting someone over.
+   */
+  async notifyLeadStale(input: {
+    userId: string;
+    startupId: string;
+    pipelineId: string;
+    investorName: string;
+    daysQuiet: number;
+  }): Promise<void> {
+    await this.notifyDeal(NOTIFICATION_TYPES.LEAD_STALE, {
+      userId: input.userId,
+      startupId: input.startupId,
+      pipelineId: input.pipelineId,
+      title: `Lead investor ${input.investorName} has gone quiet`,
+      body: `No contact logged in ${input.daysQuiet} days. Set the next step before the round loses its anchor.`,
+    });
+  }
+
+  /** A live deal nobody has given a next step — the quiet way a raise stalls. */
+  async notifyDealNoNextStep(input: {
+    userId: string;
+    startupId: string;
+    pipelineId: string;
+    investorName: string;
+  }): Promise<void> {
+    await this.notifyDeal(NOTIFICATION_TYPES.DEAL_NO_NEXT_STEP, {
+      userId: input.userId,
+      startupId: input.startupId,
+      pipelineId: input.pipelineId,
+      title: `${input.investorName} has no next step`,
+      body: "This deal is live with no open task. Add one so it does not go cold.",
+    });
+  }
+
+  private async notifyDeal(
+    type: (typeof NOTIFICATION_TYPES)["LEAD_STALE"] | (typeof NOTIFICATION_TYPES)["DEAL_NO_NEXT_STEP"],
+    input: { userId: string; startupId: string; pipelineId: string; title: string; body: string },
+  ): Promise<void> {
+    try {
+      const cooldownStart = new Date(
+        Date.now() - DEAL_REMINDER_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
+      );
+      const recent = await prisma.notification.findFirst({
+        where: {
+          userId: input.userId,
+          type,
+          entityType: "pipeline",
+          entityId: input.pipelineId,
+          createdAt: { gte: cooldownStart },
+        },
+        select: { id: true },
+      });
+      if (recent) return;
+
+      const created = await prisma.notification.create({
+        data: {
+          userId: input.userId,
+          startupId: input.startupId,
+          type,
+          title: input.title,
+          body: input.body,
+          entityType: "pipeline",
+          entityId: input.pipelineId,
+        },
+        select: { id: true, type: true, title: true, body: true },
+      });
+
+      notificationBus.publish(input.userId, {
+        type: "notification.created",
+        notification: created,
+      });
+    } catch (err) {
+      console.error("[notifyDeal] failed:", err);
     }
   }
 

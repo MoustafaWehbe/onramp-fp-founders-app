@@ -40,6 +40,8 @@ model User {
   notifications        Notification[]
   pipelineStageEvents  PipelineStageEvent[]
   tasks                Task[]
+  authoredInvestorNotes StartupInvestor[]   @relation("InvestorNotesAuthor")
+  editedInvestorNotes   StartupInvestor[]   @relation("InvestorNotesEditor")
 
   @@map("users")
 }
@@ -274,11 +276,17 @@ model StartupInvestor {
   investmentStagePreference String?  @map("investment_stage_preference")
   linkedinUrl               String?  @map("linkedin_url")
   notes                     String?
+  notesCreatedAt            DateTime? @map("notes_created_at")
+  notesCreatedBy            String?   @map("notes_created_by")
+  notesUpdatedAt            DateTime? @map("notes_updated_at")
+  notesUpdatedBy            String?   @map("notes_updated_by")
   source                    String?
   createdAt                 DateTime @default(now()) @map("created_at")
   updatedAt                 DateTime @updatedAt @map("updated_at")
 
   startup             Startup              @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  notesAuthor         User?                @relation("InvestorNotesAuthor", fields: [notesCreatedBy], references: [id], onDelete: SetNull)
+  notesEditor         User?                @relation("InvestorNotesEditor", fields: [notesUpdatedBy], references: [id], onDelete: SetNull)
   pipeline            Pipeline[]           @relation("PipelineInvestor")
   interactionLogs     InteractionLog[]
   commitments         Commitment[]         @relation("CommitmentInvestor")

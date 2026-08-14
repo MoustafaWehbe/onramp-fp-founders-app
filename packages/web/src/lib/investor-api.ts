@@ -30,6 +30,14 @@ export type InvestorContact = {
   investmentStagePreference: string | null;
   linkedinUrl: string | null;
   notes: string | null;
+  /**
+   * Who wrote and last changed `notes`, and when. Server-derived from the
+   * authenticated caller — never sent on the way in.
+   */
+  notesCreatedAt: string | null;
+  notesCreatedBy: string | null;
+  notesUpdatedAt: string | null;
+  notesUpdatedBy: string | null;
   source: string | null;
   createdAt: string;
   updatedAt: string;

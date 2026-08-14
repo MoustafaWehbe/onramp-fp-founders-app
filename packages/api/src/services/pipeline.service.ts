@@ -19,6 +19,10 @@ const CONTACT_SELECT = {
   investmentStagePreference: true,
   linkedinUrl: true,
   notes: true,
+  notesCreatedAt: true,
+  notesCreatedBy: true,
+  notesUpdatedAt: true,
+  notesUpdatedBy: true,
   source: true,
   createdAt: true,
   updatedAt: true,
@@ -74,6 +78,10 @@ type EntryRow = {
     investmentStagePreference: string | null;
     linkedinUrl: string | null;
     notes: string | null;
+    notesCreatedAt: Date | null;
+    notesCreatedBy: string | null;
+    notesUpdatedAt: Date | null;
+    notesUpdatedBy: string | null;
     source: string | null;
     createdAt: Date;
     updatedAt: Date;

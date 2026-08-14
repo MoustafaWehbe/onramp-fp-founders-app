@@ -15,6 +15,7 @@ import { Progress } from "../../components/ui/progress";
 import { LoadingSpinner } from "../../components/shared/LoadingSpinner";
 import { useAuth } from "../../hooks/useAuth";
 import { usePermissions } from "../../hooks/usePermissions";
+import { useRoundTasks } from "../../hooks/useRoundTasks";
 import { useWorkspace } from "../../hooks/useWorkspace";
 import { apiErrorMessage } from "../../lib/api-error";
 import { useAppStore } from "../../lib/app-store";
@@ -22,8 +23,9 @@ import { isBankable, listCommitments, listFundraisingRounds, type FundraisingRou
 import { fetchAllPages } from "../../lib/pagination";
 import { STAGES } from "../../lib/mock-data";
 import { getPipelineFocus, listPipelineEntries, type PipelineEntry, type PipelineFocusEntry } from "../../lib/pipeline-api";
+import { invalidateTaskData, qk } from "../../lib/query-keys";
 import { listMembers } from "../../lib/team-api";
-import { listTasks, setTaskStatus, type Task } from "../../lib/task-api";
+import { setTaskStatus, type Task } from "../../lib/task-api";
 import { cn, formatCompactUsd, getInitials } from "../../lib/utils";
 import { NoWorkspaceHome } from "./NoWorkspaceHome";
 import { FOCUS_REASON_LABELS, FOCUS_REASON_TONES } from "./Pipeline/deal-signals";
@@ -99,7 +101,7 @@ function TodayWorkspace({ startupId }: { startupId: string }) {
   const queryClient = useQueryClient();
   const preferredRoundId = useAppStore((state) => state.activeRoundIds[startupId]);
   const setActiveRoundId = useAppStore((state) => state.setActiveRoundId);
-  const roundsQuery = useQuery({ queryKey: ["fundraising-rounds", startupId], queryFn: () => listFundraisingRounds(startupId) });
+  const roundsQuery = useQuery({ queryKey: qk.rounds(startupId), queryFn: () => listFundraisingRounds(startupId) });
   const rounds = roundsQuery.data?.data ?? [];
   const activeRound = useMemo<FundraisingRound | null>(
     () => rounds.find((round) => round.id === preferredRoundId) ?? rounds.find((round) => round.status === "active") ?? rounds[0] ?? null,
@@ -110,27 +112,30 @@ function TodayWorkspace({ startupId }: { startupId: string }) {
     if (activeRound && activeRound.id !== preferredRoundId) setActiveRoundId(startupId, activeRound.id);
   }, [activeRound, preferredRoundId, setActiveRoundId, startupId]);
 
-  const membersQuery = useQuery({ queryKey: ["team-members", startupId], queryFn: () => listMembers(startupId) });
+  const membersQuery = useQuery({ queryKey: qk.members(startupId), queryFn: () => listMembers(startupId) });
   const myMemberId = useMemo(
     () => membersQuery.data?.find((member) => member.user?.id === user?.id)?.id ?? null,
     [membersQuery.data, user?.id],
   );
   const pipelineQuery = useQuery({
-    queryKey: ["pipeline", startupId, activeRound?.id],
-    // Keep the exact same cache shape as Pipeline.tsx. These screens share
-    // this key, so storing a bare array here makes client-side navigation into
-    // Pipeline crash until a refresh replaces the incompatible cached value.
+    // Key and shape both come from lib/query-keys, because Pipeline.tsx reads
+    // this same entry: storing a bare array here made client-side navigation
+    // into Pipeline crash until a refresh replaced the incompatible value.
+    queryKey: qk.pipeline(startupId, activeRound?.id),
     queryFn: () => fetchAllPages((page, limit) => listPipelineEntries(startupId, { page, limit, roundId: activeRound!.id })).then((data) => ({ data })),
     enabled: Boolean(activeRound),
   });
-  const focusQuery = useQuery({ queryKey: ["pipeline-focus", startupId, activeRound?.id], queryFn: () => getPipelineFocus(startupId, activeRound!.id), enabled: Boolean(activeRound) });
-  const tasksQuery = useQuery({ queryKey: ["tasks", startupId, "round", activeRound?.id], queryFn: () => listTasks(startupId, { roundId: activeRound!.id, status: "open", limit: 100 }), enabled: Boolean(activeRound) });
-  const commitmentsQuery = useQuery({ queryKey: ["commitments", startupId, activeRound?.id], queryFn: () => listCommitments(startupId, activeRound!.id), enabled: Boolean(activeRound) });
+  const focusQuery = useQuery({ queryKey: qk.pipelineFocus(startupId, activeRound?.id), queryFn: () => getPipelineFocus(startupId, activeRound!.id), enabled: Boolean(activeRound) });
+  // The whole round's tasks, shared with the pipeline's task queue; "mine" and
+  // "open" are narrowed below rather than server-side, so both readers of this
+  // key get the same rows.
+  const tasksQuery = useRoundTasks(startupId, activeRound?.id);
+  const commitmentsQuery = useQuery({ queryKey: qk.commitments(startupId, activeRound?.id), queryFn: () => listCommitments(startupId, activeRound!.id), enabled: Boolean(activeRound) });
 
   const entries = pipelineQuery.data?.data ?? [];
   const entriesById = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries]);
   const myTasks = useMemo(() => (tasksQuery.data?.data ?? [])
-    .filter((task) => myMemberId !== null && task.assigneeId === myMemberId)
+    .filter((task) => task.status === "open" && myMemberId !== null && task.assigneeId === myMemberId)
     .sort((a, b) => (a.dueDate ? new Date(a.dueDate).getTime() : Infinity) - (b.dueDate ? new Date(b.dueDate).getTime() : Infinity)), [myMemberId, tasksQuery.data]);
   const overdueCount = myTasks.filter((task) => taskDue(task).overdue).length;
   const focusItems = focusQuery.data ?? [];
@@ -154,8 +159,7 @@ function TodayWorkspace({ startupId }: { startupId: string }) {
     mutationFn: (task: Task) => setTaskStatus(startupId, task.id, "completed"),
     onSuccess: () => {
       toast.success("Task completed");
-      void queryClient.invalidateQueries({ queryKey: ["tasks", startupId] });
-      void queryClient.invalidateQueries({ queryKey: ["pipeline-focus", startupId] });
+      invalidateTaskData(queryClient, startupId);
     },
     onError: (error) => toast.error(apiErrorMessage(error, "Could not complete the task")),
   });

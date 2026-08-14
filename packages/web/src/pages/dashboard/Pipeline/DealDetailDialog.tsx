@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, ChevronDown, Crown, History, LayoutDashboard, Linkedin, ListChecks, Mail, Pencil, Plus, Save, Sparkles, StickyNote, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
 import { Button } from "../../../components/ui/button";
 import {
   Dialog,
@@ -42,6 +43,13 @@ import {
   type FocusReason,
   type PipelineEntry,
 } from "../../../lib/pipeline-api";
+import {
+  invalidateDealData,
+  invalidateFinancialData,
+  invalidateInteractionData,
+  invalidateStageData,
+  qk,
+} from "../../../lib/query-keys";
 import { listMembers } from "../../../lib/team-api";
 import {
   OPEN_ROUND_STATUSES,
@@ -52,6 +60,7 @@ import { PRIORITIES, PRIORITY_LABELS, type Priority } from "../../../lib/task-ap
 import { cn, formatCompactUsd, getInitials } from "../../../lib/utils";
 import { InteractionTimeline } from "../Investors/InteractionTimeline";
 import { LogInteractionDialog, type LogFormValues } from "../Investors/LogInteractionDialog";
+import { NoteByline } from "../Investors/NoteByline";
 import {
   formatDateTime,
   formatDaysAgo,
@@ -74,6 +83,8 @@ type DealDetailDialogProps = {
   roundName: string;
   /** Every round this deal could be carried into, plus the one it's in. */
   rounds: FundraisingRound[];
+  /** Investors already leading this round, excluding this one. */
+  otherLeadNames: string[];
   onOpenChange: (open: boolean) => void;
   onRemove: (deal: PipelineEntry) => void;
 };
@@ -110,6 +121,7 @@ export function DealDetailDialog({
   focusReason,
   roundName,
   rounds,
+  otherLeadNames,
   onOpenChange,
   onRemove,
 }: DealDetailDialogProps) {
@@ -130,7 +142,11 @@ export function DealDetailDialog({
   const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "activity">("overview");
   const [noteDraft, setNoteDraft] = useState("");
   const [noteEditing, setNoteEditing] = useState(false);
+  const [noteDeleteOpen, setNoteDeleteOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  // Naming the round's lead is a commitment the whole team reads, so it is
+  // confirmed in both directions rather than toggled by a stray click.
+  const [leadConfirmOpen, setLeadConfirmOpen] = useState(false);
 
   const investorId = deal?.investor.id ?? null;
 
@@ -144,11 +160,13 @@ export function DealDetailDialog({
     setInvestorFitScore(deal.investorFitScore == null ? "" : String(deal.investorFitScore));
     setNoteDraft(deal.investor.notes ?? "");
     setNoteEditing(false);
+    setNoteDeleteOpen(false);
+    setLeadConfirmOpen(false);
     setDetailsOpen(false);
   }, [deal]);
 
   const logsQuery = useQuery({
-    queryKey: ["interaction-logs", startupId, investorId],
+    queryKey: qk.logsForInvestor(startupId, investorId),
     queryFn: () =>
       fetchAllPages((page, limit) =>
         listLogsForInvestor(startupId, investorId!, { page, limit }),
@@ -159,14 +177,14 @@ export function DealDetailDialog({
   // Who added this deal and who's moved its stage since — shown alongside
   // the logged interactions so "what happened" always answers "who did it".
   const stageEventsQuery = useQuery({
-    queryKey: ["pipeline-stage-events", startupId, deal?.id],
+    queryKey: qk.stageEvents(startupId, deal?.id),
     queryFn: () => listPipelineStageEvents(startupId, deal!.id),
     enabled: deal !== null,
   });
 
   // Logs carry only a createdBy user id; the members list puts a name on each.
   const membersQuery = useQuery({
-    queryKey: ["team-members", startupId],
+    queryKey: qk.members(startupId),
     queryFn: () => listMembers(startupId),
     enabled: investorId !== null,
   });
@@ -184,11 +202,8 @@ export function DealDetailDialog({
   const logs = logsQuery.data?.data ?? [];
 
   const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ["interaction-logs", startupId] });
-    void queryClient.invalidateQueries({ queryKey: ["pipeline", startupId] });
-    void queryClient.invalidateQueries({ queryKey: ["investors", startupId] });
-    void queryClient.invalidateQueries({ queryKey: ["pipeline-stage-events", startupId] });
-    void queryClient.invalidateQueries({ queryKey: ["pipeline-focus", startupId] });
+    invalidateStageData(queryClient, startupId);
+    invalidateInteractionData(queryClient, startupId);
   };
 
   const dealMutation = useMutation({
@@ -204,8 +219,7 @@ export function DealDetailDialog({
       setNoteDraft(notes ?? "");
       setNoteEditing(false);
       toast.success(notes ? "Investor note saved" : "Investor note removed");
-      void queryClient.invalidateQueries({ queryKey: ["pipeline", startupId] });
-      void queryClient.invalidateQueries({ queryKey: ["investors", startupId] });
+      invalidateDealData(queryClient, startupId);
     },
     onError: (err) => toast.error(logErrorMessage(err, "Could not update the investor note")),
   });
@@ -316,7 +330,7 @@ export function DealDetailDialog({
       {
         onSuccess: () => {
           setCommitOpen(false);
-          void queryClient.invalidateQueries({ queryKey: ["commitments", startupId] });
+          invalidateFinancialData(queryClient, startupId);
           toast.success("Commitment recorded against the round");
         },
       },
@@ -536,13 +550,19 @@ export function DealDetailDialog({
                 </div>
                 <div className="min-w-40 flex-1">
                   <p className="text-sm font-semibold">Round lead</p>
-                  <p className="text-xs text-muted-foreground">The investor expected to anchor this round.</p>
+                  <p className="text-xs text-muted-foreground">
+                    {deal.isLead
+                      ? `${investor.fullName} is leading ${roundName}.`
+                      : otherLeadNames.length > 0
+                        ? `Currently leading: ${otherLeadNames.join(", ")}.`
+                        : "No investor is leading this round yet."}
+                  </p>
                 </div>
                 <button
                   type="button"
                   aria-pressed={deal.isLead}
                   disabled={!canUpdate || dealMutation.isPending}
-                  onClick={() => dealMutation.mutate({ isLead: !deal.isLead })}
+                  onClick={() => setLeadConfirmOpen(true)}
                   className={cn(
                     "h-8 rounded-full border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
                     deal.isLead
@@ -686,7 +706,8 @@ export function DealDetailDialog({
                 ) : investor.notes ? (
                   <div className="mt-4">
                     <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{investor.notes}</p>
-                    {canUpdate && <Button type="button" size="sm" variant="ghost" className="mt-3 h-8 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={noteMutation.isPending} onClick={() => noteMutation.mutate(null)}><Trash2 className="h-3.5 w-3.5" /> Remove note</Button>}
+                    <NoteByline contact={investor} authorNames={authorNames} />
+                    {canUpdate && <Button type="button" size="sm" variant="ghost" className="mt-3 h-8 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={noteMutation.isPending} onClick={() => setNoteDeleteOpen(true)}><Trash2 className="h-3.5 w-3.5" /> Remove note</Button>}
                   </div>
                 ) : (
                   <p className="mt-4 text-sm text-muted-foreground">No notes have been added for this investor.</p>
@@ -695,7 +716,11 @@ export function DealDetailDialog({
               </>}
 
               {activeTab === "tasks" && (
-                <TaskList startupId={startupId} pipelineId={deal.id} />
+                <TaskList
+                  startupId={startupId}
+                  pipelineId={deal.id}
+                  dealLabel={investor.fullName}
+                />
               )}
 
               {activeTab === "activity" && <div>
@@ -783,6 +808,50 @@ export function DealDetailDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={leadConfirmOpen}
+        onOpenChange={setLeadConfirmOpen}
+        title={
+          deal?.isLead
+            ? `Remove ${investor?.fullName ?? "this investor"} as lead?`
+            : `Make ${investor?.fullName ?? "this investor"} the lead?`
+        }
+        description={
+          deal?.isLead
+            ? `${roundName} will show no lead from this investor. Nothing else about the deal changes, and you can set it back at any time.`
+            : otherLeadNames.length > 0
+              ? `${otherLeadNames.join(", ")} ${otherLeadNames.length === 1 ? "is" : "are"} already marked as leading ${roundName}. Co-leads are allowed — both will be shown to the team.`
+              : `The whole team will see this investor as the anchor for ${roundName}. It can be undone at any time.`
+        }
+        variant={deal?.isLead ? "destructive" : "default"}
+        confirmLabel={deal?.isLead ? "Remove as lead" : "Set as lead"}
+        pendingLabel="Saving…"
+        isPending={dealMutation.isPending}
+        onConfirm={() =>
+          deal &&
+          dealMutation.mutate(
+            { isLead: !deal.isLead },
+            {
+              onSuccess: () => {
+                toast.success(deal.isLead ? "Lead investor cleared" : "Lead investor set");
+                setLeadConfirmOpen(false);
+              },
+            },
+          )
+        }
+      />
+
+      <ConfirmDialog
+        open={noteDeleteOpen}
+        onOpenChange={setNoteDeleteOpen}
+        title="Remove this investor note?"
+        description="The note is deleted for everyone who can see this contact, along with who wrote it. Logged interactions are not affected."
+        confirmLabel="Remove note"
+        pendingLabel="Removing…"
+        isPending={noteMutation.isPending}
+        onConfirm={() => noteMutation.mutate(null, { onSuccess: () => setNoteDeleteOpen(false) })}
+      />
 
       <PassReasonDialog
         open={passReasonOpen}

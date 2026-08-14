@@ -18,8 +18,12 @@ type PipelineColumnProps = {
   canUpdate: boolean;
   weightedTotal: number;
   emptyMessage: string;
+  /** Null when the board is not in selection mode. */
+  selectedIds: ReadonlySet<string> | null;
   onOpen: (dealId: string) => void;
   onMove: (dealId: string, stage: PipelineStageId) => void;
+  onAddTask?: (dealId: string) => void;
+  onToggleSelected?: (dealId: string) => void;
 };
 
 /**
@@ -38,8 +42,11 @@ export const PipelineColumn = memo(function PipelineColumn({
   canUpdate,
   weightedTotal,
   emptyMessage,
+  selectedIds,
   onOpen,
   onMove,
+  onAddTask,
+  onToggleSelected,
 }: PipelineColumnProps) {
   // A fallback drop target for a column's empty space — cards themselves are
   // the finer-grained targets while the column has any.
@@ -92,8 +99,11 @@ export const PipelineColumn = memo(function PipelineColumn({
                 focusReason={focusReasonFor(dealId)}
                 ownerName={ownerNameFor(dealId)}
                 canUpdate={canUpdate}
+                selected={selectedIds === null ? null : selectedIds.has(dealId)}
                 onOpen={onOpen}
                 onMove={onMove}
+                onAddTask={onAddTask}
+                onToggleSelected={onToggleSelected}
               />
             );
           })}

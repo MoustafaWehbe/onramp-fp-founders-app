@@ -715,10 +715,11 @@ components:
           type: string
           description: >
             Rendered specially when known. The API emits "team_invite",
-            "task_assigned", "task_overdue" and "task_due_today"; anything
-            else falls back to a generic icon on the client. "followup_due" is
-            legacy — no new one is created now that tasks have superseded
-            follow-ups, but old rows may still be present.
+            "task_assigned", "task_overdue", "task_due_today", "lead_stale"
+            and "deal_no_next_step"; anything else falls back to a generic
+            icon on the client. "followup_due" is legacy — no new one is
+            created now that tasks have superseded follow-ups, but old rows
+            may still be present.
           example: team_invite
         title:
           type: string
@@ -730,7 +731,8 @@ components:
           nullable: true
           description: >
             What entityId points at, e.g. "startup_member" for a
-            "team_invite" notification or "task" for any of the task ones
+            "team_invite" notification, "task" for any of the task ones, or
+            "pipeline" for the deal reminders
         entityId:
           type: string
           nullable: true
@@ -820,6 +822,29 @@ components:
         notes:
           type: string
           nullable: true
+        notesCreatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the current note was first written. Cleared with the note.
+        notesCreatedBy:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            User id who wrote the current note. Server-derived, never accepted
+            from the client. Null for notes written before authorship was
+            recorded, or when that user has since been deleted.
+        notesUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the note was last changed. Equal to notesCreatedAt until it is edited.
+        notesUpdatedBy:
+          type: string
+          format: uuid
+          nullable: true
+          description: User id who last changed the note. Server-derived.
         source:
           type: string
           nullable: true
@@ -1383,6 +1408,13 @@ components:
       type: object
       description: At least one field is required.
       properties:
+        pipelineId:
+          type: string
+          format: uuid
+          description: >
+            Relinks the task to another deal in the same startup, keeping its
+            history, assignee and due date. 404 PIPELINE_NOT_FOUND if the deal
+            does not exist in this startup.
         title:
           type: string
           minLength: 1

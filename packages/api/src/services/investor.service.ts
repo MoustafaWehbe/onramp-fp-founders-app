@@ -18,6 +18,10 @@ const CONTACT_SELECT = {
   investmentStagePreference: true,
   linkedinUrl: true,
   notes: true,
+  notesCreatedAt: true,
+  notesCreatedBy: true,
+  notesUpdatedAt: true,
+  notesUpdatedBy: true,
   source: true,
   createdAt: true,
   updatedAt: true,
@@ -192,10 +196,15 @@ export class InvestorService {
     };
   }
 
-  async updateInvestor(startupId: string, investorId: string, input: UpdateInvestorInput) {
+  async updateInvestor(
+    startupId: string,
+    investorId: string,
+    input: UpdateInvestorInput,
+    userId?: string,
+  ) {
     const existing = await prisma.startupInvestor.findUnique({
       where: { startupId_id: { startupId, id: investorId } },
-      select: { id: true, email: true },
+      select: { id: true, email: true, notes: true, notesCreatedAt: true },
     });
     if (!existing) throw createError("Investor contact not found", 404, "INVESTOR_NOT_FOUND");
 
@@ -206,12 +215,47 @@ export class InvestorService {
     try {
       return await prisma.startupInvestor.update({
         where: { id: investorId },
-        data: input,
+        data: { ...input, ...this.noteAuthorship(input, existing, userId) },
         select: CONTACT_SELECT,
       });
     } catch (err) {
       throw this.translateDuplicateEmail(err);
     }
+  }
+
+  /**
+   * Note authorship is derived here rather than trusted from the client, the
+   * same way completedAt is on tasks. Writing the first note records an
+   * author; every later change records an editor; clearing the note clears
+   * both, so a fresh note never inherits the previous one's byline. An
+   * identical resubmission is not an edit and leaves the timestamps alone.
+   */
+  private noteAuthorship(
+    input: UpdateInvestorInput,
+    existing: { notes: string | null; notesCreatedAt: Date | null },
+    userId?: string,
+  ): Prisma.StartupInvestorUncheckedUpdateInput {
+    if (input.notes === undefined) return {};
+
+    if (input.notes === null) {
+      return {
+        notesCreatedAt: null,
+        notesCreatedBy: null,
+        notesUpdatedAt: null,
+        notesUpdatedBy: null,
+      };
+    }
+
+    if (input.notes === existing.notes) return {};
+
+    const now = new Date();
+    const isFirstNote = !existing.notes || existing.notesCreatedAt === null;
+
+    return {
+      ...(isFirstNote && { notesCreatedAt: now, notesCreatedBy: userId ?? null }),
+      notesUpdatedAt: now,
+      notesUpdatedBy: userId ?? null,
+    };
   }
 
   async deleteInvestor(startupId: string, investorId: string) {

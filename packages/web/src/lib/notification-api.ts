@@ -7,6 +7,8 @@ export type NotificationType =
   | "task_overdue"
   | "task_due_today"
   | "task_assigned"
+  | "lead_stale"
+  | "deal_no_next_step"
   | (string & {});
 
 export type AppNotification = {

@@ -117,6 +117,10 @@ function entry(overrides: Partial<PipelineEntry> = {}): PipelineEntry {
       investmentStagePreference: "Seed",
       linkedinUrl: null,
       notes: null,
+      notesCreatedAt: null,
+      notesCreatedBy: null,
+      notesUpdatedAt: null,
+      notesUpdatedBy: null,
       source: "Warm intro",
       createdAt: daysFromNow(-10),
       updatedAt: daysFromNow(-10),
@@ -350,6 +354,58 @@ describe("Pipeline board", () => {
 
       expect(await screen.findByText("No lead yet")).toBeInTheDocument();
     });
+
+    // Naming the lead is a commitment the whole team reads off the board, so
+    // it must not happen on a stray click of a toggle.
+    it("confirms before naming a lead, and names whoever already leads", async () => {
+      listPipelineEntries.mockResolvedValue({
+        data: [
+          entry({ id: "deal-1", investorId: "i1" }),
+          entry({
+            id: "d2",
+            investorId: "i2",
+            isLead: true,
+            investor: { fullName: "Grace Hopper" } as never,
+          }),
+        ],
+        meta: { page: 1, limit: 100, total: 2, totalPages: 1 },
+      });
+      updatePipelineEntry.mockResolvedValue(entry({ isLead: true }));
+      const user = userEvent.setup();
+      renderPipeline();
+
+      await user.click(await screen.findByRole("button", { name: "Open Ada Lovelace" }));
+      await user.click(await screen.findByRole("button", { name: "Set as lead" }));
+
+      // Nothing is written until the prompt is answered.
+      expect(updatePipelineEntry).not.toHaveBeenCalled();
+      expect(await screen.findByText(/Grace Hopper.*already marked as leading/)).toBeInTheDocument();
+
+      const confirm = within(await screen.findByRole("dialog"));
+      await user.click(confirm.getByRole("button", { name: "Set as lead" }));
+
+      await waitFor(() =>
+        expect(updatePipelineEntry).toHaveBeenCalledWith("startup-1", "deal-1", { isLead: true }),
+      );
+    });
+
+    it("confirms before taking the lead badge away again", async () => {
+      listPipelineEntries.mockResolvedValue({
+        data: [entry({ id: "deal-1", investorId: "i1", isLead: true })],
+        meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
+      });
+      updatePipelineEntry.mockResolvedValue(entry({ isLead: false }));
+      const user = userEvent.setup();
+      renderPipeline();
+
+      await user.click(await screen.findByRole("button", { name: "Open Ada Lovelace" }));
+      await user.click(await screen.findByRole("button", { name: "Lead investor" }));
+      await user.click(await screen.findByRole("button", { name: "Remove as lead" }));
+
+      await waitFor(() =>
+        expect(updatePipelineEntry).toHaveBeenCalledWith("startup-1", "deal-1", { isLead: false }),
+      );
+    });
   });
 
   it("searches by investor and firm without hitting the API again", async () => {
@@ -406,7 +462,7 @@ describe("Pipeline board", () => {
       renderPipeline();
       await screen.findByText("Ada Lovelace");
 
-      await user.click(screen.getByRole("button", { name: "Move Ada Lovelace to another stage" }));
+      await user.click(screen.getByRole("button", { name: "Actions for Ada Lovelace" }));
       await user.click(await screen.findByRole("menuitem", { name: /Contacted/ }));
 
       await waitFor(() =>
@@ -426,7 +482,7 @@ describe("Pipeline board", () => {
       renderPipeline();
       await screen.findByText("Ada Lovelace");
 
-      await user.click(screen.getByRole("button", { name: "Move Ada Lovelace to another stage" }));
+      await user.click(screen.getByRole("button", { name: "Actions for Ada Lovelace" }));
       await user.click(await screen.findByRole("menuitem", { name: /Passed/ }));
 
       expect(
@@ -456,7 +512,7 @@ describe("Pipeline board", () => {
       renderPipeline();
       await screen.findByText("Ada Lovelace");
 
-      await user.click(screen.getByRole("button", { name: "Move Ada Lovelace to another stage" }));
+      await user.click(screen.getByRole("button", { name: "Actions for Ada Lovelace" }));
       await user.click(await screen.findByRole("menuitem", { name: /Committed/ }));
 
       const prompt = await screen.findByRole("dialog");
@@ -797,7 +853,10 @@ describe("Pipeline board", () => {
       });
     });
 
-    it("asks the server for the round's open tasks rather than paging per deal", async () => {
+    // The queue asks for the round's tasks whole — open and completed — because
+    // the Completed view reads the same cache entry as the others; filtering by
+    // status server-side would give whichever view loaded second the wrong rows.
+    it("asks the server for the round's tasks rather than paging per deal", async () => {
       const user = userEvent.setup();
       renderPipeline();
       await screen.findByText("Ada Lovelace");
@@ -807,8 +866,12 @@ describe("Pipeline board", () => {
       await waitFor(() =>
         expect(listTasks).toHaveBeenCalledWith(
           "startup-1",
-          expect.objectContaining({ roundId: "round-1", status: "open" }),
+          expect.objectContaining({ roundId: "round-1" }),
         ),
+      );
+      expect(listTasks).not.toHaveBeenCalledWith(
+        "startup-1",
+        expect.objectContaining({ status: "open" }),
       );
     });
 
@@ -841,6 +904,123 @@ describe("Pipeline board", () => {
 
       await waitFor(() => expect(updateTask).toHaveBeenCalledWith("startup-1", "t1", "completed"));
     });
+
+    // "What is late across the whole raise" could not be answered before:
+    // the queue only ever showed open work, split by who it belonged to.
+    it("separates overdue, due-today and completed work, counting each", async () => {
+      listTasks.mockResolvedValue({
+        data: [
+          {
+            id: "t1", startupId: "startup-1", pipelineId: "d1", title: "Send the updated deck",
+            description: null, status: "open", priority: "high", dueDate: daysFromNow(-2),
+            assigneeId: "member-1", completedAt: null, createdBy: "user-1",
+            createdAt: daysFromNow(-5), updatedAt: daysFromNow(-5),
+          },
+          {
+            id: "t2", startupId: "startup-1", pipelineId: "d1", title: "Call the analyst",
+            description: null, status: "open", priority: "medium", dueDate: daysFromNow(0.2),
+            assigneeId: "member-2", completedAt: null, createdBy: "user-1",
+            createdAt: daysFromNow(-5), updatedAt: daysFromNow(-5),
+          },
+          {
+            id: "t3", startupId: "startup-1", pipelineId: "d1", title: "Signed the NDA",
+            description: null, status: "completed", priority: "low", dueDate: daysFromNow(-9),
+            assigneeId: "member-1", completedAt: daysFromNow(-8), createdBy: "user-1",
+            createdAt: daysFromNow(-10), updatedAt: daysFromNow(-8),
+          },
+        ],
+        meta: { page: 1, limit: 100, total: 3, totalPages: 1 },
+      });
+      const user = userEvent.setup();
+      renderPipeline();
+      await screen.findByText("Ada Lovelace");
+
+      await user.click(screen.getByRole("tab", { name: /Tasks/ }));
+
+      // Counts come off the same list the tabs filter, so a badge can never
+      // disagree with what opening the tab shows.
+      expect(await screen.findByRole("tab", { name: /Overdue 1/ })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /Today 1/ })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /Everyone 2/ })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /Completed 1/ })).toBeInTheDocument();
+
+      await user.click(screen.getByRole("tab", { name: /Overdue/ }));
+      expect(screen.getByText("Send the updated deck")).toBeInTheDocument();
+      expect(screen.queryByText("Call the analyst")).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("tab", { name: /Today/ }));
+      expect(screen.getByText("Call the analyst")).toBeInTheDocument();
+
+      // Completed work stays reachable, and reopening it is one click.
+      await user.click(screen.getByRole("tab", { name: /Completed/ }));
+      expect(screen.getByText("Signed the NDA")).toBeInTheDocument();
+      await user.click(screen.getByRole("checkbox", { name: /Reopen task Signed the NDA/ }));
+      await waitFor(() => expect(updateTask).toHaveBeenCalledWith("startup-1", "t3", "open"));
+    });
+
+    it("edits a task's title, owner and linked deal from the queue", async () => {
+      const user = userEvent.setup();
+      renderPipeline();
+      await screen.findByText("Ada Lovelace");
+
+      await user.click(screen.getByRole("tab", { name: /Tasks/ }));
+      await user.click(await screen.findByRole("button", { name: "Send the updated deck" }));
+
+      const title = await screen.findByLabelText("Task");
+      await user.clear(title);
+      await user.type(title, "Send the revised deck");
+      await user.click(screen.getByRole("button", { name: /Save changes/ }));
+
+      await waitFor(() =>
+        expect(updateTask).toHaveBeenCalledWith(
+          "startup-1",
+          "t1",
+          expect.objectContaining({ title: "Send the revised deck", assigneeId: "member-1" }),
+        ),
+      );
+    });
+  });
+
+  // Setting the next step is the most common thing to do to a card, and it
+  // used to mean opening the deal sheet first.
+  it("creates a task straight from a card's menu", async () => {
+    const user = userEvent.setup();
+    renderPipeline();
+    await screen.findByText("Ada Lovelace");
+
+    await user.click(screen.getByRole("button", { name: "Actions for Ada Lovelace" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Add task/ }));
+
+    await user.type(await screen.findByLabelText("Task"), "Intro call");
+    await user.click(screen.getByRole("button", { name: /Add task/ }));
+
+    await waitFor(() =>
+      expect(createTask).toHaveBeenCalledWith(
+        "startup-1",
+        expect.objectContaining({ pipelineId: "deal-1", title: "Intro call" }),
+      ),
+    );
+  });
+
+  // Reassigning ten deals used to be ten trips through the deal sheet.
+  it("assigns every selected deal to one owner in a single action", async () => {
+    listPipelineEntries.mockResolvedValue({
+      data: [entry({ id: "deal-1" }), entry({ id: "deal-2", investorId: "inv-2" })],
+      meta: { page: 1, limit: 100, total: 2, totalPages: 1 },
+    });
+    updatePipelineEntry.mockResolvedValue(entry({ ownerId: "member-2" }));
+    const user = userEvent.setup();
+    renderPipeline();
+    await screen.findAllByText("Ada Lovelace");
+
+    await user.click(screen.getByRole("button", { name: /Select/ }));
+    await user.click(screen.getByRole("button", { name: "Select all" }));
+    await user.click(screen.getByRole("combobox", { name: /Assign an owner/ }));
+    await user.click(await screen.findByRole("option", { name: /Grace Hopper/ }));
+
+    await waitFor(() => expect(updatePipelineEntry).toHaveBeenCalledTimes(2));
+    expect(updatePipelineEntry).toHaveBeenCalledWith("startup-1", "deal-1", { ownerId: "member-2" });
+    expect(updatePipelineEntry).toHaveBeenCalledWith("startup-1", "deal-2", { ownerId: "member-2" });
   });
 
   it("loads analytics only once the tab is opened", async () => {

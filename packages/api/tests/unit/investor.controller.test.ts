@@ -211,10 +211,13 @@ describe("PATCH /api/v1/startups/:startupId/investors/:investorId", () => {
       .send({ notes: "warm" });
 
     expect(res.status).toBe(200);
+    // The caller's id travels with the update so the service can stamp note
+    // authorship; it is never taken from the body.
     expect(mockService.updateInvestor).toHaveBeenCalledWith(
       STARTUP_ID,
       CONTACT_ID,
       expect.objectContaining({ notes: "warm" }),
+      USER_ID,
     );
   });
 

@@ -22,6 +22,7 @@ import { useAuth } from "../../../hooks/useAuth";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
 import { useActiveStartupId } from "../../../hooks/useWorkspace";
+import { qk } from "../../../lib/query-keys";
 import {
   changeMemberRole,
   inviteMember,
@@ -63,12 +64,12 @@ export function Team() {
   const [pendingRemoval, setPendingRemoval] = useState<TeamMemberRow | null>(null);
 
   const membersQuery = useQuery({
-    queryKey: ["team-members", startupId],
+    queryKey: qk.members(startupId),
     queryFn: () => listMembers(startupId),
   });
 
   const rolesQuery = useQuery({
-    queryKey: ["team-roles", startupId],
+    queryKey: qk.roles(startupId),
     queryFn: () => listRoles(startupId),
   });
 
@@ -91,7 +92,7 @@ export function Team() {
   const pendingCount = members.length - activeCount;
 
   const invalidateMembers = () =>
-    void queryClient.invalidateQueries({ queryKey: ["team-members", startupId] });
+    void queryClient.invalidateQueries({ queryKey: qk.members(startupId) });
 
   const inviteMutation = useMutation({
     mutationFn: (input: { email: string; roleId: string }) => inviteMember(startupId, input),

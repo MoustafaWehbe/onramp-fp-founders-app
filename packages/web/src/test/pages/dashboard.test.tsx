@@ -50,7 +50,12 @@ beforeEach(() => {
   listCommitments.mockResolvedValue({ data: [{ amount: 200_000, status: "wired", createdAt: "2026-08-01T00:00:00.000Z" }] });
   listPipeline.mockResolvedValue({ data: [{ id: "deal-1", ownerId: null, stage: "contacted", investor: { fullName: "Ada Investor", ventureFirm: "North VC" } }], meta: { page: 1, totalPages: 1 } });
   getFocus.mockResolvedValue([{ id: "deal-1", ownerId: null, stage: "contacted", isLead: true, reason: "missing", expectedAmount: 250_000, investor: { fullName: "Ada Investor", ventureFirm: "North VC" } }]);
-  listTasks.mockResolvedValue({ data: [{ id: "task-1", pipelineId: "deal-1", assigneeId: "member-1", title: "Send the deck", dueDate: null, status: "open" }] });
+  // meta matters: the round's tasks are paged through, not asked for in one
+  // oversized request, so a mock without it never resolves a first page.
+  listTasks.mockResolvedValue({
+    data: [{ id: "task-1", pipelineId: "deal-1", assigneeId: "member-1", title: "Send the deck", dueDate: null, status: "open" }],
+    meta: { page: 1, limit: 10, total: 1, totalPages: 1 },
+  });
 });
 
 describe("Today dashboard", () => {
