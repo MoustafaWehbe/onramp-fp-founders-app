@@ -602,6 +602,7 @@ describe("Pipeline board", () => {
 
       await user.click(await screen.findByRole("button", { name: "Open Ada Lovelace" }));
       const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("button", { name: /Deal settings and investor profile/ }));
       await user.click(within(dialog).getByRole("combobox", { name: /Round/ }));
 
       expect(await screen.findByRole("option", { name: /Series A/ })).toBeInTheDocument();
@@ -616,6 +617,7 @@ describe("Pipeline board", () => {
 
       await user.click(await screen.findByRole("button", { name: "Open Ada Lovelace" }));
       const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("button", { name: /Deal settings and investor profile/ }));
       await user.click(within(dialog).getByRole("combobox", { name: /Round/ }));
       await user.click(await screen.findByRole("option", { name: /Series A/ }));
 
@@ -642,6 +644,7 @@ describe("Pipeline board", () => {
 
       await user.click(await screen.findByRole("button", { name: "Open Ada Lovelace" }));
       const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("button", { name: /Deal settings and investor profile/ }));
       await user.click(within(dialog).getByRole("combobox", { name: /Round/ }));
       await user.click(await screen.findByRole("option", { name: /Series A/ }));
 
@@ -716,6 +719,7 @@ describe("Pipeline board", () => {
 
     await user.click(await screen.findByRole("button", { name: "Open Ada Lovelace" }));
     const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /Deal settings and investor profile/ }));
 
     expect(within(dialog).getByText("In stage")).toBeInTheDocument();
     expect(within(dialog).getByText("1 mo")).toBeInTheDocument();

@@ -138,7 +138,10 @@ export function Pipeline() {
   const [addOpen, setAddOpen] = useState(false);
   const [openDealId, setOpenDealId] = useState<string | null>(null);
   const [pendingRemove, setPendingRemove] = useState<PipelineEntry | null>(null);
-  const [activeView, setActiveView] = useState<PipelineViewId>("board");
+  const [activeView, setActiveView] = useState<PipelineViewId>(() => {
+    const requested = new URLSearchParams(window.location.search).get("view");
+    return requested === "focus" || requested === "tasks" || requested === "analytics" ? requested : "board";
+  });
   // Logging straight from the focus list, without opening the deal first.
   const [quickLogDeal, setQuickLogDeal] = useState<PipelineEntry | null>(null);
   // A move into Passed is held here until a reason is given — the server
@@ -819,6 +822,7 @@ export function Pipeline() {
         startupId={startupId}
         deal={openDeal}
         signals={signalsFor(openDealId)}
+        focusReason={openDealId ? focusReasonFor(openDealId) : null}
         roundName={activeRound?.roundName ?? "this round"}
         rounds={roundsQuery.data?.data ?? []}
         onOpenChange={(open) => !open && setOpenDealId(null)}

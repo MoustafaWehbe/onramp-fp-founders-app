@@ -96,6 +96,10 @@ function renderDetail() {
   );
 }
 
+async function showActivity(user = userEvent.setup()) {
+  await user.click(await screen.findByRole("button", { name: "Activity" }));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   role = "owner";
@@ -124,6 +128,7 @@ beforeEach(() => {
 describe("InvestorDetailDialog interaction history", () => {
   it("renders the timeline for the selected contact", async () => {
     renderDetail();
+    await showActivity();
 
     expect(await screen.findByText("Intro call")).toBeInTheDocument();
     expect(screen.getByText("Walked through the deck.")).toBeInTheDocument();
@@ -136,6 +141,7 @@ describe("InvestorDetailDialog interaction history", () => {
 
   it("resolves createdBy into a teammate's name rather than showing a uuid", async () => {
     renderDetail();
+    await showActivity();
 
     await screen.findByText("Intro call");
     expect(screen.getByText(/Jane Doe/)).toBeInTheDocument();
@@ -148,6 +154,7 @@ describe("InvestorDetailDialog interaction history", () => {
       meta: { page: 1, limit: 50, total: 1, totalPages: 1 },
     });
     renderDetail();
+    await showActivity();
 
     await screen.findByText("Intro call");
     expect(screen.getByText(/A teammate/)).toBeInTheDocument();
@@ -159,6 +166,7 @@ describe("InvestorDetailDialog interaction history", () => {
       meta: { page: 1, limit: 50, total: 0, totalPages: 0 },
     });
     renderDetail();
+    await showActivity();
 
     expect(await screen.findByText("Nothing logged yet")).toBeInTheDocument();
     expect(screen.getByText("Not contacted")).toBeInTheDocument();
@@ -168,6 +176,7 @@ describe("InvestorDetailDialog interaction history", () => {
     createInteractionLog.mockResolvedValue(log({ id: "log-2" }));
     const user = userEvent.setup();
     renderDetail();
+    await showActivity(user);
     await screen.findByText("Intro call");
 
     await user.click(screen.getByRole("button", { name: /log interaction/i }));
@@ -188,6 +197,7 @@ describe("InvestorDetailDialog interaction history", () => {
     updateInteractionLog.mockResolvedValue(log({ subject: "Renamed" }));
     const user = userEvent.setup();
     renderDetail();
+    await showActivity(user);
     await screen.findByText("Intro call");
 
     await user.click(screen.getByRole("button", { name: /Actions for Intro call/ }));
@@ -210,6 +220,7 @@ describe("InvestorDetailDialog interaction history", () => {
     deleteInteractionLog.mockResolvedValue({ message: "removed" });
     const user = userEvent.setup();
     renderDetail();
+    await showActivity(user);
     await screen.findByText("Intro call");
 
     await user.click(screen.getByRole("button", { name: /Actions for Intro call/ }));
@@ -228,6 +239,7 @@ describe("InvestorDetailDialog interaction history", () => {
     );
     const user = userEvent.setup();
     renderDetail();
+    await showActivity(user);
     await screen.findByText("Intro call");
 
     await user.click(screen.getByRole("button", { name: /log interaction/i }));
@@ -243,6 +255,7 @@ describe("InvestorDetailDialog interaction history", () => {
   it("gives a viewer read-only history", async () => {
     role = "viewer";
     renderDetail();
+    await showActivity();
     await screen.findByText("Intro call");
 
     expect(screen.queryByRole("button", { name: /log interaction/i })).not.toBeInTheDocument();

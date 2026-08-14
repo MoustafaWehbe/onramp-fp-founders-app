@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Linkedin, Mail, Plus } from "lucide-react";
+import { ArrowRight, History, LayoutDashboard, Linkedin, ListChecks, Mail, Plus, Sparkles, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
@@ -69,8 +69,13 @@ export function InvestorDetailDialog({
   const [logOpen, setLogOpen] = useState(false);
   const [editingLog, setEditingLog] = useState<InteractionLog | null>(null);
   const [pendingDelete, setPendingDelete] = useState<InteractionLog | null>(null);
+  const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "activity">("overview");
 
   const investorId = investor?.id ?? null;
+
+  useEffect(() => {
+    if (investorId) setActiveTab("overview");
+  }, [investorId]);
 
   const logsQuery = useQuery({
     queryKey: ["interaction-logs", startupId, investorId],
@@ -158,10 +163,10 @@ export function InvestorDetailDialog({
   return (
     <>
       <Dialog open={investor !== null} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl gap-0 overflow-hidden p-0 sm:gap-0 sm:p-0">
           {investor && (
             <>
-              <DialogHeader>
+              <DialogHeader className="border-b border-border/70 bg-card px-5 pb-5 pt-6 sm:px-7">
                 <div className="flex items-start gap-3">
                   <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary/15 font-display text-sm font-semibold text-primary">
                     {getInitials(investor.name)}
@@ -175,7 +180,7 @@ export function InvestorDetailDialog({
                 </div>
               </DialogHeader>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 border-b border-border/70 px-5 py-3 sm:px-7">
                 <StageBadge stageId={investor.pipelineStageId} />
                 {logs.length > 0 ? (
                   <Badge
@@ -206,6 +211,11 @@ export function InvestorDetailDialog({
                     </a>
                   </Button>
                 )}
+                {canCreate && (
+                  <Button size="sm" onClick={() => { setEditingLog(null); setLogOpen(true); }}>
+                    <Plus className="h-4 w-4" /> Log interaction
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -215,6 +225,26 @@ export function InvestorDetailDialog({
                   Edit details
                 </Button>
               </div>
+
+              <nav className="flex gap-1 border-b border-border/70 px-5 pt-2 sm:px-7" aria-label="Investor details">
+                {([
+                  { id: "overview", label: "Overview", icon: LayoutDashboard },
+                  { id: "tasks", label: "Tasks", icon: ListChecks },
+                  { id: "activity", label: "Activity", icon: History },
+                ] as const).map(({ id, label, icon: Icon }) => (
+                  <button key={id} type="button" onClick={() => setActiveTab(id)} className={cn("relative flex items-center gap-2 px-3 py-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground", activeTab === id && "text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary")}>
+                    <Icon className="h-4 w-4" />{label}
+                  </button>
+                ))}
+              </nav>
+
+              <div className="space-y-5 px-5 py-6 sm:px-7">
+              {activeTab === "overview" && <>
+
+              <section className="relative overflow-hidden rounded-2xl border border-primary/25 bg-primary/[0.055] p-4" aria-label="Recommended next action">
+                <div className="absolute -right-8 -top-10 h-28 w-28 rounded-full bg-primary/10 blur-2xl" />
+                <div className="relative flex flex-wrap items-center gap-3"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary"><Sparkles className="h-5 w-5" /></div><div className="min-w-48 flex-1"><p className="font-mono text-[10px] uppercase tracking-widest text-primary">Recommended next action</p><h3 className="mt-1 text-sm font-semibold">{pipelineId ? "Keep the next commitment clear" : "Start the relationship"}</h3><p className="mt-0.5 text-xs text-muted-foreground">{pipelineId ? "Review assigned work or log the latest investor conversation." : "Log your first outreach, then add this contact to the active pipeline when qualified."}</p></div>{canCreate && <Button size="sm" onClick={() => { setEditingLog(null); setLogOpen(true); }}>{pipelineId ? "Log interaction" : "Log outreach"}<ArrowRight className="h-3.5 w-3.5" /></Button>}</div>
+              </section>
 
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-border/70 bg-surface/50 p-3 text-sm sm:grid-cols-3">
                 {details.map((item) => (
@@ -227,29 +257,15 @@ export function InvestorDetailDialog({
                 ))}
               </dl>
 
-              {investor.contact.notes && (
-                <p className="whitespace-pre-wrap rounded-xl border border-border/70 bg-surface/50 p-3 text-sm text-muted-foreground">
-                  {investor.contact.notes}
-                </p>
-              )}
+              <section className="rounded-xl border border-border/70 bg-surface/40 p-4"><div className="flex items-center gap-2"><div className="grid h-8 w-8 place-items-center rounded-lg bg-muted text-muted-foreground"><StickyNote className="h-4 w-4" /></div><div><h3 className="text-sm font-semibold">Investor notes</h3><p className="text-xs text-muted-foreground">Shared relationship context for your team.</p></div></div><p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{investor.contact.notes || "No notes have been added for this investor."}</p></section>
+              </>}
 
               {/* Only a contact already on the board has a deal to attach tasks to. */}
-              {pipelineId && <TaskList startupId={startupId} pipelineId={pipelineId} />}
+              {activeTab === "tasks" && (pipelineId ? <TaskList startupId={startupId} pipelineId={pipelineId} /> : <div className="rounded-2xl border border-dashed border-border px-6 py-12 text-center"><ListChecks className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-3 text-sm font-semibold">Tasks start on the pipeline</p><p className="mt-1 text-xs text-muted-foreground">Add this investor to a fundraising round before assigning deal work.</p></div>)}
 
+              {activeTab === "activity" && <>
               <div className="flex items-center justify-between gap-2">
-                <h3 className="font-display text-sm font-semibold">Interaction history</h3>
-                {canCreate && (
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      setEditingLog(null);
-                      setLogOpen(true);
-                    }}
-                  >
-                    <Plus className="h-4 w-4" />
-                    Log interaction
-                  </Button>
-                )}
+                <div><h3 className="font-display text-base font-semibold">Activity</h3><p className="mt-1 text-xs text-muted-foreground">Interactions and pipeline changes, newest first.</p></div>
               </div>
 
               <div className={cn("max-h-[40vh] overflow-y-auto pr-1", "scrollbar-slim")}>
@@ -270,6 +286,8 @@ export function InvestorDetailDialog({
                   }}
                   onDelete={setPendingDelete}
                 />
+              </div>
+              </>}
               </div>
             </>
           )}

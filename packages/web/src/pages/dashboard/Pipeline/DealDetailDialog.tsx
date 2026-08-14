@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Crown, History, LayoutDashboard, Linkedin, ListChecks, Mail, Pencil, Plus, Save, StickyNote, Trash2 } from "lucide-react";
+import { ArrowRight, ChevronDown, Crown, History, LayoutDashboard, Linkedin, ListChecks, Mail, Pencil, Plus, Save, Sparkles, StickyNote, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../../components/ui/button";
 import {
@@ -39,6 +39,7 @@ import {
   listPipelineStageEvents,
   updatePipelineEntry,
   type CommitmentDraft,
+  type FocusReason,
   type PipelineEntry,
 } from "../../../lib/pipeline-api";
 import { listMembers } from "../../../lib/team-api";
@@ -68,6 +69,7 @@ type DealDetailDialogProps = {
   startupId: string;
   deal: PipelineEntry | null;
   signals: DealSignals;
+  focusReason: FocusReason | null;
   /** Named in the commit prompt, so it's clear which raise the money lands in. */
   roundName: string;
   /** Every round this deal could be carried into, plus the one it's in. */
@@ -105,6 +107,7 @@ export function DealDetailDialog({
   startupId,
   deal,
   signals,
+  focusReason,
   roundName,
   rounds,
   onOpenChange,
@@ -127,6 +130,7 @@ export function DealDetailDialog({
   const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "activity">("overview");
   const [noteDraft, setNoteDraft] = useState("");
   const [noteEditing, setNoteEditing] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   const investorId = deal?.investor.id ?? null;
 
@@ -140,6 +144,7 @@ export function DealDetailDialog({
     setInvestorFitScore(deal.investorFitScore == null ? "" : String(deal.investorFitScore));
     setNoteDraft(deal.investor.notes ?? "");
     setNoteEditing(false);
+    setDetailsOpen(false);
   }, [deal]);
 
   const logsQuery = useQuery({
@@ -359,6 +364,17 @@ export function DealDetailDialog({
       ? deal.expectedAmount * ((deal.probabilityPercentage ?? 0) / 100)
       : null;
 
+  const recommendation = (() => {
+    if (!deal) return null;
+    if (deal.stage === "passed") return { title: "Decide whether to reopen this relationship", detail: "This deal is closed and will not appear in the active pipeline.", label: "Review stage", action: () => moveToStage("sourced") };
+    if (focusReason === "overdue") return { title: "Complete or reschedule the overdue next step", detail: "This investor is at risk of going cold while an assigned task is overdue.", label: "Review tasks", action: () => setActiveTab("tasks") };
+    if (focusReason === "today") return { title: "Follow up today", detail: "A next step is due today. Close it out or set the next commitment.", label: "Review tasks", action: () => setActiveTab("tasks") };
+    if (focusReason === "missing") return { title: "Add a clear next step", detail: "This deal has no open task, owner action, or scheduled follow-up.", label: "Add next step", action: () => setActiveTab("tasks") };
+    if (focusReason === "quiet") return { title: "Restart the conversation", detail: "There has been no recent interaction with this investor.", label: "Log follow-up", action: () => { setEditingLog(null); setLogOpen(true); } };
+    if (deal.stage === "sourced") return { title: "Make the first approach", detail: "Move this investor from research into an active conversation.", label: "Log outreach", action: () => { setEditingLog(null); setLogOpen(true); } };
+    return { title: "Keep the momentum visible", detail: "Log the latest conversation and make sure a next step is assigned.", label: "Log interaction", action: () => { setEditingLog(null); setLogOpen(true); } };
+  })();
+
   return (
     <>
       <Sheet open={deal !== null} onOpenChange={onOpenChange}>
@@ -433,6 +449,17 @@ export function DealDetailDialog({
               <div className="space-y-6 px-5 py-6 sm:px-7">
               {activeTab === "overview" && <>
 
+              {recommendation && (
+                <section aria-label="Recommended next action" className="relative overflow-hidden rounded-2xl border border-primary/25 bg-primary/[0.055] p-4">
+                  <div className="absolute -right-8 -top-10 h-28 w-28 rounded-full bg-primary/10 blur-2xl" />
+                  <div className="relative flex flex-wrap items-center gap-3">
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary"><Sparkles className="h-5 w-5" /></div>
+                    <div className="min-w-48 flex-1"><p className="font-mono text-[10px] uppercase tracking-widest text-primary">Recommended next action</p><h3 className="mt-1 text-sm font-semibold">{recommendation.title}</h3><p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{recommendation.detail}</p></div>
+                    {canUpdate && <Button type="button" size="sm" onClick={recommendation.action}>{recommendation.label}<ArrowRight className="h-3.5 w-3.5" /></Button>}
+                  </div>
+                </section>
+              )}
+
               <section aria-label="Deal stage" className="space-y-3 rounded-2xl border border-border/70 bg-surface/30 p-4">
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="font-display text-sm font-semibold">Stage</h3>
@@ -484,7 +511,7 @@ export function DealDetailDialog({
                 )}
               </section>
 
-              <section aria-label="Deal economics" className="grid gap-3 sm:grid-cols-3">
+              <section aria-label="Deal economics" className="grid gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="deal-amount">Expected amount</Label>
                   <Input
@@ -498,26 +525,6 @@ export function DealDetailDialog({
                     onChange={(event) => setAmount(event.target.value)}
                     onBlur={commitAmount}
                   />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="deal-probability">Probability %</Label>
-                  <Input
-                    id="deal-probability"
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={5}
-                    disabled={!canUpdate}
-                    value={probability}
-                    onChange={(event) => setProbability(event.target.value)}
-                    onBlur={commitProbability}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <span className="text-sm font-medium">Weighted</span>
-                  <div className="flex h-9 items-center rounded-md border border-border/70 bg-surface/50 px-3 font-mono text-sm tabular-nums text-muted-foreground">
-                    {weighted == null ? "—" : formatCompactUsd(Math.round(weighted))}
-                  </div>
                 </div>
               </section>
 
@@ -547,7 +554,7 @@ export function DealDetailDialog({
                 </button>
               </div>
 
-              <section aria-label="Deal ownership" className="grid gap-3 sm:grid-cols-3">
+              <section aria-label="Deal ownership" className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="deal-owner">Owner</Label>
                   <Select
@@ -581,24 +588,25 @@ export function DealDetailDialog({
                     ]}
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="deal-fit">Investor fit</Label>
-                  <Input
-                    id="deal-fit"
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={5}
-                    placeholder="0–100"
-                    disabled={!canUpdate}
-                    value={investorFitScore}
-                    onChange={(event) => setInvestorFitScore(event.target.value)}
-                    onBlur={commitInvestorFitScore}
-                  />
-                </div>
               </section>
 
-                      {/* A deal in a round that later closes would otherwise be
+              <button
+                type="button"
+                onClick={() => setDetailsOpen((open) => !open)}
+                aria-expanded={detailsOpen}
+                className="flex w-full items-center justify-between rounded-xl border border-border/70 bg-surface/30 px-4 py-3 text-left transition-colors hover:bg-surface/60"
+              >
+                <span><span className="block text-sm font-semibold">Deal settings and investor profile</span><span className="mt-0.5 block text-xs text-muted-foreground">Probability, fit score, round assignment, and contact metadata</span></span>
+                <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", detailsOpen && "rotate-180")} />
+              </button>
+
+              {detailsOpen && <>
+              <section aria-label="Advanced deal settings" className="grid gap-3 rounded-xl border border-border/70 bg-surface/30 p-4 sm:grid-cols-3">
+                <div className="space-y-1.5"><Label htmlFor="deal-probability">Probability %</Label><Input id="deal-probability" type="number" min={0} max={100} step={5} disabled={!canUpdate} value={probability} onChange={(event) => setProbability(event.target.value)} onBlur={commitProbability} /></div>
+                <div className="space-y-1.5"><Label htmlFor="deal-fit">Investor fit</Label><Input id="deal-fit" type="number" min={0} max={100} step={5} placeholder="0–100" disabled={!canUpdate} value={investorFitScore} onChange={(event) => setInvestorFitScore(event.target.value)} onBlur={commitInvestorFitScore} /></div>
+                <div className="space-y-1.5"><span className="text-sm font-medium">Weighted value</span><div className="flex h-9 items-center rounded-md border border-border/70 bg-card px-3 font-mono text-sm tabular-nums text-muted-foreground">{weighted == null ? "—" : formatCompactUsd(Math.round(weighted))}</div></div>
+              </section>
+              {/* A deal in a round that later closes would otherwise be
                   stranded — the only way out was delete-and-recreate, which
                   throws away its stage history. */}
               {roundOptions.length > 1 && (
@@ -638,6 +646,7 @@ export function DealDetailDialog({
                   </div>
                 ))}
               </dl>
+              </>}
 
               <section aria-label="Investor notes" className="rounded-xl border border-border/70 bg-surface/40 p-4">
                 <div className="flex items-start justify-between gap-3">
