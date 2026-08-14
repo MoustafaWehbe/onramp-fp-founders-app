@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PIPELINE_STAGES, PRIORITIES } from "../config/crm";
+import { COMMITMENT_STATUSES, PIPELINE_STAGES, PRIORITIES } from "../config/crm";
 
 const pipelineStageEnum = z.enum(PIPELINE_STAGES, {
   errorMap: () => ({ message: "Invalid pipeline stage" }),
@@ -88,6 +88,24 @@ export const updatePipelineEntrySchema = z
       .trim()
       .min(1, "reason is required")
       .max(500, "reason must be at most 500 characters")
+      .optional(),
+    // Required by the server when stage transitions to "committed" and the
+    // deal has no live commitment yet — the transition writes the round's
+    // Commitment row so the board and the round can't disagree. Ignored for
+    // every other transition.
+    commitment: z
+      .object({
+        amount: z
+          .number({ invalid_type_error: "commitment.amount must be a number" })
+          .finite("commitment.amount must be a finite number")
+          .min(0, "commitment.amount must be at least 0"),
+        status: z
+          .enum(COMMITMENT_STATUSES, {
+            errorMap: () => ({ message: "Invalid commitment status" }),
+          })
+          .optional(),
+        expectedCloseDate: z.union([z.coerce.date(), z.null()]).optional(),
+      })
       .optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {

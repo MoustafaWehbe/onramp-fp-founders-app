@@ -50,7 +50,10 @@ vi.mock("../../lib/task-api", async (importOriginal) => ({
 const getPipelineAnalytics = vi.fn();
 
 const listFundraisingRounds = vi.fn();
-vi.mock("../../lib/fundraising-api", () => ({
+vi.mock("../../lib/fundraising-api", async (importOriginal) => ({
+  // Keep the real status vocabularies and labels — the round picker and the
+  // commit prompt render from them.
+  ...(await importOriginal<typeof import("../../lib/fundraising-api")>()),
   listFundraisingRounds: (...a: unknown[]) => listFundraisingRounds(...a),
 }));
 
@@ -343,6 +346,74 @@ describe("Pipeline board", () => {
           "startup-1",
           "d1",
           expect.objectContaining({ stage: "contacted", sortOrder: 1000 }),
+        ),
+      );
+    });
+
+    // Regression: the reason prompt used to exist only in the deal sheet, so
+    // moving a card to Passed from the board sent no reason and the server
+    // rejected it with PASSED_REASON_REQUIRED.
+    it("asks for a reason before passing a deal from the card menu", async () => {
+      const user = userEvent.setup();
+      renderPipeline();
+      await screen.findByText("Ada Lovelace");
+
+      await user.click(screen.getByRole("button", { name: "Move Ada Lovelace to another stage" }));
+      await user.click(await screen.findByRole("menuitem", { name: /Passed/ }));
+
+      expect(
+        await screen.findByRole("heading", { name: /Why did Ada Lovelace pass\?/ }),
+      ).toBeInTheDocument();
+      // Nothing is written until a reason is given.
+      expect(updatePipelineEntry).not.toHaveBeenCalled();
+
+      updatePipelineEntry.mockResolvedValue(entry({ stage: "passed" }));
+      await user.click(screen.getByRole("button", { name: "Timing" }));
+      await user.click(screen.getByRole("button", { name: "Mark as passed" }));
+
+      await waitFor(() =>
+        expect(updatePipelineEntry).toHaveBeenCalledWith(
+          "startup-1",
+          "d1",
+          expect.objectContaining({ stage: "passed", reason: "Timing" }),
+        ),
+      );
+    });
+
+    // A deal reaching Committed and money landing in the round are the same
+    // event; the board used to record only the stage, so the round page
+    // showed nothing for an investor the board called committed.
+    it("records a commitment against the round when a deal is moved to Committed", async () => {
+      const user = userEvent.setup();
+      renderPipeline();
+      await screen.findByText("Ada Lovelace");
+
+      await user.click(screen.getByRole("button", { name: "Move Ada Lovelace to another stage" }));
+      await user.click(await screen.findByRole("menuitem", { name: /Committed/ }));
+
+      const prompt = await screen.findByRole("dialog");
+      expect(
+        within(prompt).getByRole("heading", { name: /Record Ada Lovelace's commitment/ }),
+      ).toBeInTheDocument();
+      // Seeded from the deal's expected amount so the common case is one click.
+      expect(within(prompt).getByLabelText("Amount")).toHaveValue(200000);
+      expect(updatePipelineEntry).not.toHaveBeenCalled();
+
+      // The status picker is the shared Radix listbox, not a native <select>.
+      await user.click(within(prompt).getByRole("combobox", { name: /Status/ }));
+      await user.click(await screen.findByRole("option", { name: "Confirmed" }));
+
+      updatePipelineEntry.mockResolvedValue(entry({ stage: "committed" }));
+      await user.click(within(prompt).getByRole("button", { name: "Record commitment" }));
+
+      await waitFor(() =>
+        expect(updatePipelineEntry).toHaveBeenCalledWith(
+          "startup-1",
+          "d1",
+          expect.objectContaining({
+            stage: "committed",
+            commitment: expect.objectContaining({ amount: 200000, status: "confirmed" }),
+          }),
         ),
       );
     });

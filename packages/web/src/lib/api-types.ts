@@ -1796,9 +1796,14 @@ export interface components {
             } | null;
             /**
              * Format: date-time
-             * @description Earliest upcoming nextFollowupDate across this contact's interaction logs; null when none is scheduled.
+             * @description Earliest upcoming nextFollowupDate across this contact's interaction logs; null when none is scheduled. Legacy — no new interaction log sets a follow-up date, so this only reflects data recorded before tasks superseded follow-ups.
              */
             nextFollowupDate?: string | null;
+            /**
+             * Format: date-time
+             * @description Newest interactionDate across this contact's interaction logs, falling back to a log's createdAt when it carries no interactionDate. Null when the contact has never been logged.
+             */
+            lastInteractionDate?: string | null;
         };
         CreateInvestorBody: {
             fullName: string;
@@ -1974,6 +1979,15 @@ export interface components {
             investorFitScore?: number | null;
             /** @description Required when stage is being set to "passed"; ignored for every other transition. Recorded on the deal's stage history, not overwritten on reopen, so a deal passed more than once keeps every reason. */
             reason?: string;
+            /** @description Required when stage is being set to "committed" and the deal has no live commitment yet; ignored for every other transition. The transition writes the round's Commitment row in the same transaction, so the board and the round can never report different totals for the same investor. Moving a deal back out of committed marks its commitments withdrawn rather than deleting them. */
+            commitment?: components["schemas"]["PipelineCommitmentDraft"];
+        };
+        PipelineCommitmentDraft: {
+            /** Format: double */
+            amount: number;
+            status?: components["schemas"]["CommitmentStatus"];
+            /** Format: date-time */
+            expectedCloseDate?: string | null;
         };
         /**
          * @example meeting

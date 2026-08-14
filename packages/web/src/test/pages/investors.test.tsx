@@ -55,6 +55,7 @@ function contact(id: string, fullName: string, inPipeline = false): InvestorList
       ? { id: `p-${id}`, stage: "term_sheet", expectedAmount: 250000, probabilityPercentage: 60 }
       : null,
     nextFollowupDate: null,
+    lastInteractionDate: null,
   };
 }
 

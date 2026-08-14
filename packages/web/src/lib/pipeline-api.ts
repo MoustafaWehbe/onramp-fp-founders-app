@@ -106,6 +106,13 @@ export async function createPipelineEntry(
   return data.data;
 }
 
+/** What the Committed transition records against the round. */
+export type CommitmentDraft = {
+  amount: number;
+  status?: "pending" | "negotiating" | "confirmed" | "funded" | "withdrawn";
+  expectedCloseDate?: string | null;
+};
+
 export async function updatePipelineEntry(
   startupId: string,
   pipelineId: string,
@@ -119,6 +126,12 @@ export async function updatePipelineEntry(
     investorFitScore?: number | null;
     /** Required by the server when stage is being set to "passed". */
     reason?: string;
+    /**
+     * Required by the server when stage is being set to "committed" and the
+     * deal has no live commitment yet — the transition records the round's
+     * commitment so the board and the round page cannot disagree.
+     */
+    commitment?: CommitmentDraft;
   },
 ) {
   const { data } = await apiClient.patch<{ data: PipelineEntry }>(

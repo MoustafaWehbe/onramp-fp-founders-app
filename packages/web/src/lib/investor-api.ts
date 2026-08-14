@@ -42,7 +42,10 @@ export type InvestorListItem = InvestorContact & {
     expectedAmount: number | null;
     probabilityPercentage: number | null;
   } | null;
+  /** Legacy: no new logs set a follow-up date — Task superseded it. */
   nextFollowupDate: string | null;
+  /** Newest interaction on record for this contact; null if never contacted. */
+  lastInteractionDate: string | null;
 };
 
 export type InvestorListMeta = {

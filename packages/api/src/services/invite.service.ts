@@ -419,6 +419,22 @@ export class InviteService {
         });
       }
 
+      // Hand back whatever this member held before the row goes. The FKs
+      // point at the composite [id, startupId], so the database cannot do
+      // this for us: ON DELETE SET NULL would null startupId too, and that
+      // column is NOT NULL — the delete fails outright. Clearing the
+      // references here also keeps the intent visible: removing someone
+      // un-owns their deals and unassigns their tasks, it does not delete
+      // either.
+      await tx.pipeline.updateMany({
+        where: { startupId, ownerId: memberId },
+        data: { ownerId: null },
+      });
+      await tx.task.updateMany({
+        where: { startupId, assigneeId: memberId },
+        data: { assigneeId: null },
+      });
+
       await tx.startupMember.delete({ where: { id: memberId } });
     });
   }

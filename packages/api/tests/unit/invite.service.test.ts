@@ -674,6 +674,10 @@ describe("InviteService.removeMember", () => {
           }),
           delete: jest.fn().mockResolvedValue({}),
         },
+        // Removing a member hands back what they held first — the composite
+        // FKs cannot SET NULL alone without nulling startupId too.
+        pipeline: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        task: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       };
       return cb(tx);
     });
@@ -696,6 +700,10 @@ describe("InviteService.removeMember", () => {
           }),
           delete: jest.fn().mockResolvedValue({}),
         },
+        // Removing a member hands back what they held first — the composite
+        // FKs cannot SET NULL alone without nulling startupId too.
+        pipeline: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        task: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       };
       return cb(tx);
     });
@@ -744,6 +752,8 @@ describe("InviteService.removeMember", () => {
         user: {
           updateMany: jest.fn(),
         },
+        pipeline: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        task: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       };
       return cb(tx);
     });
@@ -751,6 +761,61 @@ describe("InviteService.removeMember", () => {
     await service.removeMember(STARTUP_ID, MEMBER_ID, USER_ID);
 
     expect(mockPrisma.$transaction).toHaveBeenCalled();
+  });
+
+  // Regression: the composite FKs on Pipeline.owner / Task.assignee cannot
+  // ON DELETE SET NULL, because that nulls startupId too and it is NOT NULL.
+  // Without this hand-back the delete fails on the constraint and the member
+  // simply cannot be removed.
+  it("un-owns the member's deals and unassigns their tasks before deleting them", async () => {
+    const pipelineUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const taskUpdateMany = jest.fn().mockResolvedValue({ count: 2 });
+    const memberDelete = jest.fn().mockResolvedValue({});
+    const order: string[] = [];
+
+    (mockPrisma.$transaction as jest.Mock).mockImplementation(async (cb: Function) => {
+      const tx = {
+        startupMember: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: MEMBER_ID,
+            startupId: STARTUP_ID,
+            status: "active",
+            userId: USER_ID,
+            role: { name: "collaborator" },
+          }),
+          delete: (...args: unknown[]) => {
+            order.push("delete");
+            return memberDelete(...args);
+          },
+        },
+        pipeline: {
+          updateMany: (...args: unknown[]) => {
+            order.push("pipeline");
+            return pipelineUpdateMany(...args);
+          },
+        },
+        task: {
+          updateMany: (...args: unknown[]) => {
+            order.push("task");
+            return taskUpdateMany(...args);
+          },
+        },
+      };
+      return cb(tx);
+    });
+
+    await service.removeMember(STARTUP_ID, MEMBER_ID, INVITER_ID);
+
+    expect(pipelineUpdateMany).toHaveBeenCalledWith({
+      where: { startupId: STARTUP_ID, ownerId: MEMBER_ID },
+      data: { ownerId: null },
+    });
+    expect(taskUpdateMany).toHaveBeenCalledWith({
+      where: { startupId: STARTUP_ID, assigneeId: MEMBER_ID },
+      data: { assigneeId: null },
+    });
+    // Both hand-backs must land before the row goes, or the FK rejects it.
+    expect(order).toEqual(["pipeline", "task", "delete"]);
   });
 
   it("rejects member from another startup", async () => {

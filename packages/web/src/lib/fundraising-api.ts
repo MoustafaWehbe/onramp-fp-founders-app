@@ -1,8 +1,32 @@
 import { apiClient } from "./api-client";
 import type { PipelineContact, PaginationMeta } from "./pipeline-api";
 
-export type RoundStatus = "draft" | "active" | "closed" | "cancelled";
-export type CommitmentStatus = "pending" | "negotiating" | "confirmed" | "funded" | "withdrawn";
+export const ROUND_STATUSES = ["draft", "active", "closed", "cancelled"] as const;
+export const COMMITMENT_STATUSES = [
+  "pending",
+  "negotiating",
+  "confirmed",
+  "funded",
+  "withdrawn",
+] as const;
+
+export type RoundStatus = (typeof ROUND_STATUSES)[number];
+export type CommitmentStatus = (typeof COMMITMENT_STATUSES)[number];
+
+export const ROUND_STATUS_LABELS: Record<RoundStatus, string> = {
+  draft: "Draft",
+  active: "Active",
+  closed: "Closed",
+  cancelled: "Cancelled",
+};
+
+export const COMMITMENT_STATUS_LABELS: Record<CommitmentStatus, string> = {
+  pending: "Pending",
+  negotiating: "Negotiating",
+  confirmed: "Confirmed",
+  funded: "Funded",
+  withdrawn: "Withdrawn",
+};
 
 export type FundraisingRound = {
   id: string;

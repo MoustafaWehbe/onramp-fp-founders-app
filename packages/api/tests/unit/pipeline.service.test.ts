@@ -14,10 +14,16 @@ jest.mock("../../src/db/prisma", () => {
       aggregate: jest.fn(),
     },
     pipelineStageEvent: { create: jest.fn(), findMany: jest.fn() },
-    commitment: { count: jest.fn() },
+    commitment: {
+      count: jest.fn(),
+      findFirst: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+    },
     fundraisingRound: { findUnique: jest.fn(), findMany: jest.fn() },
-    task: { count: jest.fn(), findMany: jest.fn() },
-    interactionLog: { findMany: jest.fn() },
+    task: { count: jest.fn(), findMany: jest.fn(), deleteMany: jest.fn() },
+    interactionLog: { groupBy: jest.fn() },
     startupMember: { findUnique: jest.fn() },
   };
   // Stage writes run in a transaction; hand the callback the same mock client so
@@ -139,6 +145,44 @@ describe("PipelineService.createEntry", () => {
     ).rejects.toMatchObject({ statusCode: 404, code: "FUNDRAISING_ROUND_NOT_FOUND" });
 
     expect(mockPrisma.pipeline.create).not.toHaveBeenCalled();
+  });
+
+  it.each(["closed", "cancelled"])("refuses to add a deal to a %s round", async (status) => {
+    (mockPrisma.startupInvestor.findUnique as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
+    (mockPrisma.fundraisingRound.findUnique as jest.Mock).mockResolvedValue({
+      id: ROUND_ID,
+      status,
+      roundName: "Seed",
+    });
+
+    await expect(
+      service.createEntry(STARTUP_ID, {
+        investorId: CONTACT_ID,
+        roundId: ROUND_ID,
+        stage: "sourced",
+      } as never),
+    ).rejects.toMatchObject({ statusCode: 409, code: "ROUND_NOT_OPEN" });
+
+    expect(mockPrisma.pipeline.create).not.toHaveBeenCalled();
+  });
+
+  it.each(["draft", "active"])("adds a deal to a %s round", async (status) => {
+    (mockPrisma.startupInvestor.findUnique as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
+    (mockPrisma.fundraisingRound.findUnique as jest.Mock).mockResolvedValue({
+      id: ROUND_ID,
+      status,
+      roundName: "Seed",
+    });
+    (mockPrisma.pipeline.aggregate as jest.Mock).mockResolvedValue({ _max: { sortOrder: 0 } });
+    (mockPrisma.pipeline.create as jest.Mock).mockResolvedValue(entryRow());
+
+    await service.createEntry(STARTUP_ID, {
+      investorId: CONTACT_ID,
+      roundId: ROUND_ID,
+      stage: "sourced",
+    } as never);
+
+    expect(mockPrisma.pipeline.create).toHaveBeenCalled();
   });
 
   it("uses a legacy client request only when exactly one active round exists", async () => {
@@ -284,6 +328,110 @@ describe("PipelineService.getEntry", () => {
       statusCode: 404,
       code: "PIPELINE_NOT_FOUND",
     });
+  });
+});
+
+describe("PipelineService.updateEntry committing", () => {
+  const COMMITTING = {
+    id: PIPELINE_ID,
+    stage: "term_sheet",
+    roundId: ROUND_ID,
+    startupInvestorId: CONTACT_ID,
+  };
+
+  beforeEach(() => {
+    (mockPrisma.pipeline.update as jest.Mock).mockResolvedValue(entryRow({ stage: "committed" }));
+  });
+
+  it("records the round's commitment in the same transaction as the stage move", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue(COMMITTING);
+    (mockPrisma.commitment.findFirst as jest.Mock).mockResolvedValue(null);
+
+    await service.updateEntry(STARTUP_ID, PIPELINE_ID, {
+      stage: "committed",
+      commitment: { amount: 250_000, status: "pending" },
+    } as never);
+
+    expect(mockPrisma.commitment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        startupId: STARTUP_ID,
+        startupInvestorId: CONTACT_ID,
+        pipelineId: PIPELINE_ID,
+        roundId: ROUND_ID,
+        amount: 250_000,
+        status: "pending",
+      }),
+    });
+  });
+
+  it("refuses the move when no commitment details are given and none exists yet", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue(COMMITTING);
+    (mockPrisma.commitment.findFirst as jest.Mock).mockResolvedValue(null);
+
+    await expect(
+      service.updateEntry(STARTUP_ID, PIPELINE_ID, { stage: "committed" } as never),
+    ).rejects.toMatchObject({ statusCode: 400, code: "COMMITMENT_DETAILS_REQUIRED" });
+
+    expect(mockPrisma.pipeline.update).not.toHaveBeenCalled();
+  });
+
+  it("allows the move with no details when the round already records a commitment", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue(COMMITTING);
+    (mockPrisma.commitment.findFirst as jest.Mock).mockResolvedValue({
+      id: "c1",
+      status: "confirmed",
+    });
+
+    await service.updateEntry(STARTUP_ID, PIPELINE_ID, { stage: "committed" } as never);
+
+    expect(mockPrisma.commitment.create).not.toHaveBeenCalled();
+    expect(mockPrisma.pipeline.update).toHaveBeenCalled();
+  });
+
+  it("updates the existing commitment rather than stacking a second one", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue(COMMITTING);
+    (mockPrisma.commitment.findFirst as jest.Mock).mockResolvedValue({
+      id: "c1",
+      status: "withdrawn",
+    });
+
+    await service.updateEntry(STARTUP_ID, PIPELINE_ID, {
+      stage: "committed",
+      commitment: { amount: 300_000, status: "confirmed" },
+    } as never);
+
+    expect(mockPrisma.commitment.create).not.toHaveBeenCalled();
+    expect(mockPrisma.commitment.update).toHaveBeenCalledWith({
+      where: { id: "c1" },
+      data: expect.objectContaining({ amount: 300_000, status: "confirmed" }),
+    });
+  });
+
+  it("withdraws the commitment when the deal moves back out of committed", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({
+      ...COMMITTING,
+      stage: "committed",
+    });
+    (mockPrisma.pipeline.update as jest.Mock).mockResolvedValue(entryRow({ stage: "term_sheet" }));
+
+    await service.updateEntry(STARTUP_ID, PIPELINE_ID, { stage: "term_sheet" } as never);
+
+    // The row survives as history rather than being deleted — anything
+    // already marked funded must not silently vanish from the round.
+    expect(mockPrisma.commitment.updateMany).toHaveBeenCalledWith({
+      where: { startupId: STARTUP_ID, pipelineId: PIPELINE_ID, status: { not: "withdrawn" } },
+      data: { status: "withdrawn" },
+    });
+  });
+
+  it("leaves commitments alone for a move that is not into or out of committed", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue(COMMITTING);
+    (mockPrisma.pipeline.update as jest.Mock).mockResolvedValue(entryRow({ stage: "due_diligence" }));
+
+    await service.updateEntry(STARTUP_ID, PIPELINE_ID, { stage: "due_diligence" } as never);
+
+    expect(mockPrisma.commitment.create).not.toHaveBeenCalled();
+    expect(mockPrisma.commitment.updateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -572,7 +720,7 @@ describe("PipelineService.getAnalytics", () => {
 });
 
 describe("PipelineService.deleteEntry", () => {
-  it("deletes when there are no commitment or task dependents", async () => {
+  it("deletes when there are no commitment or open-task dependents", async () => {
     (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({ id: PIPELINE_ID });
     (mockPrisma.commitment.count as jest.Mock).mockResolvedValue(0);
     (mockPrisma.task.count as jest.Mock).mockResolvedValue(0);
@@ -583,10 +731,28 @@ describe("PipelineService.deleteEntry", () => {
     expect(mockPrisma.commitment.count).toHaveBeenCalledWith({
       where: { pipelineId: PIPELINE_ID, startupId: STARTUP_ID },
     });
+    // Only unfinished work blocks — a completed checklist must not strand the
+    // deal on the board forever.
     expect(mockPrisma.task.count).toHaveBeenCalledWith({
-      where: { pipelineId: PIPELINE_ID, startupId: STARTUP_ID },
+      where: { pipelineId: PIPELINE_ID, startupId: STARTUP_ID, status: "open" },
     });
     expect(mockPrisma.pipeline.delete).toHaveBeenCalledWith({ where: { id: PIPELINE_ID } });
+  });
+
+  it("sweeps the deal's completed tasks in the same transaction as the delete", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({ id: PIPELINE_ID });
+    (mockPrisma.commitment.count as jest.Mock).mockResolvedValue(0);
+    (mockPrisma.task.count as jest.Mock).mockResolvedValue(0);
+    (mockPrisma.pipeline.delete as jest.Mock).mockResolvedValue({});
+
+    await service.deleteEntry(STARTUP_ID, PIPELINE_ID);
+
+    // The pipeline FK is Restrict, so the tasks have to go first or the
+    // delete fails on the constraint.
+    expect(mockPrisma.$transaction).toHaveBeenCalled();
+    expect(mockPrisma.task.deleteMany).toHaveBeenCalledWith({
+      where: { pipelineId: PIPELINE_ID, startupId: STARTUP_ID },
+    });
   });
 
   it("throws HAS_DEPENDENTS when commitments exist", async () => {
@@ -601,7 +767,7 @@ describe("PipelineService.deleteEntry", () => {
     expect(mockPrisma.pipeline.delete).not.toHaveBeenCalled();
   });
 
-  it("throws HAS_DEPENDENTS when tasks exist, same as commitments — task history must not cascade-delete", async () => {
+  it("throws HAS_DEPENDENTS when open tasks exist — someone still expects to act on this deal", async () => {
     (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({ id: PIPELINE_ID });
     (mockPrisma.commitment.count as jest.Mock).mockResolvedValue(0);
     (mockPrisma.task.count as jest.Mock).mockResolvedValue(3);
@@ -678,6 +844,30 @@ describe("PipelineService.getFocus", () => {
     });
   }
 
+  /**
+   * Last touch is two grouped queries — dated logs aggregated by
+   * interactionDate, undated ones by createdAt. `dated`/`undated` map a
+   * contact id to the aggregate that query should report for it.
+   */
+  function mockLastTouch(
+    dated: Record<string, Date> = {},
+    undated: Record<string, Date> = {},
+  ) {
+    (mockPrisma.interactionLog.groupBy as jest.Mock).mockImplementation((args) =>
+      Promise.resolve(
+        args._max?.interactionDate
+          ? Object.entries(dated).map(([startupInvestorId, at]) => ({
+              startupInvestorId,
+              _max: { interactionDate: at },
+            }))
+          : Object.entries(undated).map(([startupInvestorId, at]) => ({
+              startupInvestorId,
+              _max: { createdAt: at },
+            })),
+      ),
+    );
+  }
+
   it("only queries non-settled deals in the resolved round", async () => {
     (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([]);
 
@@ -695,7 +885,7 @@ describe("PipelineService.getFocus", () => {
     (mockPrisma.task.findMany as jest.Mock).mockResolvedValue([
       { pipelineId: "p1", dueDate: new Date(NOW.getTime() - 4 * DAY) },
     ]);
-    (mockPrisma.interactionLog.findMany as jest.Mock).mockResolvedValue([]);
+    mockLastTouch();
 
     const { data } = await service.getFocus(STARTUP_ID, ROUND_ID);
 
@@ -706,9 +896,7 @@ describe("PipelineService.getFocus", () => {
   it("flags a deal with no open task at all as missing", async () => {
     (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([deal("p1")]);
     (mockPrisma.task.findMany as jest.Mock).mockResolvedValue([]);
-    (mockPrisma.interactionLog.findMany as jest.Mock).mockResolvedValue([
-      { startupInvestorId: "contact-p1", interactionDate: NOW, createdAt: NOW },
-    ]);
+    mockLastTouch({ "contact-p1": NOW });
 
     const { data } = await service.getFocus(STARTUP_ID, ROUND_ID);
 
@@ -720,9 +908,7 @@ describe("PipelineService.getFocus", () => {
     (mockPrisma.task.findMany as jest.Mock).mockResolvedValue([
       { pipelineId: "p1", dueDate: new Date(NOW.getTime() + 30 * DAY) },
     ]);
-    (mockPrisma.interactionLog.findMany as jest.Mock).mockResolvedValue([
-      { startupInvestorId: "contact-p1", interactionDate: new Date(NOW.getTime() - 20 * DAY), createdAt: new Date(NOW.getTime() - 20 * DAY) },
-    ]);
+    mockLastTouch({ "contact-p1": new Date(NOW.getTime() - 20 * DAY) });
 
     const { data } = await service.getFocus(STARTUP_ID, ROUND_ID);
 
@@ -738,10 +924,7 @@ describe("PipelineService.getFocus", () => {
       { pipelineId: "overdue-deal", dueDate: new Date(NOW.getTime() - DAY) },
       { pipelineId: "priority-deal", dueDate: new Date(NOW.getTime() + 30 * DAY) },
     ]);
-    (mockPrisma.interactionLog.findMany as jest.Mock).mockResolvedValue([
-      { startupInvestorId: "contact-overdue-deal", interactionDate: NOW, createdAt: NOW },
-      { startupInvestorId: "contact-priority-deal", interactionDate: NOW, createdAt: NOW },
-    ]);
+    mockLastTouch({ "contact-overdue-deal": NOW, "contact-priority-deal": NOW });
 
     const { data } = await service.getFocus(STARTUP_ID, ROUND_ID);
 
@@ -754,12 +937,42 @@ describe("PipelineService.getFocus", () => {
     (mockPrisma.task.findMany as jest.Mock).mockResolvedValue([
       { pipelineId: "p1", dueDate: new Date(NOW.getTime() + 5 * DAY) },
     ]);
-    (mockPrisma.interactionLog.findMany as jest.Mock).mockResolvedValue([
-      { startupInvestorId: "contact-p1", interactionDate: NOW, createdAt: NOW },
-    ]);
+    mockLastTouch({ "contact-p1": NOW });
 
     const { data } = await service.getFocus(STARTUP_ID, ROUND_ID);
 
     expect(data).toHaveLength(0);
+  });
+
+  // Regression: last touch used to come from a findMany ordered by the
+  // nullable interactionDate. Postgres sorts DESC NULLS FIRST, so one undated
+  // log outranked every dated one and pinned the deal's last touch to
+  // whenever that row happened to be written.
+  it("does not let an undated log override a more recent real interaction", async () => {
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([deal("p1")]);
+    (mockPrisma.task.findMany as jest.Mock).mockResolvedValue([
+      { pipelineId: "p1", dueDate: new Date(NOW.getTime() + 30 * DAY) },
+    ]);
+    mockLastTouch(
+      { "contact-p1": new Date(NOW.getTime() - DAY) },
+      { "contact-p1": new Date(NOW.getTime() - 90 * DAY) },
+    );
+
+    const { data } = await service.getFocus(STARTUP_ID, ROUND_ID);
+
+    // Spoken to yesterday, so not quiet — and nothing else applies.
+    expect(data).toHaveLength(0);
+  });
+
+  it("falls back to an undated log's createdAt when no dated log exists", async () => {
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([deal("p1")]);
+    (mockPrisma.task.findMany as jest.Mock).mockResolvedValue([
+      { pipelineId: "p1", dueDate: new Date(NOW.getTime() + 30 * DAY) },
+    ]);
+    mockLastTouch({}, { "contact-p1": new Date(NOW.getTime() - 20 * DAY) });
+
+    const { data } = await service.getFocus(STARTUP_ID, ROUND_ID);
+
+    expect(data[0]).toMatchObject({ id: "p1", reason: "quiet", daysQuiet: 20 });
   });
 });

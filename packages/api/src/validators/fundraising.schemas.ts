@@ -1,13 +1,7 @@
 import { z } from "zod";
+import { COMMITMENT_STATUSES, ROUND_STATUSES } from "../config/crm";
 
-export const ROUND_STATUSES = ["draft", "active", "closed", "cancelled"] as const;
-export const COMMITMENT_STATUSES = [
-  "pending",
-  "negotiating",
-  "confirmed",
-  "funded",
-  "withdrawn",
-] as const;
+export { COMMITMENT_STATUSES, ROUND_STATUSES };
 
 const roundStatusEnum = z.enum(ROUND_STATUSES, {
   errorMap: () => ({ message: "Invalid fundraising round status" }),

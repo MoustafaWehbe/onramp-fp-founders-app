@@ -46,7 +46,11 @@ export function mapContactToRow(contact: InvestorListItem): InvestorRow {
     pipelineStageId: contact.pipeline?.stage ?? null,
     pipelineId: contact.pipeline?.id ?? null,
     amount: contact.pipeline?.expectedAmount ?? null,
-    lastContact: formatRelativeDate(contact.nextFollowupDate ?? contact.updatedAt),
+    // Strictly the last interaction on record. It used to read
+    // nextFollowupDate — a *future* date, which formatRelativeDate renders as
+    // "Today" — falling back to updatedAt, which moves when the contact's
+    // details are edited rather than when anyone spoke to them.
+    lastContact: formatRelativeDate(contact.lastInteractionDate),
     linkedinUrl: contact.linkedinUrl,
     contact,
   };

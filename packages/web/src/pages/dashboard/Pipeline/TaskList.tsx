@@ -6,6 +6,7 @@ import { Button } from "../../../components/ui/button";
 import { Checkbox } from "../../../components/ui/checkbox";
 import { DateTimePicker } from "../../../components/ui/date-time-picker";
 import { Input } from "../../../components/ui/input";
+import { Select } from "../../../components/ui/select";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { apiErrorMessage } from "../../../lib/api-error";
 import { listMembers } from "../../../lib/team-api";
@@ -216,33 +217,28 @@ export function TaskList({ startupId, pipelineId }: TaskListProps) {
             className="h-8 min-w-40 flex-1"
             maxLength={200}
           />
-          <select
+          <Select
             aria-label="Task priority"
             value={priority}
-            onChange={(event) => setPriority(event.target.value as Priority)}
-            className="h-8 rounded-md border border-border bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-ring"
-          >
-            {PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {PRIORITY_LABELS[p]}
-              </option>
-            ))}
-          </select>
-          <select
+            onValueChange={(value) => setPriority(value as Priority)}
+            className="h-8 w-auto min-w-28 text-xs"
+            options={PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABELS[p] }))}
+          />
+          <Select
             aria-label="Assignee"
             value={assigneeId}
-            onChange={(event) => setAssigneeId(event.target.value)}
-            className="h-8 rounded-md border border-border bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-ring"
-          >
-            <option value="">Unassigned</option>
-            {(membersQuery.data ?? []).map((member) => (
-              <option key={member.id} value={member.id}>
-                {member.user
+            onValueChange={setAssigneeId}
+            className="h-8 w-auto min-w-36 text-xs"
+            options={[
+              { value: "", label: "Unassigned" },
+              ...(membersQuery.data ?? []).map((member) => ({
+                value: member.id,
+                label: member.user
                   ? `${member.user.firstName} ${member.user.lastName}`.trim()
-                  : (member.invitedEmail ?? "Pending")}
-              </option>
-            ))}
-          </select>
+                  : (member.invitedEmail ?? "Pending"),
+              })),
+            ]}
+          />
           <DateTimePicker
             value={dueDate}
             onChange={setDueDate}

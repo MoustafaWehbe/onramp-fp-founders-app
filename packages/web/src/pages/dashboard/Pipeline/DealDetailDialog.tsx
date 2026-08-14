@@ -13,6 +13,7 @@ import {
 } from "../../../components/ui/dialog";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
+import { Select } from "../../../components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -21,7 +22,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from "../../../components/ui/sheet";
-import { Textarea } from "../../../components/ui/textarea";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
 import {
@@ -37,6 +37,7 @@ import { fetchAllPages } from "../../../lib/pagination";
 import {
   listPipelineStageEvents,
   updatePipelineEntry,
+  type CommitmentDraft,
   type PipelineEntry,
 } from "../../../lib/pipeline-api";
 import { listMembers } from "../../../lib/team-api";
@@ -50,9 +51,9 @@ import {
   formatDuration,
   type DealSignals,
 } from "./deal-signals";
+import { CommitDialog } from "./CommitDialog";
+import { PassReasonDialog } from "./PassReasonDialog";
 import { TaskList } from "./TaskList";
-
-const PASSED_REASON_SUGGESTIONS = ["Not a fit", "Timing", "No response", "Went with another investor"];
 
 /** "Passed" is an exit, not a step, so it sits apart from the progression. */
 const PROGRESSION = STAGES.filter((stage) => stage.id !== "passed");
@@ -61,6 +62,8 @@ type DealDetailDialogProps = {
   startupId: string;
   deal: PipelineEntry | null;
   signals: DealSignals;
+  /** Named in the commit prompt, so it's clear which raise the money lands in. */
+  roundName: string;
   onOpenChange: (open: boolean) => void;
   onRemove: (deal: PipelineEntry) => void;
 };
@@ -86,6 +89,7 @@ export function DealDetailDialog({
   startupId,
   deal,
   signals,
+  roundName,
   onOpenChange,
   onRemove,
 }: DealDetailDialogProps) {
@@ -102,7 +106,7 @@ export function DealDetailDialog({
   const [probability, setProbability] = useState("");
   const [investorFitScore, setInvestorFitScore] = useState("");
   const [passReasonOpen, setPassReasonOpen] = useState(false);
-  const [passReason, setPassReason] = useState("");
+  const [commitOpen, setCommitOpen] = useState(false);
 
   const investorId = deal?.investor.id ?? null;
 
@@ -239,8 +243,13 @@ export function DealDetailDialog({
     // Passing requires a reason the server records on the stage history —
     // collect it first instead of mutating straight away.
     if (stage === "passed") {
-      setPassReason("");
       setPassReasonOpen(true);
+      return;
+    }
+    // Committing writes money against the round, so it collects the amount
+    // first — same holding pattern as passing.
+    if (stage === "committed") {
+      setCommitOpen(true);
       return;
     }
     const nextProbability = DEFAULT_PROBABILITY_BY_STAGE[stage];
@@ -248,13 +257,29 @@ export function DealDetailDialog({
     dealMutation.mutate({ stage, probabilityPercentage: nextProbability });
   };
 
-  const confirmPass = () => {
-    if (!deal || passReason.trim() === "") return;
+  const confirmPass = (reason: string) => {
+    if (!deal) return;
     const nextProbability = DEFAULT_PROBABILITY_BY_STAGE.passed;
     setProbability(String(nextProbability));
     dealMutation.mutate(
-      { stage: "passed", probabilityPercentage: nextProbability, reason: passReason.trim() },
+      { stage: "passed", probabilityPercentage: nextProbability, reason },
       { onSuccess: () => setPassReasonOpen(false) },
+    );
+  };
+
+  const confirmCommit = (commitment: CommitmentDraft) => {
+    if (!deal) return;
+    const nextProbability = DEFAULT_PROBABILITY_BY_STAGE.committed;
+    setProbability(String(nextProbability));
+    dealMutation.mutate(
+      { stage: "committed", probabilityPercentage: nextProbability, commitment },
+      {
+        onSuccess: () => {
+          setCommitOpen(false);
+          void queryClient.invalidateQueries({ queryKey: ["commitments", startupId] });
+          toast.success("Commitment recorded against the round");
+        },
+      },
     );
   };
 
@@ -427,45 +452,36 @@ export function DealDetailDialog({
               <section aria-label="Deal ownership" className="grid gap-3 sm:grid-cols-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="deal-owner">Owner</Label>
-                  <select
+                  <Select
                     id="deal-owner"
                     disabled={!canUpdate}
                     value={deal.ownerId ?? ""}
-                    onChange={(event) =>
-                      dealMutation.mutate({ ownerId: event.target.value || null })
-                    }
-                    className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
-                  >
-                    <option value="">Unassigned</option>
-                    {(membersQuery.data ?? []).map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {member.user
+                    onValueChange={(value) => dealMutation.mutate({ ownerId: value || null })}
+                    options={[
+                      { value: "", label: "Unassigned" },
+                      ...(membersQuery.data ?? []).map((member) => ({
+                        value: member.id,
+                        label: member.user
                           ? `${member.user.firstName} ${member.user.lastName}`.trim()
-                          : (member.invitedEmail ?? "Pending")}
-                      </option>
-                    ))}
-                  </select>
+                          : (member.invitedEmail ?? "Pending"),
+                      })),
+                    ]}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="deal-priority">Priority</Label>
-                  <select
+                  <Select
                     id="deal-priority"
                     disabled={!canUpdate}
                     value={deal.priority ?? ""}
-                    onChange={(event) =>
-                      dealMutation.mutate({
-                        priority: (event.target.value || null) as Priority | null,
-                      })
+                    onValueChange={(value) =>
+                      dealMutation.mutate({ priority: (value || null) as Priority | null })
                     }
-                    className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
-                  >
-                    <option value="">Unset</option>
-                    {PRIORITIES.map((p) => (
-                      <option key={p} value={p}>
-                        {PRIORITY_LABELS[p]}
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: "", label: "Unset" },
+                      ...PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABELS[p] })),
+                    ]}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="deal-fit">Investor fit</Label>
@@ -582,49 +598,23 @@ export function DealDetailDialog({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={passReasonOpen} onOpenChange={setPassReasonOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Why did {investor?.fullName} pass?</DialogTitle>
-            <DialogDescription>
-              This is kept on the deal's history — reopening later doesn't erase it.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-wrap gap-1.5">
-            {PASSED_REASON_SUGGESTIONS.map((suggestion) => (
-              <button
-                key={suggestion}
-                type="button"
-                onClick={() => setPassReason(suggestion)}
-                className="rounded-full border border-border/70 px-2.5 py-1 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground"
-              >
-                {suggestion}
-              </button>
-            ))}
-          </div>
-          <Textarea
-            value={passReason}
-            onChange={(event) => setPassReason(event.target.value)}
-            placeholder="Why is this deal passing?"
-            maxLength={500}
-            rows={3}
-            autoFocus
-          />
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setPassReasonOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={passReason.trim() === "" || dealMutation.isPending}
-              onClick={confirmPass}
-            >
-              {dealMutation.isPending ? "Saving…" : "Mark as passed"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PassReasonDialog
+        open={passReasonOpen}
+        investorName={investor?.fullName ?? ""}
+        isSubmitting={dealMutation.isPending}
+        onCancel={() => setPassReasonOpen(false)}
+        onConfirm={confirmPass}
+      />
+
+      <CommitDialog
+        open={commitOpen}
+        investorName={investor?.fullName ?? ""}
+        roundName={roundName}
+        suggestedAmount={deal?.expectedAmount ?? null}
+        isSubmitting={dealMutation.isPending}
+        onCancel={() => setCommitOpen(false)}
+        onConfirm={confirmCommit}
+      />
     </>
   );
 }

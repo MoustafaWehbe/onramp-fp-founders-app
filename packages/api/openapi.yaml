@@ -860,7 +860,17 @@ components:
               nullable: true
               description: >
                 Earliest upcoming nextFollowupDate across this contact's
-                interaction logs; null when none is scheduled.
+                interaction logs; null when none is scheduled. Legacy — no new
+                interaction log sets a follow-up date, so this only reflects
+                data recorded before tasks superseded follow-ups.
+            lastInteractionDate:
+              type: string
+              format: date-time
+              nullable: true
+              description: >
+                Newest interactionDate across this contact's interaction logs,
+                falling back to a log's createdAt when it carries no
+                interactionDate. Null when the contact has never been logged.
 
     CreateInvestorBody:
       type: object
@@ -1141,6 +1151,32 @@ components:
             other transition. Recorded on the deal's stage history, not
             overwritten on reopen, so a deal passed more than once keeps
             every reason.
+        commitment:
+          allOf:
+            - $ref: "#/components/schemas/PipelineCommitmentDraft"
+          description: >-
+            Required when stage is being set to "committed" and the deal has
+            no live commitment yet; ignored for every other transition. The
+            transition writes the round's Commitment row in the same
+            transaction, so the board and the round can never report
+            different totals for the same investor. Moving a deal back out of
+            committed marks its commitments withdrawn rather than deleting
+            them.
+
+    PipelineCommitmentDraft:
+      type: object
+      required: [amount]
+      properties:
+        amount:
+          type: number
+          format: double
+          minimum: 0
+        status:
+          $ref: "#/components/schemas/CommitmentStatus"
+        expectedCloseDate:
+          type: string
+          format: date-time
+          nullable: true
 
     # ── CRM: Interaction Logs ─────────────────────────────────────────
     InteractionType:

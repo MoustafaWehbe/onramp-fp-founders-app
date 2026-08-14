@@ -275,9 +275,13 @@ describe("InvestorService.listInvestors", () => {
     (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([
       { id: CONTACT_ID, fullName: "Ada", pipeline: [] },
     ]);
-    (mockPrisma.interactionLog.groupBy as jest.Mock).mockResolvedValue([
-      { startupInvestorId: CONTACT_ID, _min: { nextFollowupDate: followup } },
-    ]);
+    // Three grouped queries now share this mock — the follow-up one asks for
+    // _min, the two last-touch ones for _max.
+    (mockPrisma.interactionLog.groupBy as jest.Mock).mockImplementation((args) =>
+      Promise.resolve(
+        args._min ? [{ startupInvestorId: CONTACT_ID, _min: { nextFollowupDate: followup } }] : [],
+      ),
+    );
 
     const result = await service.listInvestors(STARTUP_ID, DEFAULT_QUERY as never);
 
@@ -293,7 +297,65 @@ describe("InvestorService.listInvestors", () => {
     });
   });
 
-  it("resolves follow-ups in one grouped query rather than per row", async () => {
+  it("attaches the newest interaction date as last contact", async () => {
+    const interaction = new Date("2026-03-01T00:00:00.000Z");
+    (mockPrisma.startupInvestor.count as jest.Mock).mockResolvedValue(1);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([
+      { id: CONTACT_ID, fullName: "Ada", pipeline: [] },
+    ]);
+    (mockPrisma.interactionLog.groupBy as jest.Mock).mockImplementation((args) =>
+      Promise.resolve(
+        args._max?.interactionDate
+          ? [{ startupInvestorId: CONTACT_ID, _max: { interactionDate: interaction } }]
+          : [],
+      ),
+    );
+
+    const result = await service.listInvestors(STARTUP_ID, DEFAULT_QUERY as never);
+
+    expect(result.data[0]!.lastInteractionDate).toEqual(interaction);
+  });
+
+  it("falls back to a log's createdAt when it carries no interaction date", async () => {
+    const written = new Date("2026-04-01T00:00:00.000Z");
+    (mockPrisma.startupInvestor.count as jest.Mock).mockResolvedValue(1);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([
+      { id: CONTACT_ID, fullName: "Ada", pipeline: [] },
+    ]);
+    (mockPrisma.interactionLog.groupBy as jest.Mock).mockImplementation((args) =>
+      Promise.resolve(
+        args._max?.createdAt ? [{ startupInvestorId: CONTACT_ID, _max: { createdAt: written } }] : [],
+      ),
+    );
+
+    const result = await service.listInvestors(STARTUP_ID, DEFAULT_QUERY as never);
+
+    expect(result.data[0]!.lastInteractionDate).toEqual(written);
+  });
+
+  it("prefers a real interaction date over an undated log written later", async () => {
+    const interaction = new Date("2026-05-01T00:00:00.000Z");
+    const writtenEarlier = new Date("2026-04-01T00:00:00.000Z");
+    (mockPrisma.startupInvestor.count as jest.Mock).mockResolvedValue(1);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([
+      { id: CONTACT_ID, fullName: "Ada", pipeline: [] },
+    ]);
+    (mockPrisma.interactionLog.groupBy as jest.Mock).mockImplementation((args) =>
+      Promise.resolve(
+        args._max?.interactionDate
+          ? [{ startupInvestorId: CONTACT_ID, _max: { interactionDate: interaction } }]
+          : args._max?.createdAt
+            ? [{ startupInvestorId: CONTACT_ID, _max: { createdAt: writtenEarlier } }]
+            : [],
+      ),
+    );
+
+    const result = await service.listInvestors(STARTUP_ID, DEFAULT_QUERY as never);
+
+    expect(result.data[0]!.lastInteractionDate).toEqual(interaction);
+  });
+
+  it("resolves follow-ups and last contact in a fixed number of grouped queries, not per row", async () => {
     (mockPrisma.startupInvestor.count as jest.Mock).mockResolvedValue(3);
     (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([
       { id: "a", fullName: "A", pipeline: [] },
@@ -303,7 +365,9 @@ describe("InvestorService.listInvestors", () => {
 
     await service.listInvestors(STARTUP_ID, DEFAULT_QUERY as never);
 
-    expect(mockPrisma.interactionLog.groupBy).toHaveBeenCalledTimes(1);
+    // One for the follow-up date, two for last contact (dated vs. undated
+    // logs) — constant regardless of how many contacts are on the page.
+    expect(mockPrisma.interactionLog.groupBy).toHaveBeenCalledTimes(3);
     expect(mockPrisma.interactionLog.groupBy).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ startupInvestorId: { in: ["a", "b", "c"] } }),

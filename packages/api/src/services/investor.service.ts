@@ -144,13 +144,18 @@ export class InvestorService {
           ? prospectCount
           : engagedCount + prospectCount;
 
-    const followups = await this.nextFollowupsFor(contacts.map((c) => c.id));
+    const contactIds = contacts.map((c) => c.id);
+    const [followups, lastInteractions] = await Promise.all([
+      this.nextFollowupsFor(contactIds),
+      this.lastInteractionsFor(contactIds),
+    ]);
 
     return {
       data: contacts.map(({ pipeline, ...contact }) => ({
         ...contact,
         pipeline: serializePipeline(pipeline[0]),
         nextFollowupDate: followups.get(contact.id) ?? null,
+        lastInteractionDate: lastInteractions.get(contact.id) ?? null,
       })),
       meta: {
         page,
@@ -173,13 +178,17 @@ export class InvestorService {
 
     if (!contact) throw createError("Investor contact not found", 404, "INVESTOR_NOT_FOUND");
 
-    const followups = await this.nextFollowupsFor([contact.id]);
+    const [followups, lastInteractions] = await Promise.all([
+      this.nextFollowupsFor([contact.id]),
+      this.lastInteractionsFor([contact.id]),
+    ]);
     const { pipeline, ...rest } = contact;
 
     return {
       ...rest,
       pipeline: serializePipeline(pipeline[0]),
       nextFollowupDate: followups.get(contact.id) ?? null,
+      lastInteractionDate: lastInteractions.get(contact.id) ?? null,
     };
   }
 
@@ -257,6 +266,42 @@ export class InvestorService {
     });
 
     return new Map(grouped.map((row) => [row.startupInvestorId, row._min.nextFollowupDate]));
+  }
+
+  /**
+   * When each contact was last actually spoken to — the newest interactionDate,
+   * falling back to when the log was written for entries that never got one.
+   * Two grouped queries rather than one because there is no COALESCE to
+   * aggregate over, and ordering by the nullable column directly would sort
+   * NULLS FIRST on Postgres and let an undated log win.
+   */
+  private async lastInteractionsFor(contactIds: string[]): Promise<Map<string, Date>> {
+    if (contactIds.length === 0) return new Map();
+
+    const [dated, undated] = await Promise.all([
+      prisma.interactionLog.groupBy({
+        by: ["startupInvestorId"],
+        where: { startupInvestorId: { in: contactIds }, interactionDate: { not: null } },
+        _max: { interactionDate: true },
+      }),
+      prisma.interactionLog.groupBy({
+        by: ["startupInvestorId"],
+        where: { startupInvestorId: { in: contactIds }, interactionDate: null },
+        _max: { createdAt: true },
+      }),
+    ]);
+
+    const lastTouch = new Map<string, Date>();
+    for (const row of dated) {
+      if (row._max.interactionDate) lastTouch.set(row.startupInvestorId, row._max.interactionDate);
+    }
+    for (const row of undated) {
+      const at = row._max.createdAt;
+      if (!at) continue;
+      const existing = lastTouch.get(row.startupInvestorId);
+      if (!existing || at > existing) lastTouch.set(row.startupInvestorId, at);
+    }
+    return lastTouch;
   }
 
   private async assertEmailAvailable(startupId: string, email: string, excludeId?: string) {

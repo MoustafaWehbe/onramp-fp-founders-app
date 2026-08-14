@@ -308,7 +308,7 @@ model Pipeline {
   startup         Startup         @relation(fields: [startupId], references: [id], onDelete: Cascade)
   round           FundraisingRound @relation("PipelineRound", fields: [roundId, startupId], references: [id, startupId], onDelete: Restrict)
   startupInvestor StartupInvestor @relation("PipelineInvestor", fields: [startupInvestorId, startupId], references: [id, startupId], onDelete: Cascade)
-  owner           StartupMember?  @relation("PipelineOwner", fields: [ownerId, startupId], references: [id, startupId], onDelete: SetNull)
+  owner           StartupMember?  @relation("PipelineOwner", fields: [ownerId, startupId], references: [id, startupId], onDelete: NoAction)
   interactionLogs InteractionLog[]
   commitments     Commitment[]    @relation("CommitmentPipeline")
   stageEvents     PipelineStageEvent[]
@@ -359,7 +359,7 @@ model Task {
 
   startup  Startup       @relation(fields: [startupId], references: [id], onDelete: Cascade)
   pipeline Pipeline      @relation(fields: [pipelineId, startupId], references: [id, startupId], onDelete: Restrict)
-  assignee StartupMember? @relation("TaskAssignee", fields: [assigneeId, startupId], references: [id, startupId], onDelete: SetNull)
+  assignee StartupMember? @relation("TaskAssignee", fields: [assigneeId, startupId], references: [id, startupId], onDelete: NoAction)
   creator  User          @relation(fields: [createdBy], references: [id])
 
   @@index([startupId, pipelineId, status])

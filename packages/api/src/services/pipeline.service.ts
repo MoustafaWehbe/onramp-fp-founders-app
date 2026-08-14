@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
-import { PIPELINE_STAGES } from "../config/crm";
+import { OPEN_ROUND_STATUSES, PIPELINE_STAGES } from "../config/crm";
 import { createError } from "../utils/errors";
 import type {
   CreatePipelineEntryInput,
@@ -119,7 +119,9 @@ export class PipelineService {
 
     if (input.ownerId) await this.verifyMember(startupId, input.ownerId);
 
-    const roundId = await this.resolveRoundId(startupId, input.roundId);
+    // Adding outreach is the one path that must refuse a finished raise —
+    // reading and editing deals in a closed round has to keep working.
+    const roundId = await this.resolveRoundId(startupId, input.roundId, { forNewDeal: true });
 
     try {
       // The entry and its opening history row must land together, or analytics
@@ -225,15 +227,16 @@ export class PipelineService {
   ) {
     const existing = await prisma.pipeline.findUnique({
       where: { startupId_id: { startupId, id: pipelineId } },
-      select: { id: true, stage: true },
+      select: { id: true, stage: true, roundId: true, startupInvestorId: true },
     });
     if (!existing) throw createError("Pipeline entry not found", 404, "PIPELINE_NOT_FOUND");
 
     if (input.ownerId) await this.verifyMember(startupId, input.ownerId);
 
-    // reason travels to the stage-history row, not the Pipeline row itself —
-    // strip it before handing the rest of the input to Prisma.
-    const { reason, ...fields } = input;
+    // Neither of these is a column on Pipeline — the reason travels to the
+    // stage-history row and the commitment to the round's own table — so both
+    // are stripped before the rest of the input reaches Prisma.
+    const { reason, commitment, ...fields } = input;
 
     // Editing an amount is not a stage move; only a real transition advances the
     // clock and appends history.
@@ -246,6 +249,26 @@ export class PipelineService {
         400,
         "PASSED_REASON_REQUIRED",
       );
+    }
+
+    // A deal reaching Committed is the same event as money being committed to
+    // the round. Recording only the stage is what let the board and the round
+    // page report different numbers for the same investor, so the transition
+    // writes both or neither.
+    let liveCommitment: { id: string; status: string } | null = null;
+    if (movedTo === "committed") {
+      liveCommitment = await prisma.commitment.findFirst({
+        where: { startupId, pipelineId },
+        select: { id: true, status: true },
+        orderBy: { createdAt: "desc" },
+      });
+      if (!liveCommitment && !commitment) {
+        throw createError(
+          "Commitment details are required when moving a deal to committed",
+          400,
+          "COMMITMENT_DETAILS_REQUIRED",
+        );
+      }
     }
 
     if (movedTo === null) {
@@ -277,6 +300,48 @@ export class PipelineService {
         },
       });
 
+      if (movedTo === "committed" && commitment) {
+        if (liveCommitment) {
+          // A commitment already recorded for this deal — most likely added
+          // from the round page, or withdrawn when the deal moved back out
+          // and now revived. Update it rather than stacking a second row.
+          await tx.commitment.update({
+            where: { id: liveCommitment.id },
+            data: {
+              amount: commitment.amount,
+              status: commitment.status ?? "pending",
+              ...(commitment.expectedCloseDate !== undefined && {
+                expectedCloseDate: commitment.expectedCloseDate,
+              }),
+            },
+          });
+        } else {
+          await tx.commitment.create({
+            data: {
+              startupId,
+              startupInvestorId: existing.startupInvestorId,
+              pipelineId,
+              roundId: existing.roundId,
+              amount: commitment.amount,
+              status: commitment.status ?? "pending",
+              ...(commitment.expectedCloseDate && {
+                expectedCloseDate: commitment.expectedCloseDate,
+              }),
+            },
+          });
+        }
+      }
+
+      // Backing out of Committed retracts the money too, but the row stays —
+      // withdrawn is part of the round's history, and deleting it would also
+      // strand any amount already marked funded.
+      if (existing.stage === "committed" && movedTo !== "committed") {
+        await tx.commitment.updateMany({
+          where: { startupId, pipelineId, status: { not: "withdrawn" } },
+          data: { status: "withdrawn" },
+        });
+      }
+
       return updated;
     });
 
@@ -291,21 +356,28 @@ export class PipelineService {
     if (!existing) throw createError("Pipeline entry not found", 404, "PIPELINE_NOT_FOUND");
 
     // Phase 5 Commitments FK onto pipeline — guard now so Phase 5 does not retrofit it.
-    const [commitmentCount, taskCount] = await Promise.all([
+    const [commitmentCount, openTaskCount] = await Promise.all([
       prisma.commitment.count({ where: { pipelineId, startupId } }),
-      // Tasks are history, same as commitments — the FK is Restrict, but
-      // check first so this fails with a clean 409 instead of a raw P2003.
-      prisma.task.count({ where: { pipelineId, startupId } }),
+      // Only *unfinished* work blocks: outstanding tasks mean someone still
+      // expects to act on this deal. Checking first turns what would be a raw
+      // P2003 from the Restrict FK into a clean 409.
+      prisma.task.count({ where: { pipelineId, startupId, status: "open" } }),
     ]);
-    if (commitmentCount > 0 || taskCount > 0) {
+    if (commitmentCount > 0 || openTaskCount > 0) {
       throw createError(
-        "This pipeline entry has related commitments or tasks and cannot be deleted",
+        "This pipeline entry has commitments or open tasks and cannot be deleted",
         409,
         "HAS_DEPENDENTS",
       );
     }
 
-    await prisma.pipeline.delete({ where: { id: pipelineId } });
+    // Whatever tasks are left are all completed. They belong to the deal being
+    // removed, and the Restrict FK means they have to go first — in the same
+    // transaction, so a failure never leaves a deal stripped of its tasks.
+    await prisma.$transaction(async (tx) => {
+      await tx.task.deleteMany({ where: { pipelineId, startupId } });
+      await tx.pipeline.delete({ where: { id: pipelineId } });
+    });
   }
 
   /**
@@ -503,17 +575,13 @@ export class PipelineService {
     const pipelineIds = entries.map((entry) => entry.id);
     const investorIds = entries.map((entry) => entry.startupInvestorId);
 
-    const [openTasks, lastLogs] = await Promise.all([
+    const [openTasks, lastTouchByInvestor] = await Promise.all([
       prisma.task.findMany({
         where: { startupId, pipelineId: { in: pipelineIds }, status: "open" },
         orderBy: { dueDate: { sort: "asc", nulls: "last" } },
         select: { pipelineId: true, dueDate: true },
       }),
-      prisma.interactionLog.findMany({
-        where: { startupInvestorId: { in: investorIds } },
-        orderBy: { interactionDate: "desc" },
-        select: { startupInvestorId: true, interactionDate: true, createdAt: true },
-      }),
+      this.computeLastTouch(investorIds),
     ]);
 
     // First task per deal in the sorted list is the soonest-due (or
@@ -525,13 +593,6 @@ export class PipelineService {
       if (!soonestTaskByDeal.has(task.pipelineId)) {
         soonestTaskByDeal.set(task.pipelineId, task.dueDate);
       }
-    }
-
-    const lastTouchByInvestor = new Map<string, number>();
-    for (const log of lastLogs) {
-      if (lastTouchByInvestor.has(log.startupInvestorId)) continue;
-      const at = log.interactionDate ?? log.createdAt;
-      lastTouchByInvestor.set(log.startupInvestorId, at.getTime());
     }
 
     const now = Date.now();
@@ -585,6 +646,52 @@ export class PipelineService {
     return { data: rows };
   }
 
+  /**
+   * Most recent contact per investor, as two aggregates rather than a scan of
+   * every log the startup has ever written.
+   *
+   * "Last touch" is the newest interactionDate, falling back to when the log
+   * was written for the ones that never got a date — two cases a single
+   * groupBy cannot express, because there is nothing to aggregate over but
+   * the raw column and Prisma has no COALESCE.
+   *
+   * Ordering a findMany by the nullable interactionDate instead would be
+   * wrong as well as unbounded: Postgres sorts DESC as NULLS FIRST, so a
+   * single undated log outranks every dated one and pins that investor's
+   * last touch to whenever the undated row happened to be created.
+   */
+  private async computeLastTouch(investorIds: string[]): Promise<Map<string, number>> {
+    if (investorIds.length === 0) return new Map();
+
+    const [dated, undated] = await Promise.all([
+      prisma.interactionLog.groupBy({
+        by: ["startupInvestorId"],
+        where: { startupInvestorId: { in: investorIds }, interactionDate: { not: null } },
+        _max: { interactionDate: true },
+      }),
+      prisma.interactionLog.groupBy({
+        by: ["startupInvestorId"],
+        where: { startupInvestorId: { in: investorIds }, interactionDate: null },
+        _max: { createdAt: true },
+      }),
+    ]);
+
+    const lastTouch = new Map<string, number>();
+    for (const row of dated) {
+      const at = row._max.interactionDate;
+      if (at) lastTouch.set(row.startupInvestorId, at.getTime());
+    }
+    for (const row of undated) {
+      const at = row._max.createdAt;
+      if (!at) continue;
+      const existing = lastTouch.get(row.startupInvestorId);
+      if (existing === undefined || at.getTime() > existing) {
+        lastTouch.set(row.startupInvestorId, at.getTime());
+      }
+    }
+    return lastTouch;
+  }
+
   private async verifyMember(startupId: string, memberId: string): Promise<void> {
     const member = await prisma.startupMember.findUnique({
       where: { startupId_id: { startupId, id: memberId } },
@@ -609,14 +716,28 @@ export class PipelineService {
    * is unambiguous: exactly one active round. Picking an arbitrary active
    * round would silently put outreach into the wrong raise.
    */
-  private async resolveRoundId(startupId: string, requestedRoundId?: string): Promise<string> {
+  private async resolveRoundId(
+    startupId: string,
+    requestedRoundId?: string,
+    options: { forNewDeal?: boolean } = {},
+  ): Promise<string> {
     if (requestedRoundId) {
       const round = await prisma.fundraisingRound.findUnique({
         where: { startupId_id: { startupId, id: requestedRoundId } },
-        select: { id: true },
+        select: { id: true, status: true, roundName: true },
       });
       if (!round) {
         throw createError("Fundraising round not found", 404, "FUNDRAISING_ROUND_NOT_FOUND");
+      }
+      if (
+        options.forNewDeal &&
+        !(OPEN_ROUND_STATUSES as readonly string[]).includes(round.status)
+      ) {
+        throw createError(
+          `${round.roundName} is ${round.status}, so it cannot take new pipeline deals`,
+          409,
+          "ROUND_NOT_OPEN",
+        );
       }
       return round.id;
     }

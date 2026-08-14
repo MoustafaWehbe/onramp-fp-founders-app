@@ -43,10 +43,16 @@ import {
   getPipelineFocus,
   listPipelineEntries,
   updatePipelineEntry,
+  type CommitmentDraft,
   type FocusReason,
   type PipelineEntry,
 } from "../../../lib/pipeline-api";
-import { listFundraisingRounds, type FundraisingRound } from "../../../lib/fundraising-api";
+import {
+  listFundraisingRounds,
+  ROUND_STATUS_LABELS,
+  type FundraisingRound,
+} from "../../../lib/fundraising-api";
+import { Select } from "../../../components/ui/select";
 import { fetchAllPages } from "../../../lib/pagination";
 import { LogInteractionDialog, type LogFormValues } from "../Investors/LogInteractionDialog";
 import { AddDealDialog, type AddDealValues } from "./AddDealDialog";
@@ -57,9 +63,11 @@ import {
   moveWithinColumns,
   type BoardColumns,
 } from "./board-columns";
+import { CommitDialog } from "./CommitDialog";
 import { DealCardOverlay } from "./DealCard";
 import { DealDetailDialog } from "./DealDetailDialog";
 import { FocusList } from "./FocusList";
+import { PassReasonDialog } from "./PassReasonDialog";
 import { PipelineAnalyticsView } from "./PipelineAnalyticsView";
 import { PipelineColumn } from "./PipelineColumn";
 import { PipelineSummary, type PipelineTotals } from "./PipelineSummary";
@@ -82,7 +90,13 @@ function pipelineErrorMessage(err: unknown, fallback: string): string {
     case "PIPELINE_NOT_FOUND":
       return "That deal no longer exists — a teammate may have removed it.";
     case "HAS_DEPENDENTS":
-      return "This deal has commitments attached, so it can't be removed.";
+      return "This deal has commitments or open tasks attached, so it can't be removed.";
+    case "PASSED_REASON_REQUIRED":
+      return "Marking a deal as passed needs a reason — open the deal to add one.";
+    case "COMMITMENT_DETAILS_REQUIRED":
+      return "Moving a deal to Committed needs a commitment amount.";
+    case "ROUND_NOT_OPEN":
+      return "That round is closed, so it can't take new deals.";
     default:
       return apiErrorMessage(err, fallback, FORBIDDEN_HINT);
   }
@@ -120,6 +134,17 @@ export function Pipeline() {
   const [activeView, setActiveView] = useState<PipelineViewId>("board");
   // Logging straight from the focus list, without opening the deal first.
   const [quickLogDeal, setQuickLogDeal] = useState<PipelineEntry | null>(null);
+  // A move into Passed is held here until a reason is given — the server
+  // rejects the transition without one, whichever way it was triggered.
+  const [pendingPass, setPendingPass] = useState<{
+    pipelineId: string;
+    sortOrder: number;
+  } | null>(null);
+  // Same holding pattern for Committed, which records money against the round.
+  const [pendingCommit, setPendingCommit] = useState<{
+    pipelineId: string;
+    sortOrder: number;
+  } | null>(null);
   const [view, setView] = useState<PipelineView>({
     search: "",
     attentionOnly: false,
@@ -296,15 +321,23 @@ export function Pipeline() {
       stage,
       sortOrder,
       changedStage,
+      reason,
+      commitment,
     }: {
       pipelineId: string;
       stage: PipelineStageId;
       sortOrder: number;
       changedStage: boolean;
+      /** Required by the server when the transition is into "passed". */
+      reason?: string;
+      /** Required by the server when the transition is into "committed". */
+      commitment?: CommitmentDraft;
     }) =>
       updatePipelineEntry(startupId, pipelineId, {
         sortOrder,
         ...(changedStage && { stage, probabilityPercentage: DEFAULT_PROBABILITY_BY_STAGE[stage] }),
+        ...(reason && { reason }),
+        ...(commitment && { commitment }),
       }),
     onMutate: async ({ pipelineId, stage, sortOrder, changedStage }) => {
       await queryClient.cancelQueries({ queryKey: ["pipeline", startupId] });
@@ -402,13 +435,20 @@ export function Pipeline() {
         (max, entry) => (entry.stage === stage ? Math.max(max, entry.sortOrder) : max),
         0,
       );
+      const sortOrder = maxOrderInStage + 1000;
 
-      moveMutation.mutate({
-        pipelineId,
-        stage,
-        sortOrder: maxOrderInStage + 1000,
-        changedStage: true,
-      });
+      // Passing needs a reason and committing needs an amount; both are
+      // replayed once the prompt is answered.
+      if (stage === "passed") {
+        setPendingPass({ pipelineId, sortOrder });
+        return;
+      }
+      if (stage === "committed") {
+        setPendingCommit({ pipelineId, sortOrder });
+        return;
+      }
+
+      moveMutation.mutate({ pipelineId, stage, sortOrder, changedStage: true });
     },
     [canUpdate, entries, entriesById, moveMutation],
   );
@@ -434,12 +474,48 @@ export function Pipeline() {
     if (!deal || !stage) return;
 
     const sortOrder = computeDropOrder(columns, dealId, (id) => entriesById.get(id)?.sortOrder);
+
+    // Dropping into Passed needs a reason, same as the stage menu. Nothing is
+    // mutated yet, so clearing activeId lets the card spring back to where it
+    // came from until the reason is confirmed.
+    if (stage === "passed" && deal.stage !== "passed") {
+      setPendingPass({ pipelineId: dealId, sortOrder });
+      return;
+    }
+    if (stage === "committed" && deal.stage !== "committed") {
+      setPendingCommit({ pipelineId: dealId, sortOrder });
+      return;
+    }
+
     moveMutation.mutate({
       pipelineId: dealId,
       stage,
       sortOrder,
       changedStage: stage !== deal.stage,
     });
+  };
+
+  const confirmPass = (reason: string) => {
+    if (!pendingPass) return;
+    moveMutation.mutate(
+      { ...pendingPass, stage: "passed", changedStage: true, reason },
+      { onSuccess: () => setPendingPass(null) },
+    );
+  };
+
+  const confirmCommit = (commitment: CommitmentDraft) => {
+    if (!pendingCommit) return;
+    moveMutation.mutate(
+      { ...pendingCommit, stage: "committed", changedStage: true, commitment },
+      {
+        onSuccess: () => {
+          setPendingCommit(null);
+          // The round page reads the same commitment this just wrote.
+          void queryClient.invalidateQueries({ queryKey: ["commitments", startupId] });
+          toast.success("Commitment recorded against the round");
+        },
+      },
+    );
   };
 
   const activeDeal = activeId ? (entriesById.get(activeId) ?? null) : null;
@@ -468,18 +544,16 @@ export function Pipeline() {
       {roundsQuery.isSuccess && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/70 bg-surface/50 px-3 py-2 text-sm">
           <span className="text-muted-foreground">Viewing round</span>
-          <select
+          <Select
             aria-label="Active fundraising round"
             value={activeRound?.id ?? ""}
-            onChange={(event) => setActiveRoundId(startupId, event.target.value)}
-            className="h-8 rounded-md border border-border bg-background px-2 font-medium outline-none focus:ring-1 focus:ring-ring"
-          >
-            {(roundsQuery.data?.data ?? []).map((round) => (
-              <option key={round.id} value={round.id}>
-                {round.roundName} ({round.status})
-              </option>
-            ))}
-          </select>
+            onValueChange={(value) => setActiveRoundId(startupId, value)}
+            className="h-8 w-auto min-w-48 font-medium"
+            options={(roundsQuery.data?.data ?? []).map((round) => ({
+              value: round.id,
+              label: `${round.roundName} · ${ROUND_STATUS_LABELS[round.status]}`,
+            }))}
+          />
           {!activeRound && <span className="text-muted-foreground">Create a round before adding pipeline deals.</span>}
         </div>
       )}
@@ -639,6 +713,7 @@ export function Pipeline() {
         startupId={startupId}
         deal={openDeal}
         signals={signalsFor(openDealId)}
+        roundName={activeRound?.roundName ?? "this round"}
         onOpenChange={(open) => !open && setOpenDealId(null)}
         onRemove={setPendingRemove}
       />
@@ -649,6 +724,32 @@ export function Pipeline() {
         investorName={quickLogDeal?.investor.fullName ?? ""}
         isSubmitting={quickLogMutation.isPending}
         onSubmit={(values) => quickLogMutation.mutate(values)}
+      />
+
+      <PassReasonDialog
+        open={pendingPass !== null}
+        investorName={
+          pendingPass ? (entriesById.get(pendingPass.pipelineId)?.investor.fullName ?? "") : ""
+        }
+        isSubmitting={moveMutation.isPending}
+        onCancel={() => setPendingPass(null)}
+        onConfirm={confirmPass}
+      />
+
+      <CommitDialog
+        open={pendingCommit !== null}
+        investorName={
+          pendingCommit ? (entriesById.get(pendingCommit.pipelineId)?.investor.fullName ?? "") : ""
+        }
+        roundName={activeRound?.roundName ?? "this round"}
+        suggestedAmount={
+          pendingCommit
+            ? (entriesById.get(pendingCommit.pipelineId)?.expectedAmount ?? null)
+            : null
+        }
+        isSubmitting={moveMutation.isPending}
+        onCancel={() => setPendingCommit(null)}
+        onConfirm={confirmCommit}
       />
 
       <AddDealDialog
@@ -667,8 +768,8 @@ export function Pipeline() {
           <DialogHeader>
             <DialogTitle>Remove {pendingRemove?.investor.fullName} from the pipeline?</DialogTitle>
             <DialogDescription>
-              The contact stays in your investor directory along with everything you've logged —
-              only their place on this board is removed.
+              The contact stays in your investor directory along with everything you've logged.
+              Their place on this board and any completed tasks on the deal are removed.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
