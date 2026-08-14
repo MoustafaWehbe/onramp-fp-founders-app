@@ -122,3 +122,114 @@ describe("NotificationService.clearFollowupNotifications", () => {
     await expect(service.clearFollowupNotifications([LOG_ID])).resolves.toBeUndefined();
   });
 });
+
+describe("NotificationService.notifyTaskOverdue / notifyTaskDueToday", () => {
+  const TASK_ID = "00000000-0000-0000-0000-000000000005";
+  const input = {
+    userId: USER_ID,
+    startupId: STARTUP_ID,
+    taskId: TASK_ID,
+    title: "Send follow-up deck",
+    dueDate: new Date("2026-08-01T00:00:00.000Z"),
+  };
+
+  it("creates a task_overdue notification and publishes it when none exists yet", async () => {
+    (mockPrisma.notification.findFirst as jest.Mock).mockResolvedValue(null);
+    (mockPrisma.notification.create as jest.Mock).mockResolvedValue({
+      id: "notif-1",
+      type: "task_overdue",
+      title: "Task overdue: Send follow-up deck",
+      body: "Was due 2026-08-01.",
+    });
+
+    await service.notifyTaskOverdue(input);
+
+    expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          userId: USER_ID,
+          startupId: STARTUP_ID,
+          type: "task_overdue",
+          entityType: "task",
+          entityId: TASK_ID,
+        }),
+      }),
+    );
+    expect(mockBus.publish).toHaveBeenCalledWith(
+      USER_ID,
+      expect.objectContaining({ type: "notification.created" }),
+    );
+  });
+
+  it("does nothing when this task already has a pending task_overdue notification", async () => {
+    (mockPrisma.notification.findFirst as jest.Mock).mockResolvedValue({ id: "notif-1" });
+
+    await service.notifyTaskOverdue(input);
+
+    expect(mockPrisma.notification.create).not.toHaveBeenCalled();
+  });
+
+  it("creates a distinct task_due_today notification, not deduped against task_overdue", async () => {
+    (mockPrisma.notification.findFirst as jest.Mock).mockResolvedValue(null);
+    (mockPrisma.notification.create as jest.Mock).mockResolvedValue({
+      id: "notif-2",
+      type: "task_due_today",
+    });
+
+    await service.notifyTaskDueToday(input);
+
+    expect(mockPrisma.notification.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ type: "task_due_today" }),
+      }),
+    );
+    expect(mockPrisma.notification.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: "task_due_today" }) }),
+    );
+  });
+
+  it("swallows a database failure rather than throwing", async () => {
+    (mockPrisma.notification.findFirst as jest.Mock).mockRejectedValue(new Error("db down"));
+
+    await expect(service.notifyTaskOverdue(input)).resolves.toBeUndefined();
+  });
+});
+
+describe("NotificationService.clearTaskNotifications", () => {
+  const TASK_ID = "00000000-0000-0000-0000-000000000005";
+  const OTHER_TASK_ID = "00000000-0000-0000-0000-000000000006";
+
+  it("does nothing for an empty list", async () => {
+    await service.clearTaskNotifications([]);
+
+    expect(mockPrisma.notification.findMany).not.toHaveBeenCalled();
+  });
+
+  it("deletes both overdue and due-today notifications for the given tasks", async () => {
+    (mockPrisma.notification.findMany as jest.Mock).mockResolvedValue([
+      { id: "notif-1", userId: USER_ID },
+    ]);
+
+    await service.clearTaskNotifications([TASK_ID, OTHER_TASK_ID]);
+
+    expect(mockPrisma.notification.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          type: { in: ["task_overdue", "task_due_today"] },
+          entityType: "task",
+          entityId: { in: [TASK_ID, OTHER_TASK_ID] },
+        }),
+      }),
+    );
+    expect(mockPrisma.notification.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: ["notif-1"] } },
+    });
+    expect(mockBus.publish).toHaveBeenCalledWith(USER_ID, { type: "notifications.changed" });
+  });
+
+  it("swallows a database failure rather than throwing", async () => {
+    (mockPrisma.notification.findMany as jest.Mock).mockRejectedValue(new Error("db down"));
+
+    await expect(service.clearTaskNotifications([TASK_ID])).resolves.toBeUndefined();
+  });
+});

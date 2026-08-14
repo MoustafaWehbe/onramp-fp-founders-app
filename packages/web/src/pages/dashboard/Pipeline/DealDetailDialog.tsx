@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, Check, Linkedin, Mail, Plus, Trash2 } from "lucide-react";
+import { Linkedin, Mail, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../../components/ui/button";
 import {
@@ -21,10 +21,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from "../../../components/ui/sheet";
+import { Textarea } from "../../../components/ui/textarea";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
 import {
-  completeFollowup,
   createInteractionLog,
   deleteInteractionLog,
   listLogsForInvestor,
@@ -40,6 +40,7 @@ import {
   type PipelineEntry,
 } from "../../../lib/pipeline-api";
 import { listMembers } from "../../../lib/team-api";
+import { PRIORITIES, PRIORITY_LABELS, type Priority } from "../../../lib/task-api";
 import { cn, formatCompactUsd, getInitials } from "../../../lib/utils";
 import { InteractionTimeline } from "../Investors/InteractionTimeline";
 import { LogInteractionDialog, type LogFormValues } from "../Investors/LogInteractionDialog";
@@ -49,6 +50,9 @@ import {
   formatDuration,
   type DealSignals,
 } from "./deal-signals";
+import { TaskList } from "./TaskList";
+
+const PASSED_REASON_SUGGESTIONS = ["Not a fit", "Timing", "No response", "Went with another investor"];
 
 /** "Passed" is an exit, not a step, so it sits apart from the progression. */
 const PROGRESSION = STAGES.filter((stage) => stage.id !== "passed");
@@ -96,6 +100,9 @@ export function DealDetailDialog({
   const [pendingLogDelete, setPendingLogDelete] = useState<InteractionLog | null>(null);
   const [amount, setAmount] = useState("");
   const [probability, setProbability] = useState("");
+  const [investorFitScore, setInvestorFitScore] = useState("");
+  const [passReasonOpen, setPassReasonOpen] = useState(false);
+  const [passReason, setPassReason] = useState("");
 
   const investorId = deal?.investor.id ?? null;
 
@@ -105,6 +112,7 @@ export function DealDetailDialog({
     if (!deal) return;
     setAmount(deal.expectedAmount == null ? "" : String(deal.expectedAmount));
     setProbability(deal.probabilityPercentage == null ? "" : String(deal.probabilityPercentage));
+    setInvestorFitScore(deal.investorFitScore == null ? "" : String(deal.investorFitScore));
   }, [deal]);
 
   const logsQuery = useQuery({
@@ -148,6 +156,7 @@ export function DealDetailDialog({
     void queryClient.invalidateQueries({ queryKey: ["pipeline", startupId] });
     void queryClient.invalidateQueries({ queryKey: ["investors", startupId] });
     void queryClient.invalidateQueries({ queryKey: ["pipeline-stage-events", startupId] });
+    void queryClient.invalidateQueries({ queryKey: ["pipeline-focus", startupId] });
   };
 
   const dealMutation = useMutation({
@@ -174,15 +183,6 @@ export function DealDetailDialog({
       invalidate();
     },
     onError: (err) => toast.error(logErrorMessage(err, "Could not save the interaction")),
-  });
-
-  const completeMutation = useMutation({
-    mutationFn: (logId: string) => completeFollowup(startupId, logId),
-    onSuccess: () => {
-      toast.success("Follow-up marked done");
-      invalidate();
-    },
-    onError: (err) => toast.error(logErrorMessage(err, "Could not close the follow-up")),
   });
 
   const deleteLogMutation = useMutation({
@@ -221,11 +221,41 @@ export function DealDetailDialog({
     dealMutation.mutate({ probabilityPercentage: next });
   };
 
+  const commitInvestorFitScore = () => {
+    if (!deal || !canUpdate) return;
+    const trimmed = investorFitScore.trim();
+    const next = trimmed === "" ? null : Number(trimmed);
+    if (next !== null && (Number.isNaN(next) || next < 0 || next > 100)) {
+      toast.error("Investor fit must be between 0 and 100");
+      setInvestorFitScore(deal.investorFitScore == null ? "" : String(deal.investorFitScore));
+      return;
+    }
+    if (next === (deal.investorFitScore ?? null)) return;
+    dealMutation.mutate({ investorFitScore: next });
+  };
+
   const moveToStage = (stage: PipelineStageId) => {
     if (!deal || !canUpdate || stage === deal.stage) return;
+    // Passing requires a reason the server records on the stage history —
+    // collect it first instead of mutating straight away.
+    if (stage === "passed") {
+      setPassReason("");
+      setPassReasonOpen(true);
+      return;
+    }
     const nextProbability = DEFAULT_PROBABILITY_BY_STAGE[stage];
     setProbability(String(nextProbability));
     dealMutation.mutate({ stage, probabilityPercentage: nextProbability });
+  };
+
+  const confirmPass = () => {
+    if (!deal || passReason.trim() === "") return;
+    const nextProbability = DEFAULT_PROBABILITY_BY_STAGE.passed;
+    setProbability(String(nextProbability));
+    dealMutation.mutate(
+      { stage: "passed", probabilityPercentage: nextProbability, reason: passReason.trim() },
+      { onSuccess: () => setPassReasonOpen(false) },
+    );
   };
 
   const currentIndex = deal ? PROGRESSION.findIndex((stage) => stage.id === deal.stage) : -1;
@@ -303,34 +333,6 @@ export function DealDetailDialog({
                     <Plus className="h-4 w-4" />
                     Log interaction
                   </Button>
-                )}
-                {signals.nextFollowup && (
-                  <div className="ml-auto flex items-center gap-1.5">
-                    <span
-                      className={cn(
-                        "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs",
-                        signals.followup === "overdue"
-                          ? "bg-destructive/15 text-destructive"
-                          : signals.followup === "today"
-                            ? "bg-warning/15 text-warning"
-                            : "bg-muted text-muted-foreground",
-                      )}
-                    >
-                      <CalendarClock className="h-3.5 w-3.5" />
-                      Follow up {formatDateTime(signals.nextFollowup)}
-                    </span>
-                    {canUpdate && signals.followupLogId && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={completeMutation.isPending}
-                        onClick={() => completeMutation.mutate(signals.followupLogId!)}
-                      >
-                        <Check className="h-3.5 w-3.5" />
-                        {completeMutation.isPending ? "Saving…" : "Mark done"}
-                      </Button>
-                    )}
-                  </div>
                 )}
               </div>
 
@@ -421,6 +423,68 @@ export function DealDetailDialog({
                   </div>
                 </div>
               </section>
+
+              <section aria-label="Deal ownership" className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="deal-owner">Owner</Label>
+                  <select
+                    id="deal-owner"
+                    disabled={!canUpdate}
+                    value={deal.ownerId ?? ""}
+                    onChange={(event) =>
+                      dealMutation.mutate({ ownerId: event.target.value || null })
+                    }
+                    className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+                  >
+                    <option value="">Unassigned</option>
+                    {(membersQuery.data ?? []).map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.user
+                          ? `${member.user.firstName} ${member.user.lastName}`.trim()
+                          : (member.invitedEmail ?? "Pending")}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="deal-priority">Priority</Label>
+                  <select
+                    id="deal-priority"
+                    disabled={!canUpdate}
+                    value={deal.priority ?? ""}
+                    onChange={(event) =>
+                      dealMutation.mutate({
+                        priority: (event.target.value || null) as Priority | null,
+                      })
+                    }
+                    className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+                  >
+                    <option value="">Unset</option>
+                    {PRIORITIES.map((p) => (
+                      <option key={p} value={p}>
+                        {PRIORITY_LABELS[p]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="deal-fit">Investor fit</Label>
+                  <Input
+                    id="deal-fit"
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={5}
+                    placeholder="0–100"
+                    disabled={!canUpdate}
+                    value={investorFitScore}
+                    onChange={(event) => setInvestorFitScore(event.target.value)}
+                    onBlur={commitInvestorFitScore}
+                  />
+                </div>
+              </section>
+
+              <TaskList startupId={startupId} pipelineId={deal.id} />
 
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-border/70 bg-surface/50 p-3 text-sm sm:grid-cols-3">
                 {facts.map((fact) => (
@@ -513,6 +577,50 @@ export function DealDetailDialog({
               onClick={() => pendingLogDelete && deleteLogMutation.mutate(pendingLogDelete)}
             >
               {deleteLogMutation.isPending ? "Removing…" : "Remove interaction"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={passReasonOpen} onOpenChange={setPassReasonOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Why did {investor?.fullName} pass?</DialogTitle>
+            <DialogDescription>
+              This is kept on the deal's history — reopening later doesn't erase it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-wrap gap-1.5">
+            {PASSED_REASON_SUGGESTIONS.map((suggestion) => (
+              <button
+                key={suggestion}
+                type="button"
+                onClick={() => setPassReason(suggestion)}
+                className="rounded-full border border-border/70 px-2.5 py-1 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+          <Textarea
+            value={passReason}
+            onChange={(event) => setPassReason(event.target.value)}
+            placeholder="Why is this deal passing?"
+            maxLength={500}
+            rows={3}
+            autoFocus
+          />
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setPassReasonOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={passReason.trim() === "" || dealMutation.isPending}
+              onClick={confirmPass}
+            >
+              {dealMutation.isPending ? "Saving…" : "Mark as passed"}
             </Button>
           </DialogFooter>
         </DialogContent>

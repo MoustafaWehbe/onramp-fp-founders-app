@@ -32,6 +32,9 @@ const ENTRY_SELECT = {
   stage: true,
   expectedAmount: true,
   probabilityPercentage: true,
+  ownerId: true,
+  priority: true,
+  investorFitScore: true,
   sortOrder: true,
   stageChangedAt: true,
   createdAt: true,
@@ -51,6 +54,9 @@ type EntryRow = {
   stage: string;
   expectedAmount: Prisma.Decimal | null;
   probabilityPercentage: number | null;
+  ownerId: string | null;
+  priority: string | null;
+  investorFitScore: number | null;
   sortOrder: number;
   stageChangedAt: Date;
   createdAt: Date;
@@ -83,6 +89,9 @@ function serializeEntry(entry: EntryRow) {
     stage: entry.stage,
     expectedAmount: entry.expectedAmount === null ? null : Number(entry.expectedAmount),
     probabilityPercentage: entry.probabilityPercentage,
+    ownerId: entry.ownerId,
+    priority: entry.priority,
+    investorFitScore: entry.investorFitScore,
     sortOrder: entry.sortOrder,
     stageChangedAt: entry.stageChangedAt,
     createdAt: entry.createdAt,
@@ -107,6 +116,8 @@ export class PipelineService {
       select: { id: true },
     });
     if (!contact) throw createError("Investor contact not found", 404, "INVESTOR_NOT_FOUND");
+
+    if (input.ownerId) await this.verifyMember(startupId, input.ownerId);
 
     const roundId = await this.resolveRoundId(startupId, input.roundId);
 
@@ -133,6 +144,11 @@ export class PipelineService {
             ...(input.expectedAmount !== undefined && { expectedAmount: input.expectedAmount }),
             ...(input.probabilityPercentage !== undefined && {
               probabilityPercentage: input.probabilityPercentage,
+            }),
+            ...(input.ownerId !== undefined && { ownerId: input.ownerId }),
+            ...(input.priority !== undefined && { priority: input.priority }),
+            ...(input.investorFitScore !== undefined && {
+              investorFitScore: input.investorFitScore,
             }),
           },
           select: ENTRY_SELECT,
@@ -213,15 +229,29 @@ export class PipelineService {
     });
     if (!existing) throw createError("Pipeline entry not found", 404, "PIPELINE_NOT_FOUND");
 
+    if (input.ownerId) await this.verifyMember(startupId, input.ownerId);
+
+    // reason travels to the stage-history row, not the Pipeline row itself —
+    // strip it before handing the rest of the input to Prisma.
+    const { reason, ...fields } = input;
+
     // Editing an amount is not a stage move; only a real transition advances the
     // clock and appends history.
     const movedTo =
       input.stage !== undefined && input.stage !== existing.stage ? input.stage : null;
 
+    if (movedTo === "passed" && (!reason || reason.trim() === "")) {
+      throw createError(
+        "A reason is required when marking a deal as passed",
+        400,
+        "PASSED_REASON_REQUIRED",
+      );
+    }
+
     if (movedTo === null) {
       const entry = await prisma.pipeline.update({
         where: { id: pipelineId },
-        data: input,
+        data: fields,
         select: ENTRY_SELECT,
       });
       return serializeEntry(entry);
@@ -231,7 +261,7 @@ export class PipelineService {
     const entry = await prisma.$transaction(async (tx) => {
       const updated = await tx.pipeline.update({
         where: { id: pipelineId },
-        data: { ...input, stageChangedAt: changedAt },
+        data: { ...fields, stageChangedAt: changedAt },
         select: ENTRY_SELECT,
       });
 
@@ -241,6 +271,7 @@ export class PipelineService {
           pipelineId,
           fromStage: existing.stage,
           toStage: movedTo,
+          reason: movedTo === "passed" ? (reason as string) : null,
           changedBy: userId ?? null,
           createdAt: changedAt,
         },
@@ -260,12 +291,15 @@ export class PipelineService {
     if (!existing) throw createError("Pipeline entry not found", 404, "PIPELINE_NOT_FOUND");
 
     // Phase 5 Commitments FK onto pipeline — guard now so Phase 5 does not retrofit it.
-    const commitmentCount = await prisma.commitment.count({
-      where: { pipelineId, startupId },
-    });
-    if (commitmentCount > 0) {
+    const [commitmentCount, taskCount] = await Promise.all([
+      prisma.commitment.count({ where: { pipelineId, startupId } }),
+      // Tasks are history, same as commitments — the FK is Restrict, but
+      // check first so this fails with a clean 409 instead of a raw P2003.
+      prisma.task.count({ where: { pipelineId, startupId } }),
+    ]);
+    if (commitmentCount > 0 || taskCount > 0) {
       throw createError(
-        "This pipeline entry has related commitments and cannot be deleted",
+        "This pipeline entry has related commitments or tasks and cannot be deleted",
         409,
         "HAS_DEPENDENTS",
       );
@@ -434,10 +468,129 @@ export class PipelineService {
     const events = await prisma.pipelineStageEvent.findMany({
       where: { startupId, pipelineId },
       orderBy: { createdAt: "asc" },
-      select: { id: true, fromStage: true, toStage: true, changedBy: true, createdAt: true },
+      select: {
+        id: true,
+        fromStage: true,
+        toStage: true,
+        reason: true,
+        changedBy: true,
+        createdAt: true,
+      },
     });
 
     return { data: events };
+  }
+
+  /**
+   * Deals that need a founder's attention right now, computed entirely
+   * server-side: overdue tasks, deals with no open task at all, deals gone
+   * quiet with nothing scheduled, and high-priority deals with no other
+   * signal. Settled deals (committed/passed) never qualify. Returning only
+   * the qualifying rows — pre-sorted by urgency — means the client does no
+   * aggregation and never has to page through every interaction log to
+   * build this list.
+   */
+  async getFocus(startupId: string, requestedRoundId?: string) {
+    const roundId = await this.resolveRoundId(startupId, requestedRoundId);
+    const QUIET_AFTER_DAYS = 14;
+
+    const entries = await prisma.pipeline.findMany({
+      where: { startupId, roundId, stage: { notIn: ["committed", "passed"] } },
+      select: ENTRY_SELECT,
+    });
+    if (entries.length === 0) return { data: [] };
+
+    const pipelineIds = entries.map((entry) => entry.id);
+    const investorIds = entries.map((entry) => entry.startupInvestorId);
+
+    const [openTasks, lastLogs] = await Promise.all([
+      prisma.task.findMany({
+        where: { startupId, pipelineId: { in: pipelineIds }, status: "open" },
+        orderBy: { dueDate: { sort: "asc", nulls: "last" } },
+        select: { pipelineId: true, dueDate: true },
+      }),
+      prisma.interactionLog.findMany({
+        where: { startupInvestorId: { in: investorIds } },
+        orderBy: { interactionDate: "desc" },
+        select: { startupInvestorId: true, interactionDate: true, createdAt: true },
+      }),
+    ]);
+
+    // First task per deal in the sorted list is the soonest-due (or
+    // earliest-created undated) open task for that deal.
+    const soonestTaskByDeal = new Map<string, Date | null>();
+    const hasOpenTaskByDeal = new Set<string>();
+    for (const task of openTasks) {
+      hasOpenTaskByDeal.add(task.pipelineId);
+      if (!soonestTaskByDeal.has(task.pipelineId)) {
+        soonestTaskByDeal.set(task.pipelineId, task.dueDate);
+      }
+    }
+
+    const lastTouchByInvestor = new Map<string, number>();
+    for (const log of lastLogs) {
+      if (lastTouchByInvestor.has(log.startupInvestorId)) continue;
+      const at = log.interactionDate ?? log.createdAt;
+      lastTouchByInvestor.set(log.startupInvestorId, at.getTime());
+    }
+
+    const now = Date.now();
+    const endOfToday = new Date(now);
+    endOfToday.setHours(23, 59, 59, 999);
+
+    type FocusRow = ReturnType<typeof serializeEntry> & {
+      reason: string;
+      daysQuiet: number;
+      nextTaskDueDate: string | null;
+    };
+    const rows: FocusRow[] = [];
+    const rank: Record<string, number> = { overdue: 0, today: 1, missing: 2, quiet: 3, priority: 4 };
+
+    for (const entry of entries) {
+      const hasOpenTask = hasOpenTaskByDeal.has(entry.id);
+      const dueDate = soonestTaskByDeal.get(entry.id) ?? null;
+      const lastTouch = lastTouchByInvestor.get(entry.startupInvestorId) ?? null;
+      const since = lastTouch ?? entry.createdAt.getTime();
+      const daysQuiet = Math.max(0, Math.floor((now - since) / (24 * 60 * 60 * 1000)));
+
+      let reason: string | null = null;
+      if (dueDate && dueDate.getTime() < now) {
+        reason = "overdue";
+      } else if (dueDate && dueDate.getTime() <= endOfToday.getTime()) {
+        reason = "today";
+      } else if (!hasOpenTask) {
+        reason = "missing";
+      } else if (daysQuiet >= QUIET_AFTER_DAYS) {
+        reason = "quiet";
+      } else if (entry.priority === "high") {
+        reason = "priority";
+      }
+
+      if (reason === null) continue;
+
+      rows.push({
+        ...serializeEntry(entry),
+        reason,
+        daysQuiet,
+        nextTaskDueDate: dueDate ? dueDate.toISOString() : null,
+      });
+    }
+
+    rows.sort((a, b) => {
+      const byUrgency = rank[a.reason] - rank[b.reason];
+      if (byUrgency !== 0) return byUrgency;
+      return b.daysQuiet - a.daysQuiet;
+    });
+
+    return { data: rows };
+  }
+
+  private async verifyMember(startupId: string, memberId: string): Promise<void> {
+    const member = await prisma.startupMember.findUnique({
+      where: { startupId_id: { startupId, id: memberId } },
+      select: { id: true },
+    });
+    if (!member) throw createError("Owner is not a member of this startup", 404, "MEMBER_NOT_FOUND");
   }
 
   private translateDuplicatePipeline(err: unknown): unknown {

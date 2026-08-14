@@ -24,6 +24,14 @@ export const pipelineController = {
     res.json(result);
   }),
 
+  getFocus: asyncHandler(async (req, res) => {
+    const result = await pipelineService.getFocus(
+      req.params.startupId as string,
+      req.query.roundId as string | undefined,
+    );
+    res.json(result);
+  }),
+
   listEntries: asyncHandler(async (req, res) => {
     const result = await pipelineService.listEntries(
       req.params.startupId as string,

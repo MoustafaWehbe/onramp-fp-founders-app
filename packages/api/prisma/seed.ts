@@ -3,7 +3,7 @@ import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/utils/auth";
 import { PERMISSIONS, ROLE_TEMPLATES } from "../src/config/permissions";
-import type { InvestorType, PipelineStage } from "../src/config/crm";
+import type { InvestorType, PipelineStage, Priority } from "../src/config/crm";
 
 const prisma = new PrismaClient();
 
@@ -27,6 +27,10 @@ interface ContactSeed {
     stage: PipelineStage;
     expectedAmount?: number;
     probabilityPercentage?: number;
+    priority?: Priority;
+    investorFitScore?: number;
+    /** Assigns the founder as this deal's owner. */
+    ownedByFounder?: boolean;
   };
   /** Days from now for the next follow-up; omit for contacts with none due. */
   followupInDays?: number;
@@ -57,6 +61,7 @@ async function main() {
     await tx.documentVersion.deleteMany();
     await tx.document.deleteMany();
     await tx.commitment.deleteMany();
+    await tx.task.deleteMany();
     await tx.interactionLog.deleteMany();
     await tx.pipelineStageEvent.deleteMany();
     await tx.pipeline.deleteMany();
@@ -165,7 +170,7 @@ async function main() {
   }
 
   // 6. Founder as owner member
-  await prisma.startupMember.create({
+  const founderMember = await prisma.startupMember.create({
     data: {
       startupId: startup.id,
       userId: founder.id,
@@ -200,6 +205,9 @@ async function main() {
         stage: "due_diligence",
         expectedAmount: 2_500_000,
         probabilityPercentage: 70,
+        priority: "high",
+        investorFitScore: 85,
+        ownedByFounder: true,
       },
       followupInDays: 5,
     },
@@ -218,6 +226,8 @@ async function main() {
         stage: "meeting_scheduled",
         expectedAmount: 1_500_000,
         probabilityPercentage: 50,
+        priority: "medium",
+        ownedByFounder: true,
       },
       followupInDays: 3,
     },
@@ -457,6 +467,9 @@ async function main() {
         stage: pipelineSeed.stage,
         expectedAmount: pipelineSeed.expectedAmount ?? null,
         probabilityPercentage: pipelineSeed.probabilityPercentage ?? null,
+        priority: pipelineSeed.priority ?? null,
+        investorFitScore: pipelineSeed.investorFitScore ?? null,
+        ownerId: pipelineSeed.ownedByFounder ? founderMember.id : null,
       },
     });
     pipelinesById.set(seed.id, entry);
@@ -483,6 +496,50 @@ async function main() {
   // Anchor records for commitments, audit logs and notifications.
   const startupInvestor = contactsById.get("00000000-0000-0000-0000-000000000020")!;
   const pipeline = pipelinesById.get("00000000-0000-0000-0000-000000000020")!;
+
+  // 8. Tasks — one overdue (Focus tab and notifications should pick this up),
+  // one due today, and one already completed, so every state renders.
+  const sarahPipeline = pipelinesById.get("00000000-0000-0000-0000-000000000020")!;
+  const marcusPipeline = pipelinesById.get("00000000-0000-0000-0000-000000000021")!;
+  const priyaPipeline = pipelinesById.get("00000000-0000-0000-0000-000000000022")!;
+
+  await prisma.task.create({
+    data: {
+      startupId: startup.id,
+      pipelineId: sarahPipeline.id,
+      title: "Send data room access",
+      description: "Share the data room link once legal finishes the redlines.",
+      priority: "high",
+      dueDate: days(-2),
+      assigneeId: founderMember.id,
+      createdBy: founder.id,
+    },
+  });
+
+  await prisma.task.create({
+    data: {
+      startupId: startup.id,
+      pipelineId: marcusPipeline.id,
+      title: "Schedule founding team intro call",
+      priority: "medium",
+      dueDate: new Date(),
+      assigneeId: founderMember.id,
+      createdBy: founder.id,
+    },
+  });
+
+  await prisma.task.create({
+    data: {
+      startupId: startup.id,
+      pipelineId: priyaPipeline.id,
+      title: "Send SAFE for signature",
+      priority: "medium",
+      status: "completed",
+      completedAt: days(-1),
+      assigneeId: founderMember.id,
+      createdBy: founder.id,
+    },
+  });
 
   // 9. Commitment linking the investor to the round
   await prisma.commitment.create({
@@ -587,6 +644,7 @@ async function main() {
   console.info(`  Follow-ups:   ${CONTACTS.filter((c) => c.followupInDays !== undefined).length} upcoming`);
   console.info(`  Round:        Pre-Seed — $500,000 target`);
   console.info(`  Commitment:   $50,000 negotiating`);
+  console.info(`  Tasks:        3 (1 overdue, 1 due today, 1 completed)`);
   console.info(`  Audit logs:   3 entries`);
   console.info(`  Notifications: 2 entries`);
   console.info("─────────────────────────────────────────────────────────");

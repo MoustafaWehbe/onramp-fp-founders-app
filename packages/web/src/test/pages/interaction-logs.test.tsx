@@ -179,8 +179,8 @@ describe("InvestorDetailDialog interaction history", () => {
     expect(input.subject).toBe("Follow-up");
     // The form works in local time; the API is sent UTC.
     expect(input.interactionDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-    // An untouched optional field clears rather than sending an empty string.
-    expect(input.nextFollowupDate).toBeNull();
+    // The follow-up date field was removed from this form — Task superseded it.
+    expect(input.nextFollowupDate).toBeUndefined();
   });
 
   it("edits an existing entry through the same dialog", async () => {

@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import { prisma } from "../db/prisma";
 import { notifyOverdueFollowups } from "./followup-notifications";
+import { notifyOverdueAndDueTodayTasks } from "./task-notifications";
 
 export function startCronJobs(): void {
   // Delete expired pending registrations every 30 minutes
@@ -22,6 +23,15 @@ export function startCronJobs(): void {
       await notifyOverdueFollowups();
     } catch (err) {
       console.error("[cron] Failed to notify overdue follow-ups:", err);
+    }
+  });
+
+  // Same daily cadence and same idempotency guarantee as the follow-up job.
+  cron.schedule("0 9 * * *", async () => {
+    try {
+      await notifyOverdueAndDueTodayTasks();
+    } catch (err) {
+      console.error("[cron] Failed to notify overdue/due-today tasks:", err);
     }
   });
 

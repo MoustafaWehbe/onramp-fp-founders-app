@@ -9,6 +9,8 @@ import { notificationBus } from "../events/notification-bus";
 export const NOTIFICATION_TYPES = {
   TEAM_INVITE: "team_invite",
   FOLLOWUP_DUE: "followup_due",
+  TASK_OVERDUE: "task_overdue",
+  TASK_DUE_TODAY: "task_due_today",
 } as const;
 
 const NOTIFICATION_SELECT = {
@@ -221,6 +223,102 @@ export class NotificationService {
       }
     } catch (err) {
       console.error("[clearFollowupNotifications] failed:", err);
+    }
+  }
+
+  /**
+   * One notification per overdue task, not one per day it stays overdue —
+   * skips silently if this task already has one, so the daily cron can run
+   * every day without duplicating what it already told someone.
+   */
+  async notifyTaskOverdue(input: {
+    userId: string;
+    startupId: string;
+    taskId: string;
+    title: string;
+    dueDate: Date;
+  }): Promise<void> {
+    await this.notifyTask(NOTIFICATION_TYPES.TASK_OVERDUE, {
+      ...input,
+      body: `Was due ${input.dueDate.toISOString().slice(0, 10)}.`,
+      titlePrefix: "Task overdue",
+    });
+  }
+
+  /** Same idempotency as notifyTaskOverdue, for a task due today rather than in the past. */
+  async notifyTaskDueToday(input: {
+    userId: string;
+    startupId: string;
+    taskId: string;
+    title: string;
+    dueDate: Date;
+  }): Promise<void> {
+    await this.notifyTask(NOTIFICATION_TYPES.TASK_DUE_TODAY, {
+      ...input,
+      body: "Due today.",
+      titlePrefix: "Task due today",
+    });
+  }
+
+  private async notifyTask(
+    type: (typeof NOTIFICATION_TYPES)["TASK_OVERDUE"] | (typeof NOTIFICATION_TYPES)["TASK_DUE_TODAY"],
+    input: { userId: string; startupId: string; taskId: string; title: string; body: string; titlePrefix: string },
+  ): Promise<void> {
+    try {
+      const existing = await prisma.notification.findFirst({
+        where: { userId: input.userId, type, entityType: "task", entityId: input.taskId },
+        select: { id: true },
+      });
+      if (existing) return;
+
+      const created = await prisma.notification.create({
+        data: {
+          userId: input.userId,
+          startupId: input.startupId,
+          type,
+          title: `${input.titlePrefix}: ${input.title}`,
+          body: input.body,
+          entityType: "task",
+          entityId: input.taskId,
+        },
+        select: { id: true, type: true, title: true, body: true },
+      });
+
+      notificationBus.publish(input.userId, {
+        type: "notification.created",
+        notification: created,
+      });
+    } catch (err) {
+      console.error("[notifyTask] failed:", err);
+    }
+  }
+
+  /**
+   * Clears pending overdue/due-today notifications once their task stops
+   * being open — completed, reopened, rescheduled, or deleted.
+   */
+  async clearTaskNotifications(taskIds: string[]): Promise<void> {
+    if (taskIds.length === 0) return;
+    try {
+      const existing = await prisma.notification.findMany({
+        where: {
+          type: { in: [NOTIFICATION_TYPES.TASK_OVERDUE, NOTIFICATION_TYPES.TASK_DUE_TODAY] },
+          entityType: "task",
+          entityId: { in: taskIds },
+        },
+        select: { id: true, userId: true },
+      });
+      if (existing.length === 0) return;
+
+      await prisma.notification.deleteMany({
+        where: { id: { in: existing.map((n) => n.id) } },
+      });
+
+      for (const userId of new Set(existing.map((n) => n.userId))) {
+        notificationBus.publish(userId, { type: "notifications.changed" });
+      }
+    } catch (err) {
+      console.error("[clearTaskNotifications] failed:", err);
     }
   }
 }

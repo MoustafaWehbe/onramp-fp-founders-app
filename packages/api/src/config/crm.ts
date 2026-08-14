@@ -10,5 +10,12 @@ export const PIPELINE_STAGES = [
   "passed",
 ] as const;
 
+export const TASK_STATUSES = ["open", "completed"] as const;
+
+/** Shared by Task.priority (task urgency) and Pipeline.priority (deal importance). */
+export const PRIORITIES = ["low", "medium", "high"] as const;
+
 export type InvestorType = (typeof INVESTOR_TYPES)[number];
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+export type Priority = (typeof PRIORITIES)[number];

@@ -3,13 +3,14 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { InteractionLog } from "../../lib/interaction-log-api";
-import type { PipelineEntry } from "../../lib/pipeline-api";
+import type { PipelineEntry, PipelineFocusEntry } from "../../lib/pipeline-api";
 import type { PipelineStageId } from "../../lib/mock-data";
 
 const listPipelineEntries = vi.fn();
 const createPipelineEntry = vi.fn();
 const updatePipelineEntry = vi.fn();
 const deletePipelineEntry = vi.fn();
+const getPipelineFocus = vi.fn();
 
 vi.mock("../../lib/pipeline-api", () => ({
   listPipelineEntries: (...a: unknown[]) => listPipelineEntries(...a),
@@ -17,24 +18,33 @@ vi.mock("../../lib/pipeline-api", () => ({
   updatePipelineEntry: (...a: unknown[]) => updatePipelineEntry(...a),
   deletePipelineEntry: (...a: unknown[]) => deletePipelineEntry(...a),
   getPipelineAnalytics: (...a: unknown[]) => getPipelineAnalytics(...a),
+  getPipelineFocus: (...a: unknown[]) => getPipelineFocus(...a),
 }));
 
 const listInteractionLogs = vi.fn();
 const listLogsForInvestor = vi.fn();
 const createInteractionLog = vi.fn();
 const updateInteractionLog = vi.fn();
-// completeFollowup wraps updateInteractionLog inside the module, so a spy on
-// the latter never sees it. Stub it here and cover its payload in
-// src/test/lib/interaction-log-api.test.ts instead.
-const completeFollowup = vi.fn();
 vi.mock("../../lib/interaction-log-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/interaction-log-api")>()),
   listInteractionLogs: (...a: unknown[]) => listInteractionLogs(...a),
   listLogsForInvestor: (...a: unknown[]) => listLogsForInvestor(...a),
   createInteractionLog: (...a: unknown[]) => createInteractionLog(...a),
   updateInteractionLog: (...a: unknown[]) => updateInteractionLog(...a),
-  completeFollowup: (...a: unknown[]) => completeFollowup(...a),
   deleteInteractionLog: vi.fn(),
+}));
+
+const listTasks = vi.fn();
+const createTask = vi.fn();
+const updateTask = vi.fn();
+const deleteTask = vi.fn();
+vi.mock("../../lib/task-api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/task-api")>()),
+  listTasks: (...a: unknown[]) => listTasks(...a),
+  createTask: (...a: unknown[]) => createTask(...a),
+  updateTask: (...a: unknown[]) => updateTask(...a),
+  deleteTask: (...a: unknown[]) => deleteTask(...a),
+  setTaskStatus: (...a: unknown[]) => updateTask(...a),
 }));
 
 const getPipelineAnalytics = vi.fn();
@@ -81,6 +91,9 @@ function entry(overrides: Partial<PipelineEntry> = {}): PipelineEntry {
     stage: "contacted" as PipelineStageId,
     expectedAmount: 200_000,
     probabilityPercentage: 25,
+    ownerId: null,
+    priority: null,
+    investorFitScore: null,
     sortOrder: 1000,
     stageChangedAt: daysFromNow(-3),
     createdAt: daysFromNow(-3),
@@ -102,6 +115,17 @@ function entry(overrides: Partial<PipelineEntry> = {}): PipelineEntry {
       updatedAt: daysFromNow(-10),
       ...overrides.investor,
     },
+  };
+}
+
+/** A focus row is a full pipeline entry plus the server-computed attention fields. */
+function focusEntry(overrides: Partial<PipelineFocusEntry> = {}): PipelineFocusEntry {
+  const { reason, daysQuiet, nextTaskDueDate, ...entryOverrides } = overrides;
+  return {
+    ...entry(entryOverrides),
+    reason: reason ?? "overdue",
+    daysQuiet: daysQuiet ?? 0,
+    nextTaskDueDate: nextTaskDueDate ?? null,
   };
 }
 
@@ -170,6 +194,11 @@ beforeEach(() => {
     conversion: [],
     outcomes: { open: 0, committed: 0, passed: 0, winRate: null },
   });
+  getPipelineFocus.mockResolvedValue([]);
+  listTasks.mockResolvedValue({
+    data: [],
+    meta: { page: 1, limit: 100, total: 0, totalPages: 0 },
+  });
 });
 
 afterEach(() => {
@@ -197,19 +226,18 @@ describe("Pipeline board", () => {
     expect(summary.getByText("$300k")).toBeInTheDocument();
   });
 
-  it("flags an overdue follow-up on the card and counts it as needing attention", async () => {
-    listInteractionLogs.mockResolvedValue({
-      data: [log({ nextFollowupDate: daysFromNow(-4) })],
-      meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
-    });
+  it("flags an overdue task on the card and counts it as needing attention", async () => {
+    getPipelineFocus.mockResolvedValue([
+      focusEntry({ reason: "overdue", nextTaskDueDate: daysFromNow(-4) }),
+    ]);
     renderPipeline();
 
-    expect(await screen.findByText("Overdue 4d")).toBeInTheDocument();
+    expect(await screen.findByText("Task overdue")).toBeInTheDocument();
     const attention = screen.getByRole("button", { name: /Needs attention/ });
     expect(within(attention).getByText("1")).toBeInTheDocument();
   });
 
-  it("treats a live deal with no logged contact and no next step as needing attention", async () => {
+  it("treats a live deal with no open task as needing attention", async () => {
     listInteractionLogs.mockResolvedValue({
       data: [],
       meta: { page: 1, limit: 100, total: 0, totalPages: 0 },
@@ -218,6 +246,9 @@ describe("Pipeline board", () => {
       data: [entry({ createdAt: daysFromNow(-30), updatedAt: daysFromNow(-30) })],
       meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
     });
+    getPipelineFocus.mockResolvedValue([
+      focusEntry({ createdAt: daysFromNow(-30), reason: "missing" }),
+    ]);
     renderPipeline();
 
     expect(await screen.findByText("No next step")).toBeInTheDocument();
@@ -225,10 +256,9 @@ describe("Pipeline board", () => {
   });
 
   it("filters the board down to deals needing attention", async () => {
-    listInteractionLogs.mockResolvedValue({
-      data: [log({ id: "l1", investorId: "i1", nextFollowupDate: daysFromNow(-4) })],
-      meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
-    });
+    getPipelineFocus.mockResolvedValue([
+      focusEntry({ id: "d1", investorId: "i1", reason: "overdue", nextTaskDueDate: daysFromNow(-4) }),
+    ]);
     listPipelineEntries.mockResolvedValue({
       data: [
         entry({ id: "d1", investorId: "i1" }),
@@ -385,39 +415,16 @@ describe("Pipeline board", () => {
     await waitFor(() => expect(deletePipelineEntry).toHaveBeenCalledWith("startup-1", "deal-1"));
   });
 
-  it("ignores a follow-up that has already been completed", async () => {
-    listInteractionLogs.mockResolvedValue({
-      data: [
-        log({
-          nextFollowupDate: daysFromNow(-4),
-          followupCompletedAt: daysFromNow(-3),
-        }),
-      ],
-      meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
-    });
+  it("does not flag a deal the server left out of the focus list", async () => {
+    // A completed task, or none at all past the quiet threshold, means the
+    // deal simply never appears in getPipelineFocus's response.
+    getPipelineFocus.mockResolvedValue([]);
     renderPipeline();
 
     await screen.findByText("Ada Lovelace");
-    // The date is past, but it was dealt with — it must not read as overdue.
-    // Matches the card chip ("Overdue 4d"), not the summary tile's prose.
-    expect(screen.queryByText(/Overdue \d+d/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Task overdue")).not.toBeInTheDocument();
     const attention = screen.getByRole("button", { name: /Needs attention/ });
     expect(within(attention).getByText("0")).toBeInTheDocument();
-  });
-
-  it("shows the earliest open follow-up when several have slipped", async () => {
-    listInteractionLogs.mockResolvedValue({
-      data: [
-        log({ id: "l1", nextFollowupDate: daysFromNow(-2) }),
-        log({ id: "l2", nextFollowupDate: daysFromNow(-9) }),
-        // Completed ones are out of the running entirely.
-        log({ id: "l3", nextFollowupDate: daysFromNow(-20), followupCompletedAt: daysFromNow(-19) }),
-      ],
-      meta: { page: 1, limit: 100, total: 3, totalPages: 1 },
-    });
-    renderPipeline();
-
-    expect(await screen.findByText("Overdue 9d")).toBeInTheDocument();
   });
 
   it("uses stageChangedAt for time-in-stage, not updatedAt", async () => {
@@ -441,29 +448,10 @@ describe("Pipeline board", () => {
     expect(within(dialog).getByText("1 mo")).toBeInTheDocument();
   });
 
-  it("marks a follow-up done from the focus list", async () => {
-    listInteractionLogs.mockResolvedValue({
-      data: [log({ nextFollowupDate: daysFromNow(-4) })],
-      meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
-    });
-    completeFollowup.mockResolvedValue(log());
-    const user = userEvent.setup();
-    renderPipeline();
-
-    await user.click(await screen.findByRole("tab", { name: /Focus/ }));
-    await user.click(
-      await screen.findByRole("button", { name: /Mark follow-up with Ada Lovelace done/ }),
-    );
-
-    // Closes the log that carries the open follow-up, not the deal.
-    await waitFor(() => expect(completeFollowup).toHaveBeenCalledWith("startup-1", "log-1"));
-  });
-
   it("logs an interaction straight from the focus list against the deal", async () => {
-    listInteractionLogs.mockResolvedValue({
-      data: [log({ nextFollowupDate: daysFromNow(-4) })],
-      meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
-    });
+    getPipelineFocus.mockResolvedValue([
+      focusEntry({ reason: "overdue", nextTaskDueDate: daysFromNow(-4) }),
+    ]);
     createInteractionLog.mockResolvedValue(log({ id: "log-2" }));
     const user = userEvent.setup();
     renderPipeline();

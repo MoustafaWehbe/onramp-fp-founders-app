@@ -26,6 +26,7 @@ import { fetchAllPages } from "../../../lib/pagination";
 import { listPipelineStageEvents } from "../../../lib/pipeline-api";
 import { listMembers } from "../../../lib/team-api";
 import { cn, getInitials } from "../../../lib/utils";
+import { TaskList } from "../Pipeline/TaskList";
 import { InteractionTimeline } from "./InteractionTimeline";
 import { LogInteractionDialog, type LogFormValues } from "./LogInteractionDialog";
 import { StageBadge } from "./StageBadge";
@@ -231,6 +232,9 @@ export function InvestorDetailDialog({
                   {investor.contact.notes}
                 </p>
               )}
+
+              {/* Only a contact already on the board has a deal to attach tasks to. */}
+              {pipelineId && <TaskList startupId={startupId} pipelineId={pipelineId} />}
 
               <div className="flex items-center justify-between gap-2">
                 <h3 className="font-display text-sm font-semibold">Interaction history</h3>

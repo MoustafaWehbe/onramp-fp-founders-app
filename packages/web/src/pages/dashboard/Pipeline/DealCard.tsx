@@ -23,9 +23,9 @@ import {
 } from "../../../components/ui/dropdown-menu";
 import type { InteractionType } from "../../../lib/interaction-log-api";
 import { STAGES, type PipelineStageId } from "../../../lib/mock-data";
-import type { PipelineEntry } from "../../../lib/pipeline-api";
+import type { FocusReason, PipelineEntry } from "../../../lib/pipeline-api";
 import { cn, formatCompactUsd, getInitials } from "../../../lib/utils";
-import { followupLabel, formatDaysAgo, type DealSignals } from "./deal-signals";
+import { FOCUS_REASON_LABELS, FOCUS_REASON_TONES, formatDaysAgo, type DealSignals } from "./deal-signals";
 
 const TOUCH_ICONS: Record<InteractionType, LucideIcon> = {
   call: Phone,
@@ -35,15 +35,11 @@ const TOUCH_ICONS: Record<InteractionType, LucideIcon> = {
   other: MessageSquare,
 };
 
-const FOLLOWUP_TONES: Record<string, string> = {
-  overdue: "bg-destructive/15 text-destructive",
-  today: "bg-warning/15 text-warning",
-  upcoming: "bg-muted text-muted-foreground",
-};
-
 type DealCardBodyProps = {
   deal: PipelineEntry;
   signals: DealSignals;
+  /** Why this deal is in Focus, server-computed; null when it doesn't qualify. */
+  focusReason: FocusReason | null;
   canUpdate: boolean;
   /**
    * Both callbacks take the deal id rather than being pre-bound per card, so
@@ -56,10 +52,9 @@ type DealCardBodyProps = {
 };
 
 /** Everything a deal card shows — shared between the live sortable card and the floating drag copy. */
-function DealCardBody({ deal, signals, canUpdate, onOpen, onMove }: DealCardBodyProps) {
+function DealCardBody({ deal, signals, focusReason, canUpdate, onOpen, onMove }: DealCardBodyProps) {
   const investor = deal.investor;
   const probability = deal.probabilityPercentage ?? 0;
-  const followup = followupLabel(signals);
   const TouchIcon = signals.lastTouchType ? TOUCH_ICONS[signals.lastTouchType] : null;
 
   return (
@@ -137,23 +132,16 @@ function DealCardBody({ deal, signals, canUpdate, onOpen, onMove }: DealCardBody
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px]">
-        {followup ? (
+        {focusReason && (
           <span
             className={cn(
               "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5",
-              FOLLOWUP_TONES[signals.followup] ?? FOLLOWUP_TONES.upcoming,
+              FOCUS_REASON_TONES[focusReason],
             )}
           >
             <CalendarClock className="h-3 w-3" />
-            {followup}
+            {FOCUS_REASON_LABELS[focusReason]}
           </span>
-        ) : (
-          signals.needsAttention && (
-            <span className="inline-flex items-center gap-1 rounded-md bg-warning/15 px-1.5 py-0.5 text-warning">
-              <CalendarClock className="h-3 w-3" />
-              No next step
-            </span>
-          )
         )}
 
         <span className="inline-flex items-center gap-1 text-muted-foreground">
@@ -184,7 +172,7 @@ type DealCardProps = DealCardBodyProps;
  * actually changed.
  */
 export const DealCard = memo(function DealCard(props: DealCardProps) {
-  const { deal, signals, canUpdate } = props;
+  const { deal, focusReason, canUpdate } = props;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: deal.id,
     disabled: !canUpdate,
@@ -207,7 +195,7 @@ export const DealCard = memo(function DealCard(props: DealCardProps) {
         // measuring), hidden here in favor of the DragOverlay copy that
         // actually follows the cursor.
         isDragging && "opacity-0",
-        signals.needsAttention && "border-l-2 border-l-warning",
+        focusReason && "border-l-2 border-l-warning",
       )}
     >
       <DealCardBody {...props} />

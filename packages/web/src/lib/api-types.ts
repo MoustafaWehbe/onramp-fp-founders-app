@@ -781,6 +781,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/startups/{startupId}/pipeline/focus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Deals that need attention right now
+         * @description Server-computed: overdue tasks, deals with no open task, deals gone quiet with nothing scheduled, and high-priority deals with no other signal. Settled deals (committed/passed) never appear. Pre-sorted by urgency so the client does no aggregation of its own.
+         */
+        get: operations["getPipelineFocus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/startups/{startupId}/pipeline/{pipelineId}": {
         parameters: {
             query?: never;
@@ -892,6 +914,54 @@ export interface paths {
         head?: never;
         /** Update an interaction log */
         patch: operations["updateInteractionLog"];
+        trace?: never;
+    };
+    "/startups/{startupId}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List tasks in a startup
+         * @description Filterable by pipelineId, status, assigneeId, and priority — used both for a single deal's task list and cross-deal views.
+         */
+        get: operations["listTasks"];
+        put?: never;
+        /** Add a task to a pipeline deal */
+        post: operations["createTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/tasks/{taskId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        /** Get a task by ID */
+        get: operations["getTask"];
+        put?: never;
+        post?: never;
+        /** Delete a task */
+        delete: operations["deleteTask"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a task
+         * @description Setting status to "completed" stamps completedAt server-side; reverting to "open" clears it.
+         */
+        patch: operations["updateTask"];
         trace?: never;
     };
     "/startups/{startupId}/fundraising-rounds": {
@@ -1793,6 +1863,13 @@ export interface components {
             /** @example 60 */
             probabilityPercentage?: number | null;
             /**
+             * Format: uuid
+             * @description The StartupMember id who owns this deal, if assigned.
+             */
+            ownerId?: string | null;
+            priority?: components["schemas"]["Priority"] | null;
+            investorFitScore?: number | null;
+            /**
              * Format: double
              * @description Manual position within its stage's column, ascending. Not necessarily contiguous — the client places a moved card by averaging the sortOrder of its new neighbors.
              * @example 2000
@@ -1848,6 +1925,12 @@ export interface components {
                 winRate?: number | null;
             };
         };
+        /**
+         * @description Shared by Task.priority (task urgency) and Pipeline.priority (deal importance).
+         * @example medium
+         * @enum {string}
+         */
+        Priority: "low" | "medium" | "high";
         CreatePipelineEntryBody: {
             /**
              * Format: uuid
@@ -1863,6 +1946,13 @@ export interface components {
             /** Format: double */
             expectedAmount?: number;
             probabilityPercentage?: number;
+            /**
+             * Format: uuid
+             * @description A StartupMember id — must belong to the same startup.
+             */
+            ownerId?: string;
+            priority?: components["schemas"]["Priority"];
+            investorFitScore?: number;
         };
         /** @description At least one field is required. */
         UpdatePipelineEntryBody: {
@@ -1875,6 +1965,15 @@ export interface components {
              * @description New position within its (possibly new) stage. Usually the midpoint of the sortOrder of the two cards it now sits between.
              */
             sortOrder?: number;
+            /**
+             * Format: uuid
+             * @description A StartupMember id — must belong to the same startup.
+             */
+            ownerId?: string | null;
+            priority?: components["schemas"]["Priority"] | null;
+            investorFitScore?: number | null;
+            /** @description Required when stage is being set to "passed"; ignored for every other transition. Recorded on the deal's stage history, not overwritten on reopen, so a deal passed more than once keeps every reason. */
+            reason?: string;
         };
         /**
          * @example meeting
@@ -1914,6 +2013,8 @@ export interface components {
             /** @description Null for the first event — the deal being added to the pipeline. */
             fromStage?: components["schemas"]["PipelineStage"] | null;
             toStage?: components["schemas"]["PipelineStage"];
+            /** @description Only present when toStage is "passed". */
+            reason?: string | null;
             /**
              * Format: uuid
              * @description Null if the member who made this change has since been removed.
@@ -1921,6 +2022,83 @@ export interface components {
             changedBy?: string | null;
             /** Format: date-time */
             createdAt?: string;
+        };
+        PipelineFocusEntry: components["schemas"]["PipelineEntry"] & {
+            /**
+             * @description Why this deal needs attention: an overdue task, a task due today, no open task at all, no interaction in 14+ days with nothing scheduled, or a high-priority deal with no other signal.
+             * @enum {string}
+             */
+            reason?: "overdue" | "today" | "missing" | "quiet" | "priority";
+            /** @description Days since the last logged interaction with this investor. */
+            daysQuiet?: number;
+            /**
+             * Format: date-time
+             * @description Due date of the soonest open task on this deal, if any.
+             */
+            nextTaskDueDate?: string | null;
+        };
+        /**
+         * @example open
+         * @enum {string}
+         */
+        TaskStatus: "open" | "completed";
+        Task: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            startupId?: string;
+            /**
+             * Format: uuid
+             * @description The pipeline deal this task belongs to.
+             */
+            pipelineId?: string;
+            title?: string;
+            description?: string | null;
+            status?: components["schemas"]["TaskStatus"];
+            priority?: components["schemas"]["Priority"];
+            /** Format: date-time */
+            dueDate?: string | null;
+            /**
+             * Format: uuid
+             * @description The StartupMember id assigned to this task, if any.
+             */
+            assigneeId?: string | null;
+            /**
+             * Format: date-time
+             * @description Set server-side when status becomes "completed"; cleared on reopen.
+             */
+            completedAt?: string | null;
+            /** Format: uuid */
+            createdBy?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        CreateTaskBody: {
+            /** Format: uuid */
+            pipelineId: string;
+            title: string;
+            description?: string;
+            priority?: components["schemas"]["Priority"];
+            /** Format: date-time */
+            dueDate?: string;
+            /**
+             * Format: uuid
+             * @description A StartupMember id — must belong to the same startup.
+             */
+            assigneeId?: string;
+        };
+        /** @description At least one field is required. */
+        UpdateTaskBody: {
+            title?: string;
+            description?: string | null;
+            status?: components["schemas"]["TaskStatus"];
+            priority?: components["schemas"]["Priority"];
+            /** Format: date-time */
+            dueDate?: string | null;
+            /** Format: uuid */
+            assigneeId?: string | null;
         };
         CreateInteractionLogBody: {
             /**
@@ -4630,6 +4808,51 @@ export interface operations {
             };
         };
     };
+    getPipelineFocus: {
+        parameters: {
+            query?: {
+                /** @description Fundraising round to inspect. Optional only when the startup has exactly one active round. */
+                roundId?: string;
+            };
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deals needing attention, pre-sorted by urgency */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["PipelineFocusEntry"][];
+                    };
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing pipeline:read permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     getPipelineEntry: {
         parameters: {
             query?: never;
@@ -4730,7 +4953,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Pipeline entry has related commitments and cannot be deleted */
+            /** @description Pipeline entry has related commitments or tasks and cannot be deleted */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5167,6 +5390,289 @@ export interface operations {
                 };
             };
             /** @description Validation error, or PIPELINE_MISMATCH when the new pipeline entry belongs to a different investor contact. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    listTasks: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed) */
+                page?: components["parameters"]["PageParam"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["LimitParam"];
+                pipelineId?: string;
+                status?: components["schemas"]["TaskStatus"];
+                assigneeId?: string;
+                priority?: components["schemas"]["Priority"];
+            };
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of tasks */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Task"][];
+                        meta?: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing pipeline:read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTaskBody"];
+            };
+        };
+        responses: {
+            /** @description Task created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Task"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing pipeline:create */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description PIPELINE_NOT_FOUND or MEMBER_NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    getTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Task details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Task"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing pipeline:read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description TASK_NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Task removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BareMessageResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing pipeline:delete */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description TASK_NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTaskBody"];
+            };
+        };
+        responses: {
+            /** @description Task updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Task"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing pipeline:update */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description TASK_NOT_FOUND or MEMBER_NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;

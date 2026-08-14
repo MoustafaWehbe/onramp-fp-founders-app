@@ -1,41 +1,27 @@
-import { AlertTriangle, Check, CheckCircle2, Mail, Plus } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Mail, Plus } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { StageBadge } from "../Investors/StageBadge";
-import type { PipelineEntry } from "../../../lib/pipeline-api";
+import type { PipelineFocusEntry } from "../../../lib/pipeline-api";
 import { cn, formatCompactUsd, getInitials } from "../../../lib/utils";
-import {
-  attentionReason,
-  followupLabel,
-  formatDaysAgo,
-  formatDuration,
-  type DealSignals,
-} from "./deal-signals";
-
-export type FocusItem = {
-  deal: PipelineEntry;
-  signals: DealSignals;
-};
+import { FOCUS_REASON_LABELS, FOCUS_REASON_TONES, formatDaysAgo } from "./deal-signals";
 
 type FocusListProps = {
-  items: FocusItem[];
-  canUpdate: boolean;
+  items: PipelineFocusEntry[];
   canCreate: boolean;
-  /** Id of the log whose "mark done" is in flight, so only that row spins. */
-  completingLogId: string | null;
-  onOpen: (deal: PipelineEntry) => void;
-  onLog: (deal: PipelineEntry) => void;
-  onMarkDone: (logId: string) => void;
+  onOpen: (deal: PipelineFocusEntry) => void;
+  onLog: (deal: PipelineFocusEntry) => void;
 };
 
-export function FocusList({
-  items,
-  canUpdate,
-  canCreate,
-  completingLogId,
-  onOpen,
-  onLog,
-  onMarkDone,
-}: FocusListProps) {
+function dueLabel(nextTaskDueDate: string | null, now = Date.now()): string | null {
+  if (!nextTaskDueDate) return null;
+  const days = Math.round((new Date(nextTaskDueDate).getTime() - now) / (24 * 60 * 60 * 1000));
+  if (days < 0) return `Overdue ${Math.abs(days)}d`;
+  if (days === 0) return "Due today";
+  if (days === 1) return "Due tomorrow";
+  return `Due in ${days}d`;
+}
+
+export function FocusList({ items, canCreate, onOpen, onLog }: FocusListProps) {
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border/70 px-6 py-14 text-center">
@@ -52,11 +38,10 @@ export function FocusList({
 
   return (
     <ul className="space-y-2">
-      {items.map(({ deal, signals }) => {
+      {items.map((deal) => {
         const investor = deal.investor;
-        const reason = attentionReason(signals);
-        const due = followupLabel(signals);
-        const urgent = signals.followup === "overdue";
+        const due = dueLabel(deal.nextTaskDueDate);
+        const urgent = deal.reason === "overdue";
 
         return (
           <li
@@ -86,7 +71,6 @@ export function FocusList({
               <div className="truncate text-xs text-muted-foreground">
                 {investor.ventureFirm ?? "Independent"}
                 {deal.expectedAmount != null && ` · ${formatCompactUsd(deal.expectedAmount)}`}
-                {` · in stage ${formatDuration(signals.daysInStage)}`}
               </div>
             </div>
 
@@ -94,13 +78,13 @@ export function FocusList({
               <StageBadge stageId={deal.stage} />
               <span
                 className={cn(
-                  "inline-flex items-center gap-1 text-[11px]",
-                  urgent ? "text-destructive" : "text-muted-foreground",
+                  "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px]",
+                  FOCUS_REASON_TONES[deal.reason],
                 )}
               >
                 <AlertTriangle className="h-3 w-3" />
-                {due ?? reason}
-                {due && signals.lastTouch && ` · last ${formatDaysAgo(signals.daysQuiet)}`}
+                {due ?? FOCUS_REASON_LABELS[deal.reason]}
+                {due && deal.daysQuiet > 0 && ` · last ${formatDaysAgo(deal.daysQuiet)}`}
               </span>
             </div>
 
@@ -110,20 +94,6 @@ export function FocusList({
                   <a href={`mailto:${investor.email}`} aria-label={`Email ${investor.fullName}`}>
                     <Mail className="h-4 w-4" />
                   </a>
-                </Button>
-              )}
-              {/* Marking done only applies to an open follow-up; a quiet deal has
-                  no follow-up to close, so logging is the only way forward. */}
-              {canUpdate && signals.followupLogId && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={completingLogId === signals.followupLogId}
-                  onClick={() => onMarkDone(signals.followupLogId!)}
-                  aria-label={`Mark follow-up with ${investor.fullName} done`}
-                >
-                  <Check className="h-4 w-4" />
-                  {completingLogId === signals.followupLogId ? "Saving…" : "Done"}
                 </Button>
               )}
               {canCreate && (

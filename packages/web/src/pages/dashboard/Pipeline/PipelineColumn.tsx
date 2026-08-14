@@ -2,7 +2,7 @@ import { memo } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import type { PipelineStage, PipelineStageId } from "../../../lib/mock-data";
-import type { PipelineEntry } from "../../../lib/pipeline-api";
+import type { FocusReason, PipelineEntry } from "../../../lib/pipeline-api";
 import { cn, formatCompactUsd } from "../../../lib/utils";
 import { columnDropId } from "./board-columns";
 import type { DealSignals } from "./deal-signals";
@@ -13,6 +13,7 @@ type PipelineColumnProps = {
   dealIds: string[];
   entriesById: Map<string, PipelineEntry>;
   signalsFor: (dealId: string) => DealSignals;
+  focusReasonFor: (dealId: string) => FocusReason | null;
   canUpdate: boolean;
   weightedTotal: number;
   emptyMessage: string;
@@ -31,6 +32,7 @@ export const PipelineColumn = memo(function PipelineColumn({
   dealIds,
   entriesById,
   signalsFor,
+  focusReasonFor,
   canUpdate,
   weightedTotal,
   emptyMessage,
@@ -85,6 +87,7 @@ export const PipelineColumn = memo(function PipelineColumn({
                 key={dealId}
                 deal={deal}
                 signals={signalsFor(dealId)}
+                focusReason={focusReasonFor(dealId)}
                 canUpdate={canUpdate}
                 onOpen={onOpen}
                 onMove={onMove}

@@ -1,5 +1,6 @@
 import { apiClient } from "./api-client";
 import type { PipelineStageId } from "./mock-data";
+import type { Priority } from "./task-api";
 
 export type PipelineContact = {
   id: string;
@@ -26,6 +27,10 @@ export type PipelineEntry = {
   stage: PipelineStageId;
   expectedAmount: number | null;
   probabilityPercentage: number | null;
+  /** StartupMember id who owns this deal, if assigned. */
+  ownerId: string | null;
+  priority: Priority | null;
+  investorFitScore: number | null;
   /** Manual position within its stage's column, ascending. */
   sortOrder: number;
   /**
@@ -89,6 +94,9 @@ export async function createPipelineEntry(
     stage: PipelineStageId;
     expectedAmount?: number;
     probabilityPercentage?: number;
+    ownerId?: string;
+    priority?: Priority;
+    investorFitScore?: number;
   },
 ) {
   const { data } = await apiClient.post<{ data: PipelineEntry }>(
@@ -106,6 +114,11 @@ export async function updatePipelineEntry(
     expectedAmount?: number | null;
     probabilityPercentage?: number | null;
     sortOrder?: number;
+    ownerId?: string | null;
+    priority?: Priority | null;
+    investorFitScore?: number | null;
+    /** Required by the server when stage is being set to "passed". */
+    reason?: string;
   },
 ) {
   const { data } = await apiClient.patch<{ data: PipelineEntry }>(
@@ -140,10 +153,39 @@ export type PipelineStageEvent = {
   /** Null for the first event — the deal being added to the pipeline. */
   fromStage: PipelineStageId | null;
   toStage: PipelineStageId;
+  /** Only present when toStage is "passed". */
+  reason: string | null;
   /** Null if the member who made this change has since been removed. */
   changedBy: string | null;
   createdAt: string;
 };
+
+/**
+ * Why a deal needs attention, computed server-side: an overdue task, a task
+ * due today, no open task at all, no interaction in 14+ days with nothing
+ * scheduled, or a high-priority deal with no other signal.
+ */
+export type FocusReason = "overdue" | "today" | "missing" | "quiet" | "priority";
+
+export type PipelineFocusEntry = PipelineEntry & {
+  reason: FocusReason;
+  daysQuiet: number;
+  /** Due date of the soonest open task on this deal, if any. */
+  nextTaskDueDate: string | null;
+};
+
+/**
+ * Deals needing attention right now, pre-sorted by urgency. Computed
+ * entirely server-side so the client never has to page through every
+ * interaction log in the startup to build this list.
+ */
+export async function getPipelineFocus(startupId: string, roundId?: string) {
+  const { data } = await apiClient.get<{ data: PipelineFocusEntry[] }>(
+    `/startups/${startupId}/pipeline/focus`,
+    { params: roundId ? { roundId } : undefined },
+  );
+  return data.data;
+}
 
 /** Who added this deal and who moved it since — oldest first. */
 export async function listPipelineStageEvents(startupId: string, pipelineId: string) {

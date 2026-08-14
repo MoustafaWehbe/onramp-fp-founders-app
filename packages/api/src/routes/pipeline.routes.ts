@@ -52,6 +52,18 @@ router.get(
   pipelineController.getAnalytics,
 );
 
+// GET /api/v1/startups/:startupId/pipeline/focus — pipeline:read
+// Registered before /:pipelineId so "focus" is never parsed as an id.
+router.get(
+  "/focus",
+  authenticate,
+  validate(startupIdParamSchema, "params"),
+  requireMember,
+  requirePermission("pipeline", "read"),
+  validate(pipelineAnalyticsQuerySchema, "query"),
+  pipelineController.getFocus,
+);
+
 // GET /api/v1/startups/:startupId/pipeline/:pipelineId — pipeline:read
 router.get(
   "/:pipelineId",

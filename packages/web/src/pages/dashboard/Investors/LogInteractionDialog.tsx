@@ -31,7 +31,6 @@ export type LogFormValues = {
   interactionDate: string;
   subject: string | null;
   description: string | null;
-  nextFollowupDate: string | null;
 };
 
 type LogInteractionDialogProps = {
@@ -56,7 +55,6 @@ export function LogInteractionDialog({
   const [interactionDate, setInteractionDate] = useState<Date | null>(null);
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
-  const [nextFollowupDate, setNextFollowupDate] = useState<Date | null>(null);
 
   const isEditing = Boolean(log);
 
@@ -68,7 +66,6 @@ export function LogInteractionDialog({
     setInteractionDate(log?.interactionDate ? new Date(log.interactionDate) : new Date());
     setSubject(log?.subject ?? "");
     setDescription(log?.description ?? "");
-    setNextFollowupDate(log?.nextFollowupDate ? new Date(log.nextFollowupDate) : null);
   }, [open, log]);
 
   const canSubmit = interactionDate !== null && !isSubmitting;
@@ -83,7 +80,6 @@ export function LogInteractionDialog({
       // Empty strings become null so clearing a field actually clears it.
       subject: subject.trim() === "" ? null : subject.trim(),
       description: description.trim() === "" ? null : description.trim(),
-      nextFollowupDate: nextFollowupDate ? nextFollowupDate.toISOString() : null,
     });
   }
 
@@ -154,19 +150,6 @@ export function LogInteractionDialog({
               rows={4}
               placeholder="What was discussed, and what happens next."
             />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="log-followup">Next follow-up (optional)</Label>
-            <DateTimePicker
-              id="log-followup"
-              value={nextFollowupDate}
-              onChange={setNextFollowupDate}
-              placeholder="No follow-up scheduled"
-            />
-            <p className="text-xs text-muted-foreground">
-              The earliest upcoming follow-up shows on the investor list.
-            </p>
           </div>
 
           <DialogFooter>

@@ -30,11 +30,7 @@ import { useActiveStartupId } from "../../../hooks/useWorkspace";
 import { useAppStore } from "../../../lib/app-store";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
 import { cn } from "../../../lib/utils";
-import {
-  completeFollowup,
-  createInteractionLog,
-  listInteractionLogs,
-} from "../../../lib/interaction-log-api";
+import { createInteractionLog, listInteractionLogs } from "../../../lib/interaction-log-api";
 import {
   DEFAULT_PROBABILITY_BY_STAGE,
   STAGES,
@@ -44,8 +40,10 @@ import {
   createPipelineEntry,
   deletePipelineEntry,
   getPipelineAnalytics,
+  getPipelineFocus,
   listPipelineEntries,
   updatePipelineEntry,
+  type FocusReason,
   type PipelineEntry,
 } from "../../../lib/pipeline-api";
 import { listFundraisingRounds, type FundraisingRound } from "../../../lib/fundraising-api";
@@ -61,7 +59,7 @@ import {
 } from "./board-columns";
 import { DealCardOverlay } from "./DealCard";
 import { DealDetailDialog } from "./DealDetailDialog";
-import { FocusList, type FocusItem } from "./FocusList";
+import { FocusList } from "./FocusList";
 import { PipelineAnalyticsView } from "./PipelineAnalyticsView";
 import { PipelineColumn } from "./PipelineColumn";
 import { PipelineSummary, type PipelineTotals } from "./PipelineSummary";
@@ -177,6 +175,15 @@ export function Pipeline() {
     enabled: activeView === "analytics" && Boolean(activeRound),
   });
 
+  // Deals needing attention, computed server-side from tasks and last-touch
+  // dates — never a page-through of every interaction log. Fetched whenever
+  // the board itself is (not just the Focus tab) so cards can flag it too.
+  const focusQuery = useQuery({
+    queryKey: ["pipeline-focus", startupId, activeRound?.id],
+    queryFn: () => getPipelineFocus(startupId, activeRound?.id),
+    enabled: Boolean(activeRound),
+  });
+
   const entries = useMemo(() => pipelineQuery.data?.data ?? [], [pipelineQuery.data]);
 
   const signalsByDeal = useMemo(() => {
@@ -195,17 +202,25 @@ export function Pipeline() {
     [signalsByDeal],
   );
 
+  const focusByDeal = useMemo(
+    () => new Map((focusQuery.data ?? []).map((row) => [row.id, row])),
+    [focusQuery.data],
+  );
+
+  const focusReasonFor = useCallback(
+    (dealId: string) => focusByDeal.get(dealId)?.reason ?? null,
+    [focusByDeal],
+  );
+
   const totals = useMemo<PipelineTotals>(() => {
     let liveCount = 0;
     let liveValue = 0;
     let weightedValue = 0;
     let committedCount = 0;
     let committedValue = 0;
-    let attentionCount = 0;
 
     for (const entry of entries) {
       const amount = entry.expectedAmount ?? 0;
-      if (signalsByDeal.get(entry.id)?.needsAttention) attentionCount += 1;
       if (entry.stage === "passed") continue;
 
       liveCount += 1;
@@ -223,20 +238,20 @@ export function Pipeline() {
       weightedValue: Math.round(weightedValue),
       committedCount,
       committedValue,
-      attentionCount,
+      attentionCount: focusByDeal.size,
     };
-  }, [entries, signalsByDeal]);
+  }, [entries, focusByDeal]);
 
   const visibleEntries = useMemo(() => {
     const needle = view.search.trim().toLowerCase();
     return entries.filter((entry) => {
       if (!view.showPassed && entry.stage === "passed") return false;
-      if (view.attentionOnly && !signalsByDeal.get(entry.id)?.needsAttention) return false;
+      if (view.attentionOnly && !focusByDeal.has(entry.id)) return false;
       if (needle === "") return true;
       const haystack = `${entry.investor.fullName} ${entry.investor.ventureFirm ?? ""}`;
       return haystack.toLowerCase().includes(needle);
     });
-  }, [entries, signalsByDeal, view]);
+  }, [entries, focusByDeal, view]);
 
   const visibleStages = useMemo(
     () => (view.showPassed ? STAGES : STAGES.filter((stage) => stage.id !== "passed")),
@@ -258,29 +273,21 @@ export function Pipeline() {
     [entries, openDealId],
   );
 
-  /** Overdue first, then longest-quiet — the order you'd actually work them. */
-  const focusItems = useMemo<FocusItem[]>(() => {
-    const rank: Record<string, number> = { overdue: 0, today: 1, upcoming: 2, none: 3 };
-    return entries
-      .map((deal) => ({ deal, signals: signalsFor(deal.id) }))
-      .filter((item) => item.signals.needsAttention)
-      .sort((a, b) => {
-        const byUrgency = rank[a.signals.followup] - rank[b.signals.followup];
-        if (byUrgency !== 0) return byUrgency;
-        return b.signals.daysQuiet - a.signals.daysQuiet;
-      });
-  }, [entries, signalsFor]);
+  // Already pre-sorted by urgency server-side.
+  const focusItems = focusQuery.data ?? [];
 
   const invalidatePipeline = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["pipeline", startupId] });
     void queryClient.invalidateQueries({ queryKey: ["investors", startupId] });
     void queryClient.invalidateQueries({ queryKey: ["pipeline-analytics", startupId] });
+    void queryClient.invalidateQueries({ queryKey: ["pipeline-focus", startupId] });
   }, [queryClient, startupId]);
 
-  /** Follow-up state lives in the logs, so the board's signals must refetch too. */
+  /** Last-touch signals live in the logs, so the board's signals must refetch too. */
   const invalidateLogs = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["interaction-logs", startupId] });
     void queryClient.invalidateQueries({ queryKey: ["investors", startupId] });
+    void queryClient.invalidateQueries({ queryKey: ["pipeline-focus", startupId] });
   }, [queryClient, startupId]);
 
   const moveMutation = useMutation({
@@ -365,15 +372,6 @@ export function Pipeline() {
       invalidatePipeline();
     },
     onError: (err) => toast.error(pipelineErrorMessage(err, "Could not remove the deal")),
-  });
-
-  const completeFollowupMutation = useMutation({
-    mutationFn: (logId: string) => completeFollowup(startupId, logId),
-    onSuccess: () => {
-      toast.success("Follow-up marked done");
-      invalidateLogs();
-    },
-    onError: (err) => toast.error(pipelineErrorMessage(err, "Could not close the follow-up")),
   });
 
   const quickLogMutation = useMutation({
@@ -530,16 +528,9 @@ export function Pipeline() {
       {boardReady && activeView === "focus" && (
         <FocusList
           items={focusItems}
-          canUpdate={canUpdate}
           canCreate={canCreate}
-          completingLogId={
-            completeFollowupMutation.isPending
-              ? (completeFollowupMutation.variables ?? null)
-              : null
-          }
           onOpen={(deal) => setOpenDealId(deal.id)}
           onLog={setQuickLogDeal}
-          onMarkDone={(logId) => completeFollowupMutation.mutate(logId)}
         />
       )}
 
@@ -614,6 +605,7 @@ export function Pipeline() {
                   dealIds={dealIds}
                   entriesById={entriesById}
                   signalsFor={signalsFor}
+                  focusReasonFor={focusReasonFor}
                   canUpdate={canUpdate}
                   weightedTotal={weightedTotal}
                   emptyMessage={
@@ -633,6 +625,7 @@ export function Pipeline() {
               <DealCardOverlay
                 deal={activeDeal}
                 signals={signalsFor(activeDeal.id)}
+                focusReason={focusReasonFor(activeDeal.id)}
                 canUpdate={canUpdate}
                 onOpen={() => {}}
                 onMove={() => {}}

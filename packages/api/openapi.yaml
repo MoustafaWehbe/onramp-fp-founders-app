@@ -32,6 +32,8 @@ tags:
     description: Investor pipeline / deal stages
   - name: Interaction Logs
     description: Logged interactions with investors
+  - name: Tasks
+    description: Actionable next steps on a pipeline deal
   - name: Fundraising Rounds
     description: Fundraising round management
   - name: Commitments
@@ -955,6 +957,20 @@ components:
           maximum: 100
           nullable: true
           example: 60
+        ownerId:
+          type: string
+          format: uuid
+          nullable: true
+          description: The StartupMember id who owns this deal, if assigned.
+        priority:
+          allOf:
+            - $ref: "#/components/schemas/Priority"
+          nullable: true
+        investorFitScore:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
         sortOrder:
           type: number
           format: double
@@ -1042,6 +1058,12 @@ components:
               nullable: true
               description: committed / (committed + passed); null before anything is decided.
 
+    Priority:
+      type: string
+      enum: [low, medium, high]
+      description: Shared by Task.priority (task urgency) and Pipeline.priority (deal importance).
+      example: medium
+
     CreatePipelineEntryBody:
       type: object
       required: [investorId, stage]
@@ -1062,6 +1084,16 @@ components:
           type: number
           format: double
         probabilityPercentage:
+          type: integer
+          minimum: 0
+          maximum: 100
+        ownerId:
+          type: string
+          format: uuid
+          description: A StartupMember id — must belong to the same startup.
+        priority:
+          $ref: "#/components/schemas/Priority"
+        investorFitScore:
           type: integer
           minimum: 0
           maximum: 100
@@ -1087,6 +1119,28 @@ components:
           description: >-
             New position within its (possibly new) stage. Usually the
             midpoint of the sortOrder of the two cards it now sits between.
+        ownerId:
+          type: string
+          format: uuid
+          nullable: true
+          description: A StartupMember id — must belong to the same startup.
+        priority:
+          allOf:
+            - $ref: "#/components/schemas/Priority"
+          nullable: true
+        investorFitScore:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+        reason:
+          type: string
+          maxLength: 500
+          description: >-
+            Required when stage is being set to "passed"; ignored for every
+            other transition. Recorded on the deal's stage history, not
+            overwritten on reopen, so a deal passed more than once keeps
+            every reason.
 
     # ── CRM: Interaction Logs ─────────────────────────────────────────
     InteractionType:
@@ -1152,6 +1206,10 @@ components:
           description: Null for the first event — the deal being added to the pipeline.
         toStage:
           $ref: "#/components/schemas/PipelineStage"
+        reason:
+          type: string
+          nullable: true
+          description: Only present when toStage is "passed".
         changedBy:
           type: string
           format: uuid
@@ -1160,6 +1218,129 @@ components:
         createdAt:
           type: string
           format: date-time
+
+    PipelineFocusEntry:
+      allOf:
+        - $ref: "#/components/schemas/PipelineEntry"
+        - type: object
+          properties:
+            reason:
+              type: string
+              enum: [overdue, today, missing, quiet, priority]
+              description: >-
+                Why this deal needs attention: an overdue task, a task due
+                today, no open task at all, no interaction in 14+ days with
+                nothing scheduled, or a high-priority deal with no other
+                signal.
+            daysQuiet:
+              type: integer
+              description: Days since the last logged interaction with this investor.
+            nextTaskDueDate:
+              type: string
+              format: date-time
+              nullable: true
+              description: Due date of the soonest open task on this deal, if any.
+
+    # ── CRM: Tasks ────────────────────────────────────────────────────
+    TaskStatus:
+      type: string
+      enum: [open, completed]
+      example: open
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        startupId:
+          type: string
+          format: uuid
+        pipelineId:
+          type: string
+          format: uuid
+          description: The pipeline deal this task belongs to.
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        priority:
+          $ref: "#/components/schemas/Priority"
+        dueDate:
+          type: string
+          format: date-time
+          nullable: true
+        assigneeId:
+          type: string
+          format: uuid
+          nullable: true
+          description: The StartupMember id assigned to this task, if any.
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Set server-side when status becomes "completed"; cleared on reopen.
+        createdBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateTaskBody:
+      type: object
+      required: [pipelineId, title]
+      properties:
+        pipelineId:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 2000
+        priority:
+          $ref: "#/components/schemas/Priority"
+        dueDate:
+          type: string
+          format: date-time
+        assigneeId:
+          type: string
+          format: uuid
+          description: A StartupMember id — must belong to the same startup.
+
+    UpdateTaskBody:
+      type: object
+      description: At least one field is required.
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+          maxLength: 2000
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        priority:
+          $ref: "#/components/schemas/Priority"
+        dueDate:
+          type: string
+          format: date-time
+          nullable: true
+        assigneeId:
+          type: string
+          format: uuid
+          nullable: true
 
     CreateInteractionLogBody:
       type: object
@@ -3812,6 +3993,59 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /startups/{startupId}/pipeline/focus:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Pipeline]
+      summary: Deals that need attention right now
+      description: >
+        Server-computed: overdue tasks, deals with no open task, deals gone
+        quiet with nothing scheduled, and high-priority deals with no other
+        signal. Settled deals (committed/passed) never appear. Pre-sorted by
+        urgency so the client does no aggregation of its own.
+      operationId: getPipelineFocus
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: roundId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: >-
+            Fundraising round to inspect. Optional only when the startup has
+            exactly one active round.
+      responses:
+        "200":
+          description: Deals needing attention, pre-sorted by urgency
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PipelineFocusEntry"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing pipeline:read permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /startups/{startupId}/pipeline/{pipelineId}:
     parameters:
       - name: startupId
@@ -3938,7 +4172,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Pipeline entry has related commitments and cannot be deleted
+          description: Pipeline entry has related commitments or tasks and cannot be deleted
           content:
             application/json:
               schema:
@@ -4266,6 +4500,249 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: LOG_NOT_FOUND — no such log in this startup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ════════════════════════════════════════════════════════════════
+  #  TASKS (CRM)
+  # ════════════════════════════════════════════════════════════════
+  /startups/{startupId}/tasks:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Tasks]
+      summary: Add a task to a pipeline deal
+      operationId: createTask
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskBody"
+      responses:
+        "201":
+          description: Task created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Task"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing pipeline:create
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: PIPELINE_NOT_FOUND or MEMBER_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+    get:
+      tags: [Tasks]
+      summary: List tasks in a startup
+      operationId: listTasks
+      description: >
+        Filterable by pipelineId, status, assigneeId, and priority — used both
+        for a single deal's task list and cross-deal views.
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - name: pipelineId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/TaskStatus"
+        - name: assigneeId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: priority
+          in: query
+          schema:
+            $ref: "#/components/schemas/Priority"
+      responses:
+        "200":
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Task"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing pipeline:read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /startups/{startupId}/tasks/{taskId}:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: taskId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Tasks]
+      summary: Get a task by ID
+      operationId: getTask
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Task details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Task"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing pipeline:read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: TASK_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [Tasks]
+      summary: Update a task
+      description: >
+        Setting status to "completed" stamps completedAt server-side;
+        reverting to "open" clears it.
+      operationId: updateTask
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTaskBody"
+      responses:
+        "200":
+          description: Task updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Task"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing pipeline:update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: TASK_NOT_FOUND or MEMBER_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+    delete:
+      tags: [Tasks]
+      summary: Delete a task
+      operationId: deleteTask
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Task removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BareMessageResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing pipeline:delete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: TASK_NOT_FOUND
           content:
             application/json:
               schema:

@@ -1,9 +1,20 @@
 import { z } from "zod";
-import { PIPELINE_STAGES } from "../config/crm";
+import { PIPELINE_STAGES, PRIORITIES } from "../config/crm";
 
 const pipelineStageEnum = z.enum(PIPELINE_STAGES, {
   errorMap: () => ({ message: "Invalid pipeline stage" }),
 });
+
+const priorityEnum = z.enum(PRIORITIES, {
+  errorMap: () => ({ message: "Invalid priority" }),
+});
+
+const optionalInvestorFitScore = z
+  .number({ invalid_type_error: "investorFitScore must be a number" })
+  .int("investorFitScore must be an integer")
+  .min(0, "investorFitScore must be at least 0")
+  .max(100, "investorFitScore must be at most 100")
+  .optional();
 
 const optionalExpectedAmount = z
   .number({ invalid_type_error: "expectedAmount must be a number" })
@@ -24,6 +35,9 @@ export const createPipelineEntrySchema = z.object({
   stage: pipelineStageEnum,
   expectedAmount: optionalExpectedAmount,
   probabilityPercentage: optionalProbability,
+  ownerId: z.string().uuid("ownerId must be a valid UUID").optional(),
+  priority: priorityEnum.optional(),
+  investorFitScore: optionalInvestorFitScore,
 });
 
 export const updatePipelineEntrySchema = z
@@ -54,6 +68,26 @@ export const updatePipelineEntrySchema = z
     sortOrder: z
       .number({ invalid_type_error: "sortOrder must be a number" })
       .finite("sortOrder must be a finite number")
+      .optional(),
+    ownerId: z.union([z.string().uuid("ownerId must be a valid UUID"), z.null()]).optional(),
+    priority: z.union([priorityEnum, z.null()]).optional(),
+    investorFitScore: z
+      .union([
+        z
+          .number({ invalid_type_error: "investorFitScore must be a number" })
+          .int("investorFitScore must be an integer")
+          .min(0, "investorFitScore must be at least 0")
+          .max(100, "investorFitScore must be at most 100"),
+        z.null(),
+      ])
+      .optional(),
+    // Required by the server when stage transitions to "passed"; ignored
+    // for every other transition.
+    reason: z
+      .string()
+      .trim()
+      .min(1, "reason is required")
+      .max(500, "reason must be at most 500 characters")
       .optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {

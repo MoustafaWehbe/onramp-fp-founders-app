@@ -16,6 +16,9 @@ jest.mock("../../src/db/prisma", () => {
     pipelineStageEvent: { create: jest.fn(), findMany: jest.fn() },
     commitment: { count: jest.fn() },
     fundraisingRound: { findUnique: jest.fn(), findMany: jest.fn() },
+    task: { count: jest.fn(), findMany: jest.fn() },
+    interactionLog: { findMany: jest.fn() },
+    startupMember: { findUnique: jest.fn() },
   };
   // Stage writes run in a transaction; hand the callback the same mock client so
   // assertions still see prisma.pipeline.create et al.
@@ -73,6 +76,7 @@ beforeEach(() => {
   (mockPrisma.pipelineStageEvent.create as jest.Mock).mockResolvedValue({});
   (mockPrisma.pipeline.aggregate as jest.Mock).mockResolvedValue({ _max: { sortOrder: null } });
   (mockPrisma.fundraisingRound.findMany as jest.Mock).mockResolvedValue([{ id: ROUND_ID }]);
+  (mockPrisma.task.count as jest.Mock).mockResolvedValue(0);
 });
 
 describe("PipelineService.createEntry", () => {
@@ -410,6 +414,71 @@ describe("PipelineService.updateEntry", () => {
 
     expect(mockPrisma.pipelineStageEvent.create).not.toHaveBeenCalled();
   });
+
+  it("rejects a move to passed with no reason", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({
+      id: PIPELINE_ID,
+      stage: "term_sheet",
+    });
+
+    await expect(
+      service.updateEntry(STARTUP_ID, PIPELINE_ID, { stage: "passed" } as never),
+    ).rejects.toMatchObject({ statusCode: 400, code: "PASSED_REASON_REQUIRED" });
+
+    expect(mockPrisma.pipeline.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a move to passed with a blank reason", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({
+      id: PIPELINE_ID,
+      stage: "term_sheet",
+    });
+
+    await expect(
+      service.updateEntry(STARTUP_ID, PIPELINE_ID, { stage: "passed", reason: "   " } as never),
+    ).rejects.toMatchObject({ statusCode: 400, code: "PASSED_REASON_REQUIRED" });
+  });
+
+  it("records the reason on the stage event, not the pipeline row, when passing", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({
+      id: PIPELINE_ID,
+      stage: "term_sheet",
+    });
+    (mockPrisma.pipeline.update as jest.Mock).mockResolvedValue(entryRow({ stage: "passed" }));
+
+    await service.updateEntry(STARTUP_ID, PIPELINE_ID, {
+      stage: "passed",
+      reason: "Went with another investor",
+    } as never);
+
+    expect(mockPrisma.pipeline.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({ reason: expect.anything() }),
+      }),
+    );
+    expect(mockPrisma.pipelineStageEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          toStage: "passed",
+          reason: "Went with another investor",
+        }),
+      }),
+    );
+  });
+
+  it("does not require a reason for a non-passed transition", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({
+      id: PIPELINE_ID,
+      stage: "sourced",
+    });
+    (mockPrisma.pipeline.update as jest.Mock).mockResolvedValue(entryRow({ stage: "contacted" }));
+
+    await service.updateEntry(STARTUP_ID, PIPELINE_ID, { stage: "contacted" } as never);
+
+    expect(mockPrisma.pipelineStageEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ reason: null }) }),
+    );
+  });
 });
 
 describe("PipelineService.getAnalytics", () => {
@@ -503,14 +572,18 @@ describe("PipelineService.getAnalytics", () => {
 });
 
 describe("PipelineService.deleteEntry", () => {
-  it("deletes when there are no commitment dependents", async () => {
+  it("deletes when there are no commitment or task dependents", async () => {
     (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({ id: PIPELINE_ID });
     (mockPrisma.commitment.count as jest.Mock).mockResolvedValue(0);
+    (mockPrisma.task.count as jest.Mock).mockResolvedValue(0);
     (mockPrisma.pipeline.delete as jest.Mock).mockResolvedValue({});
 
     await service.deleteEntry(STARTUP_ID, PIPELINE_ID);
 
     expect(mockPrisma.commitment.count).toHaveBeenCalledWith({
+      where: { pipelineId: PIPELINE_ID, startupId: STARTUP_ID },
+    });
+    expect(mockPrisma.task.count).toHaveBeenCalledWith({
       where: { pipelineId: PIPELINE_ID, startupId: STARTUP_ID },
     });
     expect(mockPrisma.pipeline.delete).toHaveBeenCalledWith({ where: { id: PIPELINE_ID } });
@@ -519,6 +592,19 @@ describe("PipelineService.deleteEntry", () => {
   it("throws HAS_DEPENDENTS when commitments exist", async () => {
     (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({ id: PIPELINE_ID });
     (mockPrisma.commitment.count as jest.Mock).mockResolvedValue(2);
+
+    await expect(service.deleteEntry(STARTUP_ID, PIPELINE_ID)).rejects.toMatchObject({
+      statusCode: 409,
+      code: "HAS_DEPENDENTS",
+    });
+
+    expect(mockPrisma.pipeline.delete).not.toHaveBeenCalled();
+  });
+
+  it("throws HAS_DEPENDENTS when tasks exist, same as commitments — task history must not cascade-delete", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({ id: PIPELINE_ID });
+    (mockPrisma.commitment.count as jest.Mock).mockResolvedValue(0);
+    (mockPrisma.task.count as jest.Mock).mockResolvedValue(3);
 
     await expect(service.deleteEntry(STARTUP_ID, PIPELINE_ID)).rejects.toMatchObject({
       statusCode: 409,
@@ -566,5 +652,114 @@ describe("PipelineService.listStageEvents", () => {
       code: "PIPELINE_NOT_FOUND",
     });
     expect(mockPrisma.pipelineStageEvent.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("PipelineService.getFocus", () => {
+  const NOW = new Date("2026-08-14T12:00:00.000Z");
+  const DAY = 24 * 60 * 60 * 1000;
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(NOW);
+    (mockPrisma.fundraisingRound.findUnique as jest.Mock).mockResolvedValue({ id: ROUND_ID });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function deal(id: string, overrides: Record<string, unknown> = {}) {
+    return entryRow({
+      id,
+      startupInvestorId: `contact-${id}`,
+      stage: "contacted",
+      priority: null,
+      ...overrides,
+    });
+  }
+
+  it("only queries non-settled deals in the resolved round", async () => {
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.getFocus(STARTUP_ID, ROUND_ID);
+
+    expect(mockPrisma.pipeline.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { startupId: STARTUP_ID, roundId: ROUND_ID, stage: { notIn: ["committed", "passed"] } },
+      }),
+    );
+  });
+
+  it("flags a deal whose soonest open task is overdue", async () => {
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([deal("p1")]);
+    (mockPrisma.task.findMany as jest.Mock).mockResolvedValue([
+      { pipelineId: "p1", dueDate: new Date(NOW.getTime() - 4 * DAY) },
+    ]);
+    (mockPrisma.interactionLog.findMany as jest.Mock).mockResolvedValue([]);
+
+    const { data } = await service.getFocus(STARTUP_ID, ROUND_ID);
+
+    expect(data).toHaveLength(1);
+    expect(data[0]).toMatchObject({ id: "p1", reason: "overdue" });
+  });
+
+  it("flags a deal with no open task at all as missing", async () => {
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([deal("p1")]);
+    (mockPrisma.task.findMany as jest.Mock).mockResolvedValue([]);
+    (mockPrisma.interactionLog.findMany as jest.Mock).mockResolvedValue([
+      { startupInvestorId: "contact-p1", interactionDate: NOW, createdAt: NOW },
+    ]);
+
+    const { data } = await service.getFocus(STARTUP_ID, ROUND_ID);
+
+    expect(data[0]).toMatchObject({ id: "p1", reason: "missing" });
+  });
+
+  it("flags a deal as quiet only when it has an open task but no contact in 14+ days", async () => {
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([deal("p1")]);
+    (mockPrisma.task.findMany as jest.Mock).mockResolvedValue([
+      { pipelineId: "p1", dueDate: new Date(NOW.getTime() + 30 * DAY) },
+    ]);
+    (mockPrisma.interactionLog.findMany as jest.Mock).mockResolvedValue([
+      { startupInvestorId: "contact-p1", interactionDate: new Date(NOW.getTime() - 20 * DAY), createdAt: new Date(NOW.getTime() - 20 * DAY) },
+    ]);
+
+    const { data } = await service.getFocus(STARTUP_ID, ROUND_ID);
+
+    expect(data[0]).toMatchObject({ id: "p1", reason: "quiet" });
+  });
+
+  it("flags a high-priority deal with no other signal, and ranks it last", async () => {
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([
+      deal("overdue-deal"),
+      deal("priority-deal", { priority: "high" }),
+    ]);
+    (mockPrisma.task.findMany as jest.Mock).mockResolvedValue([
+      { pipelineId: "overdue-deal", dueDate: new Date(NOW.getTime() - DAY) },
+      { pipelineId: "priority-deal", dueDate: new Date(NOW.getTime() + 30 * DAY) },
+    ]);
+    (mockPrisma.interactionLog.findMany as jest.Mock).mockResolvedValue([
+      { startupInvestorId: "contact-overdue-deal", interactionDate: NOW, createdAt: NOW },
+      { startupInvestorId: "contact-priority-deal", interactionDate: NOW, createdAt: NOW },
+    ]);
+
+    const { data } = await service.getFocus(STARTUP_ID, ROUND_ID);
+
+    expect(data.map((row) => row.id)).toEqual(["overdue-deal", "priority-deal"]);
+    expect(data[1].reason).toBe("priority");
+  });
+
+  it("excludes a deal that has an upcoming task, recent contact, and no priority flag", async () => {
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([deal("p1")]);
+    (mockPrisma.task.findMany as jest.Mock).mockResolvedValue([
+      { pipelineId: "p1", dueDate: new Date(NOW.getTime() + 5 * DAY) },
+    ]);
+    (mockPrisma.interactionLog.findMany as jest.Mock).mockResolvedValue([
+      { startupInvestorId: "contact-p1", interactionDate: NOW, createdAt: NOW },
+    ]);
+
+    const { data } = await service.getFocus(STARTUP_ID, ROUND_ID);
+
+    expect(data).toHaveLength(0);
   });
 });

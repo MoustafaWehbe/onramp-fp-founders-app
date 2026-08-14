@@ -39,6 +39,7 @@ model User {
   auditLogs            AuditLog[]
   notifications        Notification[]
   pipelineStageEvents  PipelineStageEvent[]
+  tasks                Task[]
 
   @@map("users")
 }
@@ -70,6 +71,7 @@ model Startup {
   auditLogs           AuditLog[]
   notifications       Notification[]
   pipelineStageEvents PipelineStageEvent[]
+  tasks               Task[]
 
   @@map("startups")
 }
@@ -92,8 +94,12 @@ model StartupMember {
   role    Role    @relation(fields: [roleId], references: [id])
   inviter User?   @relation("InvitedBy", fields: [invitedBy], references: [id])
 
+  ownedDeals    Pipeline[] @relation("PipelineOwner")
+  assignedTasks Task[]     @relation("TaskAssignee")
+
   @@unique([startupId, userId])
   @@unique([startupId, invitedEmail])
+  @@unique([startupId, id])
   @@map("startup_members")
 }
 
@@ -291,6 +297,9 @@ model Pipeline {
   stage                 String   @default("sourced")
   expectedAmount        Decimal? @map("expected_amount")
   probabilityPercentage Int?     @map("probability_percentage")
+  ownerId               String?  @map("owner_id")
+  priority              String?
+  investorFitScore      Int?     @map("investor_fit_score")
   sortOrder             Float    @default(0) @map("sort_order")
   stageChangedAt        DateTime @default(now()) @map("stage_changed_at")
   createdAt             DateTime @default(now()) @map("created_at")
@@ -299,9 +308,11 @@ model Pipeline {
   startup         Startup         @relation(fields: [startupId], references: [id], onDelete: Cascade)
   round           FundraisingRound @relation("PipelineRound", fields: [roundId, startupId], references: [id, startupId], onDelete: Restrict)
   startupInvestor StartupInvestor @relation("PipelineInvestor", fields: [startupInvestorId, startupId], references: [id, startupId], onDelete: Cascade)
+  owner           StartupMember?  @relation("PipelineOwner", fields: [ownerId, startupId], references: [id, startupId], onDelete: SetNull)
   interactionLogs InteractionLog[]
   commitments     Commitment[]    @relation("CommitmentPipeline")
   stageEvents     PipelineStageEvent[]
+  tasks           Task[]
 
   @@unique([roundId, startupInvestorId])
   @@unique([id, startupInvestorId])
@@ -318,6 +329,7 @@ model PipelineStageEvent {
   pipelineId String   @map("pipeline_id")
   fromStage  String?  @map("from_stage")
   toStage    String   @map("to_stage")
+  reason     String?
   changedBy  String?  @map("changed_by")
   createdAt  DateTime @default(now()) @map("created_at")
 
@@ -328,6 +340,31 @@ model PipelineStageEvent {
   @@index([startupId, createdAt])
   @@index([pipelineId, createdAt])
   @@map("pipeline_stage_events")
+}
+
+model Task {
+  id          String    @id @default(uuid())
+  startupId   String    @map("startup_id")
+  pipelineId  String    @map("pipeline_id")
+  title       String
+  description String?
+  status      String    @default("open")
+  priority    String    @default("medium")
+  dueDate     DateTime? @map("due_date")
+  assigneeId  String?   @map("assignee_id")
+  completedAt DateTime? @map("completed_at")
+  createdBy   String    @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  startup  Startup       @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  pipeline Pipeline      @relation(fields: [pipelineId, startupId], references: [id, startupId], onDelete: Restrict)
+  assignee StartupMember? @relation("TaskAssignee", fields: [assigneeId, startupId], references: [id, startupId], onDelete: SetNull)
+  creator  User          @relation(fields: [createdBy], references: [id])
+
+  @@index([startupId, pipelineId, status])
+  @@index([startupId, status, dueDate])
+  @@map("tasks")
 }
 
 model InteractionLog {
