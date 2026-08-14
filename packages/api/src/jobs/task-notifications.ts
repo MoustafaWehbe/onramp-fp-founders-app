@@ -3,7 +3,7 @@ import { notificationService } from "../services/notification.service";
 
 /**
  * Finds every open task that is overdue or due today and notifies its
- * assignee. Mirrors notifyOverdueFollowups: safe to run repeatedly, since
+ * assignee. Safe to run repeatedly, since
  * notifyTaskOverdue/notifyTaskDueToday are no-ops for a task that already has
  * one. A task with no assignee, or whose assignee is a pending invite with
  * no account yet, has nobody to notify and is skipped.

@@ -35,6 +35,8 @@ const ROUND_SELECT = {
   equityOfferedPercentage: true,
   currency: true,
   status: true,
+  firstCloseDate: true,
+  targetCloseDate: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -172,7 +174,7 @@ export class FundraisingService {
     return serializeCommitment(commitment);
   }
 
-  async createCommitment(startupId: string, input: CreateCommitmentInput) {
+  async createCommitment(startupId: string, input: CreateCommitmentInput, userId?: string) {
     const [investor, round, pipeline] = await Promise.all([
       prisma.startupInvestor.findUnique({
         where: { startupId_id: { startupId, id: input.investorId } },
@@ -201,34 +203,110 @@ export class FundraisingService {
         "PIPELINE_MISMATCH",
       );
     }
-    const commitment = await prisma.commitment.create({
+    // Recording money against the round is the same event as the deal
+    // reaching Committed. PipelineService.updateEntry already writes this
+    // link in the other direction; doing it here too is what stops the two
+    // pages disagreeing whichever way the founder happens to work.
+    const commitment = await prisma.$transaction(async (tx) => {
+      const created = await tx.commitment.create({
+        data: {
+          startupId,
+          startupInvestorId: input.investorId,
+          pipelineId: input.pipelineId,
+          roundId: input.roundId,
+          amount: input.amount,
+          ...(input.status && { status: input.status }),
+          ...(input.expectedCloseDate && { expectedCloseDate: input.expectedCloseDate }),
+        },
+        select: COMMITMENT_SELECT,
+      });
+
+      if (input.status !== "withdrawn") {
+        await this.moveDealToStage(tx, startupId, input.pipelineId, "committed", userId);
+      }
+
+      return created;
+    });
+    return serializeCommitment(commitment);
+  }
+
+  /**
+   * Move a deal to `stage` and append the matching history row, but only if
+   * it is not already there — so re-saving a commitment does not litter the
+   * timeline with no-op transitions. Runs inside the caller's transaction.
+   */
+  private async moveDealToStage(
+    tx: Prisma.TransactionClient,
+    startupId: string,
+    pipelineId: string,
+    stage: string,
+    userId?: string,
+  ): Promise<void> {
+    const deal = await tx.pipeline.findUnique({
+      where: { startupId_id: { startupId, id: pipelineId } },
+      select: { id: true, stage: true },
+    });
+    if (!deal || deal.stage === stage) return;
+
+    const changedAt = new Date();
+    await tx.pipeline.update({
+      where: { id: pipelineId },
+      data: { stage, stageChangedAt: changedAt },
+    });
+    await tx.pipelineStageEvent.create({
       data: {
         startupId,
-        startupInvestorId: input.investorId,
-        pipelineId: input.pipelineId,
-        roundId: input.roundId,
-        amount: input.amount,
-        ...(input.status && { status: input.status }),
-        ...(input.expectedCloseDate && { expectedCloseDate: input.expectedCloseDate }),
+        pipelineId,
+        fromStage: deal.stage,
+        toStage: stage,
+        changedBy: userId ?? null,
+        createdAt: changedAt,
       },
-      select: COMMITMENT_SELECT,
+    });
+  }
+
+  async updateCommitment(
+    startupId: string,
+    commitmentId: string,
+    input: UpdateCommitmentInput,
+    userId?: string,
+  ) {
+    const existing = await this.getCommitment(startupId, commitmentId);
+
+    const commitment = await prisma.$transaction(async (tx) => {
+      const updated = await tx.commitment.update({
+        where: { id: commitmentId },
+        data: input,
+        select: COMMITMENT_SELECT,
+      });
+
+      // The investor backing out has to take the deal off Committed too, or
+      // the board keeps claiming money the round no longer counts. Term sheet
+      // is where it lands: they had one, then withdrew.
+      if (input.status === "withdrawn" && existing.status !== "withdrawn") {
+        await this.moveDealToStage(tx, startupId, existing.pipelineId, "term_sheet", userId);
+      }
+      // Reinstating a withdrawn commitment puts the deal back on Committed.
+      if (input.status && input.status !== "withdrawn" && existing.status === "withdrawn") {
+        await this.moveDealToStage(tx, startupId, existing.pipelineId, "committed", userId);
+      }
+
+      return updated;
     });
     return serializeCommitment(commitment);
   }
 
-  async updateCommitment(startupId: string, commitmentId: string, input: UpdateCommitmentInput) {
-    await this.getCommitment(startupId, commitmentId);
-    const commitment = await prisma.commitment.update({
-      where: { id: commitmentId },
-      data: input,
-      select: COMMITMENT_SELECT,
-    });
-    return serializeCommitment(commitment);
-  }
+  async deleteCommitment(startupId: string, commitmentId: string, userId?: string) {
+    const existing = await this.getCommitment(startupId, commitmentId);
 
-  async deleteCommitment(startupId: string, commitmentId: string) {
-    await this.getCommitment(startupId, commitmentId);
-    await prisma.commitment.delete({ where: { id: commitmentId } });
+    await prisma.$transaction(async (tx) => {
+      await tx.commitment.delete({ where: { id: commitmentId } });
+      // Nothing records this money any more, so the deal cannot stay on
+      // Committed — that is exactly the divergence this link exists to stop.
+      if (existing.status !== "withdrawn") {
+        await this.moveDealToStage(tx, startupId, existing.pipelineId, "term_sheet", userId);
+      }
+    });
   }
 }
 

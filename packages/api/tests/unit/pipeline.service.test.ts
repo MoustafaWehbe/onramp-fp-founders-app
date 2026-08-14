@@ -331,6 +331,98 @@ describe("PipelineService.getEntry", () => {
   });
 });
 
+describe("PipelineService.updateEntry moving between rounds", () => {
+  const OTHER_ROUND = "00000000-0000-0000-0000-000000000008";
+  const EXISTING = {
+    id: PIPELINE_ID,
+    stage: "contacted",
+    roundId: ROUND_ID,
+    startupInvestorId: CONTACT_ID,
+  };
+
+  beforeEach(() => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue(EXISTING);
+    (mockPrisma.pipeline.update as jest.Mock).mockResolvedValue(entryRow({ roundId: OTHER_ROUND }));
+    (mockPrisma.fundraisingRound.findUnique as jest.Mock).mockResolvedValue({
+      id: OTHER_ROUND,
+      status: "active",
+      roundName: "Series A",
+    });
+    (mockPrisma.commitment.count as jest.Mock).mockResolvedValue(0);
+    (mockPrisma.pipeline.aggregate as jest.Mock).mockResolvedValue({ _max: { sortOrder: 3000 } });
+  });
+
+  it("lands the deal at the bottom of the matching column in the destination", async () => {
+    await service.updateEntry(STARTUP_ID, PIPELINE_ID, { roundId: OTHER_ROUND } as never);
+
+    expect(mockPrisma.pipeline.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { startupId: STARTUP_ID, roundId: OTHER_ROUND, stage: "contacted" },
+      }),
+    );
+    expect(mockPrisma.pipeline.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ roundId: OTHER_ROUND, sortOrder: 4000 }),
+      }),
+    );
+  });
+
+  it.each(["closed", "cancelled"])("refuses to carry a deal into a %s round", async (status) => {
+    (mockPrisma.fundraisingRound.findUnique as jest.Mock).mockResolvedValue({
+      id: OTHER_ROUND,
+      status,
+      roundName: "Series A",
+    });
+
+    await expect(
+      service.updateEntry(STARTUP_ID, PIPELINE_ID, { roundId: OTHER_ROUND } as never),
+    ).rejects.toMatchObject({ statusCode: 409, code: "ROUND_NOT_OPEN" });
+
+    expect(mockPrisma.pipeline.update).not.toHaveBeenCalled();
+  });
+
+  it("throws FUNDRAISING_ROUND_NOT_FOUND for a round in another startup", async () => {
+    (mockPrisma.fundraisingRound.findUnique as jest.Mock).mockResolvedValue(null);
+
+    await expect(
+      service.updateEntry(STARTUP_ID, PIPELINE_ID, { roundId: OTHER_ROUND } as never),
+    ).rejects.toMatchObject({ statusCode: 404, code: "FUNDRAISING_ROUND_NOT_FOUND" });
+  });
+
+  // The money was pledged to a specific raise; carrying the deal across would
+  // silently re-attribute it.
+  it("refuses when the deal has commitments against its current round", async () => {
+    (mockPrisma.commitment.count as jest.Mock).mockResolvedValue(1);
+
+    await expect(
+      service.updateEntry(STARTUP_ID, PIPELINE_ID, { roundId: OTHER_ROUND } as never),
+    ).rejects.toMatchObject({ statusCode: 409, code: "HAS_DEPENDENTS" });
+
+    expect(mockPrisma.pipeline.update).not.toHaveBeenCalled();
+  });
+
+  it("reports a clean conflict when the investor already has a deal in the destination", async () => {
+    (mockPrisma.pipeline.update as jest.Mock).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("dup", {
+        code: "P2002",
+        clientVersion: "5.22.0",
+      }),
+    );
+
+    await expect(
+      service.updateEntry(STARTUP_ID, PIPELINE_ID, { roundId: OTHER_ROUND } as never),
+    ).rejects.toMatchObject({ statusCode: 409, code: "ALREADY_IN_PIPELINE" });
+  });
+
+  it("does not touch the round when the same one is sent back", async () => {
+    await service.updateEntry(STARTUP_ID, PIPELINE_ID, { roundId: ROUND_ID } as never);
+
+    // No verification, no repositioning — it is not a move.
+    expect(mockPrisma.pipeline.aggregate).not.toHaveBeenCalled();
+    expect(mockPrisma.commitment.count).not.toHaveBeenCalled();
+  });
+});
+
 describe("PipelineService.updateEntry committing", () => {
   const COMMITTING = {
     id: PIPELINE_ID,

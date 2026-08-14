@@ -2,13 +2,20 @@ import { apiClient } from "./api-client";
 import type { PipelineContact, PaginationMeta } from "./pipeline-api";
 
 export const ROUND_STATUSES = ["draft", "active", "closed", "cancelled"] as const;
+/**
+ * The vocabulary founders and investors use. Soft-circled is a verbal yes
+ * with nothing signed and never counts as raised; hard-circled means the docs
+ * are signed; wired means the money is in the bank.
+ */
 export const COMMITMENT_STATUSES = [
-  "pending",
-  "negotiating",
-  "confirmed",
-  "funded",
+  "soft_circled",
+  "hard_circled",
+  "wired",
   "withdrawn",
 ] as const;
+
+/** Rounds that can still take pipeline deals; the API enforces the same set. */
+export const OPEN_ROUND_STATUSES: readonly string[] = ["draft", "active"];
 
 export type RoundStatus = (typeof ROUND_STATUSES)[number];
 export type CommitmentStatus = (typeof COMMITMENT_STATUSES)[number];
@@ -21,12 +28,24 @@ export const ROUND_STATUS_LABELS: Record<RoundStatus, string> = {
 };
 
 export const COMMITMENT_STATUS_LABELS: Record<CommitmentStatus, string> = {
-  pending: "Pending",
-  negotiating: "Negotiating",
-  confirmed: "Confirmed",
-  funded: "Funded",
+  soft_circled: "Soft-circled",
+  hard_circled: "Hard-circled",
+  wired: "Wired",
   withdrawn: "Withdrawn",
 };
+
+/** Shown next to the choice, so the distinction is made at the point of entry. */
+export const COMMITMENT_STATUS_HINTS: Record<CommitmentStatus, string> = {
+  soft_circled: "Verbal only — not counted toward the target",
+  hard_circled: "Docs signed — counts toward the target",
+  wired: "Money received",
+  withdrawn: "Backed out",
+};
+
+/** Signed or better — the money you may legitimately call raised. */
+export function isBankable(status: CommitmentStatus): boolean {
+  return status === "hard_circled" || status === "wired";
+}
 
 export type FundraisingRound = {
   id: string;
@@ -37,6 +56,9 @@ export type FundraisingRound = {
   equityOfferedPercentage: number | null;
   currency: string;
   status: RoundStatus;
+  /** Rolling closes: money in the door here, the rest by targetCloseDate. */
+  firstCloseDate: string | null;
+  targetCloseDate: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -62,6 +84,8 @@ export type RoundInput = {
   equityOfferedPercentage?: number | null;
   currency: string;
   status?: RoundStatus;
+  firstCloseDate?: string | null;
+  targetCloseDate?: string | null;
 };
 
 export type CommitmentInput = {

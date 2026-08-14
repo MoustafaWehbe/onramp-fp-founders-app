@@ -1,7 +1,13 @@
 import { apiClient } from "./api-client";
 
 /** Types the UI renders specially; anything else falls back to a generic bell. */
-export type NotificationType = "team_invite" | "followup_due" | (string & {});
+export type NotificationType =
+  | "team_invite"
+  | "followup_due"
+  | "task_overdue"
+  | "task_due_today"
+  | "task_assigned"
+  | (string & {});
 
 export type AppNotification = {
   id: string;

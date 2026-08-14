@@ -61,6 +61,9 @@ export const updateTaskSchema = z
 
 export const listTaskQuerySchema = z.object({
   pipelineId: z.string().uuid("pipelineId must be a valid UUID").optional(),
+  // Every task on every deal in one raise — what a cross-deal "my work" view
+  // needs, without the client fetching each deal's list separately.
+  roundId: z.string().uuid("roundId must be a valid UUID").optional(),
   status: taskStatusEnum.optional(),
   assigneeId: z.string().uuid("assigneeId must be a valid UUID").optional(),
   priority: taskPriorityEnum.optional(),

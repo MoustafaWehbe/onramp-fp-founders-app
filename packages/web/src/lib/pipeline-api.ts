@@ -1,4 +1,5 @@
 import { apiClient } from "./api-client";
+import type { CommitmentStatus } from "./fundraising-api";
 import type { PipelineStageId } from "./mock-data";
 import type { Priority } from "./task-api";
 
@@ -31,6 +32,8 @@ export type PipelineEntry = {
   ownerId: string | null;
   priority: Priority | null;
   investorFitScore: number | null;
+  /** Whether this investor is leading the round. */
+  isLead: boolean;
   /** Manual position within its stage's column, ascending. */
   sortOrder: number;
   /**
@@ -97,6 +100,7 @@ export async function createPipelineEntry(
     ownerId?: string;
     priority?: Priority;
     investorFitScore?: number;
+    isLead?: boolean;
   },
 ) {
   const { data } = await apiClient.post<{ data: PipelineEntry }>(
@@ -109,7 +113,7 @@ export async function createPipelineEntry(
 /** What the Committed transition records against the round. */
 export type CommitmentDraft = {
   amount: number;
-  status?: "pending" | "negotiating" | "confirmed" | "funded" | "withdrawn";
+  status?: CommitmentStatus;
   expectedCloseDate?: string | null;
 };
 
@@ -117,6 +121,8 @@ export async function updatePipelineEntry(
   startupId: string,
   pipelineId: string,
   body: {
+    /** Moves the deal into another open round; refused if it has commitments. */
+    roundId?: string;
     stage?: PipelineStageId;
     expectedAmount?: number | null;
     probabilityPercentage?: number | null;
@@ -124,6 +130,7 @@ export async function updatePipelineEntry(
     ownerId?: string | null;
     priority?: Priority | null;
     investorFitScore?: number | null;
+    isLead?: boolean;
     /** Required by the server when stage is being set to "passed". */
     reason?: string;
     /**

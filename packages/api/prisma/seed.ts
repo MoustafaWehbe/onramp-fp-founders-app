@@ -550,7 +550,7 @@ async function main() {
       pipelineId: pipeline.id,
       roundId: round.id,
       amount: 50000,
-      status: "negotiating",
+      status: "soft_circled",
     },
   });
 
@@ -643,7 +643,7 @@ async function main() {
   console.info(`  Contacts:     ${CONTACTS.length} (${pipelinesById.size} in pipeline)`);
   console.info(`  Follow-ups:   ${CONTACTS.filter((c) => c.followupInDays !== undefined).length} upcoming`);
   console.info(`  Round:        Pre-Seed — $500,000 target`);
-  console.info(`  Commitment:   $50,000 negotiating`);
+  console.info(`  Commitment:   $50,000 soft-circled`);
   console.info(`  Tasks:        3 (1 overdue, 1 due today, 1 completed)`);
   console.info(`  Audit logs:   3 entries`);
   console.info(`  Notifications: 2 entries`);

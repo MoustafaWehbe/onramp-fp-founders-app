@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
+import { notificationService } from "./notification.service";
 import type { CreateTaskInput, UpdateTaskInput, ListTaskQuery } from "../validators/task.schemas";
 
 const TASK_SELECT = {
@@ -62,17 +63,45 @@ export class TaskService {
     if (!pipeline) throw createError("Pipeline entry not found", 404, "PIPELINE_NOT_FOUND");
   }
 
-  private async verifyAssignee(startupId: string, assigneeId: string): Promise<void> {
+  /**
+   * Returns the assignee's user id, or null when the member is still a
+   * pending invite with no account yet — there is nobody to notify in that
+   * case, but the assignment itself is allowed.
+   */
+  private async verifyAssignee(startupId: string, assigneeId: string): Promise<string | null> {
     const member = await prisma.startupMember.findUnique({
       where: { startupId_id: { startupId, id: assigneeId } },
-      select: { id: true },
+      select: { id: true, userId: true },
     });
     if (!member) throw createError("Assignee is not a member of this startup", 404, "MEMBER_NOT_FOUND");
+    return member.userId;
+  }
+
+  /**
+   * Best-effort ping to whoever just picked up the task. Assigning work to
+   * yourself needs no announcement, and a failure here must never fail the
+   * write that caused it.
+   */
+  private announceAssignment(
+    assigneeUserId: string | null,
+    actorUserId: string,
+    task: { id: string; startupId: string; title: string; dueDate: Date | null },
+  ): void {
+    if (!assigneeUserId || assigneeUserId === actorUserId) return;
+    void notificationService.notifyTaskAssigned({
+      userId: assigneeUserId,
+      startupId: task.startupId,
+      taskId: task.id,
+      title: task.title,
+      dueDate: task.dueDate,
+    });
   }
 
   async createTask(startupId: string, input: CreateTaskInput, userId: string) {
     await this.verifyPipeline(startupId, input.pipelineId);
-    if (input.assigneeId) await this.verifyAssignee(startupId, input.assigneeId);
+    const assigneeUserId = input.assigneeId
+      ? await this.verifyAssignee(startupId, input.assigneeId)
+      : null;
 
     const task = await prisma.task.create({
       data: {
@@ -88,15 +117,19 @@ export class TaskService {
       select: TASK_SELECT,
     });
 
+    this.announceAssignment(assigneeUserId, userId, task);
+
     return { data: serializeTask(task) };
   }
 
   async listTasks(startupId: string, query: ListTaskQuery) {
-    const { page, limit, pipelineId, status, assigneeId, priority } = query;
+    const { page, limit, pipelineId, roundId, status, assigneeId, priority } = query;
 
     const where: Prisma.TaskWhereInput = {
       startupId,
       ...(pipelineId && { pipelineId }),
+      // Scoped through the deal, since a task has no round of its own.
+      ...(roundId && { pipeline: { roundId } }),
       ...(status && { status }),
       ...(assigneeId && { assigneeId }),
       ...(priority && { priority }),
@@ -132,16 +165,24 @@ export class TaskService {
     return { data: serializeTask(task) };
   }
 
-  async updateTask(startupId: string, taskId: string, input: UpdateTaskInput) {
+  async updateTask(startupId: string, taskId: string, input: UpdateTaskInput, userId?: string) {
     const existing = await prisma.task.findUnique({
       where: { id: taskId },
-      select: { id: true, startupId: true, status: true },
+      select: { id: true, startupId: true, status: true, assigneeId: true },
     });
     if (!existing || existing.startupId !== startupId) {
       throw createError("Task not found", 404, "TASK_NOT_FOUND");
     }
 
-    if (input.assigneeId) await this.verifyAssignee(startupId, input.assigneeId);
+    // Only a genuine hand-over is worth announcing — editing a due date on a
+    // task someone already holds is not news.
+    const reassigned =
+      input.assigneeId !== undefined &&
+      input.assigneeId !== null &&
+      input.assigneeId !== existing.assigneeId;
+    const assigneeUserId = input.assigneeId
+      ? await this.verifyAssignee(startupId, input.assigneeId)
+      : null;
 
     // Completion timestamp is derived server-side, not trusted from the
     // client — the same approach updateEntry uses for stageChangedAt.
@@ -166,6 +207,8 @@ export class TaskService {
       },
       select: TASK_SELECT,
     });
+
+    if (reassigned && userId) this.announceAssignment(assigneeUserId, userId, task);
 
     return { data: serializeTask(task) };
   }

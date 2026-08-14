@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Linkedin, Mail, Plus, Trash2 } from "lucide-react";
+import { Crown, Linkedin, Mail, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../../components/ui/button";
 import {
@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../../../components/ui/dialog";
+import { Checkbox } from "../../../components/ui/checkbox";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import { Select } from "../../../components/ui/select";
@@ -41,6 +42,11 @@ import {
   type PipelineEntry,
 } from "../../../lib/pipeline-api";
 import { listMembers } from "../../../lib/team-api";
+import {
+  OPEN_ROUND_STATUSES,
+  ROUND_STATUS_LABELS,
+  type FundraisingRound,
+} from "../../../lib/fundraising-api";
 import { PRIORITIES, PRIORITY_LABELS, type Priority } from "../../../lib/task-api";
 import { cn, formatCompactUsd, getInitials } from "../../../lib/utils";
 import { InteractionTimeline } from "../Investors/InteractionTimeline";
@@ -64,6 +70,8 @@ type DealDetailDialogProps = {
   signals: DealSignals;
   /** Named in the commit prompt, so it's clear which raise the money lands in. */
   roundName: string;
+  /** Every round this deal could be carried into, plus the one it's in. */
+  rounds: FundraisingRound[];
   onOpenChange: (open: boolean) => void;
   onRemove: (deal: PipelineEntry) => void;
 };
@@ -76,6 +84,14 @@ function logErrorMessage(err: unknown, fallback: string): string {
       return "That entry no longer exists — a teammate may have removed it.";
     case "PIPELINE_NOT_FOUND":
       return "This deal is no longer on the board.";
+    case "HAS_DEPENDENTS":
+      return "This deal has commitments recorded against its round, so it can't be moved to another one.";
+    case "ALREADY_IN_PIPELINE":
+      return "This investor already has a deal in that round.";
+    case "ROUND_NOT_OPEN":
+      return "That round is closed, so it can't take this deal.";
+    case "COMMITMENT_DETAILS_REQUIRED":
+      return "Moving a deal to Committed needs a commitment amount.";
     default:
       return apiErrorMessage(
         err,
@@ -90,6 +106,7 @@ export function DealDetailDialog({
   deal,
   signals,
   roundName,
+  rounds,
   onOpenChange,
   onRemove,
 }: DealDetailDialogProps) {
@@ -283,6 +300,19 @@ export function DealDetailDialog({
     );
   };
 
+  // A closed or cancelled raise can't take the deal, but the one it already
+  // sits in stays selectable so the control always shows where it is.
+  const roundOptions = useMemo(
+    () =>
+      rounds
+        .filter((round) => round.id === deal?.roundId || OPEN_ROUND_STATUSES.includes(round.status))
+        .map((round) => ({
+          value: round.id,
+          label: `${round.roundName} · ${ROUND_STATUS_LABELS[round.status]}`,
+        })),
+    [rounds, deal?.roundId],
+  );
+
   const currentIndex = deal ? PROGRESSION.findIndex((stage) => stage.id === deal.stage) : -1;
   const investor = deal?.investor;
 
@@ -449,6 +479,21 @@ export function DealDetailDialog({
                 </div>
               </section>
 
+              {/* A priced round does not happen without a lead, and "have we
+                  got one yet" was previously unanswerable anywhere. */}
+              <label className="flex items-center gap-2 rounded-lg border border-border/70 bg-surface/50 px-3 py-2 text-sm">
+                <Checkbox
+                  checked={deal.isLead}
+                  disabled={!canUpdate}
+                  onChange={() => dealMutation.mutate({ isLead: !deal.isLead })}
+                  aria-label="Leading this round"
+                />
+                <span className="flex items-center gap-1.5">
+                  <Crown className="h-3.5 w-3.5 text-warning" />
+                  Leading this round
+                </span>
+              </label>
+
               <section aria-label="Deal ownership" className="grid gap-3 sm:grid-cols-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="deal-owner">Owner</Label>
@@ -500,6 +545,36 @@ export function DealDetailDialog({
                 </div>
               </section>
 
+                      {/* A deal in a round that later closes would otherwise be
+                  stranded — the only way out was delete-and-recreate, which
+                  throws away its stage history. */}
+              {roundOptions.length > 1 && (
+                <section aria-label="Fundraising round" className="space-y-1.5">
+                  <Label htmlFor="deal-round">Round</Label>
+                  <Select
+                    id="deal-round"
+                    disabled={!canUpdate}
+                    value={deal.roundId}
+                    onValueChange={(value) => {
+                      if (value === deal.roundId) return;
+                      dealMutation.mutate(
+                        { roundId: value },
+                        {
+                          onSuccess: () => {
+                            // The deal now belongs to a round this board isn't
+                            // showing, so keeping the sheet open would leave a
+                            // card on screen that no longer exists behind it.
+                            toast.success("Deal moved to another round");
+                            onOpenChange(false);
+                          },
+                        },
+                      );
+                    }}
+                    options={roundOptions}
+                  />
+                </section>
+              )}
+
               <TaskList startupId={startupId} pipelineId={deal.id} />
 
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-border/70 bg-surface/50 p-3 text-sm sm:grid-cols-3">
@@ -527,6 +602,9 @@ export function DealDetailDialog({
                   logs={logs}
                   stageEvents={stageEventsQuery.data ?? []}
                   authorNames={authorNames}
+                  // Logs are the investor's, not the deal's — this marks the
+                  // ones that actually belong to a different deal.
+                  currentPipelineId={deal.id}
                   // Same guard as InvestorDetailDialog: a disabled query's
                   // isPending never flips to false on its own.
                   isLoading={

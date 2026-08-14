@@ -11,6 +11,7 @@ export const NOTIFICATION_TYPES = {
   FOLLOWUP_DUE: "followup_due",
   TASK_OVERDUE: "task_overdue",
   TASK_DUE_TODAY: "task_due_today",
+  TASK_ASSIGNED: "task_assigned",
 } as const;
 
 const NOTIFICATION_SELECT = {
@@ -258,6 +259,49 @@ export class NotificationService {
       body: "Due today.",
       titlePrefix: "Task due today",
     });
+  }
+
+  /**
+   * Tells someone a task is now theirs, at the moment it is assigned.
+   * Without this the only word they get is the overdue/due-today cron, so a
+   * task handed over three weeks ahead of its date stays invisible until the
+   * morning it is already due.
+   *
+   * Not deduped on entity like the date-driven ones: being reassigned a task
+   * you once held is genuinely new information each time.
+   */
+  async notifyTaskAssigned(input: {
+    userId: string;
+    startupId: string;
+    taskId: string;
+    title: string;
+    dueDate: Date | null;
+    assignedByName?: string | null;
+  }): Promise<void> {
+    try {
+      const due = input.dueDate ? ` Due ${input.dueDate.toISOString().slice(0, 10)}.` : "";
+      const by = input.assignedByName ? `${input.assignedByName} assigned this to you.` : "This is now yours.";
+
+      const created = await prisma.notification.create({
+        data: {
+          userId: input.userId,
+          startupId: input.startupId,
+          type: NOTIFICATION_TYPES.TASK_ASSIGNED,
+          title: `New task: ${input.title}`,
+          body: `${by}${due}`,
+          entityType: "task",
+          entityId: input.taskId,
+        },
+        select: { id: true, type: true, title: true, body: true },
+      });
+
+      notificationBus.publish(input.userId, {
+        type: "notification.created",
+        notification: created,
+      });
+    } catch (err) {
+      console.error("[notifyTaskAssigned] failed:", err);
+    }
   }
 
   private async notifyTask(

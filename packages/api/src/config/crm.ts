@@ -16,13 +16,25 @@ export const ROUND_STATUSES = ["draft", "active", "closed", "cancelled"] as cons
  *  cancelled must not quietly accept new deals. */
 export const OPEN_ROUND_STATUSES = ["draft", "active"] as const;
 
+/**
+ * The vocabulary founders and investors actually use for a raise.
+ *
+ * "Soft-circled" is a verbal yes with nothing signed — it evaporates often
+ * enough that it must never be counted as raised. "Hard-circled" means the
+ * docs are signed and the money is legally committed. "Wired" means it is in
+ * the bank. Naming the states after what they legally mean is what keeps the
+ * totals honest; vaguer words ("confirmed") invite a verbal maybe to be filed
+ * as money in hand.
+ */
 export const COMMITMENT_STATUSES = [
-  "pending",
-  "negotiating",
-  "confirmed",
-  "funded",
+  "soft_circled",
+  "hard_circled",
+  "wired",
   "withdrawn",
 ] as const;
+
+/** Signed or better — the money a founder may legitimately call raised. */
+export const BANKABLE_COMMITMENT_STATUSES = ["hard_circled", "wired"] as const;
 
 export const TASK_STATUSES = ["open", "completed"] as const;
 

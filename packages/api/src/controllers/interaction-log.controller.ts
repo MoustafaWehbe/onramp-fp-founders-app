@@ -42,19 +42,14 @@ export const interactionLogController = {
       input,
     );
 
-    // Completing or rescheduling clears whatever "this is overdue" notification
-    // is sitting on the old due date — a fresh one fires later if the new date
-    // also passes unattended.
-    if (input.followupCompletedAt !== undefined || input.nextFollowupDate !== undefined) {
-      void notificationService.clearFollowupNotifications([logId]);
-    }
-
     res.json(result);
   }),
 
   deleteLog: asyncHandler(async (req, res) => {
     const logId = req.params.logId as string;
     await interactionLogService.deleteLog(req.params.startupId as string, logId);
+    // Legacy follow-up notices can still exist against old logs, so a deleted
+    // log still takes its own with it.
     void notificationService.clearFollowupNotifications([logId]);
     res.json({ message: "Interaction log removed" });
   }),

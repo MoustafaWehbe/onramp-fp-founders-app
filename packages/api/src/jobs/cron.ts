@@ -1,6 +1,5 @@
 import cron from "node-cron";
 import { prisma } from "../db/prisma";
-import { notifyOverdueFollowups } from "./followup-notifications";
 import { notifyOverdueAndDueTodayTasks } from "./task-notifications";
 
 export function startCronJobs(): void {
@@ -16,17 +15,10 @@ export function startCronJobs(): void {
     }
   });
 
-  // Once a day is enough — notifyOverdueFollowups skips logs it already
-  // notified about, so a missed or re-run tick never duplicates a notice.
-  cron.schedule("0 9 * * *", async () => {
-    try {
-      await notifyOverdueFollowups();
-    } catch (err) {
-      console.error("[cron] Failed to notify overdue follow-ups:", err);
-    }
-  });
-
-  // Same daily cadence and same idempotency guarantee as the follow-up job.
+  // Once a day is enough — notifyOverdueAndDueTodayTasks skips tasks it has
+  // already notified about, so a missed or re-run tick never duplicates a
+  // notice. (The follow-up equivalent used to run here too; tasks replaced
+  // it, and nothing writes a follow-up date any more.)
   cron.schedule("0 9 * * *", async () => {
     try {
       await notifyOverdueAndDueTodayTasks();

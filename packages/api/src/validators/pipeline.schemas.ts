@@ -38,10 +38,15 @@ export const createPipelineEntrySchema = z.object({
   ownerId: z.string().uuid("ownerId must be a valid UUID").optional(),
   priority: priorityEnum.optional(),
   investorFitScore: optionalInvestorFitScore,
+  isLead: z.boolean().optional(),
 });
 
 export const updatePipelineEntrySchema = z
   .object({
+    // Carrying an un-closed deal into the next raise. Refused when the deal
+    // has commitments, since that money belongs to the round it was pledged
+    // to; see PipelineService.updateEntry.
+    roundId: z.string().uuid("roundId must be a valid UUID").optional(),
     stage: pipelineStageEnum.optional(),
     expectedAmount: z
       .union([
@@ -81,6 +86,8 @@ export const updatePipelineEntrySchema = z
         z.null(),
       ])
       .optional(),
+    // Co-leads happen, so this is not constrained to one per round.
+    isLead: z.boolean().optional(),
     // Required by the server when stage transitions to "passed"; ignored
     // for every other transition.
     reason: z

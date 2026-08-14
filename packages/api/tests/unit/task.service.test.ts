@@ -15,9 +15,15 @@ jest.mock("../../src/db/prisma", () => ({
   },
 }));
 
+jest.mock("../../src/services/notification.service", () => ({
+  notificationService: { notifyTaskAssigned: jest.fn() },
+}));
+
 import { prisma } from "../../src/db/prisma";
+import { notificationService } from "../../src/services/notification.service";
 
 const mockPrisma = prisma as jest.Mocked<typeof prisma>;
+const mockNotifyAssigned = notificationService.notifyTaskAssigned as jest.Mock;
 const service = new TaskService();
 
 const STARTUP_ID = "00000000-0000-0000-0000-000000000001";
@@ -106,6 +112,62 @@ describe("TaskService.createTask", () => {
 
     expect(mockPrisma.task.create).not.toHaveBeenCalled();
   });
+
+  // Without this the assignee's only warning is the 9am overdue/due-today
+  // cron, so work handed over weeks ahead stays invisible until it is due.
+  it("tells the assignee about a task handed to them", async () => {
+    const OTHER_USER = "00000000-0000-0000-0000-000000000009";
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({ id: PIPELINE_ID });
+    (mockPrisma.startupMember.findUnique as jest.Mock).mockResolvedValue({
+      id: MEMBER_ID,
+      userId: OTHER_USER,
+    });
+    (mockPrisma.task.create as jest.Mock).mockResolvedValue(taskRow({ assigneeId: MEMBER_ID }));
+
+    await service.createTask(
+      STARTUP_ID,
+      { pipelineId: PIPELINE_ID, title: "Send follow-up deck", assigneeId: MEMBER_ID } as never,
+      USER_ID,
+    );
+
+    expect(mockNotifyAssigned).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: OTHER_USER, taskId: TASK_ID, startupId: STARTUP_ID }),
+    );
+  });
+
+  it("stays quiet when you assign a task to yourself", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({ id: PIPELINE_ID });
+    (mockPrisma.startupMember.findUnique as jest.Mock).mockResolvedValue({
+      id: MEMBER_ID,
+      userId: USER_ID,
+    });
+    (mockPrisma.task.create as jest.Mock).mockResolvedValue(taskRow({ assigneeId: MEMBER_ID }));
+
+    await service.createTask(
+      STARTUP_ID,
+      { pipelineId: PIPELINE_ID, title: "x", assigneeId: MEMBER_ID } as never,
+      USER_ID,
+    );
+
+    expect(mockNotifyAssigned).not.toHaveBeenCalled();
+  });
+
+  it("stays quiet when the assignee is a pending invite with no account", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({ id: PIPELINE_ID });
+    (mockPrisma.startupMember.findUnique as jest.Mock).mockResolvedValue({
+      id: MEMBER_ID,
+      userId: null,
+    });
+    (mockPrisma.task.create as jest.Mock).mockResolvedValue(taskRow({ assigneeId: MEMBER_ID }));
+
+    await service.createTask(
+      STARTUP_ID,
+      { pipelineId: PIPELINE_ID, title: "x", assigneeId: MEMBER_ID } as never,
+      USER_ID,
+    );
+
+    expect(mockNotifyAssigned).not.toHaveBeenCalled();
+  });
 });
 
 describe("TaskService.listTasks", () => {
@@ -143,6 +205,19 @@ describe("TaskService.listTasks", () => {
         assigneeId: MEMBER_ID,
         priority: "high",
       },
+    });
+  });
+
+  // A task has no round of its own, so the filter reaches through its deal.
+  it("scopes to a round through the deal when roundId is given", async () => {
+    const ROUND_ID = "00000000-0000-0000-0000-000000000007";
+    (mockPrisma.task.count as jest.Mock).mockResolvedValue(0);
+    (mockPrisma.task.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.listTasks(STARTUP_ID, { page: 1, limit: 20, roundId: ROUND_ID } as never);
+
+    expect(mockPrisma.task.count).toHaveBeenCalledWith({
+      where: { startupId: STARTUP_ID, pipeline: { roundId: ROUND_ID } },
     });
   });
 });

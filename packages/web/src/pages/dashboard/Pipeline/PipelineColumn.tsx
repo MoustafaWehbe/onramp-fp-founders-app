@@ -14,6 +14,7 @@ type PipelineColumnProps = {
   entriesById: Map<string, PipelineEntry>;
   signalsFor: (dealId: string) => DealSignals;
   focusReasonFor: (dealId: string) => FocusReason | null;
+  ownerNameFor: (dealId: string) => string | null;
   canUpdate: boolean;
   weightedTotal: number;
   emptyMessage: string;
@@ -33,6 +34,7 @@ export const PipelineColumn = memo(function PipelineColumn({
   entriesById,
   signalsFor,
   focusReasonFor,
+  ownerNameFor,
   canUpdate,
   weightedTotal,
   emptyMessage,
@@ -88,6 +90,7 @@ export const PipelineColumn = memo(function PipelineColumn({
                 deal={deal}
                 signals={signalsFor(dealId)}
                 focusReason={focusReasonFor(dealId)}
+                ownerName={ownerNameFor(dealId)}
                 canUpdate={canUpdate}
                 onOpen={onOpen}
                 onMove={onMove}

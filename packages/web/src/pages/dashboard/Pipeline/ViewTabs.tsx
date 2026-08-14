@@ -1,11 +1,12 @@
-import { BarChart3, Columns3, Target, type LucideIcon } from "lucide-react";
+import { BarChart3, Columns3, ListChecks, Target, type LucideIcon } from "lucide-react";
 import { cn } from "../../../lib/utils";
 
-export type PipelineViewId = "board" | "focus" | "analytics";
+export type PipelineViewId = "board" | "focus" | "tasks" | "analytics";
 
 const TABS: { id: PipelineViewId; label: string; icon: LucideIcon }[] = [
   { id: "board", label: "Board", icon: Columns3 },
   { id: "focus", label: "Focus", icon: Target },
+  { id: "tasks", label: "Tasks", icon: ListChecks },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
 ];
 

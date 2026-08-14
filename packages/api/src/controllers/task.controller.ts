@@ -32,7 +32,12 @@ export const taskController = {
   updateTask: asyncHandler(async (req, res) => {
     const taskId = req.params.taskId as string;
     const input = req.body as UpdateTaskInput;
-    const result = await taskService.updateTask(req.params.startupId as string, taskId, input);
+    const result = await taskService.updateTask(
+      req.params.startupId as string,
+      taskId,
+      input,
+      req.user!.userId,
+    );
 
     // Completing or reopening a task clears whatever overdue/due-today
     // notice is sitting on it — a fresh one fires later if it slips again.

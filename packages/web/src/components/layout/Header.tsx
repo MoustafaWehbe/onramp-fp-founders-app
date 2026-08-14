@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { Bell, CheckCheck, Clock, LogOut, Menu, Plus, Search, Shield, Sparkles, Users, Wallet } from "lucide-react";
+import { AlertTriangle, Bell, CheckCheck, ClipboardCheck, Clock, LogOut, Menu, Plus, Search, Shield, Sparkles, Users, Wallet } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useNotifications } from "../../hooks/useNotifications";
@@ -71,6 +71,9 @@ const iconMap: Record<string, ComponentType<{ className?: string }>> = {
   task: Clock,
   team: Users,
   followup_due: Clock,
+  task_overdue: AlertTriangle,
+  task_due_today: Clock,
+  task_assigned: ClipboardCheck,
 };
 
 function NotificationsMenu() {

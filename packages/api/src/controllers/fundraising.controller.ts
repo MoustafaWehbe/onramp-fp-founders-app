@@ -38,15 +38,15 @@ export const fundraisingController = {
     res.json({ data: await fundraisingService.getCommitment(req.params.startupId as string, req.params.commitmentId as string) });
   }),
   createCommitment: asyncHandler(async (req, res) => {
-    const commitment = await fundraisingService.createCommitment(req.params.startupId as string, req.body as CreateCommitmentInput);
+    const commitment = await fundraisingService.createCommitment(req.params.startupId as string, req.body as CreateCommitmentInput, req.user!.userId);
     res.status(201).json({ data: commitment });
   }),
   updateCommitment: asyncHandler(async (req, res) => {
-    const commitment = await fundraisingService.updateCommitment(req.params.startupId as string, req.params.commitmentId as string, req.body as UpdateCommitmentInput);
+    const commitment = await fundraisingService.updateCommitment(req.params.startupId as string, req.params.commitmentId as string, req.body as UpdateCommitmentInput, req.user!.userId);
     res.json({ data: commitment });
   }),
   deleteCommitment: asyncHandler(async (req, res) => {
-    await fundraisingService.deleteCommitment(req.params.startupId as string, req.params.commitmentId as string);
+    await fundraisingService.deleteCommitment(req.params.startupId as string, req.params.commitmentId as string, req.user!.userId);
     res.json({ message: "Commitment removed" });
   }),
 };

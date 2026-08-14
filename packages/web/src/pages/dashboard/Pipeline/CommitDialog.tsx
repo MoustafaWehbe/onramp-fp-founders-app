@@ -10,7 +10,11 @@ import {
 } from "../../../components/ui/dialog";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
-import { COMMITMENT_STATUSES, COMMITMENT_STATUS_LABELS } from "../../../lib/fundraising-api";
+import {
+  COMMITMENT_STATUSES,
+  COMMITMENT_STATUS_HINTS,
+  COMMITMENT_STATUS_LABELS,
+} from "../../../lib/fundraising-api";
 import type { CommitmentStatus } from "../../../lib/fundraising-api";
 import type { CommitmentDraft } from "../../../lib/pipeline-api";
 import { Select } from "../../../components/ui/select";
@@ -42,13 +46,13 @@ export function CommitDialog({
   onConfirm,
 }: CommitDialogProps) {
   const [amount, setAmount] = useState("");
-  const [status, setStatus] = useState<CommitmentStatus>("pending");
+  const [status, setStatus] = useState<CommitmentStatus>("soft_circled");
   const [expectedCloseDate, setExpectedCloseDate] = useState("");
 
   useEffect(() => {
     if (!open) return;
     setAmount(suggestedAmount == null ? "" : String(suggestedAmount));
-    setStatus("pending");
+    setStatus("soft_circled");
     setExpectedCloseDate("");
   }, [open, suggestedAmount]);
 
@@ -93,6 +97,9 @@ export function CommitDialog({
                   label: COMMITMENT_STATUS_LABELS[option],
                 }))}
               />
+              {/* The soft/hard distinction has to be made at the moment of
+                  entry, or a verbal maybe gets filed as money in hand. */}
+              <p className="text-xs text-muted-foreground">{COMMITMENT_STATUS_HINTS[status]}</p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="commit-close">Expected close</Label>

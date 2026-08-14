@@ -73,6 +73,16 @@ type InteractionTimelineProps = {
   stageEvents?: PipelineStageEvent[];
   /** Maps createdBy/changedBy user ids to display names; falls back to "A teammate". */
   authorNames: Map<string, string>;
+  /**
+   * The deal this timeline is being shown against, when there is one.
+   *
+   * Logs belong to the investor, not the deal — the same contact can be in a
+   * Seed and a Series A round at once, and a log made from the Investors page
+   * carries no deal at all. Showing the whole relationship is the useful
+   * thing, but presenting another round's calls as if they were this deal's
+   * is not, so anything tied to a different deal is marked.
+   */
+  currentPipelineId?: string | null;
   isLoading: boolean;
   onEdit: (log: InteractionLog) => void;
   onDelete: (log: InteractionLog) => void;
@@ -82,6 +92,7 @@ export function InteractionTimeline({
   logs,
   stageEvents = [],
   authorNames,
+  currentPipelineId = null,
   isLoading,
   onEdit,
   onDelete,
@@ -170,8 +181,13 @@ export function InteractionTimeline({
         const Icon = TYPE_ICONS[log.type] ?? MessageSquare;
         const author = authorNames.get(log.createdBy) ?? "A teammate";
         const followupDone = log.followupCompletedAt !== null;
-        const followupUpcoming =
-          log.nextFollowupDate !== null && new Date(log.nextFollowupDate).getTime() > now;
+        // Only when it is pinned to some *other* deal — an unattached log is
+        // relationship-level and belongs in every one of this investor's
+        // timelines without qualification.
+        const fromAnotherDeal =
+          currentPipelineId !== null &&
+          log.pipelineId !== null &&
+          log.pipelineId !== currentPipelineId;
 
         return (
           <li
@@ -196,6 +212,14 @@ export function InteractionTimeline({
                   <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                     {INTERACTION_TYPE_LABELS[log.type]}
                   </span>
+                  {fromAnotherDeal && (
+                    <span
+                      title="Logged against a different deal with this investor"
+                      className="shrink-0 rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+                    >
+                      Another deal
+                    </span>
+                  )}
                 </div>
                 <div className="mt-0.5 truncate text-xs text-muted-foreground">
                   {formatWhen(log.interactionDate)} · <Author name={author} />
@@ -234,15 +258,15 @@ export function InteractionTimeline({
               </p>
             )}
 
+            {/* Historical only. Tasks superseded follow-ups, so nothing sets
+                a new date and no outstanding one here can still be actioned —
+                an alarming "Overdue since" would be asking for a response
+                that has no button left to give it. */}
             {log.nextFollowupDate && (
               <div
                 className={cn(
                   "mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
-                  followupDone
-                    ? "bg-success/15 text-success"
-                    : followupUpcoming
-                      ? "bg-warning/15 text-warning"
-                      : "bg-destructive/15 text-destructive",
+                  followupDone ? "bg-success/15 text-success" : "bg-muted text-muted-foreground",
                 )}
               >
                 {followupDone ? (
@@ -252,7 +276,7 @@ export function InteractionTimeline({
                 )}
                 {followupDone
                   ? `Followed up · was due ${formatWhen(log.nextFollowupDate)}`
-                  : `${followupUpcoming ? "Follow up" : "Overdue since"} ${formatWhen(log.nextFollowupDate)}`}
+                  : `Follow-up was set for ${formatWhen(log.nextFollowupDate)}`}
               </div>
             )}
           </li>

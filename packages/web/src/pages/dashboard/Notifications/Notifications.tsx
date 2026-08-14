@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import { Link } from "react-router-dom";
-import { Bell, CheckCheck, Clock, Shield, Sparkles, UserPlus, Users, Wallet } from "lucide-react";
+import { AlertTriangle, Bell, CheckCheck, ClipboardCheck, Clock, Shield, Sparkles, UserPlus, Users, Wallet } from "lucide-react";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { Button } from "../../../components/ui/button";
 import { LoadingSpinner } from "../../../components/shared/LoadingSpinner";
@@ -15,6 +15,9 @@ const iconMap: Record<string, ComponentType<{ className?: string }>> = {
   task: Clock,
   team: Users,
   followup_due: Clock,
+  task_overdue: AlertTriangle,
+  task_due_today: Clock,
+  task_assigned: ClipboardCheck,
 };
 
 export function Notifications() {

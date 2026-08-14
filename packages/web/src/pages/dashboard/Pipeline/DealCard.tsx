@@ -3,6 +3,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
   CalendarClock,
+  Crown,
   Mail,
   MessageSquare,
   MoveRight,
@@ -40,6 +41,11 @@ type DealCardBodyProps = {
   signals: DealSignals;
   /** Why this deal is in Focus, server-computed; null when it doesn't qualify. */
   focusReason: FocusReason | null;
+  /**
+   * Who owns this deal, already resolved to a display name — a primitive so
+   * the memo below still short-circuits on an unchanged card.
+   */
+  ownerName: string | null;
   canUpdate: boolean;
   /**
    * Both callbacks take the deal id rather than being pre-bound per card, so
@@ -52,7 +58,7 @@ type DealCardBodyProps = {
 };
 
 /** Everything a deal card shows — shared between the live sortable card and the floating drag copy. */
-function DealCardBody({ deal, signals, focusReason, canUpdate, onOpen, onMove }: DealCardBodyProps) {
+function DealCardBody({ deal, signals, focusReason, ownerName, canUpdate, onOpen, onMove }: DealCardBodyProps) {
   const investor = deal.investor;
   const probability = deal.probabilityPercentage ?? 0;
   const TouchIcon = signals.lastTouchType ? TOUCH_ICONS[signals.lastTouchType] : null;
@@ -72,7 +78,15 @@ function DealCardBody({ deal, signals, focusReason, canUpdate, onOpen, onMove }:
           className="min-w-0 flex-1 text-left after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
           aria-label={`Open ${investor.fullName}`}
         >
-          <div className="truncate text-sm font-medium text-foreground">{investor.fullName}</div>
+          <div className="flex items-center gap-1.5">
+            <span className="truncate text-sm font-medium text-foreground">{investor.fullName}</span>
+            {deal.isLead && (
+              <Crown
+                className="h-3.5 w-3.5 shrink-0 text-warning"
+                aria-label="Leading this round"
+              />
+            )}
+          </div>
           <div className="truncate text-xs text-muted-foreground">
             {investor.ventureFirm ?? "Independent"}
           </div>
@@ -116,9 +130,22 @@ function DealCardBody({ deal, signals, focusReason, canUpdate, onOpen, onMove }:
         <span className="font-mono text-muted-foreground">
           {deal.expectedAmount != null ? formatCompactUsd(deal.expectedAmount) : "—"}
         </span>
-        <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-          {probability}%
-        </span>
+        <div className="flex items-center gap-1.5">
+          {/* Ownership was settable but invisible everywhere outside the deal
+              sheet, so "who has this one" needed opening every card to answer. */}
+          {ownerName && (
+            <span
+              title={`Owned by ${ownerName}`}
+              aria-label={`Owned by ${ownerName}`}
+              className="grid h-5 w-5 place-items-center rounded-full bg-surface-hover font-display text-[9px] font-semibold text-muted-foreground"
+            >
+              {getInitials(ownerName)}
+            </span>
+          )}
+          <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+            {probability}%
+          </span>
+        </div>
       </div>
 
       <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-muted">

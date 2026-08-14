@@ -126,6 +126,42 @@ describe("updatePipelineEntrySchema", () => {
     const result = updatePipelineEntrySchema.safeParse({ expectedAmount: -1 });
     expect(result.success).toBe(false);
   });
+
+  it("accepts isLead, so a round can record who is leading it", () => {
+    const result = updatePipelineEntrySchema.safeParse({ isLead: true });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts commitment details for the move into committed", () => {
+    const result = updatePipelineEntrySchema.safeParse({
+      stage: "committed",
+      commitment: { amount: 250000, status: "hard_circled" },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  // The old vocabulary must not sneak back in through the API.
+  it.each(["pending", "negotiating", "confirmed", "funded"])(
+    "rejects the retired commitment status %p",
+    (status) => {
+      const result = updatePipelineEntrySchema.safeParse({
+        stage: "committed",
+        commitment: { amount: 1000, status },
+      });
+      expect(result.success).toBe(false);
+    },
+  );
+
+  it.each(["soft_circled", "hard_circled", "wired", "withdrawn"])(
+    "accepts the commitment status %p",
+    (status) => {
+      const result = updatePipelineEntrySchema.safeParse({
+        stage: "committed",
+        commitment: { amount: 1000, status },
+      });
+      expect(result.success).toBe(true);
+    },
+  );
 });
 
 describe("listPipelineQuerySchema", () => {

@@ -13,7 +13,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Crown, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { Button } from "../../../components/ui/button";
@@ -54,6 +54,7 @@ import {
 } from "../../../lib/fundraising-api";
 import { Select } from "../../../components/ui/select";
 import { fetchAllPages } from "../../../lib/pagination";
+import { listMembers } from "../../../lib/team-api";
 import { LogInteractionDialog, type LogFormValues } from "../Investors/LogInteractionDialog";
 import { AddDealDialog, type AddDealValues } from "./AddDealDialog";
 import {
@@ -72,6 +73,7 @@ import { PipelineAnalyticsView } from "./PipelineAnalyticsView";
 import { PipelineColumn } from "./PipelineColumn";
 import { PipelineSummary, type PipelineTotals } from "./PipelineSummary";
 import { PipelineToolbar, type PipelineView } from "./PipelineToolbar";
+import { TaskQueue } from "./TaskQueue";
 import { ViewTabs, type PipelineViewId } from "./ViewTabs";
 import {
   dealSignals,
@@ -237,6 +239,24 @@ export function Pipeline() {
     [focusByDeal],
   );
 
+  // Deals carry a StartupMember id; the board wants a name to initial.
+  const membersQuery = useQuery({
+    queryKey: ["team-members", startupId],
+    queryFn: () => listMembers(startupId),
+  });
+
+  const ownerNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const member of membersQuery.data ?? []) {
+      const name = member.user
+        ? `${member.user.firstName} ${member.user.lastName}`.trim()
+        : (member.invitedEmail ?? "");
+      if (name) map.set(member.id, name);
+    }
+    return map;
+  }, [membersQuery.data]);
+
+
   const totals = useMemo<PipelineTotals>(() => {
     let liveCount = 0;
     let liveValue = 0;
@@ -284,6 +304,20 @@ export function Pipeline() {
   );
 
   const entriesById = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries]);
+
+  // Passed deals cannot be leading the round they walked away from.
+  const leads = useMemo(
+    () => entries.filter((entry) => entry.isLead && entry.stage !== "passed"),
+    [entries],
+  );
+
+  const ownerNameFor = useCallback(
+    (dealId: string) => {
+      const ownerId = entriesById.get(dealId)?.ownerId;
+      return ownerId ? (ownerNames.get(ownerId) ?? null) : null;
+    },
+    [entriesById, ownerNames],
+  );
 
   // The live board arrangement. Rebuilt from server truth whenever it's safe
   // to — not while a drag or its mutation owns the arrangement, or the board
@@ -555,6 +589,21 @@ export function Pipeline() {
             }))}
           />
           {!activeRound && <span className="text-muted-foreground">Create a round before adding pipeline deals.</span>}
+          {/* A priced round needs a lead, and this is the one place a founder
+              looks at the whole raise at once — so it answers it here. */}
+          {activeRound && entries.length > 0 && (
+            <span
+              className={cn(
+                "ml-auto inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs",
+                leads.length > 0 ? "bg-warning/15 text-warning" : "bg-muted text-muted-foreground",
+              )}
+            >
+              <Crown className="h-3.5 w-3.5" />
+              {leads.length > 0
+                ? `Lead: ${leads.map((deal) => deal.investor.fullName).join(", ")}`
+                : "No lead yet"}
+            </span>
+          )}
         </div>
       )}
 
@@ -605,6 +654,15 @@ export function Pipeline() {
           canCreate={canCreate}
           onOpen={(deal) => setOpenDealId(deal.id)}
           onLog={setQuickLogDeal}
+        />
+      )}
+
+      {boardReady && activeView === "tasks" && (
+        <TaskQueue
+          startupId={startupId}
+          roundId={activeRound?.id ?? null}
+          entriesById={entriesById}
+          onOpenDeal={setOpenDealId}
         />
       )}
 
@@ -680,6 +738,7 @@ export function Pipeline() {
                   entriesById={entriesById}
                   signalsFor={signalsFor}
                   focusReasonFor={focusReasonFor}
+                  ownerNameFor={ownerNameFor}
                   canUpdate={canUpdate}
                   weightedTotal={weightedTotal}
                   emptyMessage={
@@ -700,6 +759,7 @@ export function Pipeline() {
                 deal={activeDeal}
                 signals={signalsFor(activeDeal.id)}
                 focusReason={focusReasonFor(activeDeal.id)}
+                ownerName={ownerNameFor(activeDeal.id)}
                 canUpdate={canUpdate}
                 onOpen={() => {}}
                 onMove={() => {}}
@@ -714,6 +774,7 @@ export function Pipeline() {
         deal={openDeal}
         signals={signalsFor(openDealId)}
         roundName={activeRound?.roundName ?? "this round"}
+        rounds={roundsQuery.data?.data ?? []}
         onOpenChange={(open) => !open && setOpenDealId(null)}
         onRemove={setPendingRemove}
       />

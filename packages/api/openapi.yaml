@@ -714,9 +714,11 @@ components:
         type:
           type: string
           description: >
-            Rendered specially when known. The API currently emits
-            "team_invite" and "followup_due"; anything else falls back to a
-            generic icon on the client.
+            Rendered specially when known. The API emits "team_invite",
+            "task_assigned", "task_overdue" and "task_due_today"; anything
+            else falls back to a generic icon on the client. "followup_due" is
+            legacy — no new one is created now that tasks have superseded
+            follow-ups, but old rows may still be present.
           example: team_invite
         title:
           type: string
@@ -728,8 +730,7 @@ components:
           nullable: true
           description: >
             What entityId points at, e.g. "startup_member" for a
-            "team_invite" notification or "interaction_log" for a
-            "followup_due" one
+            "team_invite" notification or "task" for any of the task ones
         entityId:
           type: string
           nullable: true
@@ -981,6 +982,11 @@ components:
           minimum: 0
           maximum: 100
           nullable: true
+        isLead:
+          type: boolean
+          description: >-
+            Whether this investor is leading the round. Not constrained to one
+            per round — co-leads are common.
         sortOrder:
           type: number
           format: double
@@ -1107,11 +1113,26 @@ components:
           type: integer
           minimum: 0
           maximum: 100
+        isLead:
+          type: boolean
+          description: >-
+            Whether this investor is leading the round. Not constrained to one
+            per round — co-leads are common.
 
     UpdatePipelineEntryBody:
       type: object
       description: At least one field is required.
       properties:
+        roundId:
+          type: string
+          format: uuid
+          description: >-
+            Carries the deal into another fundraising round, which must belong
+            to this startup and still be draft or active. Refused with 409
+            HAS_DEPENDENTS when the deal has commitments — that money belongs
+            to the round it was pledged to — and with 409 ALREADY_IN_PIPELINE
+            when the investor already holds a deal in the destination. The
+            deal lands at the bottom of the matching column there.
         stage:
           $ref: "#/components/schemas/PipelineStage"
         expectedAmount:
@@ -1143,6 +1164,11 @@ components:
           minimum: 0
           maximum: 100
           nullable: true
+        isLead:
+          type: boolean
+          description: >-
+            Whether this investor is leading the round. Not constrained to one
+            per round — co-leads are common.
         reason:
           type: string
           maxLength: 500
@@ -1398,12 +1424,11 @@ components:
         interactionDate:
           type: string
           format: date-time
-        nextFollowupDate:
-          type: string
-          format: date-time
 
     # At least one field is required. Nullable fields accept an explicit null
-    # to clear the stored value.
+    # to clear the stored value. nextFollowupDate / followupCompletedAt are
+    # absent by design: tasks superseded follow-ups, so neither can be written
+    # any more, though both are still returned on logs that already carry one.
     UpdateInteractionLogBody:
       type: object
       minProperties: 1
@@ -1425,18 +1450,6 @@ components:
           type: string
           format: date-time
           nullable: true
-        nextFollowupDate:
-          type: string
-          format: date-time
-          nullable: true
-          description: >-
-            Setting a new date reopens the follow-up, clearing any prior
-            followupCompletedAt unless one is sent in the same request.
-        followupCompletedAt:
-          type: string
-          format: date-time
-          nullable: true
-          description: Marks the follow-up done; null reopens it.
 
     # ── Financial: Fundraising Rounds ─────────────────────────────────
     RoundStatus:
@@ -1475,6 +1488,18 @@ components:
           example: USD
         status:
           $ref: "#/components/schemas/RoundStatus"
+        firstCloseDate:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            When the first tranche is expected to close. Raises run rolling
+            closes, so progress is judged against this before the final one.
+        targetCloseDate:
+          type: string
+          format: date-time
+          nullable: true
+          description: Target date for the final close of the round.
         createdAt:
           type: string
           format: date-time
@@ -1508,6 +1533,12 @@ components:
           example: USD
         status:
           $ref: "#/components/schemas/RoundStatus"
+        firstCloseDate:
+          type: string
+          format: date-time
+        targetCloseDate:
+          type: string
+          format: date-time
 
     UpdateFundraisingRoundBody:
       type: object
@@ -1533,12 +1564,26 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/RoundStatus"
+        firstCloseDate:
+          type: string
+          format: date-time
+          nullable: true
+        targetCloseDate:
+          type: string
+          format: date-time
+          nullable: true
 
     # ── Financial: Commitments ────────────────────────────────────────
     CommitmentStatus:
       type: string
-      enum: [pending, negotiating, confirmed, funded, withdrawn]
-      example: pending
+      description: >
+        The vocabulary founders and investors use for a raise. "soft_circled"
+        is a verbal yes with nothing signed and must never be counted as
+        raised; "hard_circled" means the docs are signed and the money is
+        legally committed; "wired" means it is in the bank. Only hard_circled
+        and wired count toward a round's target.
+      enum: [soft_circled, hard_circled, wired, withdrawn]
+      example: soft_circled
 
     Commitment:
       type: object
@@ -4603,8 +4648,8 @@ paths:
       summary: List tasks in a startup
       operationId: listTasks
       description: >
-        Filterable by pipelineId, status, assigneeId, and priority — used both
-        for a single deal's task list and cross-deal views.
+        Filterable by pipelineId, roundId, status, assigneeId, and priority —
+        used both for a single deal's task list and cross-deal views.
       security:
         - cookieAuth: []
       parameters:
@@ -4612,6 +4657,14 @@ paths:
         - $ref: "#/components/parameters/LimitParam"
         - name: pipelineId
           in: query
+          schema:
+            type: string
+            format: uuid
+        - name: roundId
+          in: query
+          description: >-
+            Every task on every deal in one fundraising round, scoped through
+            the deal since a task carries no round of its own.
           schema:
             type: string
             format: uuid

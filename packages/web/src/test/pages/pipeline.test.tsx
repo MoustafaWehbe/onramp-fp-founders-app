@@ -1,3 +1,4 @@
+import { AxiosError, AxiosHeaders } from "axios";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -62,8 +63,10 @@ vi.mock("../../lib/investor-api", async (importOriginal) => ({
   listInvestors: vi.fn().mockResolvedValue({ data: [], meta: {} }),
 }));
 
-vi.mock("../../lib/team-api", () => ({ listMembers: vi.fn().mockResolvedValue([]) }));
+const listMembers = vi.fn();
+vi.mock("../../lib/team-api", () => ({ listMembers: (...a: unknown[]) => listMembers(...a) }));
 vi.mock("../../hooks/useWorkspace", () => ({ useActiveStartupId: () => "startup-1" }));
+vi.mock("../../hooks/useAuth", () => ({ useAuth: () => ({ user: { id: "user-1" } }) }));
 
 let role = "owner";
 vi.mock("../../hooks/usePermissions", async () => {
@@ -97,6 +100,7 @@ function entry(overrides: Partial<PipelineEntry> = {}): PipelineEntry {
     ownerId: null,
     priority: null,
     investorFitScore: null,
+    isLead: false,
     sortOrder: 1000,
     stageChangedAt: daysFromNow(-3),
     createdAt: daysFromNow(-3),
@@ -202,6 +206,36 @@ beforeEach(() => {
     data: [],
     meta: { page: 1, limit: 100, total: 0, totalPages: 0 },
   });
+  listMembers.mockResolvedValue([
+    {
+      id: "member-1",
+      status: "active",
+      role: "owner",
+      joinedAt: null,
+      createdAt: daysFromNow(-30),
+      user: {
+        id: "user-1",
+        firstName: "Ada",
+        lastName: "Founder",
+        email: "founder@example.com",
+        avatarUrl: null,
+      },
+    },
+    {
+      id: "member-2",
+      status: "active",
+      role: "collaborator",
+      joinedAt: null,
+      createdAt: daysFromNow(-30),
+      user: {
+        id: "user-2",
+        firstName: "Grace",
+        lastName: "Hopper",
+        email: "grace@example.com",
+        avatarUrl: null,
+      },
+    },
+  ]);
 });
 
 afterEach(() => {
@@ -282,6 +316,40 @@ describe("Pipeline board", () => {
 
     expect(screen.queryByText("Grace Hopper")).not.toBeInTheDocument();
     expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
+  });
+
+  // "Do we have a lead yet?" is the most-asked question about any raise, and
+  // the board is where a founder looks at the whole thing at once.
+  describe("the round lead", () => {
+    it("says so plainly when no deal is marked as leading", async () => {
+      renderPipeline();
+
+      expect(await screen.findByText("No lead yet")).toBeInTheDocument();
+    });
+
+    it("names the lead once one is marked", async () => {
+      listPipelineEntries.mockResolvedValue({
+        data: [
+          entry({ id: "d1", investorId: "i1", isLead: true }),
+          entry({ id: "d2", investorId: "i2" }),
+        ],
+        meta: { page: 1, limit: 100, total: 2, totalPages: 1 },
+      });
+      renderPipeline();
+
+      expect(await screen.findByText("Lead: Ada Lovelace")).toBeInTheDocument();
+      expect(screen.queryByText("No lead yet")).not.toBeInTheDocument();
+    });
+
+    it("does not count an investor who passed as the lead", async () => {
+      listPipelineEntries.mockResolvedValue({
+        data: [entry({ id: "d1", investorId: "i1", isLead: true, stage: "passed" })],
+        meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
+      });
+      renderPipeline();
+
+      expect(await screen.findByText("No lead yet")).toBeInTheDocument();
+    });
   });
 
   it("searches by investor and firm without hitting the API again", async () => {
@@ -401,7 +469,9 @@ describe("Pipeline board", () => {
 
       // The status picker is the shared Radix listbox, not a native <select>.
       await user.click(within(prompt).getByRole("combobox", { name: /Status/ }));
-      await user.click(await screen.findByRole("option", { name: "Confirmed" }));
+      // Hard-circled means the docs are signed — the point at which the money
+      // is allowed to count toward the round's target.
+      await user.click(await screen.findByRole("option", { name: "Hard-circled" }));
 
       updatePipelineEntry.mockResolvedValue(entry({ stage: "committed" }));
       await user.click(within(prompt).getByRole("button", { name: "Record commitment" }));
@@ -412,7 +482,7 @@ describe("Pipeline board", () => {
           "d1",
           expect.objectContaining({
             stage: "committed",
-            commitment: expect.objectContaining({ amount: 200000, status: "confirmed" }),
+            commitment: expect.objectContaining({ amount: 200000, status: "hard_circled" }),
           }),
         ),
       );
@@ -434,6 +504,32 @@ describe("Pipeline board", () => {
     );
   });
 
+  // Logs belong to the investor, not the deal, so the same contact's calls
+  // from another round turn up here. Showing them is useful; presenting them
+  // as this deal's history is not.
+  it("marks logs that belong to a different deal with the same investor", async () => {
+    listLogsForInvestor.mockResolvedValue({
+      data: [
+        log({ id: "log-here", pipelineId: "deal-1", subject: "This deal's call" }),
+        log({ id: "log-elsewhere", pipelineId: "deal-9", subject: "Series A call" }),
+        log({ id: "log-loose", pipelineId: null, subject: "Unattached note" }),
+      ],
+      meta: { page: 1, limit: 50, total: 3, totalPages: 1 },
+    });
+    const user = userEvent.setup();
+    renderPipeline();
+
+    await user.click(await screen.findByRole("button", { name: "Open Ada Lovelace" }));
+    await screen.findByRole("heading", { name: "Interaction history" });
+
+    // Exactly one badge: the loose log is relationship-level and belongs in
+    // every timeline for this investor without qualification.
+    const badges = screen.getAllByText("Another deal");
+    expect(badges).toHaveLength(1);
+    expect(screen.getByText("Series A call")).toBeInTheDocument();
+    expect(screen.getByText("Unattached note")).toBeInTheDocument();
+  });
+
   it("moves a stage from the detail dialog and resets the probability", async () => {
     updatePipelineEntry.mockResolvedValue(entry({ stage: "term_sheet" }));
     const user = userEvent.setup();
@@ -449,6 +545,110 @@ describe("Pipeline board", () => {
         probabilityPercentage: 80,
       }),
     );
+  });
+
+  // A deal in a round that later closes was previously stranded — the only
+  // way out was delete-and-recreate, which destroys its stage history.
+  describe("carrying a deal into another round", () => {
+    beforeEach(() => {
+      listFundraisingRounds.mockResolvedValue({
+        data: [
+          {
+            id: "round-1",
+            startupId: "startup-1",
+            roundName: "Seed",
+            targetAmount: 1_000_000,
+            minimumTicketSize: null,
+            equityOfferedPercentage: null,
+            currency: "USD",
+            status: "active",
+            createdAt: daysFromNow(-30),
+            updatedAt: daysFromNow(-30),
+          },
+          {
+            id: "round-2",
+            startupId: "startup-1",
+            roundName: "Series A",
+            targetAmount: 5_000_000,
+            minimumTicketSize: null,
+            equityOfferedPercentage: null,
+            currency: "USD",
+            status: "draft",
+            createdAt: daysFromNow(-5),
+            updatedAt: daysFromNow(-5),
+          },
+          {
+            id: "round-3",
+            startupId: "startup-1",
+            roundName: "Pre-seed",
+            targetAmount: 250_000,
+            minimumTicketSize: null,
+            equityOfferedPercentage: null,
+            currency: "USD",
+            status: "closed",
+            createdAt: daysFromNow(-200),
+            updatedAt: daysFromNow(-200),
+          },
+        ],
+        meta: { page: 1, limit: 100, total: 3, totalPages: 1 },
+      });
+    });
+
+    it("offers only rounds that can still take the deal", async () => {
+      const user = userEvent.setup();
+      renderPipeline();
+
+      await user.click(await screen.findByRole("button", { name: "Open Ada Lovelace" }));
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("combobox", { name: /Round/ }));
+
+      expect(await screen.findByRole("option", { name: /Series A/ })).toBeInTheDocument();
+      // Closed, and not the round this deal is already in.
+      expect(screen.queryByRole("option", { name: /Pre-seed/ })).not.toBeInTheDocument();
+    });
+
+    it("moves the deal and closes the sheet, which no longer shows it", async () => {
+      updatePipelineEntry.mockResolvedValue(entry({ roundId: "round-2" }));
+      const user = userEvent.setup();
+      renderPipeline();
+
+      await user.click(await screen.findByRole("button", { name: "Open Ada Lovelace" }));
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("combobox", { name: /Round/ }));
+      await user.click(await screen.findByRole("option", { name: /Series A/ }));
+
+      await waitFor(() =>
+        expect(updatePipelineEntry).toHaveBeenCalledWith("startup-1", "deal-1", {
+          roundId: "round-2",
+        }),
+      );
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    });
+
+    it("explains that commitments pin a deal to its round", async () => {
+      updatePipelineEntry.mockRejectedValue(
+        new AxiosError("Conflict", "409", undefined, null, {
+          status: 409,
+          statusText: "",
+          data: { code: "HAS_DEPENDENTS", error: "Conflict" },
+          headers: {},
+          config: { headers: new AxiosHeaders() },
+        }),
+      );
+      const user = userEvent.setup();
+      renderPipeline();
+
+      await user.click(await screen.findByRole("button", { name: "Open Ada Lovelace" }));
+      const dialog = await screen.findByRole("dialog");
+      await user.click(within(dialog).getByRole("combobox", { name: /Round/ }));
+      await user.click(await screen.findByRole("option", { name: /Series A/ }));
+
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith(
+          expect.stringContaining("commitments recorded against its round"),
+        ),
+      );
+    });
   });
 
   it("saves an edited expected amount when the field loses focus", async () => {
@@ -544,6 +744,97 @@ describe("Pipeline board", () => {
     await user.click(screen.getByRole("tab", { name: /Focus/ }));
 
     expect(await screen.findByText("Nothing needs chasing")).toBeInTheDocument();
+  });
+
+  // Tasks used to be reachable only by opening the one deal that owned them,
+  // so work assigned to you was invisible unless you knew where to look.
+  describe("the Tasks tab", () => {
+    beforeEach(() => {
+      listPipelineEntries.mockResolvedValue({
+        data: [entry({ id: "d1", investorId: "i1" })],
+        meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
+      });
+      listTasks.mockResolvedValue({
+        data: [
+          {
+            id: "t1",
+            startupId: "startup-1",
+            pipelineId: "d1",
+            title: "Send the updated deck",
+            description: null,
+            status: "open",
+            priority: "high",
+            dueDate: daysFromNow(-2),
+            assigneeId: "member-1",
+            completedAt: null,
+            createdBy: "user-1",
+            createdAt: daysFromNow(-5),
+            updatedAt: daysFromNow(-5),
+          },
+          {
+            id: "t2",
+            startupId: "startup-1",
+            pipelineId: "d1",
+            title: "Grace's intro email",
+            description: null,
+            status: "open",
+            priority: "medium",
+            dueDate: null,
+            assigneeId: "member-2",
+            completedAt: null,
+            createdBy: "user-1",
+            createdAt: daysFromNow(-5),
+            updatedAt: daysFromNow(-5),
+          },
+        ],
+        meta: { page: 1, limit: 100, total: 2, totalPages: 1 },
+      });
+    });
+
+    it("asks the server for the round's open tasks rather than paging per deal", async () => {
+      const user = userEvent.setup();
+      renderPipeline();
+      await screen.findByText("Ada Lovelace");
+
+      await user.click(screen.getByRole("tab", { name: /Tasks/ }));
+
+      await waitFor(() =>
+        expect(listTasks).toHaveBeenCalledWith(
+          "startup-1",
+          expect.objectContaining({ roundId: "round-1", status: "open" }),
+        ),
+      );
+    });
+
+    it("shows only your own work until you ask for everyone's", async () => {
+      const user = userEvent.setup();
+      renderPipeline();
+      await screen.findByText("Ada Lovelace");
+
+      await user.click(screen.getByRole("tab", { name: /Tasks/ }));
+
+      // Defaults to the signed-in user's member row, matched through their
+      // user id — tasks carry a StartupMember id, not a user id.
+      expect(await screen.findByText("Send the updated deck")).toBeInTheDocument();
+      expect(screen.queryByText("Grace's intro email")).not.toBeInTheDocument();
+      expect(screen.getByText("Overdue 2d")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("tab", { name: /Everyone/ }));
+
+      expect(await screen.findByText("Grace's intro email")).toBeInTheDocument();
+      expect(screen.getByText("Send the updated deck")).toBeInTheDocument();
+    });
+
+    it("completes a task straight from the queue", async () => {
+      const user = userEvent.setup();
+      renderPipeline();
+      await screen.findByText("Ada Lovelace");
+
+      await user.click(screen.getByRole("tab", { name: /Tasks/ }));
+      await user.click(await screen.findByRole("checkbox", { name: /Complete task Send the updated deck/ }));
+
+      await waitFor(() => expect(updateTask).toHaveBeenCalledWith("startup-1", "t1", "completed"));
+    });
   });
 
   it("loads analytics only once the tab is opened", async () => {

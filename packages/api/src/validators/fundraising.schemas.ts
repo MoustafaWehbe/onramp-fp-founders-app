@@ -36,6 +36,10 @@ export const createFundraisingRoundSchema = z.object({
     .optional(),
   currency,
   status: roundStatusEnum.optional(),
+  // Rolling closes are the norm: money in the door at a first close, the rest
+  // by a target final close.
+  firstCloseDate: z.coerce.date().optional(),
+  targetCloseDate: z.coerce.date().optional(),
 });
 
 export const updateFundraisingRoundSchema = z
@@ -55,6 +59,8 @@ export const updateFundraisingRoundSchema = z
       .optional(),
     currency: currency.optional(),
     status: roundStatusEnum.optional(),
+    firstCloseDate: z.union([z.coerce.date(), z.null()]).optional(),
+    targetCloseDate: z.union([z.coerce.date(), z.null()]).optional(),
   })
   .refine((data) => Object.keys(data).length > 0, { message: "At least one field is required" });
 

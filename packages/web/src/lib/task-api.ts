@@ -55,6 +55,8 @@ export async function listTasks(
   startupId: string,
   params: {
     pipelineId?: string;
+    /** Every task across every deal in one round. */
+    roundId?: string;
     status?: TaskStatus;
     assigneeId?: string;
     priority?: Priority;

@@ -35,6 +35,7 @@ const ENTRY_SELECT = {
   ownerId: true,
   priority: true,
   investorFitScore: true,
+  isLead: true,
   sortOrder: true,
   stageChangedAt: true,
   createdAt: true,
@@ -57,6 +58,7 @@ type EntryRow = {
   ownerId: string | null;
   priority: string | null;
   investorFitScore: number | null;
+  isLead: boolean;
   sortOrder: number;
   stageChangedAt: Date;
   createdAt: Date;
@@ -92,6 +94,7 @@ function serializeEntry(entry: EntryRow) {
     ownerId: entry.ownerId,
     priority: entry.priority,
     investorFitScore: entry.investorFitScore,
+    isLead: entry.isLead,
     sortOrder: entry.sortOrder,
     stageChangedAt: entry.stageChangedAt,
     createdAt: entry.createdAt,
@@ -152,6 +155,7 @@ export class PipelineService {
             ...(input.investorFitScore !== undefined && {
               investorFitScore: input.investorFitScore,
             }),
+            ...(input.isLead !== undefined && { isLead: input.isLead }),
           },
           select: ENTRY_SELECT,
         });
@@ -238,6 +242,37 @@ export class PipelineService {
     // are stripped before the rest of the input reaches Prisma.
     const { reason, commitment, ...fields } = input;
 
+    // Moving a deal between raises. Without it a deal stranded in a round that
+    // later closed could only be deleted and rebuilt, which throws away its
+    // stage history — and is refused outright once it has tasks.
+    const movedToRound =
+      input.roundId !== undefined && input.roundId !== existing.roundId ? input.roundId : null;
+    if (movedToRound) {
+      await this.verifyRoundAcceptsDeals(startupId, movedToRound);
+
+      // Commitments are keyed to the round the money was pledged to
+      // ([pipelineId, startupInvestorId, roundId]), so carrying the deal
+      // across would either break that key or silently re-attribute the raise.
+      const commitmentCount = await prisma.commitment.count({
+        where: { pipelineId, startupId },
+      });
+      if (commitmentCount > 0) {
+        throw createError(
+          "This deal has commitments recorded against its round and cannot be moved to another one",
+          409,
+          "HAS_DEPENDENTS",
+        );
+      }
+
+      // Land at the bottom of the matching column in the destination, the same
+      // way a freshly added card does — its old position means nothing there.
+      const bottom = await prisma.pipeline.aggregate({
+        where: { startupId, roundId: movedToRound, stage: input.stage ?? existing.stage },
+        _max: { sortOrder: true },
+      });
+      fields.sortOrder = (bottom._max.sortOrder ?? 0) + SORT_ORDER_STEP;
+    }
+
     // Editing an amount is not a stage move; only a real transition advances the
     // clock and appends history.
     const movedTo =
@@ -272,12 +307,18 @@ export class PipelineService {
     }
 
     if (movedTo === null) {
-      const entry = await prisma.pipeline.update({
-        where: { id: pipelineId },
-        data: fields,
-        select: ENTRY_SELECT,
-      });
-      return serializeEntry(entry);
+      try {
+        const entry = await prisma.pipeline.update({
+          where: { id: pipelineId },
+          data: fields,
+          select: ENTRY_SELECT,
+        });
+        return serializeEntry(entry);
+      } catch (err) {
+        // Only reachable on a round move: the investor already holds a deal
+        // in the destination round.
+        throw this.translateDuplicatePipeline(err);
+      }
     }
 
     const changedAt = new Date();
@@ -309,7 +350,7 @@ export class PipelineService {
             where: { id: liveCommitment.id },
             data: {
               amount: commitment.amount,
-              status: commitment.status ?? "pending",
+              status: commitment.status ?? "soft_circled",
               ...(commitment.expectedCloseDate !== undefined && {
                 expectedCloseDate: commitment.expectedCloseDate,
               }),
@@ -321,9 +362,12 @@ export class PipelineService {
               startupId,
               startupInvestorId: existing.startupInvestorId,
               pipelineId,
+              // A commitment blocks a round move, so the deal's round cannot
+              // have changed in this same request — existing.roundId is still
+              // the round the money is being pledged to.
               roundId: existing.roundId,
               amount: commitment.amount,
-              status: commitment.status ?? "pending",
+              status: commitment.status ?? "soft_circled",
               ...(commitment.expectedCloseDate && {
                 expectedCloseDate: commitment.expectedCloseDate,
               }),
@@ -334,7 +378,7 @@ export class PipelineService {
 
       // Backing out of Committed retracts the money too, but the row stays —
       // withdrawn is part of the round's history, and deleting it would also
-      // strand any amount already marked funded.
+      // strand any amount already wired.
       if (existing.stage === "committed" && movedTo !== "committed") {
         await tx.commitment.updateMany({
           where: { startupId, pipelineId, status: { not: "withdrawn" } },
@@ -343,9 +387,35 @@ export class PipelineService {
       }
 
       return updated;
+    }).catch((err) => {
+      // A round move in the same request as a stage move can still collide
+      // with an existing deal for this investor in the destination.
+      throw this.translateDuplicatePipeline(err);
     });
 
     return serializeEntry(entry);
+  }
+
+  /**
+   * A destination round has to exist in this startup and still be taking
+   * deals. Carrying work into a raise that is already closed or cancelled is
+   * the same mistake as adding a new deal to one.
+   */
+  private async verifyRoundAcceptsDeals(startupId: string, roundId: string): Promise<void> {
+    const round = await prisma.fundraisingRound.findUnique({
+      where: { startupId_id: { startupId, id: roundId } },
+      select: { id: true, status: true, roundName: true },
+    });
+    if (!round) {
+      throw createError("Fundraising round not found", 404, "FUNDRAISING_ROUND_NOT_FOUND");
+    }
+    if (!(OPEN_ROUND_STATUSES as readonly string[]).includes(round.status)) {
+      throw createError(
+        `${round.roundName} is ${round.status}, so it cannot take new pipeline deals`,
+        409,
+        "ROUND_NOT_OPEN",
+      );
+    }
   }
 
   async deleteEntry(startupId: string, pipelineId: string) {
@@ -650,6 +720,15 @@ export class PipelineService {
    * Most recent contact per investor, as two aggregates rather than a scan of
    * every log the startup has ever written.
    *
+   * Deliberately relationship-level, not round-level: this feeds the "gone
+   * quiet" signal, and the question that answers is whether anyone has spoken
+   * to this person lately. If you called them last week about the Seed, they
+   * are not someone you have gone quiet on, whichever round the card sits in.
+   * Scoping it per deal would also read as "never contacted" for most deals,
+   * since a log made from the Investors page carries no pipelineId at all.
+   * The deal sheet marks cross-deal logs in its timeline instead, which is
+   * where the distinction actually matters.
+   *
    * "Last touch" is the newest interactionDate, falling back to when the log
    * was written for the ones that never got a date — two cases a single
    * groupBy cannot express, because there is nothing to aggregate over but
@@ -722,22 +801,18 @@ export class PipelineService {
     options: { forNewDeal?: boolean } = {},
   ): Promise<string> {
     if (requestedRoundId) {
+      if (options.forNewDeal) {
+        await this.verifyRoundAcceptsDeals(startupId, requestedRoundId);
+        return requestedRoundId;
+      }
+      // Reads must keep working for a finished raise — that is where its
+      // history lives.
       const round = await prisma.fundraisingRound.findUnique({
         where: { startupId_id: { startupId, id: requestedRoundId } },
-        select: { id: true, status: true, roundName: true },
+        select: { id: true },
       });
       if (!round) {
         throw createError("Fundraising round not found", 404, "FUNDRAISING_ROUND_NOT_FOUND");
-      }
-      if (
-        options.forNewDeal &&
-        !(OPEN_ROUND_STATUSES as readonly string[]).includes(round.status)
-      ) {
-        throw createError(
-          `${round.roundName} is ${round.status}, so it cannot take new pipeline deals`,
-          409,
-          "ROUND_NOT_OPEN",
-        );
       }
       return round.id;
     }

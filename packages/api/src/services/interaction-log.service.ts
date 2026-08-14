@@ -1,13 +1,18 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
-import { notificationService } from "./notification.service";
 import type {
   CreateInteractionLogInput,
   UpdateInteractionLogInput,
   ListInteractionLogQuery,
 } from "../validators/interaction-log.schemas";
 
+/**
+ * nextFollowupDate / followupCompletedAt are read-only history. Tasks
+ * superseded follow-ups, so nothing writes these any more — the columns and
+ * the rows already in them are kept so past logs still show what was planned
+ * at the time, and both stay in the response for that reason.
+ */
 const LOG_SELECT = {
   id: true,
   startupInvestorId: true,
@@ -88,47 +93,6 @@ export class InteractionLogService {
     }
   }
 
-  /**
-   * Recording an interaction is how a follow-up actually gets done — founders
-   * log the call, they don't tick a box. So a new log closes that contact's
-   * outstanding follow-ups that were due on or before it.
-   *
-   * Later follow-ups survive: a note logged today must not clear a reminder
-   * you deliberately set for next month. The new log is excluded so a log that
-   * sets a backdated follow-up doesn't immediately close its own.
-   */
-  private async completeFollowupsSatisfiedBy(
-    startupInvestorId: string,
-    newLogId: string,
-    interactionDate: Date | null,
-  ): Promise<number> {
-    const satisfiedThrough = interactionDate ?? new Date();
-
-    const toClose = await prisma.interactionLog.findMany({
-      where: {
-        startupInvestorId,
-        id: { not: newLogId },
-        followupCompletedAt: null,
-        nextFollowupDate: { not: null, lte: satisfiedThrough },
-      },
-      select: { id: true },
-    });
-    if (toClose.length === 0) return 0;
-
-    const closedIds = toClose.map((log) => log.id);
-    await prisma.interactionLog.updateMany({
-      where: { id: { in: closedIds } },
-      data: { followupCompletedAt: satisfiedThrough },
-    });
-
-    // Best-effort: an overdue-follow-up notification for one of these would
-    // now point at a follow-up that is already done, so it has to go — but
-    // losing it must not fail the log that just satisfied it.
-    void notificationService.clearFollowupNotifications(closedIds);
-
-    return closedIds.length;
-  }
-
   async createLog(startupId: string, input: CreateInteractionLogInput, userId: string) {
     const contactId = await this.resolveContact(startupId, input.investorId);
 
@@ -146,12 +110,9 @@ export class InteractionLogService {
           subject: input.subject ?? null,
           description: input.description ?? null,
           interactionDate: input.interactionDate,
-          nextFollowupDate: input.nextFollowupDate ?? null,
         },
         select: LOG_SELECT,
       });
-
-      await this.completeFollowupsSatisfiedBy(contactId, log.id, log.interactionDate);
 
       return { data: serializeLog(log) };
     } catch (err) {
@@ -246,15 +207,6 @@ export class InteractionLogService {
           ...(input.interactionDate !== undefined && { interactionDate: input.interactionDate }),
           ...(input.subject !== undefined && { subject: input.subject }),
           ...(input.description !== undefined && { description: input.description }),
-          ...(input.nextFollowupDate !== undefined && {
-            nextFollowupDate: input.nextFollowupDate,
-            // Rescheduling reopens the follow-up: the new date is the live one,
-            // so a stale completion must not keep it hidden.
-            ...(input.followupCompletedAt === undefined && { followupCompletedAt: null }),
-          }),
-          ...(input.followupCompletedAt !== undefined && {
-            followupCompletedAt: input.followupCompletedAt,
-          }),
         },
         select: LOG_SELECT,
       });

@@ -927,7 +927,7 @@ export interface paths {
         };
         /**
          * List tasks in a startup
-         * @description Filterable by pipelineId, status, assigneeId, and priority — used both for a single deal's task list and cross-deal views.
+         * @description Filterable by pipelineId, roundId, status, assigneeId, and priority — used both for a single deal's task list and cross-deal views.
          */
         get: operations["listTasks"];
         put?: never;
@@ -1722,13 +1722,13 @@ export interface components {
             /** Format: uuid */
             id?: string;
             /**
-             * @description Rendered specially when known. The API currently emits "team_invite" and "followup_due"; anything else falls back to a generic icon on the client.
+             * @description Rendered specially when known. The API emits "team_invite", "task_assigned", "task_overdue" and "task_due_today"; anything else falls back to a generic icon on the client. "followup_due" is legacy — no new one is created now that tasks have superseded follow-ups, but old rows may still be present.
              * @example team_invite
              */
             type?: string;
             title?: string;
             body?: string | null;
-            /** @description What entityId points at, e.g. "startup_member" for a "team_invite" notification or "interaction_log" for a "followup_due" one */
+            /** @description What entityId points at, e.g. "startup_member" for a "team_invite" notification or "task" for any of the task ones */
             entityType?: string | null;
             entityId?: string | null;
             /** Format: date-time */
@@ -1874,6 +1874,8 @@ export interface components {
             ownerId?: string | null;
             priority?: components["schemas"]["Priority"] | null;
             investorFitScore?: number | null;
+            /** @description Whether this investor is leading the round. Not constrained to one per round — co-leads are common. */
+            isLead?: boolean;
             /**
              * Format: double
              * @description Manual position within its stage's column, ascending. Not necessarily contiguous — the client places a moved card by averaging the sortOrder of its new neighbors.
@@ -1958,9 +1960,16 @@ export interface components {
             ownerId?: string;
             priority?: components["schemas"]["Priority"];
             investorFitScore?: number;
+            /** @description Whether this investor is leading the round. Not constrained to one per round — co-leads are common. */
+            isLead?: boolean;
         };
         /** @description At least one field is required. */
         UpdatePipelineEntryBody: {
+            /**
+             * Format: uuid
+             * @description Carries the deal into another fundraising round, which must belong to this startup and still be draft or active. Refused with 409 HAS_DEPENDENTS when the deal has commitments — that money belongs to the round it was pledged to — and with 409 ALREADY_IN_PIPELINE when the investor already holds a deal in the destination. The deal lands at the bottom of the matching column there.
+             */
+            roundId?: string;
             stage?: components["schemas"]["PipelineStage"];
             /** Format: double */
             expectedAmount?: number | null;
@@ -1977,6 +1986,8 @@ export interface components {
             ownerId?: string | null;
             priority?: components["schemas"]["Priority"] | null;
             investorFitScore?: number | null;
+            /** @description Whether this investor is leading the round. Not constrained to one per round — co-leads are common. */
+            isLead?: boolean;
             /** @description Required when stage is being set to "passed"; ignored for every other transition. Recorded on the deal's stage history, not overwritten on reopen, so a deal passed more than once keeps every reason. */
             reason?: string;
             /** @description Required when stage is being set to "committed" and the deal has no live commitment yet; ignored for every other transition. The transition writes the round's Commitment row in the same transaction, so the board and the round can never report different totals for the same investor. Moving a deal back out of committed marks its commitments withdrawn rather than deleting them. */
@@ -2127,8 +2138,6 @@ export interface components {
             description?: string;
             /** Format: date-time */
             interactionDate: string;
-            /** Format: date-time */
-            nextFollowupDate?: string;
         };
         UpdateInteractionLogBody: {
             /**
@@ -2141,16 +2150,6 @@ export interface components {
             description?: string | null;
             /** Format: date-time */
             interactionDate?: string | null;
-            /**
-             * Format: date-time
-             * @description Setting a new date reopens the follow-up, clearing any prior followupCompletedAt unless one is sent in the same request.
-             */
-            nextFollowupDate?: string | null;
-            /**
-             * Format: date-time
-             * @description Marks the follow-up done; null reopens it.
-             */
-            followupCompletedAt?: string | null;
         };
         /**
          * @example active
@@ -2182,6 +2181,16 @@ export interface components {
             /** @example USD */
             currency?: string;
             status?: components["schemas"]["RoundStatus"];
+            /**
+             * Format: date-time
+             * @description When the first tranche is expected to close. Raises run rolling closes, so progress is judged against this before the final one.
+             */
+            firstCloseDate?: string | null;
+            /**
+             * Format: date-time
+             * @description Target date for the final close of the round.
+             */
+            targetCloseDate?: string | null;
             /** Format: date-time */
             createdAt?: string;
             /** Format: date-time */
@@ -2198,6 +2207,10 @@ export interface components {
             /** @example USD */
             currency: string;
             status?: components["schemas"]["RoundStatus"];
+            /** Format: date-time */
+            firstCloseDate?: string;
+            /** Format: date-time */
+            targetCloseDate?: string;
         };
         UpdateFundraisingRoundBody: {
             roundName?: string;
@@ -2209,12 +2222,17 @@ export interface components {
             equityOfferedPercentage?: number;
             currency?: string;
             status?: components["schemas"]["RoundStatus"];
+            /** Format: date-time */
+            firstCloseDate?: string | null;
+            /** Format: date-time */
+            targetCloseDate?: string | null;
         };
         /**
-         * @example pending
+         * @description The vocabulary founders and investors use for a raise. "soft_circled" is a verbal yes with nothing signed and must never be counted as raised; "hard_circled" means the docs are signed and the money is legally committed; "wired" means it is in the bank. Only hard_circled and wired count toward a round's target.
+         * @example soft_circled
          * @enum {string}
          */
-        CommitmentStatus: "pending" | "negotiating" | "confirmed" | "funded" | "withdrawn";
+        CommitmentStatus: "soft_circled" | "hard_circled" | "wired" | "withdrawn";
         Commitment: {
             /** Format: uuid */
             id?: string;
@@ -5422,6 +5440,8 @@ export interface operations {
                 /** @description Number of items per page */
                 limit?: components["parameters"]["LimitParam"];
                 pipelineId?: string;
+                /** @description Every task on every deal in one fundraising round, scoped through the deal since a task carries no round of its own. */
+                roundId?: string;
                 status?: components["schemas"]["TaskStatus"];
                 assigneeId?: string;
                 priority?: components["schemas"]["Priority"];

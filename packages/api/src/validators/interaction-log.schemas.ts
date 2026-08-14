@@ -22,11 +22,9 @@ function coercedDate(label: string) {
   );
 }
 
-const optionalDatetime = z
-  .union([z.null(), coercedDate("nextFollowupDate")])
-  .transform((value) => (value === null ? null : value))
-  .optional();
-
+// nextFollowupDate / followupCompletedAt are deliberately absent from both
+// schemas: tasks superseded follow-ups, so no new log sets one. Existing rows
+// stay readable; they just cannot be written any more.
 export const createInteractionLogSchema = z.object({
   investorId: z.string().uuid("investorId must be a valid UUID"),
   pipelineId: z.string().uuid("pipelineId must be a valid UUID").optional(),
@@ -34,7 +32,6 @@ export const createInteractionLogSchema = z.object({
   interactionDate: coercedDate("interactionDate"),
   subject: optionalText(200, "Subject"),
   description: optionalText(2000, "Description"),
-  nextFollowupDate: optionalDatetime,
 });
 
 export const updateInteractionLogSchema = z
@@ -50,15 +47,6 @@ export const updateInteractionLogSchema = z
     interactionDate: z.union([z.null(), coercedDate("interactionDate")]).optional(),
     subject: optionalText(200, "Subject"),
     description: optionalText(2000, "Description"),
-    nextFollowupDate: z
-      .union([z.null(), coercedDate("nextFollowupDate")])
-      .transform((value) => (value === null ? null : value))
-      .optional(),
-    // "Mark done" sends a timestamp; null reopens the follow-up.
-    followupCompletedAt: z
-      .union([z.null(), coercedDate("followupCompletedAt")])
-      .transform((value) => (value === null ? null : value))
-      .optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one field is required",

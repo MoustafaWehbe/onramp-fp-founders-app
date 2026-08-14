@@ -300,6 +300,7 @@ model Pipeline {
   ownerId               String?  @map("owner_id")
   priority              String?
   investorFitScore      Int?     @map("investor_fit_score")
+  isLead                Boolean  @default(false) @map("is_lead")
   sortOrder             Float    @default(0) @map("sort_order")
   stageChangedAt        DateTime @default(now()) @map("stage_changed_at")
   createdAt             DateTime @default(now()) @map("created_at")
@@ -398,6 +399,8 @@ model FundraisingRound {
   equityOfferedPercentage Decimal? @map("equity_offered_percentage")
   currency                String   @default("USD")
   status                  String   @default("active")
+  firstCloseDate          DateTime? @map("first_close_date")
+  targetCloseDate         DateTime? @map("target_close_date")
   createdAt               DateTime @default(now()) @map("created_at")
   updatedAt               DateTime @updatedAt @map("updated_at")
 
@@ -416,7 +419,7 @@ model Commitment {
   pipelineId        String    @map("pipeline_id")
   roundId           String    @map("round_id")
   amount            Decimal?
-  status            String    @default("negotiating")
+  status            String    @default("soft_circled")
   expectedCloseDate DateTime? @map("expected_close_date")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
