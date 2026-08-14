@@ -1,4 +1,6 @@
 import { apiClient } from "./api-client";
+import { fetchAllPages } from "./pagination";
+import { runWithConcurrency } from "./concurrency";
 
 export const INTERACTION_TYPES = ["call", "email", "meeting", "note", "other"] as const;
 export type InteractionType = (typeof INTERACTION_TYPES)[number];
@@ -28,6 +30,10 @@ export type InteractionLog = {
    * logged for the same contact that satisfies it.
    */
   followupCompletedAt: string | null;
+  /** "manual" (default) / "google_calendar" / "gmail" — who actually wrote this row. */
+  source: "manual" | "google_calendar" | "gmail";
+  /** The Google event/message id this row was synced from, when `source` isn't "manual". */
+  externalId: string | null;
   createdAt: string;
 };
 
@@ -55,7 +61,7 @@ export type UpdateInteractionLogInput = Partial<Omit<CreateInteractionLogInput, 
 /** Newest first, across every contact in the startup. */
 export async function listInteractionLogs(
   startupId: string,
-  params: { page?: number; limit?: number } = {},
+  params: { page?: number; limit?: number; source?: InteractionLog["source"] } = {},
 ) {
   const { data } = await apiClient.get<{ data: InteractionLog[]; meta: PaginationMeta }>(
     `/startups/${startupId}/interaction-logs`,
@@ -104,4 +110,24 @@ export async function deleteInteractionLog(startupId: string, logId: string) {
     `/startups/${startupId}/interaction-logs/${logId}`,
   );
   return data;
+}
+
+/**
+ * For "Remove synced meetings" in Settings — there's no bulk-delete endpoint,
+ * so this walks every page of synced logs and removes them the same way a
+ * founder deleting them one at a time would, just with several in flight.
+ * Returns the count actually removed so the caller can report a real number
+ * even if some deletes fail.
+ */
+export async function deleteAllSyncedInteractionLogs(
+  startupId: string,
+  source: "google_calendar" | "gmail",
+): Promise<number> {
+  const synced = await fetchAllPages((page, limit) =>
+    listInteractionLogs(startupId, { page, limit, source }),
+  );
+  const results = await runWithConcurrency(synced, 5, (log) =>
+    deleteInteractionLog(startupId, log.id),
+  );
+  return results.filter((r) => r.status === "fulfilled").length;
 }

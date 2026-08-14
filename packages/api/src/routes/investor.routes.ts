@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authenticate } from "../middleware/auth";
 import { requireMember, requirePermission } from "../middleware/rbac";
+import { emailSendRateLimiter } from "../middleware/rate-limiter";
 import { validate } from "../utils/validate";
 import { startupIdParamSchema } from "../validators/startup.schemas";
 import {
@@ -10,8 +11,10 @@ import {
   investorIdParamSchema,
 } from "../validators/investor.schemas";
 import { listInteractionLogQuerySchema } from "../validators/interaction-log.schemas";
+import { sendInvestorEmailSchema } from "../validators/gmail.schemas";
 import { investorController } from "../controllers/investor.controller";
 import { interactionLogController } from "../controllers/interaction-log.controller";
+import { gmailController } from "../controllers/gmail.controller";
 
 // Mounted at /api/v1/startups/:startupId/investors — mergeParams keeps
 // :startupId visible to the RBAC middleware and the controllers.
@@ -79,6 +82,18 @@ router.get(
   requirePermission("pipeline", "read"),
   validate(listInteractionLogQuerySchema, "query"),
   interactionLogController.listLogsByInvestor,
+);
+
+// POST /api/v1/startups/:startupId/investors/:investorId/send-email — pipeline:create
+router.post(
+  "/:investorId/send-email",
+  authenticate,
+  validate(investorIdParamSchema, "params"),
+  requireMember,
+  requirePermission("pipeline", "create"),
+  emailSendRateLimiter,
+  validate(sendInvestorEmailSchema),
+  gmailController.sendEmail,
 );
 
 export { router as investorRouter };

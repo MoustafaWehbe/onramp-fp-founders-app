@@ -69,3 +69,15 @@ export const credentialRateLimiter = rateLimit({
     error: "Too many failed attempts, please try again later.",
   },
 });
+
+export const emailSendRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1_000, // 1 hour
+  max: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  store: makeStore("email-send"),
+  keyGenerator: (req) => req.user?.userId ?? req.ip ?? "unknown",
+  message: {
+    error: "Too many emails sent — please wait before sending more.",
+  },
+});

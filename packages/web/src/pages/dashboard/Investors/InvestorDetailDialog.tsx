@@ -14,6 +14,7 @@ import {
 } from "../../../components/ui/dialog";
 import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
 import { usePermissions } from "../../../hooks/usePermissions";
+import { useGoogleConnectionStatus } from "../../../hooks/useGoogleConnection";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
 import {
   createInteractionLog,
@@ -22,6 +23,7 @@ import {
   updateInteractionLog,
   type InteractionLog,
 } from "../../../lib/interaction-log-api";
+import { sendInvestorEmail } from "../../../lib/gmail-api";
 import { INVESTOR_TYPE_LABELS } from "../../../lib/investor-api";
 import { fetchAllPages } from "../../../lib/pagination";
 import { listPipelineStageEvents } from "../../../lib/pipeline-api";
@@ -29,11 +31,27 @@ import { invalidateInteractionData, qk } from "../../../lib/query-keys";
 import { listMembers } from "../../../lib/team-api";
 import { cn, getInitials } from "../../../lib/utils";
 import { TaskList } from "../Pipeline/TaskList";
+import { ComposeEmailDialog, type ComposeFormValues } from "./ComposeEmailDialog";
 import { InteractionTimeline } from "./InteractionTimeline";
 import { LogInteractionDialog, type LogFormValues } from "./LogInteractionDialog";
 import { NoteByline } from "./NoteByline";
 import { StageBadge } from "./StageBadge";
 import type { InvestorRow } from "./investor-types";
+
+function sendEmailErrorMessage(err: unknown): string {
+  switch (apiErrorCode(err)) {
+    case "INVESTOR_EMAIL_MISSING":
+      return "This investor has no email on file.";
+    case "GOOGLE_NOT_CONNECTED":
+      return "Connect your Google account in Settings to send email.";
+    case "GOOGLE_NEEDS_REAUTH":
+      return "Your Google connection needs to be reconnected — see Settings.";
+    case "GMAIL_SEND_FAILED":
+      return "Google rejected the send. Please try again.";
+    default:
+      return apiErrorMessage(err, "Could not send the email");
+  }
+}
 
 type InvestorDetailDialogProps = {
   startupId: string;
@@ -72,7 +90,10 @@ export function InvestorDetailDialog({
   const [logOpen, setLogOpen] = useState(false);
   const [editingLog, setEditingLog] = useState<InteractionLog | null>(null);
   const [pendingDelete, setPendingDelete] = useState<InteractionLog | null>(null);
+  const [composeOpen, setComposeOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "activity">("overview");
+
+  const googleStatus = useGoogleConnectionStatus();
 
   const investorId = investor?.id ?? null;
 
@@ -147,6 +168,31 @@ export function InvestorDetailDialog({
     onError: (err) => toast.error(logErrorMessage(err, "Could not remove the interaction")),
   });
 
+  const sendEmailMutation = useMutation({
+    mutationFn: (values: ComposeFormValues) =>
+      sendInvestorEmail(startupId, investorId!, {
+        pipelineId: pipelineId ?? undefined,
+        ...values,
+      }),
+    onSuccess: (result) => {
+      toast.success(
+        result.logCreated
+          ? "Email sent and logged"
+          : "Email sent — it'll appear in the timeline shortly",
+      );
+      setComposeOpen(false);
+      invalidate();
+    },
+    onError: (err) => toast.error(sendEmailErrorMessage(err)),
+  });
+
+  const canSendEmail = Boolean(investor?.email) && googleStatus.data?.connected === true;
+  const composeDisabledReason = !investor?.email
+    ? "This investor has no email on file"
+    : googleStatus.data?.connected !== true
+      ? "Connect your Google account in Settings to send email"
+      : undefined;
+
   const details = investor
     ? [
         { label: "Firm", value: investor.firm },
@@ -202,6 +248,17 @@ export function InvestorDetailDialog({
                     <a href={`mailto:${investor.email}`}>
                       <Mail className="h-3.5 w-3.5" /> Email
                     </a>
+                  </Button>
+                )}
+                {canCreate && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!canSendEmail}
+                    title={composeDisabledReason}
+                    onClick={() => setComposeOpen(true)}
+                  >
+                    <Mail className="h-3.5 w-3.5" /> Send email
                   </Button>
                 )}
                 {investor.linkedinUrl && (
@@ -315,6 +372,15 @@ export function InvestorDetailDialog({
         pendingLabel="Removing…"
         isPending={deleteMutation.isPending}
         onConfirm={() => pendingDelete && deleteMutation.mutate(pendingDelete)}
+      />
+
+      <ComposeEmailDialog
+        open={composeOpen}
+        onOpenChange={setComposeOpen}
+        investorName={investor?.name ?? ""}
+        investorEmail={investor?.email ?? ""}
+        isSubmitting={sendEmailMutation.isPending}
+        onSubmit={(values) => sendEmailMutation.mutate(values)}
       />
     </>
   );

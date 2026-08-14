@@ -71,6 +71,8 @@ function log(overrides: Partial<InteractionLog> = {}): InteractionLog {
     interactionDate: "2026-08-01T14:00:00.000Z",
     nextFollowupDate: null,
     followupCompletedAt: null,
+    source: "manual",
+    externalId: null,
     createdAt: "2026-08-01T14:05:00.000Z",
     ...overrides,
   };

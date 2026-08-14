@@ -7,6 +7,7 @@ import {
   MessageSquare,
   Milestone,
   Phone,
+  RefreshCw,
   StickyNote,
   Users,
   type LucideIcon,
@@ -218,6 +219,15 @@ export function InteractionTimeline({
                       className="shrink-0 rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
                     >
                       Another deal
+                    </span>
+                  )}
+                  {log.source === "google_calendar" && (
+                    <span
+                      title="Logged automatically from Google Calendar"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+                    >
+                      <RefreshCw className="h-2.5 w-2.5" />
+                      Synced
                     </span>
                   )}
                 </div>

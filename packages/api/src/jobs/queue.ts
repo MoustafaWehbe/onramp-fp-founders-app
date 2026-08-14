@@ -2,6 +2,8 @@ import { Queue } from "bullmq";
 import { emailJob } from "./workers/email.worker";
 import type { EmailJobData } from "../types";
 import { embeddingsJob, type EmbeddingsJobData } from "./workers/embeddings.worker";
+import { calendarSyncJob, type CalendarSyncJobData } from "./workers/calendar-sync.worker";
+import { gmailLogRetryJob, type GmailLogRetryJobData } from "./workers/gmail-log-retry.worker";
 
 // The Redis singleton now lives in db/redis so non-job callers (the rate
 // limiters) can share it without importing the workers. Re-exported here
@@ -27,3 +29,5 @@ function makeQueue<T>(name: string): Queue<T> {
 
 export const emailQueue = makeQueue<EmailJobData>(emailJob.name);
 export const embeddingsQueue = makeQueue<EmbeddingsJobData>(embeddingsJob.name);
+export const calendarSyncQueue = makeQueue<CalendarSyncJobData>(calendarSyncJob.name);
+export const gmailLogRetryQueue = makeQueue<GmailLogRetryJobData>(gmailLogRetryJob.name);

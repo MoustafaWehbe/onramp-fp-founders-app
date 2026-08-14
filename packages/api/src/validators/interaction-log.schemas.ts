@@ -60,6 +60,7 @@ export const listInteractionLogQuerySchema = z.object({
     .min(1, "limit must be at least 1")
     .max(100, "limit must be at most 100")
     .default(20),
+  source: z.enum(["manual", "google_calendar", "gmail"]).optional(),
 });
 
 export const logIdParamSchema = z.object({

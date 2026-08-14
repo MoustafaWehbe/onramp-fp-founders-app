@@ -43,8 +43,47 @@ model User {
   authoredInvestorNotes StartupInvestor[]   @relation("InvestorNotesAuthor")
   editedInvestorNotes   StartupInvestor[]   @relation("InvestorNotesEditor")
   commitmentStatusEvents CommitmentStatusEvent[]
+  googleConnection      GoogleConnection?
 
   @@map("users")
+}
+
+// ─── INTEGRATIONS ─────────────────────────────────────────────────────────────
+
+model GoogleConnection {
+  id     String @id @default(uuid())
+  userId String @unique @map("user_id")
+
+  // The Google account actually connected — may differ from the sign-in email.
+  googleEmail String @map("google_email")
+
+  // OAuth scopes granted at consent time, e.g. "calendar.events.readonly gmail.send".
+  scopes String @map("scopes")
+
+  // AES-256-GCM ciphertext (iv + auth tag + ciphertext, base64) — never the raw token.
+  refreshTokenCipher String @map("refresh_token_cipher")
+
+  // "active": usable. "needs_reauth": Google returned invalid_grant (the user
+  // revoked access at Google, or the token expired from disuse) — sync stops
+  // and the UI must prompt to reconnect rather than fail silently.
+  // "revoked": disconnected from our side.
+  status String @default("active")
+
+  // A founder-facing pause, distinct from `status` — "I don't want this right
+  // now" versus "this is broken". Gmail send (Phase 3) does not depend on it.
+  calendarSyncEnabled Boolean @default(true) @map("calendar_sync_enabled")
+
+  // Calendar's incremental sync cursor. Null forces a full resync.
+  calendarSyncToken String? @map("calendar_sync_token")
+  lastSyncedAt      DateTime? @map("last_synced_at")
+  lastError         String?   @map("last_error")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("google_connections")
 }
 
 model Startup {
@@ -389,12 +428,19 @@ model InteractionLog {
   interactionDate   DateTime? @map("interaction_date")
   nextFollowupDate  DateTime? @map("next_followup_date")
   followupCompletedAt DateTime? @map("followup_completed_at")
+  source     String  @default("manual")
+  externalId String? @map("external_id")
+  gmailThreadId  String? @map("gmail_thread_id")
+  emailMessageId String? @map("email_message_id")
+  editedByUser Boolean @default(false) @map("edited_by_user")
+
   createdAt         DateTime  @default(now()) @map("created_at")
 
   startupInvestor StartupInvestor @relation(fields: [startupInvestorId], references: [id], onDelete: Cascade)
   pipeline        Pipeline?       @relation(fields: [pipelineId, startupInvestorId], references: [id, startupInvestorId])
   creator         User            @relation(fields: [createdBy], references: [id])
 
+  @@unique([startupInvestorId, externalId])
   @@map("interaction_logs")
 }
 
