@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { AlertTriangle, Bell, CheckCheck, ClipboardCheck, Clock, Crown, Shield, Sparkles, UserPlus, Users, Wallet } from "lucide-react";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { Button } from "../../../components/ui/button";
-import { LoadingSpinner } from "../../../components/shared/LoadingSpinner";
+import { Skeleton } from "../../../components/ui/skeleton";
+import { EmptyState } from "../../../components/shared/EmptyState";
 import { useNotifications } from "../../../hooks/useNotifications";
 import { cn } from "../../../lib/utils";
 
@@ -47,23 +48,27 @@ export function Notifications() {
 
       <div className="card-elevated overflow-hidden">
         {isPending ? (
-          <div className="grid place-items-center p-12">
-            <LoadingSpinner />
-          </div>
+          <ul className="divide-y divide-border/60" aria-hidden>
+            {Array.from({ length: 4 }, (_, i) => (
+              <li key={i} className="flex items-start gap-3 p-4 sm:gap-4">
+                <Skeleton className="h-9 w-9 shrink-0 rounded-md" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Skeleton className="h-3.5 w-1/3" />
+                  <Skeleton className="h-3 w-2/3" />
+                </div>
+              </li>
+            ))}
+          </ul>
         ) : isError ? (
           <p className="p-12 text-center text-sm text-destructive">
             We couldn't load your notifications. Please try again in a moment.
           </p>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 p-12 text-center">
-            <div className="grid h-10 w-10 place-items-center rounded-md bg-surface text-muted-foreground">
-              <Bell className="h-5 w-5" />
-            </div>
-            <p className="text-sm font-medium text-foreground">Nothing yet</p>
-            <p className="max-w-sm text-sm text-muted-foreground">
-              Invitations and workspace activity will show up here.
-            </p>
-          </div>
+          <EmptyState
+            icon={Bell}
+            title="Nothing yet"
+            description="Invitations and workspace activity will show up here."
+          />
         ) : (
           <ul className="divide-y divide-border/60">
             {items.map((n) => {

@@ -5,14 +5,9 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { Button } from "../../../components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../../../components/ui/dialog";
+import { Skeleton } from "../../../components/ui/skeleton";
+import { EmptyState } from "../../../components/shared/EmptyState";
+import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { useActiveStartupId } from "../../../hooks/useWorkspace";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
@@ -389,35 +384,44 @@ export function Investors() {
 
       <div className="card-elevated overflow-hidden">
         {investorsQuery.isPending ? (
-          <div className="px-6 py-14 text-center text-sm text-muted-foreground">
-            Loading investors…
+          <div className="space-y-0 divide-y divide-border/60" aria-hidden>
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-3.5 sm:px-6">
+                <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <Skeleton className="h-3.5 w-1/3" />
+                  <Skeleton className="h-3 w-1/4" />
+                </div>
+                <Skeleton className="hidden h-5 w-20 shrink-0 sm:block" />
+              </div>
+            ))}
           </div>
         ) : rows.length === 0 && !investorsQuery.isError ? (
-          <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
-            <div className="grid h-10 w-10 place-items-center rounded-xl border border-border bg-surface text-muted-foreground">
-              <Users className="h-4 w-4" />
-            </div>
-            <p className="font-display text-base font-semibold">
-              {debouncedSearch || filters.stage || filters.investorType
+          <EmptyState
+            icon={Users}
+            title={
+              debouncedSearch || filters.stage || filters.investorType
                 ? "No investors match"
                 : tab === "engaged"
                   ? "You haven't reached out to anyone yet"
-                  : "No prospects yet"}
-            </p>
-            <p className="max-w-sm text-sm text-muted-foreground">
-              {debouncedSearch || filters.stage || filters.investorType
+                  : "No prospects yet"
+            }
+            description={
+              debouncedSearch || filters.stage || filters.investorType
                 ? "Try a different search term or clear your filters."
                 : tab === "engaged"
                   ? "Move a prospect into the pipeline, or log an interaction, and they'll appear here."
-                  : "Add investors to build up a list to work through."}
-            </p>
-            {canCreate && !debouncedSearch && tab === "prospect" && (
-              <Button size="sm" className="mt-2" onClick={openAdd}>
-                <Plus className="h-4 w-4" />
-                Add investor
-              </Button>
-            )}
-          </div>
+                  : "Add investors to build up a list to work through."
+            }
+            action={
+              canCreate && !debouncedSearch && tab === "prospect" ? (
+                <Button size="sm" onClick={openAdd}>
+                  <Plus className="h-4 w-4" />
+                  Add investor
+                </Button>
+              ) : undefined
+            }
+          />
         ) : (
           <>
             <div className={cn("hidden lg:block", investorsQuery.isFetching && "opacity-60")}>
@@ -499,30 +503,16 @@ export function Investors() {
         onImported={invalidateInvestors}
       />
 
-      <Dialog open={bulkDeleteConfirm} onOpenChange={setBulkDeleteConfirm}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete {selectedIds.size} investors?</DialogTitle>
-            <DialogDescription>
-              Contacts with pipeline entries, commitments or logged interactions will be skipped
-              and stay selected so you can see which ones need those removed first.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setBulkDeleteConfirm(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={bulkDeleteMutation.isPending}
-              onClick={() => bulkDeleteMutation.mutate(Array.from(selectedIds))}
-            >
-              {bulkDeleteMutation.isPending ? "Deleting…" : `Delete ${selectedIds.size}`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={bulkDeleteConfirm}
+        onOpenChange={setBulkDeleteConfirm}
+        title={`Delete ${selectedIds.size} investors?`}
+        description="Contacts with pipeline entries, commitments or logged interactions will be skipped and stay selected so you can see which ones need those removed first."
+        confirmLabel={`Delete ${selectedIds.size}`}
+        pendingLabel="Deleting…"
+        isPending={bulkDeleteMutation.isPending}
+        onConfirm={() => bulkDeleteMutation.mutate(Array.from(selectedIds))}
+      />
 
       <InvestorFormDialog
         open={formOpen}
@@ -535,33 +525,16 @@ export function Investors() {
         onSubmit={(input) => saveMutation.mutate(input)}
       />
 
-      <Dialog
+      <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => !open && setPendingDelete(null)}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete {pendingDelete?.name}?</DialogTitle>
-            <DialogDescription>
-              This removes the contact from your directory. If they're on the pipeline board or
-              have logged interactions, the delete will be refused — remove those first.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setPendingDelete(null)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={deleteMutation.isPending}
-              onClick={() => pendingDelete && deleteMutation.mutate(pendingDelete)}
-            >
-              {deleteMutation.isPending ? "Deleting…" : "Delete investor"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        title={`Delete ${pendingDelete?.name}?`}
+        description="This removes the contact from your directory. If they're on the pipeline board or have logged interactions, the delete will be refused — remove those first."
+        confirmLabel="Delete investor"
+        pendingLabel="Deleting…"
+        isPending={deleteMutation.isPending}
+        onConfirm={() => pendingDelete && deleteMutation.mutate(pendingDelete)}
+      />
     </div>
   );
 }

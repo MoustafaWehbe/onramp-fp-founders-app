@@ -10,14 +10,9 @@ import {
   CardHeader,
   CardTitle,
 } from "../../../components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../../../components/ui/dialog";
+import { Skeleton } from "../../../components/ui/skeleton";
+import { EmptyState } from "../../../components/shared/EmptyState";
+import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
 import { useAuth } from "../../../hooks/useAuth";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
@@ -188,7 +183,7 @@ export function Team() {
           </CardHeader>
           <CardContent>
             <p className="font-display text-4xl font-semibold tabular-nums">
-              {membersQuery.isLoading ? "—" : activeCount}
+              {membersQuery.isLoading ? <Skeleton className="h-9 w-12" /> : activeCount}
             </p>
             <p className="mt-2 text-sm text-muted-foreground">
               People with access to this workspace.
@@ -202,7 +197,7 @@ export function Team() {
           </CardHeader>
           <CardContent>
             <p className="font-display text-4xl font-semibold tabular-nums">
-              {membersQuery.isLoading ? "—" : pendingCount}
+              {membersQuery.isLoading ? <Skeleton className="h-9 w-12" /> : pendingCount}
             </p>
             <p className="mt-2 text-sm text-muted-foreground">
               Invitations waiting to be accepted.
@@ -237,19 +232,24 @@ export function Team() {
 
       <div className="card-elevated overflow-hidden">
         {membersQuery.isLoading ? (
-          <div className="px-6 py-14 text-center text-sm text-muted-foreground">
-            Loading team…
+          <div className="divide-y divide-border/60" aria-hidden>
+            {Array.from({ length: 4 }, (_, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-3.5 sm:px-6">
+                <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <Skeleton className="h-3.5 w-1/3" />
+                  <Skeleton className="h-3 w-1/4" />
+                </div>
+                <Skeleton className="hidden h-5 w-16 shrink-0 sm:block" />
+              </div>
+            ))}
           </div>
         ) : members.length === 0 && !membersQuery.isError ? (
-          <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
-            <div className="grid h-10 w-10 place-items-center rounded-xl border border-border bg-surface text-muted-foreground">
-              <Users className="h-4 w-4" />
-            </div>
-            <p className="font-display text-base font-semibold">No teammates yet</p>
-            <p className="max-w-sm text-sm text-muted-foreground">
-              Invite the people you're raising with so they can work the pipeline alongside you.
-            </p>
-          </div>
+          <EmptyState
+            icon={Users}
+            title="No teammates yet"
+            description="Invite the people you're raising with so they can work the pipeline alongside you."
+          />
         ) : (
           <>
             <div className="hidden lg:block">
@@ -296,49 +296,34 @@ export function Team() {
         onSubmit={(input) => inviteMutation.mutate(input)}
       />
 
-      <Dialog
+      <ConfirmDialog
         open={pendingRemoval !== null}
         onOpenChange={(open) => !open && setPendingRemoval(null)}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {pendingRemoval?.isPending
-                ? "Revoke this invitation?"
-                : removingSelf
-                  ? "Leave this workspace?"
-                  : `Remove ${pendingRemoval?.name}?`}
-            </DialogTitle>
-            <DialogDescription>
-              {pendingRemoval?.isPending
-                ? `${pendingRemoval.name} will no longer be able to use their invitation link.`
-                : removingSelf
-                  ? "You'll lose access to this workspace immediately and will need a new invitation to return."
-                  : "They lose access to this workspace immediately. Anything they created stays."}
-            </DialogDescription>
-          </DialogHeader>
-
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setPendingRemoval(null)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={removeMutation.isPending}
-              onClick={() => pendingRemoval && removeMutation.mutate(pendingRemoval)}
-            >
-              {removeMutation.isPending
-                ? "Removing…"
-                : pendingRemoval?.isPending
-                  ? "Revoke invitation"
-                  : removingSelf
-                    ? "Leave workspace"
-                    : "Remove member"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        title={
+          pendingRemoval?.isPending
+            ? "Revoke this invitation?"
+            : removingSelf
+              ? "Leave this workspace?"
+              : `Remove ${pendingRemoval?.name}?`
+        }
+        description={
+          pendingRemoval?.isPending
+            ? `${pendingRemoval.name} will no longer be able to use their invitation link.`
+            : removingSelf
+              ? "You'll lose access to this workspace immediately and will need a new invitation to return."
+              : "They lose access to this workspace immediately. Anything they created stays."
+        }
+        confirmLabel={
+          pendingRemoval?.isPending
+            ? "Revoke invitation"
+            : removingSelf
+              ? "Leave workspace"
+              : "Remove member"
+        }
+        pendingLabel="Removing…"
+        isPending={removeMutation.isPending}
+        onConfirm={() => pendingRemoval && removeMutation.mutate(pendingRemoval)}
+      />
     </div>
   );
 }

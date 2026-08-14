@@ -1,4 +1,5 @@
-import { ArrowRight, Clock, Info } from "lucide-react";
+import { ArrowRight, Clock, Info, PieChart } from "lucide-react";
+import { EmptyState } from "../../../components/shared/EmptyState";
 import { getStage } from "../../../lib/mock-data";
 import type { PipelineAnalytics } from "../../../lib/pipeline-api";
 import { cn } from "../../../lib/utils";
@@ -20,11 +21,12 @@ export function PipelineAnalyticsView({ analytics, currency }: PipelineAnalytics
 
   if (totalDeals === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border/70 px-6 py-14 text-center">
-        <p className="font-display text-base font-semibold">No deals to analyse yet</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Add investors to the board and these numbers fill in as deals move.
-        </p>
+      <div className="rounded-xl border border-dashed border-border/70">
+        <EmptyState
+          icon={PieChart}
+          title="No deals to analyse yet"
+          description="Add investors to the board and these numbers fill in as deals move."
+        />
       </div>
     );
   }

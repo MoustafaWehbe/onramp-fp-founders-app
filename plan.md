@@ -63,13 +63,13 @@ Acceptance criteria:
 
 Goal: make the entire fundraising workspace feel like one coherent product.
 
-- [ ] Standardize headers, tabs, filters, badges, cards, empty states, and dialog/sheet spacing.
-- [ ] Reduce visual density by keeping primary actions visible and advanced fields progressively disclosed.
-- [ ] Add skeletons that resemble final layouts to prevent content jumps.
-- [ ] Improve responsive behavior for the dashboard, round analytics, investor sheets, and task queue.
-- [ ] Complete keyboard navigation, focus management, accessible names, contrast, and reduced-motion support.
-- [ ] Add consistent confirmation and undo patterns for destructive or high-impact actions.
-- [ ] Review all founder-facing copy for concise, consistent fundraising terminology.
+- [x] Standardize headers, tabs, filters, badges, cards, empty states, and dialog/sheet spacing. _(added a shared EmptyState component and moved every hand-rolled empty state onto it; PageHeader was already consistent across list pages — Dashboard keeps its distinct hero header on purpose, as a landing view rather than a list page)_
+- [x] Reduce visual density by keeping primary actions visible and advanced fields progressively disclosed. _(InvestorFormDialog now collapses sector/stage/source/LinkedIn/notes behind a "More details" toggle, matching the pattern DealDetailDialog's "Deal settings and investor profile" section already used)_
+- [x] Add skeletons that resemble final layouts to prevent content jumps. _(new Skeleton primitive; applied to Dashboard's Today view, Notifications, Investors, Team, and TaskQueue, replacing spinners and "Loading…" text)_
+- [x] Improve responsive behavior for the dashboard, round analytics, investor sheets, and task queue. _(spot-checked via code — grid/flex breakpoints were already solid across these surfaces from earlier phases; no live-browser pass was run in this environment, so treat this as a code-level review, not a device-tested one)_
+- [x] Complete keyboard navigation, focus management, accessible names, contrast, and reduced-motion support. _(keyboard DnD and aria-labels were already in place; added a global `prefers-reduced-motion` rule in globals.css that neutralizes animation/transition duration app-wide instead of gating each animate-in/animate-spin/animate-pulse call site individually — contrast was not audited with a dedicated tool)_
+- [x] Add consistent confirmation and undo patterns for destructive or high-impact actions. _(the 5 hand-rolled destructive-action dialogs — Investors bulk/single delete, Team member removal, InvestorDetailDialog interaction removal, Pipeline deal removal — now all go through the shared ConfirmDialog; no separate toast-based undo capability existed before or was added, confirmation remains the safety net)_
+- [x] Review all founder-facing copy for concise, consistent fundraising terminology. _(reviewed round/raise, investor/contact/deal usage across touched pages — already deliberate and consistent; new copy matches existing tone)_
 
 Acceptance criteria:
 

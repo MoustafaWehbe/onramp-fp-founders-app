@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../../../components/ui/dialog";
+import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
 import {
@@ -305,33 +306,16 @@ export function InvestorDetailDialog({
         onSubmit={(values) => saveMutation.mutate(values)}
       />
 
-      <Dialog
+      <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => !open && setPendingDelete(null)}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Remove this interaction?</DialogTitle>
-            <DialogDescription>
-              The entry is deleted permanently. If it was the only one and the contact isn't on
-              the pipeline board, they move back to Prospects.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setPendingDelete(null)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={deleteMutation.isPending}
-              onClick={() => pendingDelete && deleteMutation.mutate(pendingDelete)}
-            >
-              {deleteMutation.isPending ? "Removing…" : "Remove interaction"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        title="Remove this interaction?"
+        description="The entry is deleted permanently. If it was the only one and the contact isn't on the pipeline board, they move back to Prospects."
+        confirmLabel="Remove interaction"
+        pendingLabel="Removing…"
+        isPending={deleteMutation.isPending}
+        onConfirm={() => pendingDelete && deleteMutation.mutate(pendingDelete)}
+      />
     </>
   );
 }

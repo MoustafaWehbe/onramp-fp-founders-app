@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarClock, Check, CheckCircle2, Pencil, Plus, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../../components/ui/button";
+import { Skeleton } from "../../../components/ui/skeleton";
+import { EmptyState } from "../../../components/shared/EmptyState";
 import { useAuth } from "../../../hooks/useAuth";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { useRoundTasks } from "../../../hooks/useRoundTasks";
@@ -195,18 +197,28 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
       </div>
 
       {tasksQuery.isPending && (
-        <div className="rounded-xl border border-border/70 bg-surface/50 px-4 py-10 text-center text-sm text-muted-foreground">
-          Loading tasks…
-        </div>
+        <ul className="space-y-2" aria-hidden>
+          {Array.from({ length: 3 }, (_, i) => (
+            <li key={i} className="flex items-center gap-3 rounded-xl border border-border/70 bg-surface/50 p-3">
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <Skeleton className="h-3.5 w-1/3" />
+                <Skeleton className="h-3 w-1/4" />
+              </div>
+              <Skeleton className="h-3.5 w-16 shrink-0" />
+              <Skeleton className="h-8 w-24 shrink-0 rounded-full" />
+            </li>
+          ))}
+        </ul>
       )}
 
       {!tasksQuery.isPending && tasks.length === 0 && (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border/70 px-6 py-14 text-center">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-success/15 text-success">
-            <CheckCircle2 className="h-5 w-5" />
-          </div>
-          <p className="font-display text-base font-semibold">{EMPTY_MESSAGES[view].title}</p>
-          <p className="max-w-sm text-sm text-muted-foreground">{EMPTY_MESSAGES[view].detail}</p>
+        <div className="rounded-xl border border-dashed border-border/70">
+          <EmptyState
+            icon={CheckCircle2}
+            tone="success"
+            title={EMPTY_MESSAGES[view].title}
+            description={EMPTY_MESSAGES[view].detail}
+          />
         </div>
       )}
 

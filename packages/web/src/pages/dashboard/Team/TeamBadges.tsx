@@ -2,6 +2,10 @@ import { Badge } from "../../../components/ui/badge";
 import { cn } from "../../../lib/utils";
 import { roleLabel } from "./team-types";
 
+// A team role/status isn't a pipeline stage, so this palette is kept separate
+// from StageBadge's — "warning" here means "pending invite", not "in
+// negotiation". Keep each map's meaning scoped to its own domain rather than
+// merging them into one shared token set.
 const ROLE_CLASSES: Record<string, string> = {
   owner: "bg-primary/15 text-primary",
   collaborator: "bg-info/15 text-info",

@@ -19,14 +19,7 @@ import { Crown, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { Button } from "../../../components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../../../components/ui/dialog";
+import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { useAuth } from "../../../hooks/useAuth";
 import { useMediaQuery } from "../../../hooks/useMediaQuery";
@@ -1050,33 +1043,16 @@ export function Pipeline() {
         onSubmit={(values) => createMutation.mutate(values)}
       />
 
-      <Dialog
+      <ConfirmDialog
         open={pendingRemove !== null}
         onOpenChange={(open) => !open && setPendingRemove(null)}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Remove {pendingRemove?.investor.fullName} from the pipeline?</DialogTitle>
-            <DialogDescription>
-              The contact stays in your investor directory along with everything you've logged.
-              Their place on this board and any completed tasks on the deal are removed.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setPendingRemove(null)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={removeMutation.isPending}
-              onClick={() => pendingRemove && removeMutation.mutate(pendingRemove)}
-            >
-              {removeMutation.isPending ? "Removing…" : "Remove from pipeline"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        title={`Remove ${pendingRemove?.investor.fullName} from the pipeline?`}
+        description="The contact stays in your investor directory along with everything you've logged. Their place on this board and any completed tasks on the deal are removed."
+        confirmLabel="Remove from pipeline"
+        pendingLabel="Removing…"
+        isPending={removeMutation.isPending}
+        onConfirm={() => pendingRemove && removeMutation.mutate(pendingRemove)}
+      />
     </div>
   );
 }

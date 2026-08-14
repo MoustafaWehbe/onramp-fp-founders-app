@@ -88,6 +88,25 @@
   ::selection {
     @apply bg-primary/35 text-foreground;
   }
+
+  /* Respect the OS-level motion preference everywhere at once, instead of
+     gating every animate-in/animate-out/animate-spin/animate-pulse call site
+     one by one. Transforms still apply instantly; only the animated easing
+     between states is removed. */
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
 
 @layer utilities {

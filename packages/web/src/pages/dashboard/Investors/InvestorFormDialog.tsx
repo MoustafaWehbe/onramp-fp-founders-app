@@ -100,10 +100,24 @@ export function InvestorFormDialog({
   onSubmit,
 }: InvestorFormDialogProps) {
   const [form, setForm] = useState<FormState>(EMPTY);
+  const [showMore, setShowMore] = useState(false);
   const isEditing = Boolean(investor);
 
   useEffect(() => {
-    if (open) setForm(toFormState(investor));
+    if (!open) return;
+    const next = toFormState(investor);
+    setForm(next);
+    // Start expanded when any of those fields already carry data, so editing
+    // never hides something the record actually has.
+    setShowMore(
+      Boolean(
+        next.sectorFocus ||
+          next.investmentStagePreference ||
+          next.linkedinUrl ||
+          next.source ||
+          next.notes,
+      ),
+    );
   }, [open, investor]);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
@@ -175,101 +189,113 @@ export function InvestorFormDialog({
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Type</div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-9 w-full justify-between px-3 font-normal"
-                  >
-                    {form.investorType === ""
-                      ? "Not set"
-                      : INVESTOR_TYPE_LABELS[form.investorType]}
-                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="start"
-                  className="w-[var(--radix-dropdown-menu-trigger-width)]"
+          <div className="space-y-2">
+            <div className="text-sm font-medium">Type</div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 w-full justify-between px-3 font-normal sm:w-1/2 sm:pr-8"
                 >
-                  <DropdownMenuItem onSelect={() => set("investorType", "")}>
-                    Not set
+                  {form.investorType === ""
+                    ? "Not set"
+                    : INVESTOR_TYPE_LABELS[form.investorType]}
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="w-[var(--radix-dropdown-menu-trigger-width)]"
+              >
+                <DropdownMenuItem onSelect={() => set("investorType", "")}>
+                  Not set
+                </DropdownMenuItem>
+                {INVESTOR_TYPES.map((type) => (
+                  <DropdownMenuItem key={type} onSelect={() => set("investorType", type)}>
+                    {INVESTOR_TYPE_LABELS[type]}
                   </DropdownMenuItem>
-                  {INVESTOR_TYPES.map((type) => (
-                    <DropdownMenuItem key={type} onSelect={() => set("investorType", type)}>
-                      {INVESTOR_TYPE_LABELS[type]}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="investor-sector">Sector focus</Label>
-              <Input
-                id="investor-sector"
-                value={form.sectorFocus}
-                onChange={(e) => set("sectorFocus", e.target.value)}
-                maxLength={200}
-                placeholder="Fintech, SaaS"
-              />
-            </div>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="investor-stage-pref">Stage preference</Label>
-              <Input
-                id="investor-stage-pref"
-                value={form.investmentStagePreference}
-                onChange={(e) => set("investmentStagePreference", e.target.value)}
-                maxLength={200}
-                placeholder="Seed to Series A"
-              />
+          <button
+            type="button"
+            onClick={() => setShowMore((prev) => !prev)}
+            aria-expanded={showMore}
+            className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            <ChevronDown className={`h-4 w-4 transition-transform ${showMore ? "rotate-180" : ""}`} />
+            {showMore ? "Hide details" : "More details"}
+          </button>
+
+          {showMore && (
+            <div className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="investor-sector">Sector focus</Label>
+                  <Input
+                    id="investor-sector"
+                    value={form.sectorFocus}
+                    onChange={(e) => set("sectorFocus", e.target.value)}
+                    maxLength={200}
+                    placeholder="Fintech, SaaS"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="investor-stage-pref">Stage preference</Label>
+                  <Input
+                    id="investor-stage-pref"
+                    value={form.investmentStagePreference}
+                    onChange={(e) => set("investmentStagePreference", e.target.value)}
+                    maxLength={200}
+                    placeholder="Seed to Series A"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="investor-source">Source</Label>
+                <Input
+                  id="investor-source"
+                  value={form.source}
+                  onChange={(e) => set("source", e.target.value)}
+                  maxLength={100}
+                  placeholder="Warm intro, conference…"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="investor-linkedin">LinkedIn</Label>
+                <Input
+                  id="investor-linkedin"
+                  type="url"
+                  value={form.linkedinUrl}
+                  onChange={(e) => set("linkedinUrl", e.target.value)}
+                  placeholder="https://linkedin.com/in/…"
+                />
+                {!linkedinValid && (
+                  <p className="text-xs text-destructive">
+                    Include the full address, starting with http:// or https://
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="investor-notes">Notes</Label>
+                <Textarea
+                  id="investor-notes"
+                  value={form.notes}
+                  onChange={(e) => set("notes", e.target.value)}
+                  maxLength={2000}
+                  rows={3}
+                  placeholder="Context worth remembering before the next conversation."
+                />
+              </div>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="investor-source">Source</Label>
-              <Input
-                id="investor-source"
-                value={form.source}
-                onChange={(e) => set("source", e.target.value)}
-                maxLength={100}
-                placeholder="Warm intro, conference…"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="investor-linkedin">LinkedIn</Label>
-            <Input
-              id="investor-linkedin"
-              type="url"
-              value={form.linkedinUrl}
-              onChange={(e) => set("linkedinUrl", e.target.value)}
-              placeholder="https://linkedin.com/in/…"
-            />
-            {!linkedinValid && (
-              <p className="text-xs text-destructive">
-                Include the full address, starting with http:// or https://
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="investor-notes">Notes</Label>
-            <Textarea
-              id="investor-notes"
-              value={form.notes}
-              onChange={(e) => set("notes", e.target.value)}
-              maxLength={2000}
-              rows={3}
-              placeholder="Context worth remembering before the next conversation."
-            />
-          </div>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>

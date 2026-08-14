@@ -12,6 +12,8 @@ import {
 } from "recharts";
 import { Button } from "../../components/ui/button";
 import { Progress } from "../../components/ui/progress";
+import { Skeleton } from "../../components/ui/skeleton";
+import { EmptyState } from "../../components/shared/EmptyState";
 import { LoadingSpinner } from "../../components/shared/LoadingSpinner";
 import { useAuth } from "../../hooks/useAuth";
 import { usePermissions } from "../../hooks/usePermissions";
@@ -139,7 +141,7 @@ function TodayWorkspace({ startupId }: { startupId: string }) {
       </div>
     </header>
 
-    {loading && <div className="grid min-h-64 place-items-center rounded-2xl border border-border/70 bg-card"><LoadingSpinner /></div>}
+    {loading && <TodayWorkspaceSkeleton />}
     {!loading && loadError && <div role="alert" className="rounded-2xl border border-destructive/30 bg-destructive/[0.06] p-6 text-center"><AlertTriangle className="mx-auto h-7 w-7 text-destructive" /><h2 className="mt-3 font-display text-lg font-semibold">Dashboard data could not load</h2><p className="mt-1 text-sm text-muted-foreground">{apiErrorMessage(loadError, "Please try refreshing the page.")}</p><Button type="button" variant="outline" className="mt-4" onClick={() => void queryClient.invalidateQueries()}>Try again</Button></div>}
     {!loading && !loadError && !activeRound && <div className="rounded-2xl border border-dashed border-border p-10 text-center"><Target className="mx-auto h-8 w-8 text-muted-foreground" /><h2 className="mt-3 font-display text-lg font-semibold">Create a fundraising round first</h2><p className="mt-1 text-sm text-muted-foreground">Today uses your active round to prioritize investors and work.</p><Button asChild className="mt-4"><Link to="/fundraising">Go to rounds</Link></Button></div>}
 
@@ -158,7 +160,7 @@ function TodayWorkspace({ startupId }: { startupId: string }) {
 
         <div className="card-elevated p-4 sm:p-5">
           <div className="mb-2"><h2 className="font-display text-base font-semibold tracking-tight">Pipeline by stage</h2><p className="text-xs text-muted-foreground sm:text-sm">Live investors in this round — click a stage to see who's in it</p></div>
-          {stageData.length === 0 ? <EmptyState title="No investors yet" detail="Add investors to see your pipeline mix." compact /> : <>
+          {stageData.length === 0 ? <EmptyState icon={Users} title="No investors yet" description="Add investors to see your pipeline mix." compact /> : <>
             <div className="relative h-[176px]" aria-label="Pipeline by stage chart"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={stageData} dataKey="value" innerRadius={48} outerRadius={74} paddingAngle={2} onClick={(_datum, index) => navigate(`/investors?tab=engaged&stage=${stageData[index].stageId}`)} cursor="pointer">{stageData.map((stage) => <Cell key={stage.name} fill={stage.color} stroke="#0D1117" strokeWidth={2} />)}</Pie><Tooltip contentStyle={{ background: "#1C2128", border: "1px solid #30363D", borderRadius: 10, fontSize: 12 }} /></PieChart></ResponsiveContainer><div className="pointer-events-none absolute inset-0 grid place-items-center"><div className="text-center"><div className="font-display text-2xl font-semibold tabular-nums">{entries.length}</div><div className="text-[10px] uppercase tracking-wider text-muted-foreground">Investors</div></div></div></div>
             <div className="mt-2 grid gap-1.5">{stageData.map((stage) => <button key={stage.name} type="button" onClick={() => navigate(`/investors?tab=engaged&stage=${stage.stageId}`)} className="flex items-center gap-2 rounded-md px-1 py-0.5 text-xs transition-colors hover:bg-surface-hover"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: stage.color }} /><span className="flex-1 text-left text-muted-foreground">{stage.name}</span><span className="font-medium tabular-nums">{stage.value}</span></button>)}</div>
           </>}
@@ -168,7 +170,7 @@ function TodayWorkspace({ startupId }: { startupId: string }) {
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
         <section className="card-elevated overflow-hidden">
           <SectionHeader icon={CheckCircle2} title="My tasks" description="Your next actions, ordered by due date." action="View all tasks" to="/pipeline?view=tasks" />
-          {myTasks.length === 0 ? <EmptyState title="You’re caught up" detail="No open tasks are assigned to you in this round." /> : <ul className="divide-y divide-border/70">{myTasks.slice(0, 6).map((task) => {
+          {myTasks.length === 0 ? <EmptyState icon={CheckCircle2} tone="success" title="You’re caught up" description="No open tasks are assigned to you in this round." /> : <ul className="divide-y divide-border/70">{myTasks.slice(0, 6).map((task) => {
             const deal = entriesById.get(task.pipelineId);
             const due = taskDue(task);
             return <li key={task.id} className="flex flex-wrap items-center gap-3 px-4 py-3.5 sm:px-5"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{task.title}</p><p className="mt-0.5 truncate text-xs text-muted-foreground">{deal ? `${deal.investor.fullName}${deal.investor.ventureFirm ? ` · ${deal.investor.ventureFirm}` : ""}` : "Pipeline task"}</p></div><span className={cn("inline-flex items-center gap-1 text-xs", due.tone)}><CalendarClock className="h-3.5 w-3.5" />{due.label}</span>{canUpdatePipeline && <button type="button" role="checkbox" aria-checked="false" aria-label={`Complete task ${task.title}`} disabled={completeMutation.isPending} onClick={() => completeMutation.mutate(task)} className="inline-flex h-8 items-center gap-1.5 rounded-full border border-success/30 bg-success/[0.06] px-3 text-xs font-semibold text-success hover:bg-success/15 disabled:opacity-50"><Check className="h-3.5 w-3.5" /> Done</button>}</li>;
@@ -177,14 +179,14 @@ function TodayWorkspace({ startupId }: { startupId: string }) {
 
         <section className="card-elevated overflow-hidden">
           <SectionHeader icon={AlertTriangle} title="Needs attention" description="The highest-impact deals to chase next." action="Open Focus" to="/pipeline?view=focus" />
-          {focusItems.length === 0 ? <EmptyState title="Pipeline is healthy" detail="Every live deal has a current next step." /> : <ul className="divide-y divide-border/70">{focusItems.slice(0, 6).map((deal) => <FocusRow key={deal.id} deal={deal} currency={activeRound.currency} />)}</ul>}
+          {focusItems.length === 0 ? <EmptyState icon={CheckCircle2} tone="success" title="Pipeline is healthy" description="Every live deal has a current next step." /> : <ul className="divide-y divide-border/70">{focusItems.slice(0, 6).map((deal) => <FocusRow key={deal.id} deal={deal} currency={activeRound.currency} />)}</ul>}
         </section>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <section className="card-elevated overflow-hidden">
           <SectionHeader icon={UserRoundCheck} title="Pipeline hygiene" description="Ownership gaps that make follow-up easy to miss." action="Assign owners" to="/pipeline" />
-          {unassigned.length === 0 ? <EmptyState title="Every live deal has an owner" detail="Your team’s responsibility is clear." compact /> : <div className="grid gap-2 p-4 sm:grid-cols-2">{unassigned.slice(0, 6).map((deal) => <InvestorMiniCard key={deal.id} deal={deal} />)}</div>}
+          {unassigned.length === 0 ? <EmptyState icon={CheckCircle2} tone="success" title="Every live deal has an owner" description="Your team’s responsibility is clear." compact /> : <div className="grid gap-2 p-4 sm:grid-cols-2">{unassigned.slice(0, 6).map((deal) => <InvestorMiniCard key={deal.id} deal={deal} />)}</div>}
         </section>
         <aside className="card-elevated h-fit p-5"><div className="flex items-center justify-between gap-3"><div><p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Active round</p><h2 className="mt-1 font-display text-lg font-semibold">{activeRound.roundName}</h2></div><div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/12 text-primary"><Wallet className="h-5 w-5" /></div></div><div className="mt-5 flex items-end justify-between gap-3"><span className="font-display text-2xl font-semibold tabular-nums">{formatMoney(bankable, activeRound.currency)}</span><span className="text-xs text-muted-foreground">{progress}%</span></div><Progress value={progress} className="mt-2 h-2" /><p className="mt-2 text-xs text-muted-foreground">Signed or wired toward {formatMoney(target, activeRound.currency)}</p><Button asChild variant="outline" size="sm" className="mt-5 w-full"><Link to="/fundraising">View round <ArrowRight className="h-4 w-4" /></Link></Button></aside>
       </div>
@@ -200,8 +202,19 @@ function SectionHeader({ icon: Icon, title, description, action, to }: { icon: L
   return <div className="flex items-center justify-between gap-4 border-b border-border/70 px-4 py-4 sm:px-5"><div className="flex min-w-0 items-center gap-3"><div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Icon className="h-4 w-4" /></div><div className="min-w-0"><h2 className="font-display text-base font-semibold">{title}</h2><p className="truncate text-xs text-muted-foreground">{description}</p></div></div><Link to={to} className="shrink-0 text-xs font-medium text-primary hover:underline">{action}</Link></div>;
 }
 
-function EmptyState({ title, detail, compact }: { title: string; detail: string; compact?: boolean }) {
-  return <div className={cn("flex flex-col items-center px-5 text-center", compact ? "py-8" : "py-12")}><div className="grid h-10 w-10 place-items-center rounded-xl bg-success/12 text-success"><CheckCircle2 className="h-5 w-5" /></div><p className="mt-3 text-sm font-semibold">{title}</p><p className="mt-1 max-w-sm text-xs text-muted-foreground">{detail}</p></div>;
+function TodayWorkspaceSkeleton() {
+  return <div className="space-y-6">
+    <section aria-hidden className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {Array.from({ length: 4 }, (_, i) => <div key={i} className="card-elevated p-4"><div className="flex items-start justify-between"><Skeleton className="h-9 w-9 rounded-xl" /><Skeleton className="h-7 w-8" /></div><Skeleton className="mt-4 h-4 w-24" /><Skeleton className="mt-2 h-3 w-32" /></div>)}
+    </section>
+    <section aria-hidden className="grid gap-5 lg:grid-cols-3">
+      <div className="card-elevated p-4 sm:p-5 lg:col-span-2"><Skeleton className="h-5 w-40" /><Skeleton className="mt-2 h-3 w-56" /><Skeleton className="mt-4 h-[220px] w-full" /></div>
+      <div className="card-elevated p-4 sm:p-5"><Skeleton className="h-5 w-32" /><Skeleton className="mt-2 h-3 w-44" /><Skeleton className="mx-auto mt-4 h-[176px] w-[176px] rounded-full" /></div>
+    </section>
+    <div aria-hidden className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+      {[0, 1].map((i) => <div key={i} className="card-elevated overflow-hidden"><div className="border-b border-border/70 px-4 py-4 sm:px-5"><Skeleton className="h-5 w-36" /></div><div className="divide-y divide-border/70">{Array.from({ length: 3 }, (_, j) => <div key={j} className="flex items-center gap-3 px-4 py-3.5 sm:px-5"><Skeleton className="h-8 w-8 shrink-0 rounded-full" /><div className="min-w-0 flex-1 space-y-1.5"><Skeleton className="h-3.5 w-3/4" /><Skeleton className="h-3 w-1/2" /></div></div>)}</div></div>)}
+    </div>
+  </div>;
 }
 
 function FocusRow({ deal, currency }: { deal: PipelineFocusEntry; currency: string }) {
