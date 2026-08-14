@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 
 const listRounds = vi.fn();
 const listCommitments = vi.fn();
+const getFundingHistory = vi.fn();
 const listPipeline = vi.fn();
 const getFocus = vi.fn();
 const listTasks = vi.fn();
@@ -22,12 +23,15 @@ vi.mock("../../lib/app-store", () => ({
   useAppStore: (selector: (state: unknown) => unknown) => selector({
     activeRoundIds: { "startup-1": "round-1" },
     setActiveRoundId: vi.fn(),
+    fundingChartRanges: {},
+    setFundingChartRange: vi.fn(),
   }),
 }));
 vi.mock("../../lib/fundraising-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/fundraising-api")>()),
   listFundraisingRounds: () => listRounds(),
   listCommitments: () => listCommitments(),
+  getFundingHistory: () => getFundingHistory(),
 }));
 vi.mock("../../lib/pipeline-api", () => ({
   listPipelineEntries: () => listPipeline(),
@@ -48,6 +52,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   listRounds.mockResolvedValue({ data: [{ id: "round-1", roundName: "Seed", status: "active", targetAmount: 1_000_000, currency: "USD" }] });
   listCommitments.mockResolvedValue({ data: [{ amount: 200_000, status: "wired", createdAt: "2026-08-01T00:00:00.000Z" }] });
+  getFundingHistory.mockResolvedValue([
+    { id: "e1", commitmentId: "c1", investorName: "Ada Investor", fromStatus: null, toStatus: "wired", amount: 200_000, createdAt: "2026-08-01T00:00:00.000Z" },
+  ]);
   listPipeline.mockResolvedValue({ data: [{ id: "deal-1", ownerId: null, stage: "contacted", investor: { fullName: "Ada Investor", ventureFirm: "North VC" } }], meta: { page: 1, totalPages: 1 } });
   getFocus.mockResolvedValue([{ id: "deal-1", ownerId: null, stage: "contacted", isLead: true, reason: "missing", expectedAmount: 250_000, investor: { fullName: "Ada Investor", ventureFirm: "North VC" } }]);
   // meta matters: the round's tasks are paged through, not asked for in one

@@ -3,13 +3,15 @@ import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import type { PipelineStage, PipelineStageId } from "../../../lib/mock-data";
 import type { FocusReason, PipelineEntry } from "../../../lib/pipeline-api";
-import { cn, formatCompactUsd } from "../../../lib/utils";
+import { cn, formatCompactMoney } from "../../../lib/utils";
 import { columnDropId } from "./board-columns";
 import type { DealSignals } from "./deal-signals";
 import { DealCard } from "./DealCard";
 
 type PipelineColumnProps = {
   stage: PipelineStage;
+  /** The round's own currency — a deal's amount is never assumed to be USD. */
+  currency: string;
   dealIds: string[];
   entriesById: Map<string, PipelineEntry>;
   signalsFor: (dealId: string) => DealSignals;
@@ -34,6 +36,7 @@ type PipelineColumnProps = {
  */
 export const PipelineColumn = memo(function PipelineColumn({
   stage,
+  currency,
   dealIds,
   entriesById,
   signalsFor,
@@ -73,7 +76,7 @@ export const PipelineColumn = memo(function PipelineColumn({
             className="shrink-0 font-mono text-xs text-muted-foreground"
             title="Probability-weighted forecast"
           >
-            {formatCompactUsd(Math.round(weightedTotal))}
+            {formatCompactMoney(Math.round(weightedTotal), currency)}
           </span>
         )}
       </div>
@@ -95,6 +98,7 @@ export const PipelineColumn = memo(function PipelineColumn({
               <DealCard
                 key={dealId}
                 deal={deal}
+                currency={currency}
                 signals={signalsFor(dealId)}
                 focusReason={focusReasonFor(dealId)}
                 ownerName={ownerNameFor(dealId)}

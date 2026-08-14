@@ -28,6 +28,22 @@ export const fundraisingController = {
     await fundraisingService.deleteRound(req.params.startupId as string, req.params.roundId as string);
     res.json({ message: "Fundraising round removed" });
   }),
+  getRoundMetrics: asyncHandler(async (req, res) => {
+    res.json({
+      data: await fundraisingService.getRoundMetrics(
+        req.params.startupId as string,
+        req.params.roundId as string,
+      ),
+    });
+  }),
+  getFundingHistory: asyncHandler(async (req, res) => {
+    res.json({
+      data: await fundraisingService.getFundingHistory(
+        req.params.startupId as string,
+        req.params.roundId as string,
+      ),
+    });
+  }),
   listRoundCommitments: asyncHandler(async (req, res) => {
     res.json(await fundraisingService.listCommitments(req.params.startupId as string, req.query as unknown as ListCommitmentsQuery, req.params.roundId as string));
   }),

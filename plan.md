@@ -44,14 +44,14 @@ Acceptance criteria:
 
 Goal: turn the rounds and dashboard pages into decision tools instead of passive summaries.
 
-- [ ] Add commitment status-history data so the funding chart reflects when money became soft-circled, signed, or wired—not only when the record was created.
-- [ ] Add round metrics from real APIs: target, bankable raised, wired, soft-circled, weighted pipeline, remaining gap, and days to close.
-- [ ] Add pipeline conversion and velocity by stage.
-- [ ] Add expected-close forecasting and highlight commitments at risk.
-- [ ] Make chart time ranges selectable and preserve the selected range.
-- [ ] Make chart segments clickable to open a filtered investor list.
-- [ ] Add clear empty, loading, partial-error, and stale-data states to every analytics panel.
-- [ ] Verify currency handling across rounds instead of assuming USD.
+- [x] Add commitment status-history data so the funding chart reflects when money became soft-circled, signed, or wired—not only when the record was created.
+- [x] Add round metrics from real APIs: target, bankable raised, wired, soft-circled, weighted pipeline, remaining gap, and days to close.
+- [x] Add pipeline conversion and velocity by stage. _(already present from Phase 2; verified and left in place)_
+- [x] Add expected-close forecasting and highlight commitments at risk.
+- [x] Make chart time ranges selectable and preserve the selected range.
+- [x] Make chart segments clickable to open a filtered investor list.
+- [x] Add clear empty, loading, partial-error, and stale-data states to every analytics panel.
+- [x] Verify currency handling across rounds instead of assuming USD.
 
 Acceptance criteria:
 

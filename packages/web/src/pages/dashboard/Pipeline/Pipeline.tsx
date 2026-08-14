@@ -209,6 +209,11 @@ export function Pipeline() {
     if (activeRound && activeRound.id !== preferredRoundId) setActiveRoundId(startupId, activeRound.id);
   }, [activeRound, preferredRoundId, setActiveRoundId, startupId]);
 
+  // Every amount on this board belongs to activeRound and must be shown in
+  // its currency — "USD" here is only the fallback for the moment before a
+  // round has loaded, never a guess once one has.
+  const currency = activeRound?.currency ?? "USD";
+
   const pipelineQuery = useQuery({
     queryKey: qk.pipeline(startupId, activeRound?.id),
     // The whole board has to be on screen at once for a Kanban to make sense,
@@ -731,6 +736,7 @@ export function Pipeline() {
         <>
           <PipelineSummary
             totals={totals}
+            currency={currency}
             attentionActive={view.attentionOnly}
             onToggleAttention={() => {
               // The tile is the shortcut into the focus list; on the board it
@@ -754,6 +760,7 @@ export function Pipeline() {
       {boardReady && activeView === "focus" && (
         <FocusList
           items={focusItems}
+          currency={currency}
           canCreate={canCreate}
           onOpen={(deal) => setOpenDealId(deal.id)}
           onLog={setQuickLogDeal}
@@ -787,7 +794,14 @@ export function Pipeline() {
               </div>
             </div>
           )}
-          {analyticsQuery.data && <PipelineAnalyticsView analytics={analyticsQuery.data} />}
+          {analyticsQuery.data && (
+            <>
+              {analyticsQuery.isFetching && (
+                <p className="text-[11px] text-muted-foreground">Updating…</p>
+              )}
+              <PipelineAnalyticsView analytics={analyticsQuery.data} currency={currency} />
+            </>
+          )}
         </>
       )}
 
@@ -821,6 +835,7 @@ export function Pipeline() {
       {boardReady && activeView === "board" && isCompactBoard && (
         <MobilePipelineBoard
           stages={visibleStages}
+          currency={currency}
           entriesByStage={entriesByStage}
           signalsFor={signalsFor}
           focusReasonFor={focusReasonFor}
@@ -880,6 +895,7 @@ export function Pipeline() {
                 <PipelineColumn
                   key={stage.id}
                   stage={stage}
+                  currency={currency}
                   dealIds={dealIds}
                   entriesById={entriesById}
                   signalsFor={signalsFor}
@@ -906,6 +922,7 @@ export function Pipeline() {
             {activeDeal && (
               <DealCardOverlay
                 deal={activeDeal}
+                currency={currency}
                 signals={signalsFor(activeDeal.id)}
                 focusReason={focusReasonFor(activeDeal.id)}
                 ownerName={ownerNameFor(activeDeal.id)}

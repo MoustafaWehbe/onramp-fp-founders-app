@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Sparkles, TrendingUp } from "lucide-react";
+import { AlertTriangle, Pencil, Plus, Sparkles, TrendingUp, X } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { Badge } from "../../../components/ui/badge";
@@ -15,20 +15,20 @@ import { apiErrorMessage } from "../../../lib/api-error";
 import { useAppStore } from "../../../lib/app-store";
 import {
   COMMITMENT_STATUSES, COMMITMENT_STATUS_HINTS, COMMITMENT_STATUS_LABELS, ROUND_STATUSES, ROUND_STATUS_LABELS,
-  createCommitment, createFundraisingRound, listCommitments, listFundraisingRounds,
-  updateCommitment, updateFundraisingRound, type Commitment, type CommitmentInput,
+  createCommitment, createFundraisingRound, getRoundMetrics, listCommitments, listFundraisingRounds,
+  updateCommitment, updateFundraisingRound, type AtRiskCommitment, type Commitment, type CommitmentInput,
   type CommitmentStatus, type FundraisingRound, type RoundInput, type RoundStatus,
 } from "../../../lib/fundraising-api";
 import { Select } from "../../../components/ui/select";
 import { listPipelineEntries, type PipelineEntry } from "../../../lib/pipeline-api";
 import { fetchAllPages } from "../../../lib/pagination";
 import { invalidateFinancialData, qk } from "../../../lib/query-keys";
-import { cn, formatDate } from "../../../lib/utils";
+import { cn, formatDate, formatMoney } from "../../../lib/utils";
+import { FundingHistoryChart } from "./FundingHistoryChart";
 
-
+/** This page's amounts are frequently nullable (an unset target, an unset ticket size); formatMoney itself is not. */
 function money(amount: number | null, currency: string) {
-  if (amount === null) return "—";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
+  return amount === null ? "—" : formatMoney(amount, currency);
 }
 function dateForInput(value: string | null) { return value ? new Date(value).toISOString().slice(0, 10) : ""; }
 function roundTone(status: RoundStatus) {
@@ -51,6 +51,18 @@ export function Fundraising() {
   const selectedRound = useMemo(() => rounds.find((round) => round.id === preferredRoundId) ?? rounds.find((round) => round.status === "active") ?? rounds[0] ?? null, [preferredRoundId, rounds]);
   useEffect(() => { if (selectedRound && selectedRound.id !== preferredRoundId) setActiveRoundId(startupId, selectedRound.id); }, [preferredRoundId, selectedRound, setActiveRoundId, startupId]);
   const commitmentsQuery = useQuery({ queryKey: qk.commitments(startupId, selectedRound?.id), queryFn: () => listCommitments(startupId, selectedRound?.id), enabled: Boolean(selectedRound) });
+  // Target, bankable, weighted pipeline, days to close, at-risk — computed
+  // once server-side rather than re-derived here, so this page can never
+  // disagree with Dashboard about what "this round's numbers" are.
+  const metricsQuery = useQuery({
+    queryKey: qk.roundMetrics(startupId, selectedRound?.id),
+    queryFn: () => getRoundMetrics(startupId, selectedRound!.id),
+    enabled: Boolean(selectedRound),
+  });
+  // Clicking a status tile filters the table below in place — no navigation
+  // needed, the data is already on screen.
+  const [statusFilter, setStatusFilter] = useState<CommitmentStatus | null>(null);
+  useEffect(() => setStatusFilter(null), [selectedRound?.id]);
   // The same board entry Dashboard and Pipeline read, envelope and all — this
   // used to hold a bare array under a near-identical key, so the two copies
   // could disagree about the round after a commitment moved a deal.
@@ -129,7 +141,82 @@ export function Fundraising() {
         const countdown = closeCountdown(round.firstCloseDate ?? round.targetCloseDate);
         return <button key={round.id} type="button" onClick={() => setActiveRoundId(startupId, round.id)} className={cn("card-elevated relative overflow-hidden p-5 text-left transition-colors hover:border-primary/40", isSelected && "border-primary/60 bg-primary/[0.035] ring-1 ring-primary/20")}><div className="mb-4 flex items-center justify-between gap-3"><div><div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Round</div><div className="font-display text-lg font-semibold tracking-tight">{round.roundName}</div></div><Badge className={cn("border-0 capitalize", roundTone(round.status))}>{round.status}</Badge></div><div className="mb-1 flex items-end justify-between gap-3"><div className="font-display text-2xl font-semibold tabular-nums">{isSelected ? money(raised, round.currency) : money(round.targetAmount, round.currency)}</div><div className="text-xs text-muted-foreground">{isSelected ? `of ${money(round.targetAmount, round.currency)}` : "target"}</div></div>{isSelected ? <SegmentedProgress wiredPercent={totals.wiredPercent} hardPercent={totals.hardPercent} /> : <Progress value={0} className="h-2" />}<div className="mt-4 grid grid-cols-3 gap-3 border-t border-border pt-4 text-xs"><Stat label="Min ticket" value={money(round.minimumTicketSize, round.currency)} /><Stat label="Equity" value={round.equityOfferedPercentage === null ? "—" : `${round.equityOfferedPercentage}%`} /><Stat label={round.firstCloseDate ? "First close" : "Target close"} value={countdown ? countdown.text : "—"} /></div></button>;
       })}</div>
-      {selectedRound && <section className="space-y-5"><div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.10] via-card to-card p-6 sm:p-7"><div className="absolute -right-16 -top-20 h-52 w-52 rounded-full bg-primary/10 blur-3xl" /><div className="relative flex flex-wrap items-start justify-between gap-4"><div><Badge className={cn("border-0 capitalize", roundTone(selectedRound.status))}>{selectedRound.status}</Badge><h2 className="mt-3 font-display text-2xl font-semibold tracking-tight sm:text-3xl">{selectedRound.roundName}</h2><p className="mt-1 text-sm text-muted-foreground">{totals.percent}% secured toward {money(selectedRound.targetAmount, selectedRound.currency)}</p></div><div className="flex gap-2">{canUpdate && <Button size="sm" variant="outline" onClick={() => setRoundDialog(selectedRound)}><Pencil className="h-3.5 w-3.5" /> Edit</Button>}{canCreate && <Button size="sm" onClick={() => setCommitmentDialog("new")} disabled={pipelineQuery.isLoading || (pipelineQuery.data?.data.length ?? 0) === 0}><Plus className="h-4 w-4" /> Add commitment</Button>}</div></div><div className="relative mt-7"><div className="mb-2 flex items-end justify-between gap-4"><span className="font-display text-2xl font-semibold tabular-nums">{money(totals.bankable, selectedRound.currency)}</span><span className="text-sm text-muted-foreground">{money(totals.remaining, selectedRound.currency)} to go</span></div><SegmentedProgress wiredPercent={totals.wiredPercent} hardPercent={totals.hardPercent} /><div className="mt-2 flex gap-5 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-success" /> Wired</span><span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-primary/60" /> Signed</span></div></div></div><section aria-label="Round totals" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric title="Wired" value={money(totals.wired, selectedRound.currency)} detail="In the bank" /><Metric title="Hard-circled" value={money(totals.hardCircled, selectedRound.currency)} detail="Signed, not yet wired" /><Metric title="Soft-circled" value={money(totals.softCircled, selectedRound.currency)} detail="Verbal — not counted" muted /><Metric title={totals.oversubscribed ? "Oversubscribed" : "Gap to target"} value={money(totals.oversubscribed ? totals.bankable - (selectedRound.targetAmount ?? 0) : totals.remaining, selectedRound.currency)} detail={`${totals.percent}% of ${money(selectedRound.targetAmount, selectedRound.currency)}`} /></section><div className="card-elevated overflow-hidden"><div className="flex items-center justify-between border-b border-border p-5"><div><div className="font-display text-base font-semibold">Commitments</div><div className="mt-0.5 text-xs text-muted-foreground">Every verbal, signed, and funded commitment for this round.</div></div><div className="grid h-9 w-9 place-items-center rounded-lg bg-primary/15 text-primary"><TrendingUp className="h-4 w-4" /></div></div><CommitmentTable commitments={commitments} currency={selectedRound.currency} canUpdate={canUpdate} onEdit={setCommitmentDialog} /></div></section>}
+      {selectedRound && (
+        <section className="space-y-5">
+          <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.10] via-card to-card p-6 sm:p-7">
+            <div className="absolute -right-16 -top-20 h-52 w-52 rounded-full bg-primary/10 blur-3xl" />
+            <div className="relative flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <Badge className={cn("border-0 capitalize", roundTone(selectedRound.status))}>{selectedRound.status}</Badge>
+                <h2 className="mt-3 font-display text-2xl font-semibold tracking-tight sm:text-3xl">{selectedRound.roundName}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{totals.percent}% secured toward {money(selectedRound.targetAmount, selectedRound.currency)}</p>
+              </div>
+              <div className="flex gap-2">
+                {canUpdate && <Button size="sm" variant="outline" onClick={() => setRoundDialog(selectedRound)}><Pencil className="h-3.5 w-3.5" /> Edit</Button>}
+                {canCreate && <Button size="sm" onClick={() => setCommitmentDialog("new")} disabled={pipelineQuery.isLoading || (pipelineQuery.data?.data.length ?? 0) === 0}><Plus className="h-4 w-4" /> Add commitment</Button>}
+              </div>
+            </div>
+            <div className="relative mt-7">
+              <div className="mb-2 flex items-end justify-between gap-4">
+                <span className="font-display text-2xl font-semibold tabular-nums">{money(totals.bankable, selectedRound.currency)}</span>
+                <span className="text-sm text-muted-foreground">{money(totals.remaining, selectedRound.currency)} to go</span>
+              </div>
+              <SegmentedProgress wiredPercent={totals.wiredPercent} hardPercent={totals.hardPercent} />
+              <div className="mt-2 flex gap-5 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-success" /> Wired</span>
+                <span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-primary/60" /> Signed</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Each tile doubles as a filter for the commitments table below —
+              clicking "Wired" is a faster path to "show me the wired ones"
+              than scanning the whole table for the badge. */}
+          <section aria-label="Round totals" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <Metric title="Wired" value={money(totals.wired, selectedRound.currency)} detail="In the bank" active={statusFilter === "wired"} onClick={() => setStatusFilter((s) => (s === "wired" ? null : "wired"))} />
+            <Metric title="Hard-circled" value={money(totals.hardCircled, selectedRound.currency)} detail="Signed, not yet wired" active={statusFilter === "hard_circled"} onClick={() => setStatusFilter((s) => (s === "hard_circled" ? null : "hard_circled"))} />
+            <Metric title="Soft-circled" value={money(totals.softCircled, selectedRound.currency)} detail="Verbal — not counted" muted active={statusFilter === "soft_circled"} onClick={() => setStatusFilter((s) => (s === "soft_circled" ? null : "soft_circled"))} />
+            <Metric title={totals.oversubscribed ? "Oversubscribed" : "Gap to target"} value={money(totals.oversubscribed ? totals.bankable - (selectedRound.targetAmount ?? 0) : totals.remaining, selectedRound.currency)} detail={`${totals.percent}% of ${money(selectedRound.targetAmount, selectedRound.currency)}`} />
+          </section>
+
+          <FundingHistoryChart startupId={startupId} roundId={selectedRound.id} currency={selectedRound.currency} />
+
+          <RoundIntelligence
+            metricsQuery={metricsQuery}
+            currency={selectedRound.currency}
+            onOpenCommitment={(commitmentId) => {
+              const match = commitments.find((c) => c.id === commitmentId);
+              if (match) setCommitmentDialog(match);
+            }}
+          />
+
+          <div className="card-elevated overflow-hidden">
+            <div className="flex items-center justify-between border-b border-border p-5">
+              <div>
+                <div className="font-display text-base font-semibold">Commitments</div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  {statusFilter
+                    ? `Showing ${COMMITMENT_STATUS_LABELS[statusFilter].toLowerCase()} commitments only.`
+                    : "Every verbal, signed, and funded commitment for this round."}
+                </div>
+              </div>
+              {statusFilter ? (
+                <Button size="sm" variant="ghost" onClick={() => setStatusFilter(null)}>
+                  <X className="h-3.5 w-3.5" /> Clear filter
+                </Button>
+              ) : (
+                <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary/15 text-primary"><TrendingUp className="h-4 w-4" /></div>
+              )}
+            </div>
+            <CommitmentTable
+              commitments={statusFilter ? commitments.filter((c) => c.status === statusFilter) : commitments}
+              currency={selectedRound.currency}
+              canUpdate={canUpdate}
+              onEdit={setCommitmentDialog}
+            />
+          </div>
+        </section>
+      )}
     </>}
     <RoundDialog round={roundDialog} open={roundDialog !== null} busy={createRoundMutation.isPending || updateRoundMutation.isPending} onOpenChange={(open) => !open && setRoundDialog(null)} onSubmit={(input) => { if (roundDialog === "new") createRoundMutation.mutate(input); else if (roundDialog) updateRoundMutation.mutate({ id: roundDialog.id, input }); }} />
     <CommitmentDialog commitment={commitmentDialog} open={commitmentDialog !== null} pipeline={pipelineQuery.data?.data ?? []} round={selectedRound} busy={createCommitmentMutation.isPending || updateCommitmentMutation.isPending} onOpenChange={(open) => !open && setCommitmentDialog(null)} onCreate={createCommitmentMutation.mutate} onUpdate={(input) => commitmentDialog && commitmentDialog !== "new" && updateCommitmentMutation.mutate({ id: commitmentDialog.id, input })} />
@@ -171,6 +258,121 @@ function SegmentedProgress({ wiredPercent, hardPercent }: { wiredPercent: number
   );
 }
 
+/** "12 days overdue" / "in 5 days" / "today" for a commitment's expected close date. */
+function overdueLabel(daysOverdue: number): string {
+  if (daysOverdue === 0) return "due today";
+  return `${daysOverdue}d overdue`;
+}
+
+type RoundIntelligenceProps = {
+  metricsQuery: {
+    data: { weightedPipeline: number; daysToClose: number | null; atRiskCommitments: AtRiskCommitment[] } | undefined;
+    isPending: boolean;
+    isError: boolean;
+    isFetching: boolean;
+    error: unknown;
+    refetch: () => unknown;
+  };
+  currency: string;
+  onOpenCommitment: (commitmentId: string) => void;
+};
+
+/**
+ * Weighted pipeline, days to close, and at-risk commitments — the forward-
+ * looking half of "how is this round actually going", as opposed to the
+ * totals above which only describe money already recorded. Fails
+ * independently of the rest of the page: a metrics-endpoint error here does
+ * not take down the round totals or the commitments table, which come from
+ * a different request.
+ */
+function RoundIntelligence({ metricsQuery, currency, onOpenCommitment }: RoundIntelligenceProps) {
+  if (metricsQuery.isPending) {
+    return <LoadingCard label="Crunching round metrics…" />;
+  }
+
+  if (metricsQuery.isError) {
+    return (
+      <ErrorCard
+        message={apiErrorMessage(metricsQuery.error, "Could not load round metrics.")}
+        onRetry={() => void metricsQuery.refetch()}
+      />
+    );
+  }
+
+  const metrics = metricsQuery.data;
+  if (!metrics) return null;
+
+  return (
+    <section aria-label="Round intelligence" className="space-y-3">
+      <div className="flex items-center gap-2">
+        <h3 className="font-display text-sm font-semibold text-muted-foreground">Forecast</h3>
+        {metricsQuery.isFetching && (
+          <span className="text-[11px] text-muted-foreground">Updating…</span>
+        )}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Metric
+          title="Weighted pipeline"
+          value={money(metrics.weightedPipeline, currency)}
+          detail="Live deals × probability, excluding what's already committed"
+        />
+        <Metric
+          title="Days to close"
+          value={metrics.daysToClose === null ? "—" : `${metrics.daysToClose}d`}
+          detail={
+            metrics.daysToClose === null
+              ? "No close date set for this round"
+              : metrics.daysToClose < 0
+                ? "Past the target close date"
+                : "Until the target close date"
+          }
+          muted={metrics.daysToClose === null}
+        />
+      </div>
+
+      <div className="card-elevated overflow-hidden">
+        <div className="flex items-center justify-between border-b border-border p-4">
+          <div>
+            <div className="text-sm font-semibold">At risk</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              Commitments whose expected close date has passed without reaching wired.
+            </div>
+          </div>
+          <div className={cn("grid h-8 w-8 place-items-center rounded-lg", metrics.atRiskCommitments.length > 0 ? "bg-warning/15 text-warning" : "bg-muted text-muted-foreground")}>
+            <AlertTriangle className="h-4 w-4" />
+          </div>
+        </div>
+        {metrics.atRiskCommitments.length === 0 ? (
+          <div className="px-4 py-8 text-center text-sm text-muted-foreground">Nothing at risk right now.</div>
+        ) : (
+          <ul className="divide-y divide-border">
+            {metrics.atRiskCommitments.map((item) => (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  onClick={() => onOpenCommitment(item.id)}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-hover/50"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{item.investorName}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {COMMITMENT_STATUS_LABELS[item.status]} · {overdueLabel(item.daysOverdue)}
+                    </div>
+                  </div>
+                  <div className="shrink-0 font-mono text-sm font-semibold tabular-nums">
+                    {item.amount === null ? "—" : money(item.amount, currency)}
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
 /** "in 3 weeks" / "2 days ago" for a close date, or null when unset. */
 function closeCountdown(iso: string | null): { text: string; overdue: boolean } | null {
   if (!iso) return null;
@@ -183,17 +385,45 @@ function closeCountdown(iso: string | null): { text: string; overdue: boolean } 
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) { return <div className="grid gap-2"><Label>{label}</Label>{children}</div>; }
-/** `muted` dims the tile — used for soft-circled, which is not raised money. */
-function Metric({ title, value, detail, muted }: { title: string; value: string; detail: string; muted?: boolean }) {
+/**
+ * `muted` dims the tile — used for soft-circled, which is not raised money.
+ * `onClick`, when given, turns the tile into a filter toggle for whatever
+ * list sits below it; `active` reflects whether that filter is currently on.
+ */
+function Metric({
+  title,
+  value,
+  detail,
+  muted,
+  active,
+  onClick,
+}: {
+  title: string;
+  value: string;
+  detail: string;
+  muted?: boolean;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  const Wrapper = onClick ? "button" : "div";
   return (
-    <div className={cn("card-elevated group relative overflow-hidden p-5 transition-colors hover:border-primary/30", muted && "border-dashed bg-transparent")}>
+    <Wrapper
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      aria-pressed={onClick ? active : undefined}
+      className={cn(
+        "card-elevated group relative w-full overflow-hidden p-5 text-left transition-colors hover:border-primary/30",
+        muted && "border-dashed bg-transparent",
+        active && "border-primary/60 ring-1 ring-primary/25",
+      )}
+    >
       <div className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
         <Sparkles className="h-3.5 w-3.5" />
       </div>
       <div className="pr-10 text-sm font-medium text-muted-foreground">{title}</div>
       <div className={cn("mt-2 font-display text-2xl font-semibold tabular-nums", muted && "text-muted-foreground")}>{value}</div>
       <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
-    </div>
+    </Wrapper>
   );
 }
 function Stat({ label, value }: { label: string; value: string }) { return <div><div className="text-muted-foreground">{label}</div><div className="mt-0.5 font-semibold tabular-nums">{value}</div></div>; }

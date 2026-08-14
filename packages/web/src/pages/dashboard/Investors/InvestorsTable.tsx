@@ -1,11 +1,13 @@
 import { Checkbox } from "../../../components/ui/checkbox";
-import { cn, formatCompactUsd, getInitials } from "../../../lib/utils";
+import { cn, formatCompactMoney, getInitials } from "../../../lib/utils";
 import { InvestorActions } from "./InvestorActions";
 import type { InvestorRow } from "./investor-types";
 import { StageBadge } from "./StageBadge";
 
 type InvestorsTableProps = {
   investors: InvestorRow[];
+  /** roundId -> currency, so each contact's amount shows in its own round's currency. */
+  currencyByRoundId: Map<string, string>;
   selectedIds: Set<string>;
   onToggleOne: (id: string) => void;
   onToggleAll: (checked: boolean) => void;
@@ -18,6 +20,7 @@ type InvestorsTableProps = {
 
 export function InvestorsTable({
   investors,
+  currencyByRoundId,
   selectedIds,
   onToggleOne,
   onToggleAll,
@@ -97,7 +100,12 @@ export function InvestorsTable({
                   <StageBadge stageId={investor.pipelineStageId} />
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums text-foreground">
-                  {investor.amount != null ? formatCompactUsd(investor.amount) : "—"}
+                  {investor.amount != null
+                    ? formatCompactMoney(
+                        investor.amount,
+                        (investor.roundId && currencyByRoundId.get(investor.roundId)) || "USD",
+                      )
+                    : "—"}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
                   {investor.lastContact}

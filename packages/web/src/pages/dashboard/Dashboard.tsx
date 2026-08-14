@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle, ArrowRight, CalendarClock, Check, CheckCircle2, Crown,
@@ -7,8 +7,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  Area, AreaChart, CartesianGrid, Cell, Pie, PieChart,
-  ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Cell, Pie, PieChart,
+  ResponsiveContainer, Tooltip,
 } from "recharts";
 import { Button } from "../../components/ui/button";
 import { Progress } from "../../components/ui/progress";
@@ -26,52 +26,17 @@ import { getPipelineFocus, listPipelineEntries, type PipelineEntry, type Pipelin
 import { invalidateTaskData, qk } from "../../lib/query-keys";
 import { listMembers } from "../../lib/team-api";
 import { setTaskStatus, type Task } from "../../lib/task-api";
-import { cn, formatCompactUsd, getInitials } from "../../lib/utils";
+import { cn, formatCompactMoney, formatMoney, getInitials } from "../../lib/utils";
+import { FundingHistoryChart } from "./Fundraising/FundingHistoryChart";
 import { NoWorkspaceHome } from "./NoWorkspaceHome";
 import { FOCUS_REASON_LABELS, FOCUS_REASON_TONES } from "./Pipeline/deal-signals";
 
 const DAY_MS = 86_400_000;
-const CHART_MONTHS = 9;
 const STAGE_COLORS = ["#8B949E", "#3B82F6", "#F59E0B", "#A855F7", "#EC4899", "#10B981", "#EF4444"];
 
 function greeting() {
   const hour = new Date().getHours();
   return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-}
-
-function money(amount: number, currency: string) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
-}
-
-function compactMoney(amount: number, currency: string) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency", currency, notation: "compact", maximumFractionDigits: 1,
-  }).format(amount);
-}
-
-function fundingSeries(commitments: Array<{ amount: number | null; status: Parameters<typeof isBankable>[0]; createdAt: string }>) {
-  const now = new Date();
-  const months = Array.from({ length: CHART_MONTHS }, (_, index) => {
-    const date = new Date(now.getFullYear(), now.getMonth() - (CHART_MONTHS - 1 - index), 1);
-    return { date, key: `${date.getFullYear()}-${date.getMonth()}`, month: date.toLocaleDateString("en-US", { month: "short" }), value: 0 };
-  });
-  const firstMonth = months[0].date.getTime();
-
-  for (const commitment of commitments) {
-    if (!isBankable(commitment.status)) continue;
-    const created = new Date(commitment.createdAt);
-    const createdAt = Number.isNaN(created.getTime()) ? now : created;
-    const amount = commitment.amount ?? 0;
-    if (createdAt.getTime() < firstMonth) {
-      for (const month of months) month.value += amount;
-      continue;
-    }
-    const key = `${createdAt.getFullYear()}-${createdAt.getMonth()}`;
-    const index = months.findIndex((month) => month.key === key);
-    if (index >= 0) for (let cursor = index; cursor < months.length; cursor += 1) months[cursor].value += amount;
-  }
-
-  return months.map(({ month, value }) => ({ month, value }));
 }
 
 function taskDue(task: Task) {
@@ -96,6 +61,7 @@ export function Dashboard() {
 
 function TodayWorkspace({ startupId }: { startupId: string }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { can } = usePermissions();
   const canUpdatePipeline = can("pipeline", "update");
   const queryClient = useQueryClient();
@@ -144,9 +110,9 @@ function TodayWorkspace({ startupId }: { startupId: string }) {
   const bankable = (commitmentsQuery.data?.data ?? []).filter((item) => isBankable(item.status)).reduce((sum, item) => sum + (item.amount ?? 0), 0);
   const target = activeRound?.targetAmount ?? 0;
   const progress = target ? Math.min(100, Math.round((bankable / target) * 100)) : 0;
-  const raisedSeries = useMemo(() => fundingSeries(commitmentsQuery.data?.data ?? []), [commitmentsQuery.data]);
   const stageData = useMemo(() => STAGES.map((stage, index) => ({
     name: stage.label,
+    stageId: stage.id,
     value: entries.filter((entry) => entry.stage === stage.id).length,
     color: STAGE_COLORS[index],
   })).filter((stage) => stage.value > 0), [entries]);
@@ -186,27 +152,15 @@ function TodayWorkspace({ startupId }: { startupId: string }) {
       </section>
 
       <section aria-label="Fundraising charts" className="grid gap-5 lg:grid-cols-3">
-        <div className="card-elevated p-4 sm:p-5 lg:col-span-2">
-          <div className="mb-4 flex items-start justify-between gap-3"><div><h2 className="font-display text-base font-semibold tracking-tight">Funding progress</h2><p className="text-xs text-muted-foreground sm:text-sm">Signed or wired commitments, cumulative over 9 months</p></div><span className="rounded-full border border-success/20 bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">{compactMoney(bankable, activeRound.currency)}</span></div>
-          <div className="h-[240px]" aria-label="Funding progress chart">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={raisedSeries} margin={{ left: 4, right: 8, top: 8 }}>
-                <defs><linearGradient id="dashboard-funding-gradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#F97316" stopOpacity={0.42} /><stop offset="100%" stopColor="#F97316" stopOpacity={0} /></linearGradient></defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#30363D" vertical={false} />
-                <XAxis dataKey="month" stroke="#8B949E" fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis width={52} stroke="#8B949E" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(value) => compactMoney(Number(value), activeRound.currency)} />
-                <Tooltip formatter={(value) => [money(Number(value), activeRound.currency), "Raised"]} contentStyle={{ background: "#1C2128", border: "1px solid #30363D", borderRadius: 10, fontSize: 12 }} labelStyle={{ color: "#8B949E" }} />
-                <Area type="monotone" dataKey="value" stroke="#F97316" strokeWidth={2.5} fill="url(#dashboard-funding-gradient)" activeDot={{ r: 5, strokeWidth: 0 }} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+        <div className="lg:col-span-2">
+          <FundingHistoryChart startupId={startupId} roundId={activeRound.id} currency={activeRound.currency} />
         </div>
 
         <div className="card-elevated p-4 sm:p-5">
-          <div className="mb-2"><h2 className="font-display text-base font-semibold tracking-tight">Pipeline by stage</h2><p className="text-xs text-muted-foreground sm:text-sm">Live investors in this round</p></div>
+          <div className="mb-2"><h2 className="font-display text-base font-semibold tracking-tight">Pipeline by stage</h2><p className="text-xs text-muted-foreground sm:text-sm">Live investors in this round — click a stage to see who's in it</p></div>
           {stageData.length === 0 ? <EmptyState title="No investors yet" detail="Add investors to see your pipeline mix." compact /> : <>
-            <div className="relative h-[176px]" aria-label="Pipeline by stage chart"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={stageData} dataKey="value" innerRadius={48} outerRadius={74} paddingAngle={2}>{stageData.map((stage) => <Cell key={stage.name} fill={stage.color} stroke="#0D1117" strokeWidth={2} />)}</Pie><Tooltip contentStyle={{ background: "#1C2128", border: "1px solid #30363D", borderRadius: 10, fontSize: 12 }} /></PieChart></ResponsiveContainer><div className="pointer-events-none absolute inset-0 grid place-items-center"><div className="text-center"><div className="font-display text-2xl font-semibold tabular-nums">{entries.length}</div><div className="text-[10px] uppercase tracking-wider text-muted-foreground">Investors</div></div></div></div>
-            <div className="mt-2 grid gap-1.5">{stageData.map((stage) => <div key={stage.name} className="flex items-center gap-2 text-xs"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: stage.color }} /><span className="flex-1 text-muted-foreground">{stage.name}</span><span className="font-medium tabular-nums">{stage.value}</span></div>)}</div>
+            <div className="relative h-[176px]" aria-label="Pipeline by stage chart"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={stageData} dataKey="value" innerRadius={48} outerRadius={74} paddingAngle={2} onClick={(_datum, index) => navigate(`/investors?tab=engaged&stage=${stageData[index].stageId}`)} cursor="pointer">{stageData.map((stage) => <Cell key={stage.name} fill={stage.color} stroke="#0D1117" strokeWidth={2} />)}</Pie><Tooltip contentStyle={{ background: "#1C2128", border: "1px solid #30363D", borderRadius: 10, fontSize: 12 }} /></PieChart></ResponsiveContainer><div className="pointer-events-none absolute inset-0 grid place-items-center"><div className="text-center"><div className="font-display text-2xl font-semibold tabular-nums">{entries.length}</div><div className="text-[10px] uppercase tracking-wider text-muted-foreground">Investors</div></div></div></div>
+            <div className="mt-2 grid gap-1.5">{stageData.map((stage) => <button key={stage.name} type="button" onClick={() => navigate(`/investors?tab=engaged&stage=${stage.stageId}`)} className="flex items-center gap-2 rounded-md px-1 py-0.5 text-xs transition-colors hover:bg-surface-hover"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: stage.color }} /><span className="flex-1 text-left text-muted-foreground">{stage.name}</span><span className="font-medium tabular-nums">{stage.value}</span></button>)}</div>
           </>}
         </div>
       </section>
@@ -223,7 +177,7 @@ function TodayWorkspace({ startupId }: { startupId: string }) {
 
         <section className="card-elevated overflow-hidden">
           <SectionHeader icon={AlertTriangle} title="Needs attention" description="The highest-impact deals to chase next." action="Open Focus" to="/pipeline?view=focus" />
-          {focusItems.length === 0 ? <EmptyState title="Pipeline is healthy" detail="Every live deal has a current next step." /> : <ul className="divide-y divide-border/70">{focusItems.slice(0, 6).map((deal) => <FocusRow key={deal.id} deal={deal} />)}</ul>}
+          {focusItems.length === 0 ? <EmptyState title="Pipeline is healthy" detail="Every live deal has a current next step." /> : <ul className="divide-y divide-border/70">{focusItems.slice(0, 6).map((deal) => <FocusRow key={deal.id} deal={deal} currency={activeRound.currency} />)}</ul>}
         </section>
       </div>
 
@@ -232,7 +186,7 @@ function TodayWorkspace({ startupId }: { startupId: string }) {
           <SectionHeader icon={UserRoundCheck} title="Pipeline hygiene" description="Ownership gaps that make follow-up easy to miss." action="Assign owners" to="/pipeline" />
           {unassigned.length === 0 ? <EmptyState title="Every live deal has an owner" detail="Your team’s responsibility is clear." compact /> : <div className="grid gap-2 p-4 sm:grid-cols-2">{unassigned.slice(0, 6).map((deal) => <InvestorMiniCard key={deal.id} deal={deal} />)}</div>}
         </section>
-        <aside className="card-elevated h-fit p-5"><div className="flex items-center justify-between gap-3"><div><p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Active round</p><h2 className="mt-1 font-display text-lg font-semibold">{activeRound.roundName}</h2></div><div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/12 text-primary"><Wallet className="h-5 w-5" /></div></div><div className="mt-5 flex items-end justify-between gap-3"><span className="font-display text-2xl font-semibold tabular-nums">{money(bankable, activeRound.currency)}</span><span className="text-xs text-muted-foreground">{progress}%</span></div><Progress value={progress} className="mt-2 h-2" /><p className="mt-2 text-xs text-muted-foreground">Signed or wired toward {money(target, activeRound.currency)}</p><Button asChild variant="outline" size="sm" className="mt-5 w-full"><Link to="/fundraising">View round <ArrowRight className="h-4 w-4" /></Link></Button></aside>
+        <aside className="card-elevated h-fit p-5"><div className="flex items-center justify-between gap-3"><div><p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Active round</p><h2 className="mt-1 font-display text-lg font-semibold">{activeRound.roundName}</h2></div><div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/12 text-primary"><Wallet className="h-5 w-5" /></div></div><div className="mt-5 flex items-end justify-between gap-3"><span className="font-display text-2xl font-semibold tabular-nums">{formatMoney(bankable, activeRound.currency)}</span><span className="text-xs text-muted-foreground">{progress}%</span></div><Progress value={progress} className="mt-2 h-2" /><p className="mt-2 text-xs text-muted-foreground">Signed or wired toward {formatMoney(target, activeRound.currency)}</p><Button asChild variant="outline" size="sm" className="mt-5 w-full"><Link to="/fundraising">View round <ArrowRight className="h-4 w-4" /></Link></Button></aside>
       </div>
     </>}
   </div>;
@@ -250,8 +204,8 @@ function EmptyState({ title, detail, compact }: { title: string; detail: string;
   return <div className={cn("flex flex-col items-center px-5 text-center", compact ? "py-8" : "py-12")}><div className="grid h-10 w-10 place-items-center rounded-xl bg-success/12 text-success"><CheckCircle2 className="h-5 w-5" /></div><p className="mt-3 text-sm font-semibold">{title}</p><p className="mt-1 max-w-sm text-xs text-muted-foreground">{detail}</p></div>;
 }
 
-function FocusRow({ deal }: { deal: PipelineFocusEntry }) {
-  return <li><Link to="/pipeline?view=focus" className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-surface-hover/60 sm:px-5"><div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/12 text-[10px] font-semibold text-primary">{getInitials(deal.investor.fullName)}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><p className="truncate text-sm font-medium">{deal.investor.fullName}</p>{deal.isLead && <Crown className="h-3.5 w-3.5 shrink-0 text-warning" />}</div><p className="truncate text-xs text-muted-foreground">{deal.investor.ventureFirm ?? "Independent"}{deal.expectedAmount != null ? ` · ${formatCompactUsd(deal.expectedAmount)}` : ""}</p></div><span className={cn("shrink-0 rounded-md px-2 py-1 text-[11px]", FOCUS_REASON_TONES[deal.reason])}>{FOCUS_REASON_LABELS[deal.reason]}</span></Link></li>;
+function FocusRow({ deal, currency }: { deal: PipelineFocusEntry; currency: string }) {
+  return <li><Link to="/pipeline?view=focus" className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-surface-hover/60 sm:px-5"><div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/12 text-[10px] font-semibold text-primary">{getInitials(deal.investor.fullName)}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><p className="truncate text-sm font-medium">{deal.investor.fullName}</p>{deal.isLead && <Crown className="h-3.5 w-3.5 shrink-0 text-warning" />}</div><p className="truncate text-xs text-muted-foreground">{deal.investor.ventureFirm ?? "Independent"}{deal.expectedAmount != null ? ` · ${formatCompactMoney(deal.expectedAmount, currency)}` : ""}</p></div><span className={cn("shrink-0 rounded-md px-2 py-1 text-[11px]", FOCUS_REASON_TONES[deal.reason])}>{FOCUS_REASON_LABELS[deal.reason]}</span></Link></li>;
 }
 
 function InvestorMiniCard({ deal }: { deal: PipelineEntry }) {

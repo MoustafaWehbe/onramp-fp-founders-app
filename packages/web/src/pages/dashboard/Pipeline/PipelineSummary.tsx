@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, Layers, TrendingUp, type LucideIcon } from "lucide-react";
-import { cn, formatCompactUsd } from "../../../lib/utils";
+import { cn, formatCompactMoney } from "../../../lib/utils";
 
 export type PipelineTotals = {
   /** Every deal that has not been passed on. */
@@ -22,6 +22,8 @@ type Tile = {
 
 type PipelineSummaryProps = {
   totals: PipelineTotals;
+  /** The round's own currency — a deal's amount is never assumed to be USD. */
+  currency: string;
   /** Set when the "needs attention" filter is on, so the tile reads as pressed. */
   attentionActive: boolean;
   onToggleAttention: () => void;
@@ -29,6 +31,7 @@ type PipelineSummaryProps = {
 
 export function PipelineSummary({
   totals,
+  currency,
   attentionActive,
   onToggleAttention,
 }: PipelineSummaryProps) {
@@ -36,7 +39,7 @@ export function PipelineSummary({
     {
       key: "live",
       label: "Live pipeline",
-      value: formatCompactUsd(totals.liveValue),
+      value: formatCompactMoney(totals.liveValue, currency),
       hint: `${totals.liveCount} open deal${totals.liveCount === 1 ? "" : "s"}`,
       icon: Layers,
       tone: "bg-primary/15 text-primary",
@@ -44,7 +47,7 @@ export function PipelineSummary({
     {
       key: "weighted",
       label: "Weighted forecast",
-      value: formatCompactUsd(totals.weightedValue),
+      value: formatCompactMoney(totals.weightedValue, currency),
       hint: "Expected amount × probability",
       icon: TrendingUp,
       tone: "bg-info/15 text-info",
@@ -52,7 +55,7 @@ export function PipelineSummary({
     {
       key: "committed",
       label: "Committed",
-      value: formatCompactUsd(totals.committedValue),
+      value: formatCompactMoney(totals.committedValue, currency),
       hint: `${totals.committedCount} investor${totals.committedCount === 1 ? "" : "s"}`,
       icon: CheckCircle2,
       tone: "bg-success/15 text-success",

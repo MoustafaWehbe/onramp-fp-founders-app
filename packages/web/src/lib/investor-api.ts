@@ -46,6 +46,8 @@ export type InvestorContact = {
 export type InvestorListItem = InvestorContact & {
   pipeline: {
     id: string;
+    /** Which round this entry belongs to — expectedAmount is in that round's currency, not necessarily USD. */
+    roundId: string;
     stage: PipelineStageId;
     expectedAmount: number | null;
     probabilityPercentage: number | null;

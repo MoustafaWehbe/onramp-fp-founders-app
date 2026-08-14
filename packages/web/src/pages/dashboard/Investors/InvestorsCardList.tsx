@@ -1,11 +1,13 @@
 import { Checkbox } from "../../../components/ui/checkbox";
-import { cn, formatCompactUsd, getInitials } from "../../../lib/utils";
+import { cn, formatCompactMoney, getInitials } from "../../../lib/utils";
 import { InvestorActions } from "./InvestorActions";
 import type { InvestorRow } from "./investor-types";
 import { StageBadge } from "./StageBadge";
 
 type InvestorsCardListProps = {
   investors: InvestorRow[];
+  /** roundId -> currency, so each contact's amount shows in its own round's currency. */
+  currencyByRoundId: Map<string, string>;
   selectedIds: Set<string>;
   onToggleOne: (id: string) => void;
   onMoveToPipeline: (investor: InvestorRow) => void;
@@ -17,6 +19,7 @@ type InvestorsCardListProps = {
 
 export function InvestorsCardList({
   investors,
+  currencyByRoundId,
   selectedIds,
   onToggleOne,
   onMoveToPipeline,
@@ -55,7 +58,12 @@ export function InvestorsCardList({
                 </div>
                 <div className="shrink-0 text-right">
                   <div className="text-sm font-medium tabular-nums text-foreground">
-                    {investor.amount != null ? formatCompactUsd(investor.amount) : "—"}
+                    {investor.amount != null
+                      ? formatCompactMoney(
+                          investor.amount,
+                          (investor.roundId && currencyByRoundId.get(investor.roundId)) || "USD",
+                        )
+                      : "—"}
                   </div>
                   <div className="text-[11px] text-muted-foreground">{investor.lastContact}</div>
                 </div>

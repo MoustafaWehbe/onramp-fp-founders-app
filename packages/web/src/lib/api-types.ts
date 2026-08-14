@@ -1006,6 +1006,49 @@ export interface paths {
         patch: operations["updateFundraisingRound"];
         trace?: never;
     };
+    "/startups/{startupId}/fundraising-rounds/{roundId}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        /** Round health metrics — target, raised, weighted pipeline, days to close, at-risk commitments */
+        get: operations["getRoundMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/fundraising-rounds/{roundId}/funding-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Every real commitment status transition in this round, oldest first
+         * @description What a funding-over-time chart should be built from. Does not include commitments with no status change yet beyond their initial recording — every commitment has at least that one event.
+         */
+        get: operations["getFundingHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/startups/{startupId}/fundraising-rounds/{roundId}/commitments": {
         parameters: {
             query?: never;
@@ -1809,6 +1852,11 @@ export interface components {
             pipeline?: {
                 /** Format: uuid */
                 id?: string;
+                /**
+                 * Format: uuid
+                 * @description Which round this entry belongs to — expectedAmount is in that round's currency, not necessarily USD. Look up GET .../fundraising-rounds for the currency.
+                 */
+                roundId?: string;
                 stage?: components["schemas"]["PipelineStage"];
                 /** Format: double */
                 expectedAmount?: number | null;
@@ -2308,6 +2356,78 @@ export interface components {
             status?: components["schemas"]["CommitmentStatus"];
             /** Format: date-time */
             expectedCloseDate?: string;
+        };
+        /** @description One real transition a commitment made from one confidence status to another. The first event on any commitment has fromStatus null — that is the commitment being recorded, not a change. Ordered oldest first; this is what a funding-over-time chart should be built from, since commitments.createdAt only says when the row was typed in, not when the money actually became soft-circled, signed, or wired. */
+        CommitmentStatusEvent: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            commitmentId?: string;
+            investorName?: string;
+            fromStatus?: components["schemas"]["CommitmentStatus"] | null;
+            toStatus?: components["schemas"]["CommitmentStatus"];
+            /**
+             * Format: double
+             * @description The commitment's current amount — not necessarily what it was at this specific transition, since amount can be edited independently of status.
+             */
+            amount?: number | null;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        /** @description A commitment whose expected close date has passed without it reaching wired or withdrawn. */
+        AtRiskCommitment: {
+            /** Format: uuid */
+            id?: string;
+            investorName?: string;
+            /** Format: double */
+            amount?: number | null;
+            status?: components["schemas"]["CommitmentStatus"];
+            /** Format: date-time */
+            expectedCloseDate?: string;
+            /** @example 12 */
+            daysOverdue?: number;
+        };
+        /** @description The numbers a round's health is judged by, computed server-side so Dashboard, Fundraising and anywhere else showing "this round's numbers" read the same values. Every commitment amount is in the round's own currency, never assumed to be USD. */
+        RoundMetrics: {
+            /** @example USD */
+            currency?: string;
+            /** Format: double */
+            targetAmount?: number;
+            /**
+             * Format: double
+             * @description Sum of commitments with status "wired" — money actually in the bank.
+             */
+            wired?: number;
+            /**
+             * Format: double
+             * @description Sum of commitments with status "hard_circled" — signed, not yet wired.
+             */
+            hardCircled?: number;
+            /**
+             * Format: double
+             * @description Sum of commitments with status "soft_circled" — verbal only, never counted toward the target.
+             */
+            softCircled?: number;
+            /**
+             * Format: double
+             * @description wired + hardCircled — the money a founder may legitimately call raised.
+             */
+            bankableRaised?: number;
+            /**
+             * Format: double
+             * @description max(0, targetAmount - bankableRaised).
+             */
+            remainingGap?: number;
+            /** @description round(bankableRaised / targetAmount * 100), capped at 100; 0 when targetAmount is 0. */
+            percentToTarget?: number;
+            /**
+             * Format: double
+             * @description Sum of expectedAmount × probabilityPercentage / 100 across this round's live pipeline deals — everything except stage "committed" (already counted exactly via its commitment, not an estimate) and "passed" (contributes nothing).
+             */
+            weightedPipeline?: number;
+            /** @description Days until targetCloseDate (falling back to firstCloseDate when unset); negative once that date has passed. Null when the round has neither date set. */
+            daysToClose?: number | null;
+            atRiskCommitments?: components["schemas"]["AtRiskCommitment"][];
         };
         /**
          * @example pitch_deck
@@ -5973,6 +6093,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    getRoundMetrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Round metrics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["RoundMetrics"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Fundraising round not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getFundingHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Funding history events */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["CommitmentStatusEvent"][];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Fundraising round not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

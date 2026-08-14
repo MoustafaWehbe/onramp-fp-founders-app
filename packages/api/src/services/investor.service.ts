@@ -29,6 +29,9 @@ const CONTACT_SELECT = {
 
 const PIPELINE_SELECT = {
   id: true,
+  // A contact's expectedAmount is only meaningful in the currency of the
+  // round it belongs to — the client needs roundId to look that up.
+  roundId: true,
   stage: true,
   expectedAmount: true,
   probabilityPercentage: true,
@@ -36,6 +39,7 @@ const PIPELINE_SELECT = {
 
 type PipelineRow = {
   id: string;
+  roundId: string;
   stage: string;
   expectedAmount: Prisma.Decimal | null;
   probabilityPercentage: number | null;
@@ -69,6 +73,7 @@ function serializePipeline(entry: PipelineRow | undefined) {
   if (!entry) return null;
   return {
     id: entry.id,
+    roundId: entry.roundId,
     stage: entry.stage,
     expectedAmount: entry.expectedAmount === null ? null : Number(entry.expectedAmount),
     probabilityPercentage: entry.probabilityPercentage,

@@ -57,7 +57,7 @@ import {
   type FundraisingRound,
 } from "../../../lib/fundraising-api";
 import { PRIORITIES, PRIORITY_LABELS, type Priority } from "../../../lib/task-api";
-import { cn, formatCompactUsd, getInitials } from "../../../lib/utils";
+import { cn, formatCompactMoney, getInitials } from "../../../lib/utils";
 import { InteractionTimeline } from "../Investors/InteractionTimeline";
 import { LogInteractionDialog, type LogFormValues } from "../Investors/LogInteractionDialog";
 import { NoteByline } from "../Investors/NoteByline";
@@ -352,6 +352,10 @@ export function DealDetailDialog({
 
   const currentIndex = deal ? PROGRESSION.findIndex((stage) => stage.id === deal.stage) : -1;
   const investor = deal?.investor;
+  // Looked up from the deal's own round rather than assumed from whichever
+  // round the board happens to be viewing — a deal only shows the wrong
+  // currency if it were guessed instead of resolved this way.
+  const currency = rounds.find((round) => round.id === deal?.roundId)?.currency ?? "USD";
 
   const facts = deal
     ? [
@@ -624,7 +628,7 @@ export function DealDetailDialog({
               <section aria-label="Advanced deal settings" className="grid gap-3 rounded-xl border border-border/70 bg-surface/30 p-4 sm:grid-cols-3">
                 <div className="space-y-1.5"><Label htmlFor="deal-probability">Probability %</Label><Input id="deal-probability" type="number" min={0} max={100} step={5} disabled={!canUpdate} value={probability} onChange={(event) => setProbability(event.target.value)} onBlur={commitProbability} /></div>
                 <div className="space-y-1.5"><Label htmlFor="deal-fit">Investor fit</Label><Input id="deal-fit" type="number" min={0} max={100} step={5} placeholder="0–100" disabled={!canUpdate} value={investorFitScore} onChange={(event) => setInvestorFitScore(event.target.value)} onBlur={commitInvestorFitScore} /></div>
-                <div className="space-y-1.5"><span className="text-sm font-medium">Weighted value</span><div className="flex h-9 items-center rounded-md border border-border/70 bg-card px-3 font-mono text-sm tabular-nums text-muted-foreground">{weighted == null ? "—" : formatCompactUsd(Math.round(weighted))}</div></div>
+                <div className="space-y-1.5"><span className="text-sm font-medium">Weighted value</span><div className="flex h-9 items-center rounded-md border border-border/70 bg-card px-3 font-mono text-sm tabular-nums text-muted-foreground">{weighted == null ? "—" : formatCompactMoney(Math.round(weighted), currency)}</div></div>
               </section>
               {/* A deal in a round that later closes would otherwise be
                   stranded — the only way out was delete-and-recreate, which

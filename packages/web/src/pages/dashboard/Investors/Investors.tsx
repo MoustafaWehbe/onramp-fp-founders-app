@@ -26,6 +26,8 @@ import {
   type Engagement,
   type InvestorInput,
 } from "../../../lib/investor-api";
+import { listFundraisingRounds } from "../../../lib/fundraising-api";
+import { STAGES, type PipelineStageId } from "../../../lib/mock-data";
 import { createPipelineEntry } from "../../../lib/pipeline-api";
 import { invalidateDealData, qk } from "../../../lib/query-keys";
 import { cn } from "../../../lib/utils";
@@ -39,6 +41,23 @@ import { InvestorsToolbar, type InvestorFilters } from "./InvestorsToolbar";
 
 const PAGE_SIZE = 10;
 const emptyFilters: InvestorFilters = { stage: null, investorType: null };
+
+const VALID_STAGE_IDS = new Set<string>(STAGES.map((stage) => stage.id));
+
+/**
+ * A chart segment elsewhere in the app (a pipeline stage on the Dashboard
+ * pie, a funnel bar) links here as `?tab=engaged&stage=X` to open already
+ * filtered to what was clicked — read once on mount, same as Pipeline.tsx
+ * does for its own `?view=` param.
+ */
+function initialStateFromUrl(): { tab: Engagement; stage: PipelineStageId | null } {
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get("tab") === "prospect" ? "prospect" : "engaged";
+  const requestedStage = params.get("stage");
+  const stage =
+    requestedStage && VALID_STAGE_IDS.has(requestedStage) ? (requestedStage as PipelineStageId) : null;
+  return { tab, stage };
+}
 
 const TABS: { id: Engagement; label: string; blurb: string }[] = [
   {
@@ -77,10 +96,13 @@ export function Investors() {
 
   const canCreate = can("pipeline", "create");
 
-  const [tab, setTab] = useState<Engagement>("engaged");
+  const [tab, setTab] = useState<Engagement>(() => initialStateFromUrl().tab);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [filters, setFilters] = useState<InvestorFilters>(emptyFilters);
+  const [filters, setFilters] = useState<InvestorFilters>(() => ({
+    ...emptyFilters,
+    stage: initialStateFromUrl().stage,
+  }));
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -122,6 +144,15 @@ export function Investors() {
   const rows = useMemo(
     () => (investorsQuery.data?.data ?? []).map(mapContactToRow),
     [investorsQuery.data],
+  );
+
+  // A contact's expectedAmount belongs to whichever round its pipeline entry
+  // is in — this directory can span several rounds, each with its own
+  // currency, so amounts are never assumed to be USD.
+  const roundsQuery = useQuery({ queryKey: qk.rounds(startupId), queryFn: () => listFundraisingRounds(startupId) });
+  const currencyByRoundId = useMemo(
+    () => new Map((roundsQuery.data?.data ?? []).map((round) => [round.id, round.currency])),
+    [roundsQuery.data],
   );
 
   const meta = investorsQuery.data?.meta;
@@ -353,6 +384,7 @@ export function Investors() {
             <div className={cn("hidden lg:block", investorsQuery.isFetching && "opacity-60")}>
               <InvestorsTable
                 investors={rows}
+                currencyByRoundId={currencyByRoundId}
                 selectedIds={selectedIds}
                 onToggleOne={toggleOne}
                 onToggleAll={toggleAllVisible}
@@ -367,6 +399,7 @@ export function Investors() {
             <div className={cn("lg:hidden", investorsQuery.isFetching && "opacity-60")}>
               <InvestorsCardList
                 investors={rows}
+                currencyByRoundId={currencyByRoundId}
                 selectedIds={selectedIds}
                 onToggleOne={toggleOne}
                 onMoveToPipeline={(investor) => moveMutation.mutate(investor)}

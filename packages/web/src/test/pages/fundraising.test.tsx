@@ -1,14 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { Commitment, FundraisingRound } from "../../lib/fundraising-api";
+import type { Commitment, FundraisingRound, RoundMetrics } from "../../lib/fundraising-api";
 
 const listFundraisingRounds = vi.fn();
 const listCommitments = vi.fn();
+const getRoundMetrics = vi.fn();
+const getFundingHistory = vi.fn();
 vi.mock("../../lib/fundraising-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/fundraising-api")>()),
   listFundraisingRounds: (...a: unknown[]) => listFundraisingRounds(...a),
   listCommitments: (...a: unknown[]) => listCommitments(...a),
+  getRoundMetrics: (...a: unknown[]) => getRoundMetrics(...a),
+  getFundingHistory: (...a: unknown[]) => getFundingHistory(...a),
   createCommitment: vi.fn(),
   createFundraisingRound: vi.fn(),
   updateCommitment: vi.fn(),
@@ -80,6 +85,23 @@ function commitment(id: string, amount: number, status: Commitment["status"]): C
   };
 }
 
+function metrics(overrides: Partial<RoundMetrics> = {}): RoundMetrics {
+  return {
+    currency: "USD",
+    targetAmount: 1_000_000,
+    wired: 120_000,
+    hardCircled: 110_000,
+    softCircled: 95_000,
+    bankableRaised: 230_000,
+    remainingGap: 770_000,
+    percentToTarget: 23,
+    weightedPipeline: 0,
+    daysToClose: null,
+    atRiskCommitments: [],
+    ...overrides,
+  };
+}
+
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -105,6 +127,10 @@ beforeEach(() => {
     ],
     meta: { page: 1, limit: 100, total: 4, totalPages: 1 },
   });
+  getRoundMetrics.mockResolvedValue(metrics());
+  getFundingHistory.mockResolvedValue([
+    { id: "e1", commitmentId: "a", investorName: "Investor a", fromStatus: null, toStatus: "wired", amount: 120_000, createdAt: "2026-01-01T00:00:00.000Z" },
+  ]);
 });
 
 describe("Fundraising round totals", () => {
@@ -160,5 +186,109 @@ describe("Fundraising round totals", () => {
 
     expect(await screen.findByText("First close")).toBeInTheDocument();
     expect(screen.getByText("in 3 weeks")).toBeInTheDocument();
+  });
+
+  it("filters the commitments table when a status tile is clicked", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText("Investor a");
+    expect(screen.getByText("Investor b")).toBeInTheDocument();
+    expect(screen.getByText("Investor c")).toBeInTheDocument();
+
+    const totals = within(await screen.findByRole("region", { name: "Round totals" }));
+    await user.click(totals.getByText("Wired").closest("button")!);
+
+    expect(screen.getByText("Investor a")).toBeInTheDocument();
+    expect(screen.queryByText("Investor b")).not.toBeInTheDocument();
+    expect(screen.queryByText("Investor c")).not.toBeInTheDocument();
+    expect(screen.getByText(/wired commitments only/i)).toBeInTheDocument();
+
+    // Clicking the same tile again turns the filter back off.
+    await user.click(screen.getByRole("button", { name: /Clear filter/ }));
+    expect(screen.getByText("Investor b")).toBeInTheDocument();
+  });
+});
+
+describe("Fundraising round intelligence", () => {
+  it("shows the weighted pipeline and days to close from the metrics endpoint", async () => {
+    getRoundMetrics.mockResolvedValue(
+      metrics({ weightedPipeline: 340_000, daysToClose: 12 }),
+    );
+    renderPage();
+
+    const forecast = within(await screen.findByRole("region", { name: "Round intelligence" }));
+    expect(await forecast.findByText("$340,000")).toBeInTheDocument();
+    expect(forecast.getByText("Weighted pipeline")).toBeInTheDocument();
+    expect(forecast.getByText("12d")).toBeInTheDocument();
+    expect(forecast.getByText("Days to close")).toBeInTheDocument();
+  });
+
+  it("shows a plain dash when the round has no close date set", async () => {
+    getRoundMetrics.mockResolvedValue(metrics({ daysToClose: null }));
+    renderPage();
+
+    const forecast = within(await screen.findByRole("region", { name: "Round intelligence" }));
+    expect(await forecast.findByText("—")).toBeInTheDocument();
+    expect(forecast.getByText("No close date set for this round")).toBeInTheDocument();
+  });
+
+  it("lists at-risk commitments and opens the edit dialog when one is clicked", async () => {
+    getRoundMetrics.mockResolvedValue(
+      metrics({
+        atRiskCommitments: [
+          { id: "a", investorName: "Investor a", amount: 120_000, status: "soft_circled", expectedCloseDate: "2026-01-01T00:00:00.000Z", daysOverdue: 9 },
+        ],
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText(/9d overdue/)).toBeInTheDocument();
+
+    await user.click(screen.getByText(/9d overdue/).closest("button")!);
+
+    expect(await screen.findByText("Edit commitment")).toBeInTheDocument();
+  });
+
+  it("says nothing is at risk when the list is empty", async () => {
+    renderPage();
+
+    expect(await screen.findByText("Nothing at risk right now.")).toBeInTheDocument();
+  });
+
+  it("shows an inline error for the metrics panel without blocking the rest of the page", async () => {
+    getRoundMetrics.mockRejectedValue(new Error("network down"));
+    renderPage();
+
+    // The commitments table, sourced from a different request, still renders.
+    expect(await screen.findByText("Investor a")).toBeInTheDocument();
+    expect(screen.getByText(/Could not load round metrics/)).toBeInTheDocument();
+  });
+});
+
+describe("Fundraising funding history chart", () => {
+  it("renders the chart once funding history resolves", async () => {
+    renderPage();
+
+    expect(await screen.findByLabelText("Funding progress chart")).toBeInTheDocument();
+  });
+
+  it("shows an empty state when the round has no commitment history yet", async () => {
+    getFundingHistory.mockResolvedValue([]);
+    renderPage();
+
+    expect(await screen.findByText("No commitments recorded yet")).toBeInTheDocument();
+  });
+
+  it("lets the founder switch the chart's time range", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByLabelText("Funding progress chart");
+
+    const range = within(screen.getByRole("group", { name: "Chart time range" }));
+    await user.click(range.getByText("12M"));
+
+    expect(range.getByText("12M")).toHaveAttribute("aria-pressed", "true");
   });
 });

@@ -3,11 +3,13 @@ import { AlertTriangle, CheckCircle2, Crown, ListPlus, Mail, Plus, Sparkles } fr
 import { Button } from "../../../components/ui/button";
 import { StageBadge } from "../Investors/StageBadge";
 import type { PipelineFocusEntry } from "../../../lib/pipeline-api";
-import { cn, formatCompactUsd, getInitials } from "../../../lib/utils";
+import { cn, formatCompactMoney, getInitials } from "../../../lib/utils";
 import { FOCUS_REASON_LABELS, FOCUS_REASON_TONES, formatDaysAgo } from "./deal-signals";
 
 type FocusListProps = {
   items: PipelineFocusEntry[];
+  /** The round's own currency — a deal's amount is never assumed to be USD. */
+  currency: string;
   canCreate: boolean;
   onOpen: (deal: PipelineFocusEntry) => void;
   onLog: (deal: PipelineFocusEntry) => void;
@@ -24,7 +26,7 @@ function dueLabel(nextTaskDueDate: string | null, now = Date.now()): string | nu
   return `Due in ${days}d`;
 }
 
-export function FocusList({ items, canCreate, onOpen, onLog, onAddTask }: FocusListProps) {
+export function FocusList({ items, currency, canCreate, onOpen, onLog, onAddTask }: FocusListProps) {
   const [leadsOnly, setLeadsOnly] = useState(false);
   const leadCount = items.filter((deal) => deal.isLead).length;
   const visibleItems = leadsOnly ? items.filter((deal) => deal.isLead) : items;
@@ -117,7 +119,7 @@ export function FocusList({ items, canCreate, onOpen, onLog, onAddTask }: FocusL
               </button>
               <div className="truncate text-xs text-muted-foreground">
                 {investor.ventureFirm ?? "Independent"}
-                {deal.expectedAmount != null && ` · ${formatCompactUsd(deal.expectedAmount)}`}
+                {deal.expectedAmount != null && ` · ${formatCompactMoney(deal.expectedAmount, currency)}`}
               </div>
               {deal.isLead && <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-warning/12 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning"><Crown className="h-3 w-3" /> Lead investor</span>}
             </div>

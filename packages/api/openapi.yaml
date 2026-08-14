@@ -871,6 +871,13 @@ components:
                 id:
                   type: string
                   format: uuid
+                roundId:
+                  type: string
+                  format: uuid
+                  description: >
+                    Which round this entry belongs to — expectedAmount is in
+                    that round's currency, not necessarily USD. Look up
+                    GET .../fundraising-rounds for the currency.
                 stage:
                   $ref: "#/components/schemas/PipelineStage"
                 expectedAmount:
@@ -1691,6 +1698,118 @@ components:
         expectedCloseDate:
           type: string
           format: date-time
+
+    CommitmentStatusEvent:
+      type: object
+      description: >
+        One real transition a commitment made from one confidence status to
+        another. The first event on any commitment has fromStatus null — that
+        is the commitment being recorded, not a change. Ordered oldest first;
+        this is what a funding-over-time chart should be built from, since
+        commitments.createdAt only says when the row was typed in, not when
+        the money actually became soft-circled, signed, or wired.
+      properties:
+        id:
+          type: string
+          format: uuid
+        commitmentId:
+          type: string
+          format: uuid
+        investorName:
+          type: string
+        fromStatus:
+          allOf:
+            - $ref: "#/components/schemas/CommitmentStatus"
+          nullable: true
+        toStatus:
+          $ref: "#/components/schemas/CommitmentStatus"
+        amount:
+          type: number
+          format: double
+          nullable: true
+          description: The commitment's current amount — not necessarily what it was at this specific transition, since amount can be edited independently of status.
+        createdAt:
+          type: string
+          format: date-time
+
+    AtRiskCommitment:
+      type: object
+      description: A commitment whose expected close date has passed without it reaching wired or withdrawn.
+      properties:
+        id:
+          type: string
+          format: uuid
+        investorName:
+          type: string
+        amount:
+          type: number
+          format: double
+          nullable: true
+        status:
+          $ref: "#/components/schemas/CommitmentStatus"
+        expectedCloseDate:
+          type: string
+          format: date-time
+        daysOverdue:
+          type: integer
+          example: 12
+
+    RoundMetrics:
+      type: object
+      description: >
+        The numbers a round's health is judged by, computed server-side so
+        Dashboard, Fundraising and anywhere else showing "this round's
+        numbers" read the same values. Every commitment amount is in the
+        round's own currency, never assumed to be USD.
+      properties:
+        currency:
+          type: string
+          example: USD
+        targetAmount:
+          type: number
+          format: double
+        wired:
+          type: number
+          format: double
+          description: Sum of commitments with status "wired" — money actually in the bank.
+        hardCircled:
+          type: number
+          format: double
+          description: Sum of commitments with status "hard_circled" — signed, not yet wired.
+        softCircled:
+          type: number
+          format: double
+          description: Sum of commitments with status "soft_circled" — verbal only, never counted toward the target.
+        bankableRaised:
+          type: number
+          format: double
+          description: wired + hardCircled — the money a founder may legitimately call raised.
+        remainingGap:
+          type: number
+          format: double
+          description: max(0, targetAmount - bankableRaised).
+        percentToTarget:
+          type: integer
+          description: round(bankableRaised / targetAmount * 100), capped at 100; 0 when targetAmount is 0.
+        weightedPipeline:
+          type: number
+          format: double
+          description: >
+            Sum of expectedAmount × probabilityPercentage / 100 across this
+            round's live pipeline deals — everything except stage "committed"
+            (already counted exactly via its commitment, not an estimate) and
+            "passed" (contributes nothing).
+        daysToClose:
+          type: integer
+          nullable: true
+          description: >
+            Days until targetCloseDate (falling back to firstCloseDate when
+            unset); negative once that date has passed. Null when the round
+            has neither date set.
+        atRiskCommitments:
+          type: array
+          items:
+            $ref: "#/components/schemas/AtRiskCommitment"
 
     # ── Documents ───────────────────────────────────────────────────
     DocumentType:
@@ -5057,6 +5176,98 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: Round has related commitments and cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /startups/{startupId}/fundraising-rounds/{roundId}/metrics:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: roundId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Fundraising Rounds]
+      summary: Round health metrics — target, raised, weighted pipeline, days to close, at-risk commitments
+      operationId: getRoundMetrics
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Round metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/RoundMetrics"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Fundraising round not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /startups/{startupId}/fundraising-rounds/{roundId}/funding-history:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: roundId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Fundraising Rounds]
+      summary: Every real commitment status transition in this round, oldest first
+      description: >
+        What a funding-over-time chart should be built from. Does not include
+        commitments with no status change yet beyond their initial recording
+        — every commitment has at least that one event.
+      operationId: getFundingHistory
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Funding history events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CommitmentStatusEvent"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Fundraising round not found
           content:
             application/json:
               schema:

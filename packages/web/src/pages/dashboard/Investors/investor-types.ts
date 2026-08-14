@@ -11,6 +11,8 @@ export type InvestorRow = {
   investorType: InvestorType | null;
   pipelineStageId: PipelineStageId | null;
   pipelineId: string | null;
+  /** Which round `amount` belongs to — look up its currency, never assume USD. */
+  roundId: string | null;
   amount: number | null;
   lastContact: string;
   linkedinUrl: string | null;
@@ -45,6 +47,7 @@ export function mapContactToRow(contact: InvestorListItem): InvestorRow {
     investorType: contact.investorType,
     pipelineStageId: contact.pipeline?.stage ?? null,
     pipelineId: contact.pipeline?.id ?? null,
+    roundId: contact.pipeline?.roundId ?? null,
     amount: contact.pipeline?.expectedAmount ?? null,
     // Strictly the last interaction on record. It used to read
     // nextFollowupDate — a *future* date, which formatRelativeDate renders as

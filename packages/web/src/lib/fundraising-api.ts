@@ -97,6 +97,54 @@ export type CommitmentInput = {
   expectedCloseDate?: string | null;
 };
 
+/**
+ * The numbers a round's health is judged by, computed server-side so
+ * Dashboard, Fundraising and anywhere else showing "this round's numbers"
+ * read the same values. Every amount is in `currency`, never assumed USD.
+ */
+export type RoundMetrics = {
+  currency: string;
+  targetAmount: number;
+  wired: number;
+  hardCircled: number;
+  softCircled: number;
+  bankableRaised: number;
+  remainingGap: number;
+  percentToTarget: number;
+  /** Live pipeline deals only — committed money is counted exactly via its commitment, not weighted. */
+  weightedPipeline: number;
+  /** Days until targetCloseDate (or firstCloseDate); negative once past; null when neither is set. */
+  daysToClose: number | null;
+  atRiskCommitments: AtRiskCommitment[];
+};
+
+/** A commitment whose expected close date has passed without reaching wired or withdrawn. */
+export type AtRiskCommitment = {
+  id: string;
+  investorName: string;
+  amount: number | null;
+  status: CommitmentStatus;
+  expectedCloseDate: string;
+  daysOverdue: number;
+};
+
+/**
+ * One real transition a commitment made from one confidence status to
+ * another, oldest first. The first event on any commitment has
+ * fromStatus null — that's the commitment being recorded, not a change.
+ * What a funding-over-time chart should be built from instead of
+ * Commitment.createdAt, which only says when the row was typed in.
+ */
+export type FundingHistoryEvent = {
+  id: string;
+  commitmentId: string;
+  investorName: string;
+  fromStatus: CommitmentStatus | null;
+  toStatus: CommitmentStatus;
+  amount: number | null;
+  createdAt: string;
+};
+
 export async function listFundraisingRounds(startupId: string) {
   const { data } = await apiClient.get<{ data: FundraisingRound[]; meta: PaginationMeta }>(
     `/startups/${startupId}/fundraising-rounds`,
@@ -121,6 +169,20 @@ export async function updateFundraisingRound(
   const { data } = await apiClient.patch<{ data: FundraisingRound }>(
     `/startups/${startupId}/fundraising-rounds/${roundId}`,
     body,
+  );
+  return data.data;
+}
+
+export async function getRoundMetrics(startupId: string, roundId: string) {
+  const { data } = await apiClient.get<{ data: RoundMetrics }>(
+    `/startups/${startupId}/fundraising-rounds/${roundId}/metrics`,
+  );
+  return data.data;
+}
+
+export async function getFundingHistory(startupId: string, roundId: string) {
+  const { data } = await apiClient.get<{ data: FundingHistoryEvent[] }>(
+    `/startups/${startupId}/fundraising-rounds/${roundId}/funding-history`,
   );
   return data.data;
 }

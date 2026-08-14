@@ -24,6 +24,8 @@ router.get("/fundraising-rounds/:roundId", authenticate, validate(fundraisingRou
 router.patch("/fundraising-rounds/:roundId", authenticate, validate(fundraisingRoundIdParamSchema, "params"), requireMember, requirePermission("financial", "update"), validate(updateFundraisingRoundSchema), fundraisingController.updateRound);
 router.delete("/fundraising-rounds/:roundId", authenticate, validate(fundraisingRoundIdParamSchema, "params"), requireMember, requirePermission("financial", "delete"), fundraisingController.deleteRound);
 router.get("/fundraising-rounds/:roundId/commitments", authenticate, validate(fundraisingRoundIdParamSchema, "params"), requireMember, requirePermission("financial", "read"), validate(listCommitmentsQuerySchema, "query"), fundraisingController.listRoundCommitments);
+router.get("/fundraising-rounds/:roundId/metrics", authenticate, validate(fundraisingRoundIdParamSchema, "params"), requireMember, requirePermission("financial", "read"), fundraisingController.getRoundMetrics);
+router.get("/fundraising-rounds/:roundId/funding-history", authenticate, validate(fundraisingRoundIdParamSchema, "params"), requireMember, requirePermission("financial", "read"), fundraisingController.getFundingHistory);
 
 router.get("/commitments", ...financialRead, validate(listCommitmentsQuerySchema, "query"), fundraisingController.listCommitments);
 router.post("/commitments", authenticate, validate(startupIdParamSchema, "params"), requireMember, requirePermission("financial", "create"), validate(createCommitmentSchema), fundraisingController.createCommitment);

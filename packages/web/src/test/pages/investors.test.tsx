@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -20,6 +20,10 @@ vi.mock("../../lib/investor-api", async (importOriginal) => ({
 }));
 
 vi.mock("../../lib/pipeline-api", () => ({ createPipelineEntry: vi.fn() }));
+vi.mock("../../lib/fundraising-api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/fundraising-api")>()),
+  listFundraisingRounds: vi.fn().mockResolvedValue({ data: [], meta: {} }),
+}));
 vi.mock("../../hooks/useWorkspace", () => ({ useActiveStartupId: () => "startup-1" }));
 
 let role = "owner";
@@ -56,7 +60,7 @@ function contact(id: string, fullName: string, inPipeline = false): InvestorList
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     pipeline: inPipeline
-      ? { id: `p-${id}`, stage: "term_sheet", expectedAmount: 250000, probabilityPercentage: 60 }
+      ? { id: `p-${id}`, roundId: "round-1", stage: "term_sheet", expectedAmount: 250000, probabilityPercentage: 60 }
       : null,
     nextFollowupDate: null,
     lastInteractionDate: null,
@@ -135,6 +139,41 @@ describe("Investors", () => {
     await user.click(screen.getByRole("tab", { name: /Prospects/ }));
 
     await waitFor(() => expect(lastQuery()).toMatchObject({ engagement: "prospect" }));
+  });
+
+  // A chart segment elsewhere in the app (the Dashboard's stage pie, a
+  // funnel bar) links here as "?tab=engaged&stage=X" to open pre-filtered to
+  // what was clicked, rather than dumping the founder on an unfiltered list.
+  describe("opened from a chart segment", () => {
+    const originalLocation = window.location.href;
+
+    afterEach(() => {
+      window.history.pushState({}, "", originalLocation);
+    });
+
+    it("reads the stage filter out of the URL on load", async () => {
+      window.history.pushState({}, "", "/investors?tab=engaged&stage=meeting_scheduled");
+      renderInvestors();
+
+      await waitFor(() =>
+        expect(lastQuery()).toMatchObject({ engagement: "engaged", stage: "meeting_scheduled" }),
+      );
+    });
+
+    it("ignores a stage id that isn't real rather than sending it to the API", async () => {
+      window.history.pushState({}, "", "/investors?tab=engaged&stage=not-a-real-stage");
+      renderInvestors();
+
+      await waitFor(() => expect(listInvestors).toHaveBeenCalled());
+      expect(lastQuery()).not.toHaveProperty("stage");
+    });
+
+    it("defaults to the engaged tab when the URL only names a stage", async () => {
+      window.history.pushState({}, "", "/investors?stage=sourced");
+      renderInvestors();
+
+      await waitFor(() => expect(lastQuery()).toMatchObject({ engagement: "engaged", stage: "sourced" }));
+    });
   });
 
   it("drops the stage filter on the prospects tab, where it cannot apply", async () => {

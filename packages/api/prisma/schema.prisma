@@ -42,6 +42,7 @@ model User {
   tasks                Task[]
   authoredInvestorNotes StartupInvestor[]   @relation("InvestorNotesAuthor")
   editedInvestorNotes   StartupInvestor[]   @relation("InvestorNotesEditor")
+  commitmentStatusEvents CommitmentStatusEvent[]
 
   @@map("users")
 }
@@ -65,6 +66,7 @@ model Startup {
   pipeline            Pipeline[]
   fundraisingRounds   FundraisingRound[]
   commitments         Commitment[]
+  commitmentStatusEvents CommitmentStatusEvent[]
   documents           Document[]
   aiAnalyses          AiAnalysis[]
   aiChatSessions      AiChatSession[]
@@ -436,9 +438,29 @@ model Commitment {
   startupInvestor StartupInvestor  @relation("CommitmentInvestor", fields: [startupInvestorId, startupId], references: [id, startupId], onDelete: Cascade)
   pipeline        Pipeline         @relation("CommitmentPipeline", fields: [pipelineId, startupInvestorId, roundId], references: [id, startupInvestorId, roundId])
   round           FundraisingRound @relation("CommitmentRound", fields: [roundId, startupId], references: [id, startupId])
+  statusEvents    CommitmentStatusEvent[]
 
   @@index([startupId, roundId, status])
   @@map("commitments")
+}
+
+model CommitmentStatusEvent {
+  id           String   @id @default(uuid())
+  startupId    String   @map("startup_id")
+  commitmentId String   @map("commitment_id")
+  // Null for the first event — the commitment being recorded.
+  fromStatus   String?  @map("from_status")
+  toStatus     String   @map("to_status")
+  changedBy    String?  @map("changed_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  startup    Startup    @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  commitment Commitment @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
+  actor      User?      @relation(fields: [changedBy], references: [id], onDelete: SetNull)
+
+  @@index([startupId, createdAt])
+  @@index([commitmentId, createdAt])
+  @@map("commitment_status_events")
 }
 
 // ─── DOCUMENT VAULT ───────────────────────────────────────────────────────────

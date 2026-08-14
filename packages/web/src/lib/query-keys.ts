@@ -23,6 +23,12 @@ export const qk = {
   commitments: (startupId: string, roundId?: string | null) =>
     ["commitments", startupId, roundId ?? null] as const,
 
+  roundMetrics: (startupId: string, roundId?: string | null) =>
+    ["round-metrics", startupId, roundId ?? null] as const,
+
+  fundingHistory: (startupId: string, roundId?: string | null) =>
+    ["funding-history", startupId, roundId ?? null] as const,
+
   /** Stores `{ data: PipelineEntry[] }` for the whole round. */
   pipeline: (startupId: string, roundId?: string | null) =>
     ["pipeline", startupId, roundId ?? null] as const,
@@ -71,6 +77,8 @@ const prefix = {
   logs: (startupId: string) => ["interaction-logs", startupId] as const,
   commitments: (startupId: string) => ["commitments", startupId] as const,
   rounds: (startupId: string) => ["fundraising-rounds", startupId] as const,
+  roundMetrics: (startupId: string) => ["round-metrics", startupId] as const,
+  fundingHistory: (startupId: string) => ["funding-history", startupId] as const,
 };
 
 function invalidateAll(queryClient: QueryClient, keys: readonly (readonly unknown[])[]): void {
@@ -111,7 +119,12 @@ export function invalidateInteractionData(queryClient: QueryClient, startupId: s
 
 /** After a commitment is written, which also moves the deal behind it. */
 export function invalidateFinancialData(queryClient: QueryClient, startupId: string): void {
-  invalidateAll(queryClient, [prefix.rounds(startupId), prefix.commitments(startupId)]);
+  invalidateAll(queryClient, [
+    prefix.rounds(startupId),
+    prefix.commitments(startupId),
+    prefix.roundMetrics(startupId),
+    prefix.fundingHistory(startupId),
+  ]);
   invalidateDealData(queryClient, startupId);
 }
 

@@ -221,6 +221,19 @@ export class FundraisingService {
         select: COMMITMENT_SELECT,
       });
 
+      // The first point in this commitment's funding history — recorded even
+      // though nothing has "changed" yet, so the funding chart has somewhere
+      // to start from.
+      await tx.commitmentStatusEvent.create({
+        data: {
+          startupId,
+          commitmentId: created.id,
+          fromStatus: null,
+          toStatus: created.status,
+          changedBy: userId ?? null,
+        },
+      });
+
       if (input.status !== "withdrawn") {
         await this.moveDealToStage(tx, startupId, input.pipelineId, "committed", userId);
       }
@@ -280,6 +293,21 @@ export class FundraisingService {
         select: COMMITMENT_SELECT,
       });
 
+      // The funding chart is built from these transitions, not from
+      // commitments.createdAt or .updatedAt — an edit that leaves status
+      // alone (just the amount, say) is not a new point on that chart.
+      if (input.status && input.status !== existing.status) {
+        await tx.commitmentStatusEvent.create({
+          data: {
+            startupId,
+            commitmentId,
+            fromStatus: existing.status,
+            toStatus: input.status,
+            changedBy: userId ?? null,
+          },
+        });
+      }
+
       // The investor backing out has to take the deal off Committed too, or
       // the board keeps claiming money the round no longer counts. Term sheet
       // is where it lands: they had one, then withdrew.
@@ -307,6 +335,131 @@ export class FundraisingService {
         await this.moveDealToStage(tx, startupId, existing.pipelineId, "term_sheet", userId);
       }
     });
+  }
+
+  /**
+   * Every real status transition any commitment in this round has gone
+   * through, oldest first — what the funding chart is built from instead of
+   * commitments.createdAt. A commitment created as soft-circled and wired a
+   * month later shows up here as raising its money in that later month, not
+   * the month it was first typed in.
+   */
+  async getFundingHistory(startupId: string, roundId: string) {
+    await this.getRound(startupId, roundId);
+
+    const events = await prisma.commitmentStatusEvent.findMany({
+      where: { startupId, commitment: { roundId } },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        commitmentId: true,
+        fromStatus: true,
+        toStatus: true,
+        createdAt: true,
+        commitment: {
+          select: {
+            amount: true,
+            startupInvestor: { select: { fullName: true } },
+          },
+        },
+      },
+    });
+
+    return events.map((event) => ({
+      id: event.id,
+      commitmentId: event.commitmentId,
+      investorName: event.commitment.startupInvestor.fullName,
+      fromStatus: event.fromStatus,
+      toStatus: event.toStatus,
+      amount: asNumber(event.commitment.amount),
+      createdAt: event.createdAt,
+    }));
+  }
+
+  /**
+   * The numbers a round's health is judged by, computed once here so
+   * Dashboard, Fundraising and anything else showing "this round's numbers"
+   * cannot drift apart the way independently-derived client math would.
+   */
+  async getRoundMetrics(startupId: string, roundId: string) {
+    const round = await this.getRound(startupId, roundId);
+
+    const [commitments, liveDeals] = await Promise.all([
+      prisma.commitment.findMany({
+        where: { startupId, roundId },
+        select: {
+          id: true,
+          amount: true,
+          status: true,
+          expectedCloseDate: true,
+          startupInvestor: { select: { fullName: true } },
+        },
+      }),
+      // Weighted pipeline is what's still uncertain — a committed deal
+      // already has an exact commitment amount, so folding its probability
+      // weight back in here would count the same money twice, and a passed
+      // deal contributes nothing.
+      prisma.pipeline.findMany({
+        where: { startupId, roundId, stage: { notIn: ["committed", "passed"] } },
+        select: { expectedAmount: true, probabilityPercentage: true },
+      }),
+    ]);
+
+    const sumBy = (predicate: (c: (typeof commitments)[number]) => boolean) =>
+      commitments.filter(predicate).reduce((sum, c) => sum + (asNumber(c.amount) ?? 0), 0);
+
+    const wired = sumBy((c) => c.status === "wired");
+    const hardCircled = sumBy((c) => c.status === "hard_circled");
+    const softCircled = sumBy((c) => c.status === "soft_circled");
+    const bankableRaised = wired + hardCircled;
+    // Already a plain number: getRound() runs this through serializeRound.
+    const target = round.targetAmount ?? 0;
+
+    const weightedPipeline = liveDeals.reduce((sum, deal) => {
+      const amount = asNumber(deal.expectedAmount) ?? 0;
+      return sum + amount * ((deal.probabilityPercentage ?? 0) / 100);
+    }, 0);
+
+    const closeTarget = round.targetCloseDate ?? round.firstCloseDate;
+    const daysToClose = closeTarget
+      ? Math.ceil((closeTarget.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+      : null;
+
+    const now = Date.now();
+    // At risk: money someone promised by a date that has already passed and
+    // it still is not in the bank. Withdrawn is its own, already-visible
+    // signal and does not need flagging again here.
+    const atRiskCommitments = commitments
+      .filter(
+        (c) =>
+          c.status !== "wired" &&
+          c.status !== "withdrawn" &&
+          c.expectedCloseDate !== null &&
+          c.expectedCloseDate.getTime() < now,
+      )
+      .map((c) => ({
+        id: c.id,
+        investorName: c.startupInvestor.fullName,
+        amount: asNumber(c.amount),
+        status: c.status,
+        expectedCloseDate: c.expectedCloseDate,
+        daysOverdue: Math.floor((now - c.expectedCloseDate!.getTime()) / (24 * 60 * 60 * 1000)),
+      }))
+      .sort((a, b) => b.daysOverdue - a.daysOverdue);
+
+    return {
+      currency: round.currency,
+      targetAmount: target,
+      wired,
+      hardCircled,
+      softCircled,
+      bankableRaised,
+      remainingGap: Math.max(0, target - bankableRaised),
+      percentToTarget: target > 0 ? Math.min(100, Math.round((bankableRaised / target) * 100)) : 0,
+      weightedPipeline,
+      daysToClose,
+      atRiskCommitments,
+    };
   }
 }
 

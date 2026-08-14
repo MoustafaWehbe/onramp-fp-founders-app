@@ -2,12 +2,14 @@ import { useState } from "react";
 import { Card } from "../../../components/ui/card";
 import type { PipelineStage, PipelineStageId } from "../../../lib/mock-data";
 import type { FocusReason, PipelineEntry } from "../../../lib/pipeline-api";
-import { cn, formatCompactUsd } from "../../../lib/utils";
+import { cn, formatCompactMoney } from "../../../lib/utils";
 import type { DealSignals } from "./deal-signals";
 import { DealCardBody } from "./DealCard";
 
 type MobilePipelineBoardProps = {
   stages: PipelineStage[];
+  /** The round's own currency — a deal's amount is never assumed to be USD. */
+  currency: string;
   entriesByStage: Map<PipelineStageId, PipelineEntry[]>;
   signalsFor: (dealId: string) => DealSignals;
   focusReasonFor: (dealId: string) => FocusReason | null;
@@ -30,6 +32,7 @@ type MobilePipelineBoardProps = {
  */
 export function MobilePipelineBoard({
   stages,
+  currency,
   entriesByStage,
   signalsFor,
   focusReasonFor,
@@ -87,6 +90,7 @@ export function MobilePipelineBoard({
               <Card className="relative min-h-[128px] border-border/70 bg-card/95 p-3 shadow-sm">
                 <DealCardBody
                   deal={deal}
+                  currency={currency}
                   signals={signalsFor(deal.id)}
                   focusReason={focusReasonFor(deal.id)}
                   ownerName={ownerNameFor(deal.id)}
@@ -109,7 +113,7 @@ export function MobilePipelineBoard({
 
       {stage && weightedTotal > 0 && (
         <div className="text-right font-mono text-xs text-muted-foreground">
-          {formatCompactUsd(Math.round(weightedTotal))} weighted
+          {formatCompactMoney(Math.round(weightedTotal), currency)} weighted
         </div>
       )}
     </div>

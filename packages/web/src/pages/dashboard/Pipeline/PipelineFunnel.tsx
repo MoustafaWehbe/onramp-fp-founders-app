@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { ArrowDownRight, Clock, Users } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { getStage } from "../../../lib/mock-data";
 import type { PipelineAnalytics } from "../../../lib/pipeline-api";
-import { cn, formatCompactUsd } from "../../../lib/utils";
+import { cn, formatCompactMoney } from "../../../lib/utils";
 import { formatDuration } from "./deal-signals";
 
 type FunnelRow = PipelineAnalytics["funnel"][number];
@@ -11,6 +12,8 @@ type ConversionRow = PipelineAnalytics["conversion"][number];
 type PipelineFunnelProps = {
   funnel: FunnelRow[];
   conversion: ConversionRow[];
+  /** The round's own currency — a deal's amount is never assumed to be USD. */
+  currency: string;
 };
 
 /**
@@ -34,7 +37,8 @@ function percent(rate: number | null): string {
   return rate === null ? "—" : `${Math.round(rate * 100)}%`;
 }
 
-export function PipelineFunnel({ funnel, conversion }: PipelineFunnelProps) {
+export function PipelineFunnel({ funnel, conversion, currency }: PipelineFunnelProps) {
+  const navigate = useNavigate();
   const rows = funnel.filter((row) => row.stage !== "passed");
   const [hovered, setHovered] = useState<string | null>(rows[0]?.stage ?? null);
 
@@ -72,9 +76,10 @@ export function PipelineFunnel({ funnel, conversion }: PipelineFunnelProps) {
                   type="button"
                   onMouseEnter={() => setHovered(row.stage)}
                   onFocus={() => setHovered(row.stage)}
-                  className="group relative block w-full focus-visible:outline-none"
+                  onClick={() => navigate(`/investors?tab=engaged&stage=${row.stage}`)}
+                  className="group relative block w-full cursor-pointer focus-visible:outline-none"
                   style={{ height: ROW_HEIGHT }}
-                  aria-label={`${stage.label}: ${row.everReached} deals ever reached this stage`}
+                  aria-label={`${stage.label}: ${row.everReached} deals ever reached this stage. Open the investor list filtered to this stage.`}
                 >
                   <div
                     className={cn(
@@ -152,7 +157,7 @@ export function PipelineFunnel({ funnel, conversion }: PipelineFunnelProps) {
                 {detail.current}
                 {detail.currentValue > 0 && (
                   <span className="ml-1 text-muted-foreground">
-                    ({formatCompactUsd(detail.currentValue)})
+                    ({formatCompactMoney(detail.currentValue, currency)})
                   </span>
                 )}
               </dd>

@@ -7,13 +7,15 @@ import { PipelineFunnel } from "./PipelineFunnel";
 
 type PipelineAnalyticsViewProps = {
   analytics: PipelineAnalytics;
+  /** The round's own currency — a deal's amount is never assumed to be USD. */
+  currency: string;
 };
 
 function percent(rate: number | null): string {
   return rate === null ? "—" : `${Math.round(rate * 100)}%`;
 }
 
-export function PipelineAnalyticsView({ analytics }: PipelineAnalyticsViewProps) {
+export function PipelineAnalyticsView({ analytics, currency }: PipelineAnalyticsViewProps) {
   const { funnel, conversion, outcomes, totalDeals } = analytics;
 
   if (totalDeals === 0) {
@@ -58,7 +60,7 @@ export function PipelineAnalyticsView({ analytics }: PipelineAnalyticsViewProps)
           </p>
         </div>
 
-        <PipelineFunnel funnel={funnel} conversion={conversion} />
+        <PipelineFunnel funnel={funnel} conversion={conversion} currency={currency} />
       </section>
 
       <section aria-label="Conversion" className="space-y-3">

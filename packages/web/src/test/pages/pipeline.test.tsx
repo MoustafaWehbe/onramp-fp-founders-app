@@ -3,6 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
+
+const navigateMock = vi.fn();
+vi.mock("react-router-dom", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-router-dom")>()),
+  useNavigate: () => navigateMock,
+}));
 import type { InteractionLog } from "../../lib/interaction-log-api";
 import type { PipelineEntry, PipelineFocusEntry } from "../../lib/pipeline-api";
 import type { PipelineStageId } from "../../lib/mock-data";
@@ -160,9 +167,11 @@ function log(overrides: Partial<InteractionLog> = {}): InteractionLog {
 function renderPipeline() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={client}>
-      <Pipeline />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={client}>
+        <Pipeline />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -261,10 +270,10 @@ describe("Pipeline board", () => {
 
     const summary = within(await screen.findByLabelText("Pipeline summary"));
     // 200k + 300k live; the 500k passed deal is left out of every total.
-    expect(summary.getByText("$500k")).toBeInTheDocument();
+    expect(summary.getByText("$500K")).toBeInTheDocument();
     // 200k × 0.25 + 300k × 0.9 = 320k
-    expect(summary.getByText("$320k")).toBeInTheDocument();
-    expect(summary.getByText("$300k")).toBeInTheDocument();
+    expect(summary.getByText("$320K")).toBeInTheDocument();
+    expect(summary.getByText("$300K")).toBeInTheDocument();
   });
 
   it("flags an overdue task on the card and counts it as needing attention", async () => {
@@ -1054,8 +1063,29 @@ describe("Pipeline board", () => {
 
     // The funnel itself renders every non-passed stage with its reach count.
     expect(
-      screen.getByLabelText("Contacted: 3 deals ever reached this stage"),
+      screen.getByLabelText(/Contacted: 3 deals ever reached this stage/),
     ).toBeInTheDocument();
+  });
+
+  // A funnel bar is otherwise just a number on a chart — clicking it should
+  // open the actual list of investors sitting at that stage.
+  it("opens the filtered investor list when a funnel stage is clicked", async () => {
+    getPipelineAnalytics.mockResolvedValue({
+      totalDeals: 3,
+      funnel: [
+        { stage: "contacted", current: 1, currentValue: 200000, everReached: 3, medianDaysInStage: 6 },
+      ],
+      conversion: [],
+      outcomes: { open: 1, committed: 1, passed: 1, winRate: 0.5 },
+    });
+    const user = userEvent.setup();
+    renderPipeline();
+    await screen.findByText("Ada Lovelace");
+
+    await user.click(screen.getByRole("tab", { name: /Analytics/ }));
+    await user.click(await screen.findByLabelText(/Contacted: 3 deals ever reached this stage/));
+
+    expect(navigateMock).toHaveBeenCalledWith("/investors?tab=engaged&stage=contacted");
   });
 
   it("gives a viewer a read-only board", async () => {

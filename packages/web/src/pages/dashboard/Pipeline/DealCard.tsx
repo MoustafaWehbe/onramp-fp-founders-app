@@ -27,7 +27,7 @@ import {
 import type { InteractionType } from "../../../lib/interaction-log-api";
 import { STAGES, type PipelineStageId } from "../../../lib/mock-data";
 import type { FocusReason, PipelineEntry } from "../../../lib/pipeline-api";
-import { cn, formatCompactUsd, getInitials } from "../../../lib/utils";
+import { cn, formatCompactMoney, getInitials } from "../../../lib/utils";
 import { FOCUS_REASON_LABELS, FOCUS_REASON_TONES, formatDaysAgo, type DealSignals } from "./deal-signals";
 
 const TOUCH_ICONS: Record<InteractionType, LucideIcon> = {
@@ -40,6 +40,8 @@ const TOUCH_ICONS: Record<InteractionType, LucideIcon> = {
 
 type DealCardBodyProps = {
   deal: PipelineEntry;
+  /** The round's own currency — a deal's amount is never assumed to be USD. */
+  currency: string;
   signals: DealSignals;
   /** Why this deal is in Focus, server-computed; null when it doesn't qualify. */
   focusReason: FocusReason | null;
@@ -80,6 +82,7 @@ type DealCardBodyProps = {
  */
 export function DealCardBody({
   deal,
+  currency,
   signals,
   focusReason,
   ownerName,
@@ -193,7 +196,7 @@ export function DealCardBody({
 
       <div className="mt-3 flex items-center justify-between gap-2 text-xs">
         <span className="font-mono text-muted-foreground">
-          {deal.expectedAmount != null ? formatCompactUsd(deal.expectedAmount) : "—"}
+          {deal.expectedAmount != null ? formatCompactMoney(deal.expectedAmount, currency) : "—"}
         </span>
         <div className="flex items-center gap-1.5">
           {/* Ownership was settable but invisible everywhere outside the deal
