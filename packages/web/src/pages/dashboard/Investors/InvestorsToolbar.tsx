@@ -1,4 +1,4 @@
-import { Check, Filter, Search, Trash2, X } from "lucide-react";
+import { Check, Filter, ListPlus, Search, Trash2, X } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import {
   DropdownMenu,
@@ -104,6 +104,9 @@ type InvestorsToolbarProps = {
   selectedCount: number;
   onBulkDelete?: () => void;
   bulkDeleting?: boolean;
+  /** Adds every selected contact to the pipeline in one request per contact. */
+  onBulkAddToPipeline?: () => void;
+  bulkAddingToPipeline?: boolean;
 };
 
 export function InvestorsToolbar({
@@ -116,6 +119,8 @@ export function InvestorsToolbar({
   selectedCount,
   onBulkDelete,
   bulkDeleting = false,
+  onBulkAddToPipeline,
+  bulkAddingToPipeline = false,
 }: InvestorsToolbarProps) {
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
@@ -159,6 +164,17 @@ export function InvestorsToolbar({
       {selectedCount > 0 && (
         <div className="ml-auto flex items-center gap-2">
           <span className="font-mono text-xs text-muted-foreground">{selectedCount} selected</span>
+          {onBulkAddToPipeline && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={bulkAddingToPipeline}
+              onClick={onBulkAddToPipeline}
+            >
+              <ListPlus className="h-3.5 w-3.5" />
+              {bulkAddingToPipeline ? "Adding…" : "Add to pipeline"}
+            </Button>
+          )}
           {onBulkDelete && (
             <Button
               variant="outline"

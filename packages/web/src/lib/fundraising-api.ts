@@ -187,12 +187,16 @@ export async function getFundingHistory(startupId: string, roundId: string) {
   return data.data;
 }
 
-export async function listCommitments(startupId: string, roundId?: string) {
+export async function listCommitments(
+  startupId: string,
+  roundId?: string,
+  status?: CommitmentStatus,
+) {
   const path = roundId
     ? `/startups/${startupId}/fundraising-rounds/${roundId}/commitments`
     : `/startups/${startupId}/commitments`;
   const { data } = await apiClient.get<{ data: Commitment[]; meta: PaginationMeta }>(path, {
-    params: { limit: 100 },
+    params: { limit: 100, ...(status && { status }) },
   });
   return data;
 }

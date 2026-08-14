@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Commitment, FundraisingRound, RoundMetrics } from "../../lib/fundraising-api";
@@ -117,15 +117,19 @@ beforeEach(() => {
     data: [round()],
     meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
   });
-  listCommitments.mockResolvedValue({
-    data: [
-      commitment("a", 120_000, "wired"),
-      commitment("b", 110_000, "hard_circled"),
-      // The one that must never reach the target: a verbal yes.
-      commitment("c", 95_000, "soft_circled"),
-      commitment("d", 40_000, "withdrawn"),
-    ],
-    meta: { page: 1, limit: 100, total: 4, totalPages: 1 },
+  const allCommitments = [
+    commitment("a", 120_000, "wired"),
+    commitment("b", 110_000, "hard_circled"),
+    // The one that must never reach the target: a verbal yes.
+    commitment("c", 95_000, "soft_circled"),
+    commitment("d", 40_000, "withdrawn"),
+  ];
+  // A status tile filters through a real request, so the mock has to answer
+  // that request the way the API would — only the matching rows.
+  listCommitments.mockImplementation((..._args: unknown[]) => {
+    const status = _args[2] as Commitment["status"] | undefined;
+    const data = status ? allCommitments.filter((c) => c.status === status) : allCommitments;
+    return Promise.resolve({ data, meta: { page: 1, limit: 100, total: data.length, totalPages: 1 } });
   });
   getRoundMetrics.mockResolvedValue(metrics());
   getFundingHistory.mockResolvedValue([
@@ -188,7 +192,7 @@ describe("Fundraising round totals", () => {
     expect(screen.getByText("in 3 weeks")).toBeInTheDocument();
   });
 
-  it("filters the commitments table when a status tile is clicked", async () => {
+  it("filters the commitments table through a request when a status tile is clicked", async () => {
     const user = userEvent.setup();
     renderPage();
 
@@ -199,8 +203,12 @@ describe("Fundraising round totals", () => {
     const totals = within(await screen.findByRole("region", { name: "Round totals" }));
     await user.click(totals.getByText("Wired").closest("button")!);
 
+    // The filter goes to the API, not a re-scan of the already-loaded table.
+    await waitFor(() =>
+      expect(listCommitments).toHaveBeenCalledWith("startup-1", "round-1", "wired"),
+    );
+    await waitFor(() => expect(screen.queryByText("Investor b")).not.toBeInTheDocument());
     expect(screen.getByText("Investor a")).toBeInTheDocument();
-    expect(screen.queryByText("Investor b")).not.toBeInTheDocument();
     expect(screen.queryByText("Investor c")).not.toBeInTheDocument();
     expect(screen.getByText(/wired commitments only/i)).toBeInTheDocument();
 

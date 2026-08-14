@@ -189,13 +189,32 @@ export class PipelineService {
   }
 
   async listEntries(startupId: string, query: ListPipelineQuery) {
-    const { page, limit, stage } = query;
+    const { page, limit, stage, search, ownerId, attentionOnly } = query;
     const roundId = await this.resolveRoundId(startupId, query.roundId);
+
+    // An explicit stage always wins; otherwise showPassed=false excludes the
+    // one stage that would otherwise dominate a "what needs work" view.
+    const stageFilter = stage ?? (query.showPassed === false ? { not: "passed" as const } : undefined);
+
+    // Reuses getFocus's own criteria rather than re-deriving them, so
+    // "needs attention" can never mean something different here than it
+    // does on the Focus tab.
+    const focusIds = attentionOnly ? (await this.getFocus(startupId, roundId)).data.map((row) => row.id) : null;
 
     const where: Prisma.PipelineWhereInput = {
       startupId,
       roundId,
-      ...(stage && { stage }),
+      ...(stageFilter !== undefined && { stage: stageFilter }),
+      ...(ownerId && { ownerId }),
+      ...(search && {
+        startupInvestor: {
+          OR: [
+            { fullName: { contains: search, mode: "insensitive" as const } },
+            { ventureFirm: { contains: search, mode: "insensitive" as const } },
+          ],
+        },
+      }),
+      ...(focusIds && { id: { in: focusIds } }),
     };
 
     const [total, rows] = await Promise.all([

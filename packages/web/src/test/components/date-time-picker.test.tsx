@@ -41,7 +41,11 @@ describe("DateTimePicker", () => {
     render(<Harness initial={initial} />);
 
     await user.click(screen.getByRole("button", { name: /aug 20, 2026/i }));
-    await user.click(screen.getByRole("button", { name: "2:30 PM" }));
+    // Hour and minute are two short lists rather than one 96-row scroll.
+    await user.click(screen.getByRole("combobox", { name: "Hour" }));
+    await user.click(await screen.findByRole("option", { name: "2 PM" }));
+    await user.click(screen.getByRole("combobox", { name: "Minute" }));
+    await user.click(await screen.findByRole("option", { name: "30" }));
 
     const result = new Date(screen.getByTestId("value").textContent!);
     expect(result.getDate()).toBe(20);

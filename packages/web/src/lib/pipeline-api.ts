@@ -85,7 +85,16 @@ export type PaginationMeta = {
 
 export async function listPipelineEntries(
   startupId: string,
-  params?: { page?: number; limit?: number; stage?: PipelineStageId; roundId?: string },
+  params?: {
+    page?: number;
+    limit?: number;
+    stage?: PipelineStageId;
+    roundId?: string;
+    search?: string;
+    ownerId?: string;
+    attentionOnly?: boolean;
+    showPassed?: boolean;
+  },
 ) {
   const { data } = await apiClient.get<{ data: PipelineEntry[]; meta: PaginationMeta }>(
     `/startups/${startupId}/pipeline`,

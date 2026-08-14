@@ -20,8 +20,14 @@ import type { QueryClient } from "@tanstack/react-query";
 export const qk = {
   rounds: (startupId: string) => ["fundraising-rounds", startupId] as const,
 
-  commitments: (startupId: string, roundId?: string | null) =>
-    ["commitments", startupId, roundId ?? null] as const,
+  /**
+   * `status` distinguishes the round's unfiltered fetch (used for the total
+   * tiles) from the one status tile a founder clicked to filter the table —
+   * see Fundraising.tsx. Both still fall under the same
+   * `["commitments", startupId]` prefix for invalidation.
+   */
+  commitments: (startupId: string, roundId?: string | null, status?: string | null) =>
+    ["commitments", startupId, roundId ?? null, status ?? null] as const,
 
   roundMetrics: (startupId: string, roundId?: string | null) =>
     ["round-metrics", startupId, roundId ?? null] as const,
@@ -29,9 +35,22 @@ export const qk = {
   fundingHistory: (startupId: string, roundId?: string | null) =>
     ["funding-history", startupId, roundId ?? null] as const,
 
-  /** Stores `{ data: PipelineEntry[] }` for the whole round. */
-  pipeline: (startupId: string, roundId?: string | null) =>
-    ["pipeline", startupId, roundId ?? null] as const,
+  /**
+   * Stores `{ data: PipelineEntry[] }` for the whole round. `filters`
+   * distinguishes the board's unfiltered fetch (used for totals) from its
+   * search/attention/mine/showPassed fetch — see Pipeline.tsx — while still
+   * falling under the same `["pipeline", startupId]` prefix for invalidation.
+   */
+  pipeline: (
+    startupId: string,
+    roundId?: string | null,
+    filters?: {
+      search?: string | null;
+      ownerId?: string | null;
+      attentionOnly?: boolean;
+      showPassed?: boolean;
+    } | null,
+  ) => ["pipeline", startupId, roundId ?? null, filters ?? null] as const,
 
   pipelineFocus: (startupId: string, roundId?: string | null) =>
     ["pipeline-focus", startupId, roundId ?? null] as const,

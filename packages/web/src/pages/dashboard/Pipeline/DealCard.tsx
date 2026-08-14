@@ -3,6 +3,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
   CalendarClock,
+  Check,
   Crown,
   ListPlus,
   Mail,
@@ -15,7 +16,6 @@ import {
 } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
-import { Checkbox } from "../../../components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -101,33 +101,39 @@ export function DealCardBody({
   return (
     <>
       <div className="flex items-center gap-2">
-        {selected == null || dragOverlay ? (
-          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/15 font-display text-[10px] font-semibold text-primary">
-            {getInitials(investor.fullName)}
-          </div>
-        ) : (
-          // In selection mode the avatar gives up its slot: a checkbox in the
-          // same place keeps the card's height and layout identical, so
-          // entering selection never reflows the board.
-          <Checkbox
-            checked={selected}
-            onChange={() => onToggleSelected?.(deal.id)}
-            // The card body is a drag handle and the identity button covers
-            // the whole card, so the checkbox has to stop both.
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => event.stopPropagation()}
-            aria-label={`Select ${investor.fullName}`}
-            className="relative z-10 h-7 w-7 shrink-0"
-          />
-        )}
+        {/* Same slot whether selection mode is on or not, so entering it never
+            reflows the board. In selection mode the avatar itself becomes the
+            selected indicator — a filled circle with a check — rather than a
+            separate checkbox target; the whole card is already the hit area. */}
+        <div
+          className={cn(
+            "grid h-7 w-7 shrink-0 place-items-center rounded-full font-display text-[10px] font-semibold transition-colors",
+            selected && !dragOverlay
+              ? "bg-primary text-primary-foreground"
+              : "bg-primary/15 text-primary",
+          )}
+        >
+          {selected && !dragOverlay ? (
+            <Check className="h-3.5 w-3.5" />
+          ) : (
+            getInitials(investor.fullName)
+          )}
+        </div>
 
-        {/* The whole identity block opens the deal; the drag handle and the move
-            menu stay clickable because they sit outside this button. */}
+        {/* The whole card is this button's hit area (its ::after stretches to
+            the card's edges). Outside selection mode it opens the deal;
+            inside selection mode, a click toggles this card instead — no
+            separate checkbox to aim for. */}
         <button
           type="button"
-          onClick={() => onOpen(deal.id)}
+          onClick={() =>
+            selected == null || dragOverlay ? onOpen(deal.id) : onToggleSelected?.(deal.id)
+          }
           className="min-w-0 flex-1 text-left after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-          aria-label={`Open ${investor.fullName}`}
+          aria-label={
+            selected == null || dragOverlay ? `Open ${investor.fullName}` : `Select ${investor.fullName}`
+          }
+          aria-pressed={selected == null || dragOverlay ? undefined : selected}
         >
           <div className="flex items-center gap-1.5">
             <span className="truncate text-sm font-medium text-foreground">{investor.fullName}</span>
@@ -299,7 +305,7 @@ export const DealCard = memo(function DealCard(props: DealCardProps) {
             // while the DragOverlay copy follows the cursor instead.
             "border-2 border-dashed border-primary/40 bg-primary/[0.04] shadow-none"
           : focusReason && "border-l-2 border-l-warning",
-        selected && !isDragging && "border-primary ring-1 ring-primary/40",
+        selected && !isDragging && "border-primary bg-primary/[0.06] ring-1 ring-primary/40",
       )}
     >
       {!isDragging && <DealCardBody {...props} />}

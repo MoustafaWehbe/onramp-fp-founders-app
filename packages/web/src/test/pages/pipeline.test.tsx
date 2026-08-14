@@ -305,21 +305,26 @@ describe("Pipeline board", () => {
     expect(screen.getByText("Never contacted")).toBeInTheDocument();
   });
 
-  it("filters the board down to deals needing attention", async () => {
+  it("filters the board down to deals needing attention, asking the API rather than filtering in memory", async () => {
     getPipelineFocus.mockResolvedValue([
       focusEntry({ id: "d1", investorId: "i1", reason: "overdue", nextTaskDueDate: daysFromNow(-4) }),
     ]);
-    listPipelineEntries.mockResolvedValue({
-      data: [
-        entry({ id: "d1", investorId: "i1" }),
-        entry({
-          id: "d2",
-          investorId: "i2",
-          stage: "due_diligence",
-          investor: { fullName: "Grace Hopper" } as PipelineEntry["investor"],
-        }),
-      ],
-      meta: { page: 1, limit: 100, total: 2, totalPages: 1 },
+    const all = [
+      entry({ id: "d1", investorId: "i1" }),
+      entry({
+        id: "d2",
+        investorId: "i2",
+        stage: "due_diligence",
+        investor: { fullName: "Grace Hopper" } as PipelineEntry["investor"],
+      }),
+    ];
+    // The API, not the client, decides who qualifies as needing attention —
+    // the mock stands in for that decision the same way the real endpoint
+    // reuses getFocus's own criteria.
+    listPipelineEntries.mockImplementation((..._args: unknown[]) => {
+      const params = _args[1] as { attentionOnly?: boolean } | undefined;
+      const data = params?.attentionOnly ? all.filter((e) => e.id === "d1") : all;
+      return Promise.resolve({ data, meta: { page: 1, limit: 100, total: data.length, totalPages: 1 } });
     });
     const user = userEvent.setup();
     renderPipeline();
@@ -327,6 +332,12 @@ describe("Pipeline board", () => {
     await screen.findByText("Grace Hopper");
     await user.click(screen.getByRole("button", { name: /Needs attention/ }));
 
+    await waitFor(() =>
+      expect(listPipelineEntries).toHaveBeenCalledWith(
+        "startup-1",
+        expect.objectContaining({ attentionOnly: true }),
+      ),
+    );
     expect(screen.queryByText("Grace Hopper")).not.toBeInTheDocument();
     expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
   });
@@ -417,20 +428,27 @@ describe("Pipeline board", () => {
     });
   });
 
-  it("searches by investor and firm without hitting the API again", async () => {
-    listPipelineEntries.mockResolvedValue({
-      data: [
-        entry({ id: "d1", investorId: "i1" }),
-        entry({
-          id: "d2",
-          investorId: "i2",
-          investor: {
-            fullName: "Grace Hopper",
-            ventureFirm: "Northwind",
-          } as PipelineEntry["investor"],
-        }),
-      ],
-      meta: { page: 1, limit: 100, total: 2, totalPages: 1 },
+  it("searches by investor and firm through the API, not by filtering an already-loaded page", async () => {
+    const all = [
+      entry({ id: "d1", investorId: "i1" }),
+      entry({
+        id: "d2",
+        investorId: "i2",
+        investor: {
+          fullName: "Grace Hopper",
+          ventureFirm: "Northwind",
+        } as PipelineEntry["investor"],
+      }),
+    ];
+    listPipelineEntries.mockImplementation((..._args: unknown[]) => {
+      const params = _args[1] as { search?: string } | undefined;
+      const needle = params?.search?.toLowerCase();
+      const data = needle
+        ? all.filter((e) =>
+            `${e.investor.fullName} ${e.investor.ventureFirm ?? ""}`.toLowerCase().includes(needle),
+          )
+        : all;
+      return Promise.resolve({ data, meta: { page: 1, limit: 100, total: data.length, totalPages: 1 } });
     });
     const user = userEvent.setup();
     renderPipeline();
@@ -438,9 +456,16 @@ describe("Pipeline board", () => {
     await screen.findByText("Grace Hopper");
     await user.type(screen.getByLabelText("Search the pipeline"), "northwind");
 
+    await waitFor(() =>
+      expect(listPipelineEntries).toHaveBeenCalledWith(
+        "startup-1",
+        expect.objectContaining({ search: "northwind" }),
+      ),
+    );
+    // The matching request has been sent, but its response still has to land
+    // and re-render before the board reflects it.
+    await waitFor(() => expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument());
     expect(screen.getByText("Grace Hopper")).toBeInTheDocument();
-    expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
-    expect(listPipelineEntries).toHaveBeenCalledTimes(1);
   });
 
   // The board moves cards via dnd-kit (pointer-based drag, real

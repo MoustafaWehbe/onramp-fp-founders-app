@@ -4826,6 +4826,14 @@ export interface operations {
                 stage?: components["schemas"]["PipelineStage"];
                 /** @description Fundraising round to show. Optional only when the startup has exactly one active round. */
                 roundId?: string;
+                /** @description Matched against the investor's name and firm, case-insensitively. */
+                search?: string;
+                /** @description Only deals owned by this startup member. */
+                ownerId?: string;
+                /** @description Only deals that would appear on the Focus tab — the same criteria as GET /pipeline/focus. */
+                attentionOnly?: boolean;
+                /** @description When false, excludes deals in the "passed" stage. Ignored when `stage` is also given. */
+                showPassed?: boolean;
             };
             header?: never;
             path: {
@@ -6190,6 +6198,7 @@ export interface operations {
                 page?: components["parameters"]["PageParam"];
                 /** @description Number of items per page */
                 limit?: components["parameters"]["LimitParam"];
+                status?: components["schemas"]["CommitmentStatus"];
             };
             header?: never;
             path: {

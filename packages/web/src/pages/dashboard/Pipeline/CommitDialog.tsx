@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "../../../components/ui/button";
+import { DatePicker } from "../../../components/ui/date-picker";
 import {
   Dialog,
   DialogContent,
@@ -47,13 +48,13 @@ export function CommitDialog({
 }: CommitDialogProps) {
   const [amount, setAmount] = useState("");
   const [status, setStatus] = useState<CommitmentStatus>("soft_circled");
-  const [expectedCloseDate, setExpectedCloseDate] = useState("");
+  const [expectedCloseDate, setExpectedCloseDate] = useState<Date | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setAmount(suggestedAmount == null ? "" : String(suggestedAmount));
     setStatus("soft_circled");
-    setExpectedCloseDate("");
+    setExpectedCloseDate(null);
   }, [open, suggestedAmount]);
 
   const parsed = Number(amount.trim());
@@ -103,12 +104,7 @@ export function CommitDialog({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="commit-close">Expected close</Label>
-              <Input
-                id="commit-close"
-                type="date"
-                value={expectedCloseDate}
-                onChange={(event) => setExpectedCloseDate(event.target.value)}
-              />
+              <DatePicker id="commit-close" value={expectedCloseDate} onChange={setExpectedCloseDate} />
             </div>
           </div>
         </div>
@@ -124,9 +120,7 @@ export function CommitDialog({
               onConfirm({
                 amount: parsed,
                 status,
-                expectedCloseDate: expectedCloseDate
-                  ? new Date(`${expectedCloseDate}T00:00:00`).toISOString()
-                  : null,
+                expectedCloseDate: expectedCloseDate ? expectedCloseDate.toISOString() : null,
               })
             }
           >

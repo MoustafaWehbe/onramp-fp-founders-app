@@ -304,6 +304,44 @@ export function Pipeline() {
     [membersQuery.data, user?.id],
   );
 
+  // Typing shouldn't fire a request per keystroke — the same debounce used on
+  // the Investors directory's search box.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(view.search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [view.search]);
+
+  const hasActiveFilter =
+    debouncedSearch !== "" || view.attentionOnly || view.mineOnly || !view.showPassed;
+
+  // Search, Mine, Attention and Show passed are answered by the API, not by
+  // re-filtering whatever page happened to load — the same reasoning as the
+  // Investors directory's server-side filters. Kept as a second query,
+  // separate from the unfiltered one above, so typing a search term can never
+  // change what the summary tiles or the lead banner report: those always
+  // read the whole round.
+  const filteredPipelineQuery = useQuery({
+    queryKey: qk.pipeline(startupId, activeRound?.id, {
+      search: debouncedSearch || null,
+      ownerId: view.mineOnly ? myMemberId : null,
+      attentionOnly: view.attentionOnly,
+      showPassed: view.showPassed,
+    }),
+    queryFn: () =>
+      fetchAllPages((page, limit) =>
+        listPipelineEntries(startupId, {
+          page,
+          limit,
+          roundId: activeRound?.id,
+          ...(debouncedSearch && { search: debouncedSearch }),
+          ...(view.mineOnly && myMemberId && { ownerId: myMemberId }),
+          ...(view.attentionOnly && { attentionOnly: true }),
+          ...(!view.showPassed && { showPassed: false }),
+        }),
+      ).then((data) => ({ data })),
+    enabled: Boolean(activeRound) && hasActiveFilter,
+  });
 
   const totals = useMemo<PipelineTotals>(() => {
     let liveCount = 0;
@@ -335,17 +373,12 @@ export function Pipeline() {
     };
   }, [entries, focusByDeal]);
 
-  const visibleEntries = useMemo(() => {
-    const needle = view.search.trim().toLowerCase();
-    return entries.filter((entry) => {
-      if (!view.showPassed && entry.stage === "passed") return false;
-      if (view.attentionOnly && !focusByDeal.has(entry.id)) return false;
-      if (view.mineOnly && entry.ownerId !== myMemberId) return false;
-      if (needle === "") return true;
-      const haystack = `${entry.investor.fullName} ${entry.investor.ventureFirm ?? ""}`;
-      return haystack.toLowerCase().includes(needle);
-    });
-  }, [entries, focusByDeal, myMemberId, view]);
+  // Search, Mine, Attention and Show passed are all answered by the API —
+  // this just picks which of the two board fetches above is on screen.
+  const visibleEntries = useMemo(
+    () => (hasActiveFilter ? (filteredPipelineQuery.data?.data ?? []) : entries),
+    [hasActiveFilter, filteredPipelineQuery.data, entries],
+  );
 
   const visibleStages = useMemo(
     () => (view.showPassed ? STAGES : STAGES.filter((stage) => stage.id !== "passed")),
@@ -818,6 +851,21 @@ export function Pipeline() {
               setSelectedIds((current) => (current === null ? new Set() : null))
             }
           />
+
+          {hasActiveFilter && filteredPipelineQuery.isFetching && (
+            <p className="text-[11px] text-muted-foreground">Updating…</p>
+          )}
+
+          {hasActiveFilter && filteredPipelineQuery.isError && (
+            <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-6 text-sm text-destructive">
+              <p>{pipelineErrorMessage(filteredPipelineQuery.error, "Could not apply these filters.")}</p>
+              <div className="mt-3">
+                <Button size="sm" variant="outline" onClick={() => void filteredPipelineQuery.refetch()}>
+                  Retry
+                </Button>
+              </div>
+            </div>
+          )}
 
           {selectedIds !== null && (
             <BulkActionsBar

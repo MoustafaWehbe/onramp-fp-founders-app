@@ -19,7 +19,10 @@ vi.mock("../../lib/investor-api", async (importOriginal) => ({
   deleteInvestor: (...a: unknown[]) => deleteInvestor(...a),
 }));
 
-vi.mock("../../lib/pipeline-api", () => ({ createPipelineEntry: vi.fn() }));
+const createPipelineEntry = vi.fn();
+vi.mock("../../lib/pipeline-api", () => ({
+  createPipelineEntry: (...a: unknown[]) => createPipelineEntry(...a),
+}));
 vi.mock("../../lib/fundraising-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/fundraising-api")>()),
   listFundraisingRounds: vi.fn().mockResolvedValue({ data: [], meta: {} }),
@@ -279,6 +282,55 @@ describe("Investors", () => {
         "This contact has pipeline entries, commitments or logged interactions, so it can't be deleted.",
       ),
     );
+  });
+
+  it("adds every selected contact to the pipeline in one action", async () => {
+    listInvestors.mockResolvedValue(
+      page([contact("i1", "Ada Lovelace"), contact("i2", "Grace Hopper")]),
+    );
+    createPipelineEntry.mockResolvedValue({ id: "deal-1" });
+    const user = userEvent.setup();
+    renderInvestors();
+
+    await screen.findAllByText("Ada Lovelace");
+    await user.click(screen.getAllByLabelText("Select Ada Lovelace")[0]);
+    await user.click(screen.getAllByLabelText("Select Grace Hopper")[0]);
+    await user.click(screen.getByRole("button", { name: /Add to pipeline/ }));
+
+    await waitFor(() => expect(createPipelineEntry).toHaveBeenCalledTimes(2));
+    expect(createPipelineEntry).toHaveBeenCalledWith(
+      "startup-1",
+      expect.objectContaining({ investorId: "i1", stage: "sourced" }),
+    );
+    expect(createPipelineEntry).toHaveBeenCalledWith(
+      "startup-1",
+      expect.objectContaining({ investorId: "i2", stage: "sourced" }),
+    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("2 investors added to pipeline"));
+  });
+
+  it("keeps only the contacts that failed selected, after a partial bulk add", async () => {
+    listInvestors.mockResolvedValue(
+      page([contact("i1", "Ada Lovelace"), contact("i2", "Grace Hopper", true)]),
+    );
+    createPipelineEntry.mockImplementation((_startupId: string, body: { investorId: string }) =>
+      body.investorId === "i2"
+        ? Promise.reject(apiError(409, "ALREADY_IN_PIPELINE", "Already in pipeline"))
+        : Promise.resolve({ id: "deal-1" }),
+    );
+    const user = userEvent.setup();
+    renderInvestors();
+
+    await screen.findAllByText("Ada Lovelace");
+    await user.click(screen.getAllByLabelText("Select Ada Lovelace")[0]);
+    await user.click(screen.getAllByLabelText("Select Grace Hopper")[0]);
+    await user.click(screen.getByRole("button", { name: /Add to pipeline/ }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("1 added, 1 could not be added")),
+    );
+    expect(screen.getAllByLabelText("Select Ada Lovelace")[0]).not.toBeChecked();
+    expect(screen.getAllByLabelText("Select Grace Hopper")[0]).toBeChecked();
   });
 
   it("gives a viewer no way to add, edit or delete", async () => {

@@ -119,6 +119,11 @@ export const updatePipelineEntrySchema = z
     message: "At least one field is required",
   });
 
+const optionalBooleanFlag = z
+  .union([z.literal("true"), z.literal("false")])
+  .optional()
+  .transform((v) => (v === undefined ? undefined : v === "true"));
+
 export const listPipelineQuerySchema = z.object({
   roundId: z.string().uuid("roundId must be a valid UUID").optional(),
   page: z.coerce.number().int().min(1, "page must be at least 1").default(1),
@@ -129,6 +134,15 @@ export const listPipelineQuerySchema = z.object({
     .max(100, "limit must be at most 100")
     .default(20),
   stage: pipelineStageEnum.optional(),
+  // Matched against the investor's name and firm, server-side — the board
+  // never filters an already-fetched page in memory.
+  search: z.string().trim().min(1).max(100).optional(),
+  ownerId: z.string().uuid("ownerId must be a valid UUID").optional(),
+  // Narrows to exactly what getFocus() would return — the same criteria
+  // used to badge deals as needing attention.
+  attentionOnly: optionalBooleanFlag,
+  // Defaults true; false excludes stage=passed. Ignored when `stage` is set.
+  showPassed: optionalBooleanFlag,
 });
 
 export const pipelineAnalyticsQuerySchema = z.object({

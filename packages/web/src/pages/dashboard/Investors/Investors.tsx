@@ -83,6 +83,8 @@ function mutationErrorMessage(err: unknown, fallback: string): string {
       return "This contact has pipeline entries, commitments or logged interactions, so it can't be deleted.";
     case "INVESTOR_NOT_FOUND":
       return "That contact no longer exists — it may have been removed by a teammate.";
+    case "ALREADY_IN_PIPELINE":
+      return "Already in the pipeline.";
     default:
       return apiErrorMessage(err, fallback, FORBIDDEN_HINT);
   }
@@ -231,6 +233,37 @@ export function Investors() {
     },
   });
 
+  const bulkAddToPipelineMutation = useMutation({
+    mutationFn: async (investors: InvestorRow[]) => {
+      const settled = await runWithConcurrency(investors, 5, (investor) =>
+        createPipelineEntry(startupId, {
+          investorId: investor.id,
+          stage: "sourced",
+          expectedAmount: investor.amount ?? undefined,
+          probabilityPercentage: DEFAULT_PROBABILITY_BY_STAGE.sourced,
+        }),
+      );
+      const failedIds = investors
+        .filter((_, index) => settled[index].status === "rejected")
+        .map((investor) => investor.id);
+      const firstFailure = settled.find(
+        (result): result is PromiseRejectedResult => result.status === "rejected",
+      )?.reason;
+      return { succeeded: investors.length - failedIds.length, failedIds, firstFailure };
+    },
+    onSuccess: ({ succeeded, failedIds, firstFailure }) => {
+      setSelectedIds(new Set(failedIds));
+      invalidateInvestors();
+      if (failedIds.length === 0) {
+        toast.success(`${succeeded} investor${succeeded === 1 ? "" : "s"} added to pipeline`);
+      } else {
+        toast.error(
+          `${succeeded} added, ${failedIds.length} could not be added — ${mutationErrorMessage(firstFailure, "some are already in the pipeline")}`,
+        );
+      }
+    },
+  });
+
   const handleFilterChange = <K extends keyof InvestorFilters>(
     key: K,
     value: InvestorFilters[K],
@@ -346,6 +379,12 @@ export function Investors() {
         selectedCount={selectedIds.size}
         onBulkDelete={() => setBulkDeleteConfirm(true)}
         bulkDeleting={bulkDeleteMutation.isPending}
+        onBulkAddToPipeline={
+          canCreate
+            ? () => bulkAddToPipelineMutation.mutate(rows.filter((row) => selectedIds.has(row.id)))
+            : undefined
+        }
+        bulkAddingToPipeline={bulkAddToPipelineMutation.isPending}
       />
 
       <div className="card-elevated overflow-hidden">

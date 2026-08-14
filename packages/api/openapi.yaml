@@ -4100,6 +4100,32 @@ paths:
           description: >-
             Fundraising round to show. Optional only when the startup has
             exactly one active round.
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Matched against the investor's name and firm, case-insensitively.
+        - name: ownerId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Only deals owned by this startup member.
+        - name: attentionOnly
+          in: query
+          schema:
+            type: boolean
+          description: >-
+            Only deals that would appear on the Focus tab — the same
+            criteria as GET /pipeline/focus.
+        - name: showPassed
+          in: query
+          schema:
+            type: boolean
+            default: true
+          description: >-
+            When false, excludes deals in the "passed" stage. Ignored when
+            `stage` is also given.
       responses:
         "200":
           description: List of pipeline entries
@@ -5296,6 +5322,10 @@ paths:
       parameters:
         - $ref: "#/components/parameters/PageParam"
         - $ref: "#/components/parameters/LimitParam"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/CommitmentStatus"
       responses:
         "200":
           description: List of commitments

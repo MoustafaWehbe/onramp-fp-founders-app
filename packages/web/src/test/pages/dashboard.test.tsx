@@ -77,7 +77,7 @@ describe("Today dashboard", () => {
     expect(screen.getByText("20%")).toBeInTheDocument();
     expect(screen.getByText("Funding progress")).toBeInTheDocument();
     expect(screen.getByText("Pipeline by stage")).toBeInTheDocument();
-    expect(client.getQueryData(["pipeline", "startup-1", "round-1"])).toMatchObject({
+    expect(client.getQueryData(["pipeline", "startup-1", "round-1", null])).toMatchObject({
       data: [expect.objectContaining({ id: "deal-1" })],
     });
   });

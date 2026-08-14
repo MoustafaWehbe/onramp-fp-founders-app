@@ -3,17 +3,28 @@ import { CalendarIcon, X } from "lucide-react";
 import { Button } from "./button";
 import { Calendar } from "./calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
+import { Select } from "./select";
 import { cn } from "@/lib/utils";
 
-/** Every quarter-hour of the day, e.g. { hours: 9, minutes: 30, label: "9:30 AM" }. */
-const TIME_OPTIONS = Array.from({ length: 24 * 4 }, (_, index) => {
-  const hours = Math.floor(index / 4);
-  const minutes = (index % 4) * 15;
-  const label = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(
-    new Date(2000, 0, 1, hours, minutes),
-  );
-  return { hours, minutes, label };
-});
+/** The 24 hours of the day, e.g. { hours: 14, label: "2 PM" }. Kept as its own
+ *  select, separate from minutes, so picking a time is two short lists
+ *  instead of one 96-row scroll through every quarter-hour. */
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, hours) => ({
+  value: String(hours),
+  label: new Intl.DateTimeFormat("en-US", { hour: "numeric" }).format(new Date(2000, 0, 1, hours)),
+}));
+
+/** Quarter-hour granularity, matching what this picker has always offered. */
+const MINUTE_OPTIONS = [0, 15, 30, 45].map((minutes) => ({
+  value: String(minutes),
+  label: minutes.toString().padStart(2, "0"),
+}));
+
+/** Rounds down to the nearest quarter-hour so a value set elsewhere (not
+ *  through this picker) still lands on one of MINUTE_OPTIONS. */
+function nearestQuarterHour(minutes: number): number {
+  return Math.floor(minutes / 15) * 15;
+}
 
 function formatTime(date: Date): string {
   return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(date);
@@ -107,32 +118,31 @@ export function DateTimePicker({
         <div className="flex gap-3">
           <Calendar value={value} onSelect={selectDay} minDate={minDate} />
 
-          <div className="w-24 shrink-0 border-l border-border/70 pl-3">
+          <div className="w-36 shrink-0 border-l border-border/70 pl-3">
             <div className="mb-2 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
               Time
             </div>
-            <div className="scrollbar-slim flex max-h-56 flex-col gap-0.5 overflow-y-auto">
-              {TIME_OPTIONS.map((option) => {
-                const selected =
-                  value !== null &&
-                  value.getHours() === option.hours &&
-                  value.getMinutes() === option.minutes;
-                return (
-                  <button
-                    key={option.label}
-                    type="button"
-                    onClick={() => selectTime(option.hours, option.minutes)}
-                    className={cn(
-                      "shrink-0 rounded-md px-2 py-1 text-left text-xs transition-colors",
-                      selected
-                        ? "bg-primary font-medium text-primary-foreground"
-                        : "text-foreground hover:bg-surface-hover",
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
+            <div className="flex gap-2">
+              <Select
+                aria-label="Hour"
+                value={value ? String(value.getHours()) : ""}
+                onValueChange={(hour) =>
+                  selectTime(Number(hour), value ? nearestQuarterHour(value.getMinutes()) : 0)
+                }
+                options={HOUR_OPTIONS}
+                placeholder="Hour"
+                className="h-9 flex-1 px-2 text-xs"
+              />
+              <Select
+                aria-label="Minute"
+                value={value ? String(nearestQuarterHour(value.getMinutes())) : ""}
+                onValueChange={(minute) =>
+                  selectTime(value ? value.getHours() : 9, Number(minute))
+                }
+                options={MINUTE_OPTIONS}
+                placeholder="Min"
+                className="h-9 flex-1 px-2 text-xs"
+              />
             </div>
           </div>
         </div>

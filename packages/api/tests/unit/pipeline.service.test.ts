@@ -306,6 +306,87 @@ describe("PipelineService.listEntries", () => {
     expect(result.data[0].expectedAmount).toBe(250000);
     expect(typeof result.data[0].expectedAmount).toBe("number");
   });
+
+  // These four params answer the board's search box and its Mine/Attention/
+  // Show passed toggles server-side, rather than the client re-filtering an
+  // already-fetched page.
+  it("matches search against the investor's name and firm, case-insensitively", async () => {
+    (mockPrisma.pipeline.count as jest.Mock).mockResolvedValue(0);
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.listEntries(STARTUP_ID, { page: 1, limit: 20, search: "acme" } as never);
+
+    expect(mockPrisma.pipeline.count).toHaveBeenCalledWith({
+      where: {
+        startupId: STARTUP_ID,
+        roundId: ROUND_ID,
+        startupInvestor: {
+          OR: [
+            { fullName: { contains: "acme", mode: "insensitive" } },
+            { ventureFirm: { contains: "acme", mode: "insensitive" } },
+          ],
+        },
+      },
+    });
+  });
+
+  it("filters by ownerId when provided", async () => {
+    (mockPrisma.pipeline.count as jest.Mock).mockResolvedValue(0);
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([]);
+    const ownerId = "00000000-0000-0000-0000-000000000006";
+
+    await service.listEntries(STARTUP_ID, { page: 1, limit: 20, ownerId } as never);
+
+    expect(mockPrisma.pipeline.count).toHaveBeenCalledWith({
+      where: { startupId: STARTUP_ID, roundId: ROUND_ID, ownerId },
+    });
+  });
+
+  it("excludes passed deals when showPassed is false", async () => {
+    (mockPrisma.pipeline.count as jest.Mock).mockResolvedValue(0);
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.listEntries(STARTUP_ID, { page: 1, limit: 20, showPassed: false } as never);
+
+    expect(mockPrisma.pipeline.count).toHaveBeenCalledWith({
+      where: { startupId: STARTUP_ID, roundId: ROUND_ID, stage: { not: "passed" } },
+    });
+  });
+
+  it("lets an explicit stage win over showPassed=false", async () => {
+    (mockPrisma.pipeline.count as jest.Mock).mockResolvedValue(0);
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.listEntries(STARTUP_ID, {
+      page: 1,
+      limit: 20,
+      stage: "sourced",
+      showPassed: false,
+    } as never);
+
+    expect(mockPrisma.pipeline.count).toHaveBeenCalledWith({
+      where: { startupId: STARTUP_ID, roundId: ROUND_ID, stage: "sourced" },
+    });
+  });
+
+  it("narrows to getFocus's own ids when attentionOnly is set, rather than re-deriving the criteria", async () => {
+    (mockPrisma.pipeline.count as jest.Mock).mockResolvedValue(0);
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([]);
+    const focusSpy = jest
+      .spyOn(service, "getFocus")
+      .mockResolvedValueOnce({ data: [{ id: PIPELINE_ID }] } as never);
+
+    try {
+      await service.listEntries(STARTUP_ID, { page: 1, limit: 20, attentionOnly: true } as never);
+
+      expect(focusSpy).toHaveBeenCalledWith(STARTUP_ID, ROUND_ID);
+      expect(mockPrisma.pipeline.count).toHaveBeenCalledWith({
+        where: { startupId: STARTUP_ID, roundId: ROUND_ID, id: { in: [PIPELINE_ID] } },
+      });
+    } finally {
+      focusSpy.mockRestore();
+    }
+  });
 });
 
 describe("PipelineService.getEntry", () => {
