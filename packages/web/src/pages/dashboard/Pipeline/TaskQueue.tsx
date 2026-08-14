@@ -1,8 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, CheckCircle2 } from "lucide-react";
+import { CalendarClock, Check, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
-import { Checkbox } from "../../../components/ui/checkbox";
 import { useAuth } from "../../../hooks/useAuth";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { apiErrorMessage } from "../../../lib/api-error";
@@ -86,12 +85,15 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
   const mineCount = myMemberId
     ? all.filter((task) => task.assigneeId === myMemberId).length
     : 0;
-  const tasks = scope === "mine" && myMemberId
-    ? all.filter((task) => task.assigneeId === myMemberId)
+  const tasks = scope === "mine"
+    ? myMemberId
+      ? all.filter((task) => task.assigneeId === myMemberId)
+      : []
     : all;
 
   return (
     <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
       <div
         role="tablist"
         aria-label="Task scope"
@@ -122,6 +124,8 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
             </span>
           </button>
         ))}
+      </div>
+      <p className="text-xs text-muted-foreground">Showing open tasks for this round</p>
       </div>
 
       {tasksQuery.isPending && (
@@ -156,13 +160,6 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
                 key={task.id}
                 className="flex flex-wrap items-center gap-3 rounded-xl border border-border/70 bg-surface/50 p-3"
               >
-                <Checkbox
-                  checked={false}
-                  disabled={!canUpdate || toggleMutation.isPending}
-                  onChange={() => toggleMutation.mutate(task)}
-                  aria-label={`Complete task ${task.title}`}
-                />
-
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{task.title}</p>
                   <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
@@ -185,6 +182,19 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
                   <CalendarClock className="h-3.5 w-3.5" />
                   {due.text}
                 </span>
+                {canUpdate && (
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked="false"
+                    aria-label={`Complete task ${task.title}`}
+                    disabled={toggleMutation.isPending}
+                    onClick={() => toggleMutation.mutate(task)}
+                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-success/30 bg-success/[0.06] px-3 text-xs font-semibold text-success transition-colors hover:border-success/50 hover:bg-success/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40 disabled:pointer-events-none disabled:opacity-50"
+                  >
+                    <Check className="h-3.5 w-3.5" /> Mark done
+                  </button>
+                )}
               </li>
             );
           })}

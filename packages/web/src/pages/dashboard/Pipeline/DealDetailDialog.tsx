@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Crown, Linkedin, Mail, Plus, Trash2 } from "lucide-react";
+import { Crown, History, LayoutDashboard, Linkedin, ListChecks, Mail, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../../components/ui/button";
 import {
@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../../../components/ui/dialog";
-import { Checkbox } from "../../../components/ui/checkbox";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import { Select } from "../../../components/ui/select";
@@ -124,6 +123,7 @@ export function DealDetailDialog({
   const [investorFitScore, setInvestorFitScore] = useState("");
   const [passReasonOpen, setPassReasonOpen] = useState(false);
   const [commitOpen, setCommitOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "activity">("overview");
 
   const investorId = deal?.investor.id ?? null;
 
@@ -131,6 +131,7 @@ export function DealDetailDialog({
   // draft never leaks onto the next investor.
   useEffect(() => {
     if (!deal) return;
+    setActiveTab("overview");
     setAmount(deal.expectedAmount == null ? "" : String(deal.expectedAmount));
     setProbability(deal.probabilityPercentage == null ? "" : String(deal.probabilityPercentage));
     setInvestorFitScore(deal.investorFitScore == null ? "" : String(deal.investorFitScore));
@@ -344,10 +345,10 @@ export function DealDetailDialog({
   return (
     <>
       <Sheet open={deal !== null} onOpenChange={onOpenChange}>
-        <SheetContent>
+        <SheetContent className="max-w-2xl gap-0 p-0 sm:max-w-2xl sm:gap-0 sm:p-0">
           {deal && investor && (
             <>
-              <SheetHeader>
+              <SheetHeader className="border-b border-border/70 bg-card/95 px-5 pb-5 pt-6 sm:px-7">
                 <div className="flex items-start gap-3">
                   <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary/15 font-display text-sm font-semibold text-primary">
                     {getInitials(investor.fullName)}
@@ -362,7 +363,7 @@ export function DealDetailDialog({
                 </div>
               </SheetHeader>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 border-b border-border/70 px-5 py-3 sm:px-7">
                 {investor.email && (
                   <Button variant="outline" size="sm" asChild>
                     <a href={`mailto:${investor.email}`}>
@@ -391,7 +392,31 @@ export function DealDetailDialog({
                 )}
               </div>
 
-              <section aria-label="Deal stage" className="space-y-2">
+              <nav className="flex gap-1 border-b border-border/70 px-5 pt-2 sm:px-7" aria-label="Investor details">
+                {([
+                  { id: "overview", label: "Overview", icon: LayoutDashboard },
+                  { id: "tasks", label: "Tasks", icon: ListChecks },
+                  { id: "activity", label: "Activity", icon: History },
+                ] as const).map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setActiveTab(id)}
+                    className={cn(
+                      "relative flex items-center gap-2 px-3 py-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground",
+                      activeTab === id && "text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary",
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {label}
+                  </button>
+                ))}
+              </nav>
+
+              <div className="space-y-6 px-5 py-6 sm:px-7">
+              {activeTab === "overview" && <>
+
+              <section aria-label="Deal stage" className="space-y-3 rounded-2xl border border-border/70 bg-surface/30 p-4">
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="font-display text-sm font-semibold">Stage</h3>
                   {canUpdate && (
@@ -481,18 +506,29 @@ export function DealDetailDialog({
 
               {/* A priced round does not happen without a lead, and "have we
                   got one yet" was previously unanswerable anywhere. */}
-              <label className="flex items-center gap-2 rounded-lg border border-border/70 bg-surface/50 px-3 py-2 text-sm">
-                <Checkbox
-                  checked={deal.isLead}
-                  disabled={!canUpdate}
-                  onChange={() => dealMutation.mutate({ isLead: !deal.isLead })}
-                  aria-label="Leading this round"
-                />
-                <span className="flex items-center gap-1.5">
-                  <Crown className="h-3.5 w-3.5 text-warning" />
-                  Leading this round
-                </span>
-              </label>
+              <div className={cn("flex flex-wrap items-center gap-3 rounded-xl border p-3 transition-colors", deal.isLead ? "border-warning/35 bg-warning/[0.07]" : "border-border/70 bg-surface/40")}>
+                <div className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg", deal.isLead ? "bg-warning/15 text-warning" : "bg-muted text-muted-foreground")}>
+                  <Crown className="h-4 w-4" />
+                </div>
+                <div className="min-w-40 flex-1">
+                  <p className="text-sm font-semibold">Round lead</p>
+                  <p className="text-xs text-muted-foreground">The investor expected to anchor this round.</p>
+                </div>
+                <button
+                  type="button"
+                  aria-pressed={deal.isLead}
+                  disabled={!canUpdate || dealMutation.isPending}
+                  onClick={() => dealMutation.mutate({ isLead: !deal.isLead })}
+                  className={cn(
+                    "h-8 rounded-full border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+                    deal.isLead
+                      ? "border-warning/40 bg-warning/15 text-warning hover:bg-warning/20"
+                      : "border-border bg-card text-muted-foreground hover:border-warning/40 hover:text-foreground",
+                  )}
+                >
+                  {deal.isLead ? "Lead investor" : "Set as lead"}
+                </button>
+              </div>
 
               <section aria-label="Deal ownership" className="grid gap-3 sm:grid-cols-3">
                 <div className="space-y-1.5">
@@ -575,8 +611,6 @@ export function DealDetailDialog({
                 </section>
               )}
 
-              <TaskList startupId={startupId} pipelineId={deal.id} />
-
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-border/70 bg-surface/50 p-3 text-sm sm:grid-cols-3">
                 {facts.map((fact) => (
                   <div key={fact.label} className="min-w-0">
@@ -593,9 +627,17 @@ export function DealDetailDialog({
                   {investor.notes}
                 </p>
               )}
+              </>}
 
-              <div>
-                <h3 className="mb-2 font-display text-sm font-semibold">Interaction history</h3>
+              {activeTab === "tasks" && (
+                <TaskList startupId={startupId} pipelineId={deal.id} />
+              )}
+
+              {activeTab === "activity" && <div>
+                <div className="mb-5">
+                  <h3 className="font-display text-base font-semibold">Activity</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">Interactions and stage changes, newest first.</p>
+                </div>
                 {/* The sheet itself scrolls now that it's full-height, so the
                     timeline no longer needs its own bounded scroll area. */}
                 <InteractionTimeline
@@ -617,7 +659,7 @@ export function DealDetailDialog({
                   }}
                   onDelete={setPendingLogDelete}
                 />
-              </div>
+              </div>}
 
               {canDelete && (
                 <SheetFooter className="sm:justify-start">
@@ -632,6 +674,7 @@ export function DealDetailDialog({
                   </Button>
                 </SheetFooter>
               )}
+              </div>
             </>
           )}
         </SheetContent>

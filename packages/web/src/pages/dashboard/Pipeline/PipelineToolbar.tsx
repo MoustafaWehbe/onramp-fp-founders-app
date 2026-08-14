@@ -1,4 +1,4 @@
-import { Eye, EyeOff, Search, X } from "lucide-react";
+import { Eye, EyeOff, Search, UserRoundCheck, X } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 import { cn } from "../../../lib/utils";
@@ -7,6 +7,7 @@ export type PipelineView = {
   search: string;
   attentionOnly: boolean;
   showPassed: boolean;
+  mineOnly: boolean;
 };
 
 type PipelineToolbarProps = {
@@ -47,6 +48,18 @@ export function PipelineToolbar({
           </button>
         )}
       </div>
+
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        aria-pressed={view.mineOnly}
+        onClick={() => onChange("mineOnly", !view.mineOnly)}
+        className={cn(view.mineOnly ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15" : "text-muted-foreground")}
+      >
+        <UserRoundCheck className="h-4 w-4" />
+        {view.mineOnly ? "My deals" : "Assigned to me"}
+      </Button>
 
       <Button
         type="button"

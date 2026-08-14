@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from "../../../components/ui/dialog";
 import { usePermissions } from "../../../hooks/usePermissions";
+import { useAuth } from "../../../hooks/useAuth";
 import { useActiveStartupId } from "../../../hooks/useWorkspace";
 import { useAppStore } from "../../../lib/app-store";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
@@ -120,6 +121,7 @@ const collisionDetection: CollisionDetection = (args) => {
 
 export function Pipeline() {
   const startupId = useActiveStartupId();
+  const { user } = useAuth();
   const { can } = usePermissions();
   const queryClient = useQueryClient();
   const preferredRoundId = useAppStore((s) => s.activeRoundIds[startupId]);
@@ -151,6 +153,7 @@ export function Pipeline() {
     search: "",
     attentionOnly: false,
     showPassed: true,
+    mineOnly: false,
   });
 
   const sensors = useSensors(
@@ -256,6 +259,12 @@ export function Pipeline() {
     return map;
   }, [membersQuery.data]);
 
+  // Pipeline ownership uses StartupMember ids while auth exposes a user id.
+  const myMemberId = useMemo(
+    () => membersQuery.data?.find((member) => member.user?.id === user?.id)?.id ?? null,
+    [membersQuery.data, user?.id],
+  );
+
 
   const totals = useMemo<PipelineTotals>(() => {
     let liveCount = 0;
@@ -292,11 +301,12 @@ export function Pipeline() {
     return entries.filter((entry) => {
       if (!view.showPassed && entry.stage === "passed") return false;
       if (view.attentionOnly && !focusByDeal.has(entry.id)) return false;
+      if (view.mineOnly && entry.ownerId !== myMemberId) return false;
       if (needle === "") return true;
       const haystack = `${entry.investor.fullName} ${entry.investor.ventureFirm ?? ""}`;
       return haystack.toLowerCase().includes(needle);
     });
-  }, [entries, focusByDeal, view]);
+  }, [entries, focusByDeal, myMemberId, view]);
 
   const visibleStages = useMemo(
     () => (view.showPassed ? STAGES : STAGES.filter((stage) => stage.id !== "passed")),
@@ -742,7 +752,7 @@ export function Pipeline() {
                   canUpdate={canUpdate}
                   weightedTotal={weightedTotal}
                   emptyMessage={
-                    view.attentionOnly || view.search.trim() !== ""
+                    view.attentionOnly || view.mineOnly || view.search.trim() !== ""
                       ? "Nothing matches here"
                       : "Drop an investor here"
                   }

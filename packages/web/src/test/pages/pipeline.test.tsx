@@ -494,8 +494,9 @@ describe("Pipeline board", () => {
     renderPipeline();
 
     await user.click(await screen.findByRole("button", { name: "Open Ada Lovelace" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Activity" }));
 
-    expect(await screen.findByRole("heading", { name: "Interaction history" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Activity" })).toBeInTheDocument();
     expect(screen.getByText("Walked through the deck.")).toBeInTheDocument();
     expect(listLogsForInvestor).toHaveBeenCalledWith(
       "startup-1",
@@ -520,7 +521,8 @@ describe("Pipeline board", () => {
     renderPipeline();
 
     await user.click(await screen.findByRole("button", { name: "Open Ada Lovelace" }));
-    await screen.findByRole("heading", { name: "Interaction history" });
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Activity" }));
+    await screen.findByRole("heading", { name: "Activity" });
 
     // Exactly one badge: the loose log is relationship-level and belongs in
     // every timeline for this investor without qualification.
