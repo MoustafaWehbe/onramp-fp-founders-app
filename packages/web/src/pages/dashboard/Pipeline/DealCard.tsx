@@ -203,20 +203,23 @@ export const DealCard = memo(function DealCard(props: DealCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: deal.id,
     disabled: !canUpdate,
-    // Slower and easing-out rather than dnd-kit's snappy default (200ms
-    // linear-ish) — the neighbors sliding out of the way to make room reads
-    // as considerably calmer at this pace.
-    transition: { duration: 300, easing: "cubic-bezier(0.25, 1, 0.5, 1)" },
+    // Fast enough to keep up with the pointer while still making the new slot
+    // legible. A 300ms transition stacked behind repeated drag-over updates.
+    transition: { duration: 160, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
   });
 
   return (
     <Card
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        willChange: isDragging || transform ? "transform" : undefined,
+      }}
       {...attributes}
       {...listeners}
       className={cn(
-        "relative touch-none border-border/70 bg-card/95 p-3 shadow-sm transition-[border-color,opacity] hover:-translate-y-0.5 hover:border-primary/40",
+        "relative touch-none border-border/70 bg-card/95 p-3 shadow-sm transition-[border-color,opacity] hover:border-primary/40",
         canUpdate && "cursor-grab active:cursor-grabbing",
         // The dragged card stays in the DOM (dnd-kit needs its layout to keep
         // measuring), hidden here in favor of the DragOverlay copy that
@@ -234,7 +237,7 @@ export const DealCard = memo(function DealCard(props: DealCardProps) {
  *  bindings of its own, just the same visuals lifted off the board. */
 export function DealCardOverlay(props: DealCardProps) {
   return (
-    <Card className="relative rotate-2 cursor-grabbing border-primary/50 bg-card p-3 shadow-2xl">
+    <Card className="relative scale-[1.02] cursor-grabbing border-primary/50 bg-card p-3 shadow-2xl will-change-transform">
       <DealCardBody {...props} />
     </Card>
   );

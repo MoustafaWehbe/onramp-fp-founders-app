@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Crown, History, LayoutDashboard, Linkedin, ListChecks, Mail, Plus, Trash2 } from "lucide-react";
+import { Crown, History, LayoutDashboard, Linkedin, ListChecks, Mail, Pencil, Plus, Save, StickyNote, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../../components/ui/button";
 import {
@@ -14,6 +14,7 @@ import {
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import { Select } from "../../../components/ui/select";
+import { Textarea } from "../../../components/ui/textarea";
 import {
   Sheet,
   SheetContent,
@@ -31,7 +32,7 @@ import {
   updateInteractionLog,
   type InteractionLog,
 } from "../../../lib/interaction-log-api";
-import { INVESTOR_TYPE_LABELS, type InvestorType } from "../../../lib/investor-api";
+import { INVESTOR_TYPE_LABELS, updateInvestor, type InvestorType } from "../../../lib/investor-api";
 import { DEFAULT_PROBABILITY_BY_STAGE, STAGES, type PipelineStageId } from "../../../lib/mock-data";
 import { fetchAllPages } from "../../../lib/pagination";
 import {
@@ -124,6 +125,8 @@ export function DealDetailDialog({
   const [passReasonOpen, setPassReasonOpen] = useState(false);
   const [commitOpen, setCommitOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "activity">("overview");
+  const [noteDraft, setNoteDraft] = useState("");
+  const [noteEditing, setNoteEditing] = useState(false);
 
   const investorId = deal?.investor.id ?? null;
 
@@ -135,6 +138,8 @@ export function DealDetailDialog({
     setAmount(deal.expectedAmount == null ? "" : String(deal.expectedAmount));
     setProbability(deal.probabilityPercentage == null ? "" : String(deal.probabilityPercentage));
     setInvestorFitScore(deal.investorFitScore == null ? "" : String(deal.investorFitScore));
+    setNoteDraft(deal.investor.notes ?? "");
+    setNoteEditing(false);
   }, [deal]);
 
   const logsQuery = useQuery({
@@ -186,6 +191,18 @@ export function DealDetailDialog({
       updatePipelineEntry(startupId, deal!.id, patch),
     onSuccess: () => invalidate(),
     onError: (err) => toast.error(logErrorMessage(err, "Could not update the deal")),
+  });
+
+  const noteMutation = useMutation({
+    mutationFn: (notes: string | null) => updateInvestor(startupId, investorId!, { notes }),
+    onSuccess: (_investor, notes) => {
+      setNoteDraft(notes ?? "");
+      setNoteEditing(false);
+      toast.success(notes ? "Investor note saved" : "Investor note removed");
+      void queryClient.invalidateQueries({ queryKey: ["pipeline", startupId] });
+      void queryClient.invalidateQueries({ queryKey: ["investors", startupId] });
+    },
+    onError: (err) => toast.error(logErrorMessage(err, "Could not update the investor note")),
   });
 
   const saveLogMutation = useMutation({
@@ -622,11 +639,50 @@ export function DealDetailDialog({
                 ))}
               </dl>
 
-              {investor.notes && (
-                <p className="whitespace-pre-wrap rounded-xl border border-border/70 bg-surface/50 p-3 text-sm text-muted-foreground">
-                  {investor.notes}
-                </p>
-              )}
+              <section aria-label="Investor notes" className="rounded-xl border border-border/70 bg-surface/40 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="grid h-8 w-8 place-items-center rounded-lg bg-muted text-muted-foreground"><StickyNote className="h-4 w-4" /></div>
+                    <div>
+                      <h3 className="text-sm font-semibold">Investor notes</h3>
+                      <p className="text-xs text-muted-foreground">Shared contact context, visible anywhere this investor appears.</p>
+                    </div>
+                  </div>
+                  {canUpdate && !noteEditing && (
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setNoteEditing(true)}>
+                      {investor.notes ? <Pencil className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                      {investor.notes ? "Edit" : "Add note"}
+                    </Button>
+                  )}
+                </div>
+
+                {noteEditing ? (
+                  <div className="mt-4 space-y-3">
+                    <Textarea
+                      value={noteDraft}
+                      onChange={(event) => setNoteDraft(event.target.value)}
+                      placeholder="Add context from conversations, preferences, or relationship history…"
+                      maxLength={2000}
+                      className="min-h-28 resize-y bg-card"
+                      autoFocus
+                    />
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[11px] text-muted-foreground">{noteDraft.length}/2000</span>
+                      <div className="flex gap-2">
+                        <Button type="button" size="sm" variant="ghost" onClick={() => { setNoteDraft(investor.notes ?? ""); setNoteEditing(false); }}>Cancel</Button>
+                        <Button type="button" size="sm" disabled={noteMutation.isPending} onClick={() => noteMutation.mutate(noteDraft.trim() || null)}><Save className="h-3.5 w-3.5" />{noteMutation.isPending ? "Saving…" : "Save note"}</Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : investor.notes ? (
+                  <div className="mt-4">
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{investor.notes}</p>
+                    {canUpdate && <Button type="button" size="sm" variant="ghost" className="mt-3 h-8 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={noteMutation.isPending} onClick={() => noteMutation.mutate(null)}><Trash2 className="h-3.5 w-3.5" /> Remove note</Button>}
+                  </div>
+                ) : (
+                  <p className="mt-4 text-sm text-muted-foreground">No notes have been added for this investor.</p>
+                )}
+              </section>
               </>}
 
               {activeTab === "tasks" && (

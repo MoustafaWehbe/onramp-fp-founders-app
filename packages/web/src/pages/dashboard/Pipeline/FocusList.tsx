@@ -1,4 +1,5 @@
-import { AlertTriangle, CheckCircle2, Mail, Plus } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, CheckCircle2, Crown, Mail, Plus, Sparkles } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { StageBadge } from "../Investors/StageBadge";
 import type { PipelineFocusEntry } from "../../../lib/pipeline-api";
@@ -22,6 +23,10 @@ function dueLabel(nextTaskDueDate: string | null, now = Date.now()): string | nu
 }
 
 export function FocusList({ items, canCreate, onOpen, onLog }: FocusListProps) {
+  const [leadsOnly, setLeadsOnly] = useState(false);
+  const leadCount = items.filter((deal) => deal.isLead).length;
+  const visibleItems = leadsOnly ? items.filter((deal) => deal.isLead) : items;
+
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border/70 px-6 py-14 text-center">
@@ -37,8 +42,48 @@ export function FocusList({ items, canCreate, onOpen, onLog }: FocusListProps) {
   }
 
   return (
-    <ul className="space-y-2">
-      {items.map((deal) => {
+    <section className="space-y-4" aria-label="Deals needing attention">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card p-4">
+        <div className="flex items-center gap-3">
+          <div className="grid h-10 w-10 place-items-center rounded-xl bg-warning/15 text-warning">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="font-display text-base font-semibold">Action queue</h2>
+            <p className="text-xs text-muted-foreground">Deals that need a follow-up or a clear next step.</p>
+          </div>
+        </div>
+        <div className="inline-flex items-center gap-1 rounded-xl border border-border/70 bg-surface/60 p-1" role="group" aria-label="Focus filter">
+          <button
+            type="button"
+            aria-pressed={!leadsOnly}
+            onClick={() => setLeadsOnly(false)}
+            className={cn("rounded-lg px-3 py-1.5 text-sm transition-colors", !leadsOnly ? "bg-card font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+          >
+            All <span className="ml-1 font-mono text-[11px] text-muted-foreground">{items.length}</span>
+          </button>
+          <button
+            type="button"
+            aria-pressed={leadsOnly}
+            onClick={() => setLeadsOnly(true)}
+            className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors", leadsOnly ? "bg-warning/15 font-medium text-warning" : "text-muted-foreground hover:text-foreground")}
+          >
+            <Crown className="h-3.5 w-3.5" /> Leads
+            <span className="font-mono text-[11px] opacity-75">{leadCount}</span>
+          </button>
+        </div>
+      </div>
+
+      {visibleItems.length === 0 && (
+        <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border/70 px-6 py-12 text-center">
+          <div className="grid h-10 w-10 place-items-center rounded-xl bg-warning/10 text-warning"><Crown className="h-5 w-5" /></div>
+          <p className="font-display text-base font-semibold">No leads need attention</p>
+          <p className="max-w-sm text-sm text-muted-foreground">Your lead investors are up to date. Switch to All to see the rest of the queue.</p>
+        </div>
+      )}
+
+      {visibleItems.length > 0 && <ul className="grid gap-3 xl:grid-cols-2">
+      {visibleItems.map((deal) => {
         const investor = deal.investor;
         const due = dueLabel(deal.nextTaskDueDate);
         const urgent = deal.reason === "overdue";
@@ -47,8 +92,8 @@ export function FocusList({ items, canCreate, onOpen, onLog }: FocusListProps) {
           <li
             key={deal.id}
             className={cn(
-              "flex flex-wrap items-center gap-3 rounded-xl border bg-surface/50 p-3",
-              urgent ? "border-destructive/40" : "border-border/70",
+              "group relative flex flex-wrap items-center gap-3 overflow-hidden rounded-2xl border bg-card p-4 transition-colors hover:border-primary/35 hover:bg-surface/30",
+              urgent ? "border-destructive/35 before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-destructive" : "border-border/70",
             )}
           >
             <div
@@ -64,7 +109,7 @@ export function FocusList({ items, canCreate, onOpen, onLog }: FocusListProps) {
               <button
                 type="button"
                 onClick={() => onOpen(deal)}
-                className="truncate text-left text-sm font-medium text-foreground hover:underline"
+              className="truncate text-left text-sm font-semibold text-foreground hover:text-primary"
               >
                 {investor.fullName}
               </button>
@@ -72,6 +117,7 @@ export function FocusList({ items, canCreate, onOpen, onLog }: FocusListProps) {
                 {investor.ventureFirm ?? "Independent"}
                 {deal.expectedAmount != null && ` · ${formatCompactUsd(deal.expectedAmount)}`}
               </div>
+              {deal.isLead && <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-warning/12 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning"><Crown className="h-3 w-3" /> Lead investor</span>}
             </div>
 
             <div className="flex min-w-0 flex-col items-start gap-1 sm:items-end">
@@ -97,7 +143,7 @@ export function FocusList({ items, canCreate, onOpen, onLog }: FocusListProps) {
                 </Button>
               )}
               {canCreate && (
-                <Button size="sm" onClick={() => onLog(deal)}>
+                <Button size="sm" variant="outline" onClick={() => onLog(deal)}>
                   <Plus className="h-4 w-4" />
                   Log
                 </Button>
@@ -106,6 +152,7 @@ export function FocusList({ items, canCreate, onOpen, onLog }: FocusListProps) {
           </li>
         );
       })}
-    </ul>
+      </ul>}
+    </section>
   );
 }

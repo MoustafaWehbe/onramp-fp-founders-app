@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -132,6 +132,9 @@ export function Pipeline() {
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [columns, setColumns] = useState<BoardColumns>(() => buildColumns([]));
+  const columnsRef = useRef(columns);
+  const dragFrameRef = useRef<number | null>(null);
+  const pendingDragRef = useRef<{ activeId: string; overId: string } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [openDealId, setOpenDealId] = useState<string | null>(null);
   const [pendingRemove, setPendingRemove] = useState<PipelineEntry | null>(null);
@@ -334,7 +337,9 @@ export function Pipeline() {
   // would snap back to the pre-drag order for a frame before catching up.
   useEffect(() => {
     if (activeId !== null) return;
-    setColumns(buildColumns(visibleEntries));
+    const next = buildColumns(visibleEntries);
+    columnsRef.current = next;
+    setColumns(next);
   }, [visibleEntries, activeId]);
 
   const openDeal = useMemo(
@@ -499,25 +504,51 @@ export function Pipeline() {
 
   const handleDragStart = (event: DragStartEvent) => {
     if (!canUpdate) return;
+    columnsRef.current = columns;
     setActiveId(String(event.active.id));
   };
 
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
-    setColumns((current) => moveWithinColumns(current, String(active.id), String(over.id)));
+    pendingDragRef.current = { activeId: String(active.id), overId: String(over.id) };
+    if (dragFrameRef.current !== null) return;
+
+    // Pointer events can arrive much faster than the browser can paint. One
+    // reorder per frame keeps React and dnd-kit's measurements in lockstep.
+    dragFrameRef.current = window.requestAnimationFrame(() => {
+      dragFrameRef.current = null;
+      const pending = pendingDragRef.current;
+      if (!pending) return;
+      const next = moveWithinColumns(columnsRef.current, pending.activeId, pending.overId);
+      if (next !== columnsRef.current) {
+        columnsRef.current = next;
+        setColumns(next);
+      }
+    });
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const dealId = activeId;
+    if (dragFrameRef.current !== null) {
+      window.cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = null;
+    }
+    pendingDragRef.current = null;
     setActiveId(null);
     if (!dealId || !event.over) return;
 
+    // Flush the pointer's final position; it may have arrived after the last
+    // painted frame and therefore not reached React state yet.
+    const finalColumns = moveWithinColumns(columnsRef.current, dealId, String(event.over.id));
+    columnsRef.current = finalColumns;
+    setColumns(finalColumns);
+
     const deal = entriesById.get(dealId);
-    const stage = columnOf(columns, dealId);
+    const stage = columnOf(finalColumns, dealId);
     if (!deal || !stage) return;
 
-    const sortOrder = computeDropOrder(columns, dealId, (id) => entriesById.get(id)?.sortOrder);
+    const sortOrder = computeDropOrder(finalColumns, dealId, (id) => entriesById.get(id)?.sortOrder);
 
     // Dropping into Passed needs a reason, same as the stage menu. Nothing is
     // mutated yet, so clearing activeId lets the card spring back to where it
@@ -718,7 +749,12 @@ export function Pipeline() {
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
-          onDragCancel={() => setActiveId(null)}
+            onDragCancel={() => {
+              if (dragFrameRef.current !== null) window.cancelAnimationFrame(dragFrameRef.current);
+              dragFrameRef.current = null;
+              pendingDragRef.current = null;
+              setActiveId(null);
+            }}
         >
           <div
             className={cn(
@@ -763,7 +799,7 @@ export function Pipeline() {
             })}
           </div>
 
-          <DragOverlay>
+          <DragOverlay dropAnimation={{ duration: 180, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" }}>
             {activeDeal && (
               <DealCardOverlay
                 deal={activeDeal}
