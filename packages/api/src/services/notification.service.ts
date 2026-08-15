@@ -325,16 +325,22 @@ export class NotificationService {
     startupId: string;
     messageId: string;
     senderName: string;
-    conversationName: string;
+    // Null for a DM — a direct message has no channel name to show.
+    conversationName: string | null;
     excerpt: string;
   }): Promise<void> {
     try {
+      const title =
+        input.conversationName !== null
+          ? `${input.senderName} mentioned you in #${input.conversationName}`
+          : `${input.senderName} mentioned you in a direct message`;
+
       const created = await prisma.notification.create({
         data: {
           userId: input.userId,
           startupId: input.startupId,
           type: NOTIFICATION_TYPES.CHAT_MENTION,
-          title: `${input.senderName} mentioned you in #${input.conversationName}`,
+          title,
           body: input.excerpt,
           entityType: "message",
           entityId: input.messageId,

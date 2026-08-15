@@ -685,7 +685,7 @@ export interface paths {
         };
         /**
          * List investor contacts for a startup
-         * @description Returns the startup's private investor contacts. Each row is joined to its pipeline entry (null when the contact has not been added to the pipeline) and to the earliest upcoming follow-up date across that contact's interaction logs, which is what the Investors screen renders.
+         * @description Returns the startup's private investor contacts. Each row is joined to a pipeline entry (null when the contact has not been added to the pipeline). Supplying roundId joins only the entry in that fundraising round, which is useful when choosing contacts to add to a board.
          */
         get: operations["listInvestors"];
         put?: never;
@@ -857,7 +857,7 @@ export interface paths {
         };
         /**
          * List a deal's stage history
-         * @description Chronological record of every stage change on this deal, including who made each one. The first event (fromStage null) is when the deal was added to the pipeline.
+         * @description Chronological record of every stage change on this deal, including who made each one. The first event (fromStage null) is when the deal was added to the pipeline. Each event remains attributed to the round active at that time, even if the deal later moves to another round.
          */
         get: operations["listPipelineStageEvents"];
         put?: never;
@@ -962,6 +962,260 @@ export interface paths {
          * @description Setting status to "completed" stamps completedAt server-side; reverting to "open" clears it.
          */
         patch: operations["updateTask"];
+        trace?: never;
+    };
+    "/startups/{startupId}/chat/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List the caller's channels
+         * @description Channels the caller is a member of, most recently active first.
+         */
+        get: operations["listConversations"];
+        put?: never;
+        /**
+         * Create a channel
+         * @description Every active member of the startup is added at creation time — there is no invite-to-channel UI yet, so Phase 1 channels are workspace-wide.
+         */
+        post: operations["createConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/chat/dm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start or reuse a 1:1 direct message
+         * @description Finds the existing DM with this member if one exists (keyed on the sorted member-id pair), otherwise creates it. Idempotent from either side of the pair.
+         */
+        post: operations["startDirectMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/chat/conversations/{conversationId}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List messages in a channel
+         * @description Cursor pagination on `seq` — pass the oldest message's `seq` on the current page as `before` to load the page above it. Returned oldest-first.
+         */
+        get: operations["listMessages"];
+        put?: never;
+        /** Send a message */
+        post: operations["sendMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/chat/conversations/{conversationId}/messages/{messageId}/replies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                conversationId: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List a thread's replies
+         * @description Threads are flat and unpaginated beyond `limit` — replying to a reply re-parents onto the same top-level message rather than nesting.
+         */
+        get: operations["listReplies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/chat/conversations/{conversationId}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a channel read
+         * @description Advances the caller's read pointer to the latest top-level message — clears its unread badge.
+         */
+        post: operations["markRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/chat/conversations/{conversationId}/notify-level": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set the caller's mute level for a channel
+         * @description "all" and "mentions" currently behave identically — chat volume itself never raises a Notification row, so only "none" (fully muted) has an observable effect: it also suppresses the @-mention notification for this conversation.
+         */
+        patch: operations["setNotifyLevel"];
+        trace?: never;
+    };
+    "/startups/{startupId}/chat/conversations/{conversationId}/typing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ping "I am typing" to the rest of the room
+         * @description Fire-and-forget — no row is written. Fans out a chat.typing SSE event to the conversation's other members; the client lets it expire a few seconds after the last ping.
+         */
+        post: operations["notifyTyping"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/chat/messages/{messageId}/reactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Toggle a reaction on a message
+         * @description Posting the same emoji a second time removes it — this is a toggle, not an add-only endpoint.
+         */
+        post: operations["toggleReaction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/chat/mentionables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Autocomplete for @-references
+         * @description Fans out across members, investors, deals, tasks, rounds and documents. Each type is only searched if the caller's role holds the read permission that type is gated on (deal/investor/task need pipeline:read, round needs financial:read, document needs documents:read; member needs nothing beyond chat:read itself) — filtered server-side, not left to the client to hide.
+         */
+        get: operations["searchMentionables"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/chat/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch-render reference chips into unfurl cards
+         * @description One request per message list instead of one per chip. An item the caller cannot read, or that no longer exists, is simply absent from the response — the client falls back to the token's plain-text label rather than the whole render failing.
+         */
+        post: operations["resolveMentions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/chat/mentions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Backlink — every message that references one entity
+         * @description Powers the Discussion tab on a deal (and, by the same query, any other entity type). Scoped to conversations the caller is a member of, newest first.
+         */
+        get: operations["listMentions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/startups/{startupId}/fundraising-rounds": {
@@ -1536,8 +1790,11 @@ export interface components {
         UpdateUserBody: {
             firstName?: string;
             lastName?: string;
-            /** Format: uri */
-            avatarUrl?: string;
+            /**
+             * Format: uri
+             * @description An http(s) image URL or compact JPEG, PNG, or WebP data URL; null removes the photo.
+             */
+            avatarUrl?: string | null;
         };
         ChangePasswordBody: {
             /** @example Password1 */
@@ -1927,7 +2184,11 @@ export interface components {
              */
             investorId?: string;
             investor?: components["schemas"]["Investor"];
-            stage?: components["schemas"]["PipelineStage"];
+            /**
+             * @description Initial stage only. Use the update endpoint to move to committed (with commitment details) or passed (with a reason).
+             * @enum {string}
+             */
+            stage?: "sourced" | "contacted" | "meeting_scheduled" | "due_diligence" | "term_sheet";
             /**
              * Format: double
              * @example 250000
@@ -2035,7 +2296,7 @@ export interface components {
         UpdatePipelineEntryBody: {
             /**
              * Format: uuid
-             * @description Carries the deal into another fundraising round, which must belong to this startup and still be draft or active. Refused with 409 HAS_DEPENDENTS when the deal has commitments — that money belongs to the round it was pledged to — and with 409 ALREADY_IN_PIPELINE when the investor already holds a deal in the destination. The deal lands at the bottom of the matching column there.
+             * @description Carries the deal into another fundraising round, which must belong to this startup and still be draft or active. Refused with 409 HAS_DEPENDENTS when the deal has commitments — that money belongs to the round it was pledged to — and with 409 ALREADY_IN_PIPELINE when the investor already holds a deal in the destination. When combined with a new committed-stage transition, the commitment is recorded against the destination round. The deal lands at the bottom of the matching column there.
              */
             roundId?: string;
             stage?: components["schemas"]["PipelineStage"];
@@ -2103,6 +2364,11 @@ export interface components {
         PipelineStageEvent: {
             /** Format: uuid */
             id?: string;
+            /**
+             * Format: uuid
+             * @description Fundraising round that owned this transition when it occurred.
+             */
+            roundId?: string;
             /** @description Null for the first event — the deal being added to the pipeline. */
             fromStage?: components["schemas"]["PipelineStage"] | null;
             toStage?: components["schemas"]["PipelineStage"];
@@ -2197,6 +2463,193 @@ export interface components {
             dueDate?: string | null;
             /** Format: uuid */
             assigneeId?: string | null;
+        };
+        Conversation: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            startupId?: string;
+            /** @enum {string} */
+            type?: "channel" | "dm";
+            /** @description Unique within the startup among channels. Null for a DM — see `counterpart`. */
+            name?: string | null;
+            topic?: string | null;
+            /** @description Set only when type is "dm" — the other participant, resolved for the calling viewer. */
+            counterpart?: {
+                /** Format: uuid */
+                memberId?: string;
+                firstName?: string | null;
+                lastName?: string | null;
+                avatarUrl?: string | null;
+            } | null;
+            /** @description The caller's own read pointer — a decimal string, same encoding as Message.seq. */
+            lastReadSeq?: string | null;
+            /**
+             * @description The caller's own mute level for this conversation.
+             * @enum {string}
+             */
+            notifyLevel?: "all" | "mentions" | "none";
+            /** @description Top-level messages from someone else, sent after the caller's lastReadSeq. */
+            unreadCount?: number;
+            /** Format: date-time */
+            lastMessageAt?: string | null;
+            /** Format: date-time */
+            archivedAt?: string | null;
+            /**
+             * Format: uuid
+             * @description A User id.
+             */
+            createdBy?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        CreateConversationBody: {
+            name: string;
+            topic?: string;
+        };
+        StartDirectMessageBody: {
+            /**
+             * Format: uuid
+             * @description The other active StartupMember to open (or reuse) a 1:1 DM with.
+             */
+            memberId: string;
+        };
+        /** @description Null when the sender's StartupMember row has since been removed. */
+        MessageSender: {
+            /**
+             * Format: uuid
+             * @description A StartupMember id.
+             */
+            id?: string;
+            firstName?: string | null;
+            lastName?: string | null;
+            avatarUrl?: string | null;
+        } | null;
+        Message: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            startupId?: string;
+            /** Format: uuid */
+            conversationId?: string;
+            /**
+             * @description A decimal string, not a number — BigInt has no JSON representation. Orders the room and is the cursor `before` reads.
+             * @example 42
+             */
+            seq?: string;
+            /** Format: uuid */
+            senderId?: string | null;
+            sender?: components["schemas"]["MessageSender"];
+            body?: string;
+            /**
+             * Format: uuid
+             * @description Set for a thread reply. Threads are flat — always the top-level ancestor's id.
+             */
+            parentMessageId?: string | null;
+            /** @description Denormalized count of replies to this message. */
+            replyCount?: number;
+            /** Format: date-time */
+            editedAt?: string | null;
+            /** Format: date-time */
+            deletedAt?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+            reactions?: components["schemas"]["MessageReactionSummary"][];
+            attachments?: components["schemas"]["MessageAttachment"][];
+        };
+        /** @description One emoji's tally on a message. */
+        MessageReactionSummary: {
+            emoji?: string;
+            count?: number;
+            reactedByMe?: boolean;
+        };
+        /** @description A vault document attached to a message at send time. */
+        MessageAttachment: {
+            /** Format: uuid */
+            documentId?: string;
+            title?: string;
+            documentType?: string;
+        };
+        SendMessageBody: {
+            body: string;
+            /**
+             * Format: uuid
+             * @description Client-generated once per send attempt and reused on retry, so a retried POST resolves to the original message instead of duplicating it.
+             */
+            clientNonce: string;
+            /**
+             * Format: uuid
+             * @description Reply in a thread — must name a message already in this conversation.
+             */
+            parentMessageId?: string;
+            /** @description Vault documents to attach. Silently dropped if the caller lacks documents:read, same as an invalid @-mention. */
+            documentIds?: string[];
+        };
+        ToggleReactionBody: {
+            emoji: string;
+        };
+        NotifyLevelBody: {
+            /** @enum {string} */
+            level: "all" | "mentions" | "none";
+        };
+        /**
+         * @description What a `@[Label](type:id)` reference token inside a message body points at. "deal" is a Pipeline entry — investor + round together.
+         * @example deal
+         * @enum {string}
+         */
+        MentionTargetType: "member" | "investor" | "deal" | "task" | "round" | "document";
+        /** @description One autocomplete result from GET /chat/mentionables. */
+        MentionableItem: {
+            type?: components["schemas"]["MentionTargetType"];
+            /** Format: uuid */
+            id?: string;
+            label?: string;
+            sublabel?: string | null;
+        };
+        ResolveMentionsBody: {
+            items: {
+                type: components["schemas"]["MentionTargetType"];
+                /** Format: uuid */
+                id: string;
+            }[];
+        };
+        /** @description One rendered reference chip's unfurl data. Fields beyond type/id/ title/subtitle are type-specific — a "deal" carries stage/isLead/ expectedAmount (expectedAmount is null without financial:read, even though the deal itself is visible with pipeline:read alone); a "task" carries status/dueDate/priority; a "round" carries status/ targetAmount/currency; a "document" carries documentType; a "member" carries avatarUrl. An id the caller cannot read, or that no longer exists, is simply absent from the response rather than erroring. */
+        ResolvedMention: {
+            type?: components["schemas"]["MentionTargetType"];
+            /** Format: uuid */
+            id?: string;
+            title?: string;
+            subtitle?: string | null;
+            stage?: components["schemas"]["PipelineStage"];
+            isLead?: boolean;
+            expectedAmount?: number | null;
+            currency?: string;
+            ownerName?: string | null;
+            status?: string;
+            /** Format: date-time */
+            dueDate?: string | null;
+            priority?: components["schemas"]["Priority"];
+            targetAmount?: number | null;
+            documentType?: string;
+            avatarUrl?: string | null;
+            investorType?: components["schemas"]["InvestorType"];
+        };
+        /** @description One message referencing the requested entity — the Discussion tab's unit of data. */
+        MentionBacklinkEntry: {
+            /** Format: uuid */
+            mentionId?: string;
+            /** Format: uuid */
+            conversationId?: string;
+            /** @description Null when the source conversation is a DM. */
+            conversationName?: string | null;
+            message?: components["schemas"]["Message"];
+        };
+        /** @description Response for GET .../messages/{messageId}/replies. */
+        ReplyThread: {
+            parent?: components["schemas"]["Message"];
+            replies?: components["schemas"]["Message"][];
         };
         CreateInteractionLogBody: {
             /**
@@ -4475,6 +4928,8 @@ export interface operations {
                 investorType?: components["schemas"]["InvestorType"];
                 /** @description Filter on the joined pipeline entry's stage */
                 stage?: components["schemas"]["PipelineStage"];
+                /** @description Return the pipeline entry for this fundraising round only. */
+                roundId?: string;
                 /** @description Splits the directory into contacts the startup has actually approached and ones it has not. Omit to span both. */
                 engagement?: components["schemas"]["Engagement"];
             };
@@ -5866,6 +6321,748 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    listConversations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of channels */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Conversation"][];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing chat:read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateConversationBody"];
+            };
+        };
+        responses: {
+            /** @description Channel created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Conversation"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing chat:create */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CONVERSATION_NAME_TAKEN */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    startDirectMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartDirectMessageBody"];
+            };
+        };
+        responses: {
+            /** @description The DM conversation, new or pre-existing */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Conversation"];
+                    };
+                };
+            };
+            /** @description INVALID_DM_TARGET — cannot DM yourself */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing chat:create */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description MEMBER_NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    listMessages: {
+        parameters: {
+            query?: {
+                before?: string;
+                /** @description Number of items per page */
+                limit?: components["parameters"]["LimitParam"];
+            };
+            header?: never;
+            path: {
+                startupId: string;
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of messages */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Message"][];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing chat:read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CONVERSATION_NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    sendMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendMessageBody"];
+            };
+        };
+        responses: {
+            /** @description Message sent, or the original message when clientNonce matches an existing send. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Message"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing chat:create */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CONVERSATION_NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    listReplies: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                startupId: string;
+                conversationId: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The parent message and its replies, oldest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["ReplyThread"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing chat:read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CONVERSATION_NOT_FOUND or MESSAGE_NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    markRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's new read pointer */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: {
+                            lastReadSeq?: string | null;
+                        };
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing chat:read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CONVERSATION_NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setNotifyLevel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotifyLevelBody"];
+            };
+        };
+        responses: {
+            /** @description The new mute level */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: {
+                            /** @enum {string} */
+                            notifyLevel?: "all" | "mentions" | "none";
+                        };
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing chat:read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CONVERSATION_NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    notifyTyping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ping sent */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing chat:create */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CONVERSATION_NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    toggleReaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ToggleReactionBody"];
+            };
+        };
+        responses: {
+            /** @description The message's fresh reaction summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: {
+                            /** Format: uuid */
+                            messageId?: string;
+                            reactions?: components["schemas"]["MessageReactionSummary"][];
+                        };
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing chat:create */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description MESSAGE_NOT_FOUND or CONVERSATION_NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    searchMentionables: {
+        parameters: {
+            query?: {
+                /** @description Empty or missing returns no results. */
+                q?: string;
+                /** @description Comma-separated MentionTargetType values, e.g. "deal,investor". */
+                types?: string;
+            };
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Matching items, grouped by type in the response array */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["MentionableItem"][];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing chat:read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    resolveMentions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveMentionsBody"];
+            };
+        };
+        responses: {
+            /** @description Resolved items — may be fewer than requested */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["ResolvedMention"][];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing chat:read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    listMentions: {
+        parameters: {
+            query: {
+                targetType: components["schemas"]["MentionTargetType"];
+                targetId: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Messages referencing the entity, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["MentionBacklinkEntry"][];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, missing chat:read, or missing the read permission targetType is gated on (e.g. financial:read for a round) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

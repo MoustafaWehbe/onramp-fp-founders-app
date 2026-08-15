@@ -24,8 +24,17 @@ export type NotificationEvent =
   | { type: "notifications.changed" };
 
 export type ChatEvent =
-  | { type: "chat.message.created"; conversationId: string; messageId: string; seq: string }
-  | { type: "chat.conversation.changed"; conversationId: string };
+  | {
+      type: "chat.message.created";
+      conversationId: string;
+      messageId: string;
+      seq: string;
+      /** Set when the message is a thread reply — lets the client also refresh the open thread panel. */
+      parentMessageId: string | null;
+    }
+  | { type: "chat.conversation.changed"; conversationId: string }
+  | { type: "chat.message.reacted"; conversationId: string; messageId: string }
+  | { type: "chat.typing"; conversationId: string; memberId: string; memberName: string };
 
 export type RealtimeEvent = NotificationEvent | ChatEvent;
 

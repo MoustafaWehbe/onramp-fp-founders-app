@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { SendHorizontal } from "lucide-react";
+import { Paperclip, SendHorizontal, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../../components/ui/button";
 import { Textarea } from "../../../components/ui/textarea";
 import { apiErrorMessage } from "../../../lib/api-error";
 import { qk } from "../../../lib/query-keys";
-import { sendMessage, searchMentionables, type MentionableItem } from "../../../lib/chat-api";
+import { sendMessage, searchMentionables, pingTyping, type MentionableItem } from "../../../lib/chat-api";
 import { MENTION_TARGET_TYPES, mentionToken, type MentionTargetType } from "../../../lib/mentions";
 import { MentionPicker } from "./MentionPicker";
+import { AttachDocumentMenu } from "./AttachDocumentMenu";
 
 type MentionContext = {
   /** Index of the "@" that opened the picker. */
@@ -39,20 +40,38 @@ function detectMentionContext(value: string, cursor: number): MentionContext | n
   return { start, query: raw };
 }
 
+/** Minimum gap between typing pings — pinging on every keystroke would flood the SSE fan-out for no UX gain. */
+const TYPING_PING_INTERVAL_MS = 2500;
+
 type ComposerProps = {
   startupId: string;
   conversationId: string;
   conversationName: string;
+  /** Set to post a thread reply instead of a top-level message. */
+  parentMessageId?: string;
+  placeholder?: string;
+  /** Fires after a successful send, in addition to the composer's own cache invalidation — ThreadDialog uses this to refresh its reply list. */
+  onSent?: () => void;
 };
 
-export function Composer({ startupId, conversationId, conversationName }: ComposerProps) {
+export function Composer({
+  startupId,
+  conversationId,
+  conversationName,
+  parentMessageId,
+  placeholder,
+  onSent,
+}: ComposerProps) {
   const queryClient = useQueryClient();
   const [body, setBody] = useState("");
   const [mention, setMention] = useState<MentionContext | null>(null);
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [attachedDocs, setAttachedDocs] = useState<MentionableItem[]>([]);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const nonceRef = useRef(crypto.randomUUID());
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lastTypingPingRef = useRef(0);
 
   useEffect(() => {
     if (!mention) return;
@@ -77,15 +96,23 @@ export function Composer({ startupId, conversationId, conversationName }: Compos
   const items = mention ? (mentionablesQuery.data ?? []) : [];
 
   const sendMutation = useMutation({
-    mutationFn: () => sendMessage(startupId, conversationId, { body: body.trim(), clientNonce: nonceRef.current }),
+    mutationFn: () =>
+      sendMessage(startupId, conversationId, {
+        body: body.trim(),
+        clientNonce: nonceRef.current,
+        parentMessageId,
+        documentIds: attachedDocs.length > 0 ? attachedDocs.map((d) => d.id) : undefined,
+      }),
     onSuccess: () => {
       setBody("");
       setMention(null);
+      setAttachedDocs([]);
       // Only rotate the nonce once the send is confirmed — an error leaves it
       // in place so retrying the same draft can't double-post.
       nonceRef.current = crypto.randomUUID();
       void queryClient.invalidateQueries({ queryKey: qk.messages(startupId, conversationId) });
       void queryClient.invalidateQueries({ queryKey: qk.conversations(startupId) });
+      onSent?.();
     },
     onError: (err) => toast.error(apiErrorMessage(err, "Could not send that message")),
   });
@@ -94,9 +121,19 @@ export function Composer({ startupId, conversationId, conversationName }: Compos
     setMention(detectMentionContext(value, cursor));
   }
 
+  function pingTypingThrottled() {
+    const now = Date.now();
+    if (now - lastTypingPingRef.current < TYPING_PING_INTERVAL_MS) return;
+    lastTypingPingRef.current = now;
+    void pingTyping(startupId, conversationId).catch(() => {
+      // A missed typing ping is invisible by design — nothing to recover.
+    });
+  }
+
   function handleChange(event: React.ChangeEvent<HTMLTextAreaElement>) {
     setBody(event.target.value);
     updateMentionContext(event.target.value, event.target.selectionStart);
+    if (event.target.value.trim().length > 0) pingTypingThrottled();
   }
 
   function selectMention(item: MentionableItem) {
@@ -114,6 +151,15 @@ export function Composer({ startupId, conversationId, conversationName }: Compos
       textarea.focus();
       textarea.setSelectionRange(caretPosition, caretPosition);
     });
+  }
+
+  function selectAttachment(item: MentionableItem) {
+    setAttachedDocs((prev) => (prev.some((d) => d.id === item.id) ? prev : [...prev, item]));
+    setAttachMenuOpen(false);
+  }
+
+  function removeAttachment(id: string) {
+    setAttachedDocs((prev) => prev.filter((d) => d.id !== id));
   }
 
   function handleSend() {
@@ -167,7 +213,48 @@ export function Composer({ startupId, conversationId, conversationName }: Compos
         </div>
       )}
 
+      {attachMenuOpen && (
+        <div className="absolute bottom-full left-3 z-10 mb-2">
+          <AttachDocumentMenu
+            startupId={startupId}
+            excludeIds={attachedDocs.map((d) => d.id)}
+            onSelect={selectAttachment}
+          />
+        </div>
+      )}
+
+      {attachedDocs.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {attachedDocs.map((doc) => (
+            <span
+              key={doc.id}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-surface/40 py-1 pl-2.5 pr-1.5 text-xs"
+            >
+              <span className="max-w-[10rem] truncate font-medium">{doc.label}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${doc.label}`}
+                onClick={() => removeAttachment(doc.id)}
+                className="rounded p-0.5 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-end gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="Attach a document"
+          onClick={() => setAttachMenuOpen((v) => !v)}
+          className="h-9 w-9 shrink-0"
+        >
+          <Paperclip className="h-4 w-4" />
+        </Button>
         <Textarea
           ref={textareaRef}
           value={body}
@@ -176,7 +263,7 @@ export function Composer({ startupId, conversationId, conversationName }: Compos
           onClick={(event) =>
             updateMentionContext(event.currentTarget.value, event.currentTarget.selectionStart)
           }
-          placeholder={`Message #${conversationName} — type @ to reference an investor, deal, task, round or document`}
+          placeholder={placeholder ?? `Message #${conversationName} — type @ to reference an investor, deal, task, round or document`}
           rows={1}
           className="min-h-[2.5rem] resize-none py-2"
           disabled={sendMutation.isPending}

@@ -16,11 +16,13 @@ import type {
   ListMessagesQuery,
   MentionableQuery,
   ResolveMentionsInput,
+  NotifyLevelInput,
 } from "../validators/chat.schemas";
 
 const CONVERSATION_SELECT = {
   id: true,
   startupId: true,
+  type: true,
   name: true,
   topic: true,
   lastMessageAt: true,
@@ -28,6 +30,20 @@ const CONVERSATION_SELECT = {
   createdBy: true,
   createdAt: true,
   updatedAt: true,
+  // Every membership row, not just the caller's — cheap for a workspace-sized
+  // channel, and it is what lets a single query answer three different
+  // per-viewer questions below: my own read state, my mute level, and (for a
+  // DM) who the other person is.
+  members: {
+    select: {
+      memberId: true,
+      lastReadSeq: true,
+      notifyLevel: true,
+      member: {
+        select: { id: true, user: { select: { firstName: true, lastName: true, avatarUrl: true } } },
+      },
+    },
+  },
 } as const;
 
 const MESSAGE_SELECT = {
@@ -36,6 +52,8 @@ const MESSAGE_SELECT = {
   conversationId: true,
   seq: true,
   senderId: true,
+  parentMessageId: true,
+  replyCount: true,
   body: true,
   clientNonce: true,
   editedAt: true,
@@ -47,16 +65,64 @@ const MESSAGE_SELECT = {
       user: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
     },
   },
+  reactions: { select: { emoji: true, memberId: true } },
+  attachments: {
+    select: { document: { select: { id: true, title: true, documentType: true } } },
+  },
 } as const;
 
 type ConversationRow = Prisma.ConversationGetPayload<{ select: typeof CONVERSATION_SELECT }>;
 type MessageRow = Prisma.MessageGetPayload<{ select: typeof MESSAGE_SELECT }>;
 
-function serializeConversation(row: ConversationRow) {
-  return { ...row };
+/** Collapses raw (emoji, memberId) reaction rows into per-emoji counts, tagged with whether the caller is among them. */
+function summarizeReactions(rows: { emoji: string; memberId: string }[], callerMemberId: string) {
+  const byEmoji = new Map<string, { count: number; reactedByMe: boolean }>();
+  for (const row of rows) {
+    const entry = byEmoji.get(row.emoji) ?? { count: 0, reactedByMe: false };
+    entry.count += 1;
+    if (row.memberId === callerMemberId) entry.reactedByMe = true;
+    byEmoji.set(row.emoji, entry);
+  }
+  return [...byEmoji.entries()].map(([emoji, v]) => ({ emoji, count: v.count, reactedByMe: v.reactedByMe }));
 }
 
-function serializeMessage(row: MessageRow) {
+/**
+ * A DM's display name is not stored — it is the *other* participant, and
+ * that is inherently per-viewer (A sees "B", B sees "A"), so it has to be
+ * resolved here rather than baked into the row at write time.
+ */
+function counterpartOf(row: ConversationRow, callerMemberId: string) {
+  const other = row.members.find((m) => m.memberId !== callerMemberId);
+  if (!other) return null;
+  return {
+    memberId: other.memberId,
+    firstName: other.member.user?.firstName ?? null,
+    lastName: other.member.user?.lastName ?? null,
+    avatarUrl: other.member.user?.avatarUrl ?? null,
+  };
+}
+
+function serializeConversation(row: ConversationRow, callerMemberId: string, unreadCount: number) {
+  const own = row.members.find((m) => m.memberId === callerMemberId);
+  return {
+    id: row.id,
+    startupId: row.startupId,
+    type: row.type,
+    name: row.name,
+    topic: row.topic,
+    lastMessageAt: row.lastMessageAt,
+    archivedAt: row.archivedAt,
+    createdBy: row.createdBy,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    counterpart: row.type === "dm" ? counterpartOf(row, callerMemberId) : null,
+    lastReadSeq: own?.lastReadSeq?.toString() ?? null,
+    notifyLevel: own?.notifyLevel ?? "all",
+    unreadCount,
+  };
+}
+
+function serializeMessage(row: MessageRow, callerMemberId: string) {
   return {
     id: row.id,
     startupId: row.startupId,
@@ -74,9 +140,17 @@ function serializeMessage(row: MessageRow) {
         }
       : null,
     body: row.body,
+    parentMessageId: row.parentMessageId,
+    replyCount: row.replyCount,
     editedAt: row.editedAt,
     deletedAt: row.deletedAt,
     createdAt: row.createdAt,
+    reactions: summarizeReactions(row.reactions, callerMemberId),
+    attachments: row.attachments.map((a) => ({
+      documentId: a.document.id,
+      title: a.document.title,
+      documentType: a.document.documentType,
+    })),
   };
 }
 
@@ -141,7 +215,12 @@ export class ChatService {
    * membership (private channels, DMs) is additive later — see the schema
    * comment above the Conversation model.
    */
-  async createConversation(startupId: string, input: CreateConversationInput, actorUserId: string) {
+  async createConversation(
+    startupId: string,
+    input: CreateConversationInput,
+    actorUserId: string,
+    actorMemberId: string,
+  ) {
     const activeMembers = await prisma.startupMember.findMany({
       where: { startupId, status: "active" },
       select: { id: true },
@@ -166,13 +245,65 @@ export class ChatService {
         select: CONVERSATION_SELECT,
       });
 
-      return { data: serializeConversation(conversation) };
+      return { data: serializeConversation(conversation, actorMemberId, 0) };
     } catch (err) {
       throw this.translateDuplicateName(err);
     }
   }
 
-  /** Channels the caller belongs to, most recently active first. */
+  /**
+   * Finds or creates the 1:1 DM between the caller and another active
+   * member. `dmKey` (the sorted member-id pair) is the dedup key — a second
+   * call from either side always lands back on the same conversation.
+   */
+  async startDirectMessage(startupId: string, actorMemberId: string, actorUserId: string, otherMemberId: string) {
+    if (actorMemberId === otherMemberId) {
+      throw createError("Cannot start a DM with yourself", 400, "INVALID_DM_TARGET");
+    }
+
+    const other = await prisma.startupMember.findFirst({
+      where: { startupId, id: otherMemberId, status: "active" },
+      select: { id: true },
+    });
+    if (!other) throw createError("Member not found", 404, "MEMBER_NOT_FOUND");
+
+    const dmKey = [actorMemberId, otherMemberId].sort().join(":");
+
+    const existing = await prisma.conversation.findUnique({
+      where: { startupId_dmKey: { startupId, dmKey } },
+      select: CONVERSATION_SELECT,
+    });
+    if (existing) return { data: serializeConversation(existing, actorMemberId, await this.unreadCountFor(existing, actorMemberId)) };
+
+    try {
+      const conversation = await prisma.conversation.create({
+        data: {
+          startupId,
+          type: "dm",
+          name: null,
+          dmKey,
+          createdBy: actorUserId,
+          members: { create: [{ memberId: actorMemberId }, { memberId: otherMemberId }] },
+        },
+        select: CONVERSATION_SELECT,
+      });
+      return { data: serializeConversation(conversation, actorMemberId, 0) };
+    } catch (err) {
+      // Two tabs opening the same DM at once both lose the race to the
+      // unique dmKey index — the loser just reads back the winner's row
+      // instead of surfacing an error for something that isn't one.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        const winner = await prisma.conversation.findUniqueOrThrow({
+          where: { startupId_dmKey: { startupId, dmKey } },
+          select: CONVERSATION_SELECT,
+        });
+        return { data: serializeConversation(winner, actorMemberId, await this.unreadCountFor(winner, actorMemberId)) };
+      }
+      throw err;
+    }
+  }
+
+  /** Channels and DMs the caller belongs to, most recently active first. */
   async listConversations(startupId: string, memberId: string) {
     const rows = await prisma.conversation.findMany({
       where: { startupId, archivedAt: null, members: { some: { memberId } } },
@@ -180,22 +311,42 @@ export class ChatService {
       orderBy: [{ lastMessageAt: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }],
     });
 
-    return { data: rows.map(serializeConversation) };
+    const unreadCounts = await Promise.all(rows.map((row) => this.unreadCountFor(row, memberId)));
+    return { data: rows.map((row, i) => serializeConversation(row, memberId, unreadCounts[i])) };
+  }
+
+  /** Top-level messages from someone else, sent after the caller's own last-read point. */
+  private async unreadCountFor(row: ConversationRow, memberId: string): Promise<number> {
+    const own = row.members.find((m) => m.memberId === memberId);
+    return prisma.message.count({
+      where: {
+        conversationId: row.id,
+        parentMessageId: null,
+        deletedAt: null,
+        senderId: { not: memberId },
+        ...(own?.lastReadSeq != null && { seq: { gt: own.lastReadSeq } }),
+      },
+    });
   }
 
   private async verifyMembership(
     startupId: string,
     conversationId: string,
     memberId: string,
-  ): Promise<{ conversationName: string }> {
+  ): Promise<{ conversationName: string; conversationType: string }> {
     const membership = await prisma.conversationMember.findUnique({
       where: { conversationId_memberId: { conversationId, memberId } },
-      select: { id: true, conversation: { select: { startupId: true, name: true } } },
+      select: { id: true, conversation: { select: { startupId: true, name: true, type: true } } },
     });
     if (!membership || membership.conversation.startupId !== startupId) {
       throw createError("Conversation not found", 404, "CONVERSATION_NOT_FOUND");
     }
-    return { conversationName: membership.conversation.name };
+    // A DM has no stored name (see counterpartOf) — the mention-notification
+    // title falls back to type-based phrasing instead in notifyMentionedMembers.
+    return {
+      conversationName: membership.conversation.name ?? "",
+      conversationType: membership.conversation.type,
+    };
   }
 
   async listMessages(
@@ -209,6 +360,10 @@ export class ChatService {
     const rows = await prisma.message.findMany({
       where: {
         conversationId,
+        // Thread replies live off GET .../messages/:messageId/replies —
+        // the main list only ever shows top-level messages, with replyCount
+        // as the hint that a thread exists.
+        parentMessageId: null,
         deletedAt: null,
         ...(query.before && { seq: { lt: BigInt(query.before) } }),
       },
@@ -219,7 +374,38 @@ export class ChatService {
 
     // Fetched newest-first for the LIMIT to bite the right end of the room;
     // returned oldest-first, which is the order a message list renders in.
-    return { data: rows.reverse().map(serializeMessage) };
+    return { data: rows.reverse().map((row) => serializeMessage(row, memberId)) };
+  }
+
+  /** Every reply to one top-level message, oldest first. */
+  async listReplies(
+    startupId: string,
+    conversationId: string,
+    memberId: string,
+    parentMessageId: string,
+    limit: number,
+  ) {
+    await this.verifyMembership(startupId, conversationId, memberId);
+
+    const parent = await prisma.message.findFirst({
+      where: { id: parentMessageId, conversationId, startupId },
+      select: MESSAGE_SELECT,
+    });
+    if (!parent) throw createError("Message not found", 404, "MESSAGE_NOT_FOUND");
+
+    const rows = await prisma.message.findMany({
+      where: { parentMessageId, deletedAt: null },
+      select: MESSAGE_SELECT,
+      orderBy: { seq: "asc" },
+      take: limit,
+    });
+
+    return {
+      data: {
+        parent: serializeMessage(parent, memberId),
+        replies: rows.map((row) => serializeMessage(row, memberId)),
+      },
+    };
   }
 
   /**
@@ -321,9 +507,10 @@ export class ChatService {
     startupId: string,
     conversationId: string,
     memberId: string,
+    roleId: string,
     input: SendMessageInput,
   ) {
-    const { conversationName } = await this.verifyMembership(startupId, conversationId, memberId);
+    const { conversationName, conversationType } = await this.verifyMembership(startupId, conversationId, memberId);
 
     // Retried POST with the same nonce resolves to the original row instead
     // of creating a duplicate — the unique constraint is the source of truth,
@@ -332,10 +519,35 @@ export class ChatService {
       where: { conversationId_clientNonce: { conversationId, clientNonce: input.clientNonce } },
       select: MESSAGE_SELECT,
     });
-    if (existing) return { data: serializeMessage(existing) };
+    if (existing) return { data: serializeMessage(existing, memberId) };
+
+    // Threads are flat: replying to a reply re-parents onto the same
+    // top-level message rather than nesting, matching Slack's model and
+    // keeping "replies to message X" a single flat query.
+    let parentMessageId: string | null = null;
+    if (input.parentMessageId) {
+      const parent = await prisma.message.findFirst({
+        where: { id: input.parentMessageId, conversationId, startupId },
+        select: { id: true, parentMessageId: true },
+      });
+      if (!parent) throw createError("Message not found", 404, "MESSAGE_NOT_FOUND");
+      parentMessageId = parent.parentMessageId ?? parent.id;
+    }
 
     const parsedMentions = parseMentions(input.body);
     const validMentions = await this.filterValidMentions(startupId, parsedMentions);
+
+    // Attaching a vault document requires the same visibility a mention of
+    // one would — a caller who cannot read documents silently loses the
+    // attachment rather than the whole send failing, same as an invalid
+    // mention token.
+    let validDocumentIds: string[] = [];
+    if (input.documentIds && input.documentIds.length > 0) {
+      const resources = await this.callerReadableResources(roleId);
+      if (resources.has("documents")) {
+        validDocumentIds = [...(await this.existingTargetIds("document", startupId, input.documentIds))];
+      }
+    }
 
     const message = await prisma.$transaction(async (tx) => {
       const created = await tx.message.create({
@@ -345,6 +557,7 @@ export class ChatService {
           senderId: memberId,
           body: input.body,
           clientNonce: input.clientNonce,
+          parentMessageId,
         },
         select: MESSAGE_SELECT,
       });
@@ -353,6 +566,13 @@ export class ChatService {
         where: { startupId_id: { startupId, id: conversationId } },
         data: { lastMessageAt: new Date() },
       });
+
+      if (parentMessageId) {
+        await tx.message.update({
+          where: { id: parentMessageId },
+          data: { replyCount: { increment: 1 } },
+        });
+      }
 
       if (validMentions.length > 0) {
         await tx.messageMention.createMany({
@@ -366,10 +586,31 @@ export class ChatService {
         });
       }
 
+      if (validDocumentIds.length > 0) {
+        await tx.messageAttachment.createMany({
+          data: validDocumentIds.map((documentId) => ({ startupId, messageId: created.id, documentId })),
+        });
+      }
+
+      // The sender has, by construction, seen everything up to their own
+      // send — advancing their own read pointer keeps them from seeing an
+      // unread badge on the room they just posted in.
+      await tx.conversationMember.update({
+        where: { conversationId_memberId: { conversationId, memberId } },
+        data: { lastReadSeq: created.seq, lastReadAt: new Date() },
+      });
+
       return created;
     });
 
-    const serialized = serializeMessage(message);
+    // Re-read with the attachment/mention relations the create's `select`
+    // couldn't see yet (they didn't exist until the createMany calls above).
+    const withRelations =
+      validMentions.length > 0 || validDocumentIds.length > 0
+        ? ((await prisma.message.findUniqueOrThrow({ where: { id: message.id }, select: MESSAGE_SELECT })) as MessageRow)
+        : message;
+
+    const serialized = serializeMessage(withRelations, memberId);
 
     // Chat volume does not belong on the notification bell — this is a live
     // signal for whoever already has the room open, not a persisted
@@ -381,14 +622,16 @@ export class ChatService {
         conversationId,
         messageId: message.id,
         seq: serialized.seq,
+        parentMessageId,
       });
     }
 
     // Being @-referenced is different from chat volume — it's addressed to
     // someone specifically, so it does earn a real notification.
-    await this.notifyMentionedMembers(startupId, memberId, validMentions, {
+    await this.notifyMentionedMembers(startupId, conversationId, memberId, validMentions, {
       messageId: message.id,
       conversationName,
+      conversationType,
       senderName: this.senderDisplayName(serialized.sender),
       excerpt: toPlainExcerpt(input.body),
     });
@@ -404,9 +647,16 @@ export class ChatService {
 
   private async notifyMentionedMembers(
     startupId: string,
+    conversationId: string,
     senderMemberId: string,
     mentions: ParsedMention[],
-    context: { messageId: string; conversationName: string; senderName: string; excerpt: string },
+    context: {
+      messageId: string;
+      conversationName: string;
+      conversationType: string;
+      senderName: string;
+      excerpt: string;
+    },
   ): Promise<void> {
     const memberMentionIds = mentions
       .filter((m) => m.type === "member" && m.id !== senderMemberId)
@@ -415,17 +665,23 @@ export class ChatService {
 
     const members = await prisma.startupMember.findMany({
       where: { startupId, id: { in: memberMentionIds } },
-      select: { userId: true },
+      select: {
+        userId: true,
+        conversationMemberships: { where: { conversationId }, select: { notifyLevel: true } },
+      },
     });
 
     for (const member of members) {
       if (!member.userId) continue;
+      // Fully muting the room suppresses even a direct @-mention; "all" and
+      // "mentions" both still let this through — see ConversationMember.notifyLevel.
+      if (member.conversationMemberships[0]?.notifyLevel === "none") continue;
       void notificationService.notifyMention({
         userId: member.userId,
         startupId,
         messageId: context.messageId,
         senderName: context.senderName,
-        conversationName: context.conversationName,
+        conversationName: context.conversationType === "dm" ? null : context.conversationName,
         excerpt: context.excerpt,
       });
     }
@@ -732,9 +988,112 @@ export class ChatService {
         mentionId: row.id,
         conversationId: row.conversation.id,
         conversationName: row.conversation.name,
-        message: serializeMessage(row.message),
+        message: serializeMessage(row.message, memberId),
       })),
     };
+  }
+
+  /** Toggles one (message, member, emoji) reaction — a second click removes it. Returns the message's fresh reaction summary. */
+  async toggleReaction(startupId: string, messageId: string, memberId: string, emoji: string) {
+    const message = await prisma.message.findFirst({
+      where: { startupId, id: messageId },
+      select: { id: true, conversationId: true },
+    });
+    if (!message) throw createError("Message not found", 404, "MESSAGE_NOT_FOUND");
+    await this.verifyMembership(startupId, message.conversationId, memberId);
+
+    const existing = await prisma.messageReaction.findUnique({
+      where: { messageId_memberId_emoji: { messageId, memberId, emoji } },
+    });
+    if (existing) {
+      await prisma.messageReaction.delete({ where: { id: existing.id } });
+    } else {
+      await prisma.messageReaction.create({ data: { startupId, messageId, memberId, emoji } });
+    }
+
+    const rows = await prisma.messageReaction.findMany({
+      where: { messageId },
+      select: { emoji: true, memberId: true },
+    });
+    const reactions = summarizeReactions(rows, memberId);
+
+    const recipientUserIds = await this.memberUserIds(message.conversationId, memberId);
+    for (const userId of recipientUserIds) {
+      realtimeBus.publish(userId, {
+        type: "chat.message.reacted",
+        conversationId: message.conversationId,
+        messageId,
+      });
+    }
+
+    return { data: { messageId, reactions } };
+  }
+
+  /** Advances the caller's read pointer to the latest top-level message — clears the unread badge. */
+  async markRead(startupId: string, conversationId: string, memberId: string) {
+    await this.verifyMembership(startupId, conversationId, memberId);
+
+    const latest = await prisma.message.findFirst({
+      where: { conversationId, parentMessageId: null, deletedAt: null },
+      orderBy: { seq: "desc" },
+      select: { seq: true },
+    });
+    if (!latest) return { data: { lastReadSeq: null } };
+
+    // Only ever moves forward — a concurrent read from another tab that
+    // already caught up further (or the caller's own send, which advances
+    // this same pointer) must not be walked backward by a slow one.
+    await prisma.conversationMember.updateMany({
+      where: {
+        conversationId,
+        memberId,
+        OR: [{ lastReadSeq: null }, { lastReadSeq: { lt: latest.seq } }],
+      },
+      data: { lastReadSeq: latest.seq, lastReadAt: new Date() },
+    });
+
+    // Read back rather than trusting `latest.seq` — the guard above may have
+    // been a no-op, and reporting a seq lower than what is actually stored
+    // would be a lie the caller has no way to detect.
+    const own = await prisma.conversationMember.findUnique({
+      where: { conversationId_memberId: { conversationId, memberId } },
+      select: { lastReadSeq: true },
+    });
+
+    return { data: { lastReadSeq: own?.lastReadSeq?.toString() ?? null } };
+  }
+
+  /** "all" | "mentions" | "none" — see ConversationMember.notifyLevel for what each currently changes. */
+  async setNotifyLevel(startupId: string, conversationId: string, memberId: string, level: NotifyLevelInput["level"]) {
+    await this.verifyMembership(startupId, conversationId, memberId);
+
+    await prisma.conversationMember.update({
+      where: { conversationId_memberId: { conversationId, memberId } },
+      data: { notifyLevel: level },
+    });
+
+    return { data: { notifyLevel: level } };
+  }
+
+  /**
+   * Fire-and-forget: no DB row, just an SSE ping to the other open tabs in
+   * this room. The client debounces calls and lets the "X is typing…" line
+   * expire client-side a few seconds after the last ping — there is nothing
+   * here for a server-side timeout to clean up.
+   */
+  async notifyTyping(startupId: string, conversationId: string, memberId: string): Promise<void> {
+    await this.verifyMembership(startupId, conversationId, memberId);
+
+    const member = await prisma.startupMember.findUnique({
+      where: { id: memberId },
+      select: { user: { select: { firstName: true, lastName: true } } },
+    });
+    const memberName = this.senderDisplayName(member?.user ?? null);
+
+    const recipientUserIds = await this.memberUserIds(conversationId, memberId);
+    for (const userId of recipientUserIds) {
+      realtimeBus.publish(userId, { type: "chat.typing", conversationId, memberId, memberName });
+    }
   }
 
   private translateDuplicateName(err: unknown): unknown {

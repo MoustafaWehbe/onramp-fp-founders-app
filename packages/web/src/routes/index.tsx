@@ -19,6 +19,7 @@ import { Documents } from "../pages/dashboard/Documents/Documents";
 import { AiInsights } from "../pages/dashboard/AiInsights/AiInsights";
 import { Team } from "../pages/dashboard/Team/Team";
 import { Settings } from "../pages/dashboard/Settings";
+import { Profile } from "../pages/dashboard/Profile";
 import { NotFound } from "../pages/NotFound";
 import { LandingPage } from "../pages/landing/Landing";
 import PricingPage from "../pages/landing/Pricing";
@@ -56,6 +57,7 @@ export function AppRoutes() {
           <Route path="/app" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/notifications" element={<Notifications />} />
+          <Route path="/profile" element={<Profile />} />
 
           {/* Everything below needs a startup id to render at all. */}
           <Route element={<RequireWorkspace />}>

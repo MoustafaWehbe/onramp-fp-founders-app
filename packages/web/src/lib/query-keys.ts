@@ -89,6 +89,10 @@ export const qk = {
   messages: (startupId: string, conversationId: string | null | undefined) =>
     ["chat-messages", startupId, conversationId ?? null] as const,
 
+  /** A thread's parent + replies — opened from the reply count on a top-level message. */
+  replies: (startupId: string, messageId: string | null | undefined) =>
+    ["chat-replies", startupId, messageId ?? null] as const,
+
   mentionables: (startupId: string, q: string, types?: string[]) =>
     ["chat-mentionables", startupId, q, types ?? null] as const,
 

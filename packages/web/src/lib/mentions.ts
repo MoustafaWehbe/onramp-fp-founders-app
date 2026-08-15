@@ -26,6 +26,9 @@ export const MENTION_TYPE_LABELS: Record<MentionTargetType, string> = {
   document: "Documents",
 };
 
+/** The fixed reaction palette — the API accepts any short string, but the picker only ever offers these. */
+export const REACTION_EMOJIS = ["👍", "❤️", "🎉", "👀", "✅", "🚀"] as const;
+
 const UUID_PATTERN = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
 const MENTION_PATTERN = new RegExp(

@@ -31,6 +31,43 @@ export const sendMessageSchema = z.object({
   // Client-generated once per send attempt and reused on retry — see
   // Message.clientNonce in schema.prisma for why this makes a send exactly-once.
   clientNonce: z.string().uuid("clientNonce must be a valid UUID"),
+  // Set to reply in a thread. Must name a top-level message in the same
+  // conversation — enforced in ChatService, not here, since it needs a DB lookup.
+  parentMessageId: z.string().uuid("parentMessageId must be a valid UUID").optional(),
+  // Vault documents to attach, beyond anything referenced inline with @doc.
+  documentIds: z.array(z.string().uuid("documentIds must be valid UUIDs")).max(10).optional(),
+});
+
+export const messageIdParamSchema = z.object({
+  startupId: z.string().uuid("startupId must be a valid UUID"),
+  conversationId: z.string().uuid("conversationId must be a valid UUID"),
+  messageId: z.string().uuid("messageId must be a valid UUID"),
+});
+
+export const repliesQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+});
+
+export const reactionIdParamSchema = z.object({
+  startupId: z.string().uuid("startupId must be a valid UUID"),
+  messageId: z.string().uuid("messageId must be a valid UUID"),
+});
+
+export const toggleReactionSchema = z.object({
+  // A short fixed palette on the client (see REACTION_EMOJIS in lib/mentions.ts) —
+  // the server just bounds the length rather than validating against a list,
+  // so an older/newer client's palette never gets rejected outright.
+  emoji: z.string().trim().min(1, "emoji is required").max(16, "emoji must be at most 16 characters"),
+});
+
+export const notifyLevelSchema = z.object({
+  level: z.enum(["all", "mentions", "none"], {
+    errorMap: () => ({ message: "level must be one of: all, mentions, none" }),
+  }),
+});
+
+export const startDirectMessageSchema = z.object({
+  memberId: z.string().uuid("memberId must be a valid UUID"),
 });
 
 export const listMessagesQuerySchema = z.object({
@@ -88,3 +125,7 @@ export type ListMessagesQuery = z.infer<typeof listMessagesQuerySchema>;
 export type MentionableQuery = z.infer<typeof mentionableQuerySchema>;
 export type ResolveMentionsInput = z.infer<typeof resolveMentionsSchema>;
 export type MentionsBacklinkQuery = z.infer<typeof mentionsBacklinkQuerySchema>;
+export type RepliesQuery = z.infer<typeof repliesQuerySchema>;
+export type ToggleReactionInput = z.infer<typeof toggleReactionSchema>;
+export type NotifyLevelInput = z.infer<typeof notifyLevelSchema>;
+export type StartDirectMessageInput = z.infer<typeof startDirectMessageSchema>;

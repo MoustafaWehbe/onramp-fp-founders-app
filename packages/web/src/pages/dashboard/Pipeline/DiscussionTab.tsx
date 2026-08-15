@@ -73,7 +73,7 @@ export function DiscussionTab({ startupId, pipelineId, dealLabel }: DiscussionTa
               meta={
                 <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
                   <Hash className="h-3 w-3" />
-                  {entry.conversationName}
+                  {entry.conversationName ?? "Direct message"}
                 </span>
               }
             />

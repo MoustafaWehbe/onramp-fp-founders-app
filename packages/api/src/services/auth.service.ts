@@ -15,7 +15,13 @@ import { createError, type AppError } from "../utils/errors";
 import { inviteService } from "./invite.service";
 import { getAppUrl } from "../config/env";
 
-const USER_SELECT = { id: true, email: true, firstName: true, lastName: true } as const;
+const USER_SELECT = {
+  id: true,
+  email: true,
+  firstName: true,
+  lastName: true,
+  avatarUrl: true,
+} as const;
 
 interface RegisterInitiateInput {
   first_name: string;
@@ -69,7 +75,7 @@ export class AuthService {
           authProvider: "local",
           emailVerifiedAt: new Date(),
         },
-        select: { id: true, email: true, firstName: true, lastName: true },
+        select: USER_SELECT,
       });
 
       await tx.pendingRegistration.delete({ where: { email: input.email } });
@@ -205,7 +211,13 @@ export class AuthService {
     });
 
     return {
-      user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName },
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        avatarUrl: user.avatarUrl,
+      },
       accessToken,
       refreshToken: rawRefresh,
     };

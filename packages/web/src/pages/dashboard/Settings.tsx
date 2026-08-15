@@ -1,19 +1,12 @@
 import { useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
+import { ArrowRight, Bell, PlugZap, Settings2, ShieldCheck, UserRound } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "../../hooks/useAuth";
-import { useWorkspace } from "../../hooks/useWorkspace";
 import { PageHeader } from "../../components/layout/PageHeader";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../../components/ui/card";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { ConnectedAccountsCard } from "./ConnectedAccountsCard";
 
-/** Reason codes the API redirects back with — see integrations.controller.ts. */
 const CONNECT_ERROR_MESSAGES: Record<string, string> = {
   access_denied: "Google connection cancelled.",
   GOOGLE_INTEGRATION_DISABLED: "Google integration is not set up for this environment.",
@@ -24,63 +17,76 @@ const CONNECT_ERROR_MESSAGES: Record<string, string> = {
 };
 
 export function Settings() {
-  const { user } = useAuth();
-  const { activeStartup } = useWorkspace();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // The Google OAuth callback redirects here with the outcome — surface it
-  // once, then drop the query params so a refresh doesn't repeat the toast.
   useEffect(() => {
     const integration = searchParams.get("integration");
     if (!integration) return;
 
-    if (integration === "connected") {
-      toast.success("Google account connected");
-    } else if (integration === "error") {
+    if (integration === "connected") toast.success("Google account connected");
+    else if (integration === "error") {
       const reason = searchParams.get("reason");
-      toast.error(
-        (reason && CONNECT_ERROR_MESSAGES[reason]) ?? "Could not connect your Google account",
-      );
+      toast.error((reason && CONNECT_ERROR_MESSAGES[reason]) ?? "Could not connect your Google account");
     }
 
     const next = new URLSearchParams(searchParams);
     next.delete("integration");
     next.delete("reason");
     setSearchParams(next, { replace: true });
-    // Only meant to run once per landing, keyed off the params themselves.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Settings" description="Manage your account settings." />
+    <div className="mx-auto max-w-5xl space-y-6">
+      <PageHeader title="Settings" description="Tune your account experience and connected services." />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Profile</CardTitle>
-          <CardDescription>Your account information</CardDescription>
+      <section className="relative overflow-hidden rounded-2xl border border-border/70 bg-card p-6 sm:p-8">
+        <div className="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-primary/15 blur-3xl" />
+        <div className="relative max-w-2xl">
+          <div className="mb-4 grid h-11 w-11 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><Settings2 className="h-5 w-5" /></div>
+          <h2 className="font-display text-xl font-semibold sm:text-2xl">Your workspace, set up your way</h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">Keep your identity current, connect the tools you use, and stay in control of your account.</p>
+        </div>
+      </section>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Card className="group border-border/70 transition-colors hover:border-primary/30">
+          <CardContent className="flex h-full items-start gap-4 p-5">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><UserRound className="h-5 w-5" /></div>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-display font-semibold">Personal profile</h3>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">Update your name and profile photo.</p>
+              <Button asChild variant="link" className="mt-3 h-auto p-0 text-primary"><Link to="/profile">Manage profile <ArrowRight className="ml-1.5 h-4 w-4 transition-transform group-hover:translate-x-0.5" /></Link></Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="group border-border/70 transition-colors hover:border-primary/30">
+          <CardContent className="flex h-full items-start gap-4 p-5">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Bell className="h-5 w-5" /></div>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-display font-semibold">Notifications</h3>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">Review updates, invitations, and activity.</p>
+              <Button asChild variant="link" className="mt-3 h-auto p-0 text-primary"><Link to="/notifications">View notifications <ArrowRight className="ml-1.5 h-4 w-4 transition-transform group-hover:translate-x-0.5" /></Link></Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center gap-3 px-1">
+          <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary/10 text-primary"><PlugZap className="h-4 w-4" /></div>
+          <div><h2 className="font-display font-semibold">Connected services</h2><p className="text-sm text-muted-foreground">Bring email and calendar activity into your fundraising workflow.</p></div>
+        </div>
+        <ConnectedAccountsCard />
+      </div>
+
+      <Card className="border-border/70 bg-muted/15">
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2 text-base"><ShieldCheck className="h-4 w-4 text-primary" /> Security and privacy</CardTitle>
+          <CardDescription>Authentication cookies are HttpOnly and connected-account credentials are never exposed to the browser.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Name</span>
-            <span>{user ? `${user.firstName} ${user.lastName}`.trim() : "Account"}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Email</span>
-            <span>{user?.email}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Workspace</span>
-            <span>{activeStartup?.name ?? "—"}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Role</span>
-            <span className="capitalize">{activeStartup?.member.role ?? "—"}</span>
-          </div>
-        </CardContent>
       </Card>
-
-      <ConnectedAccountsCard />
     </div>
   );
 }

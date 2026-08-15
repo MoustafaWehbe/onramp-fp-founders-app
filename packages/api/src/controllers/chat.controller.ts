@@ -7,6 +7,10 @@ import type {
   MentionableQuery,
   ResolveMentionsInput,
   MentionsBacklinkQuery,
+  RepliesQuery,
+  ToggleReactionInput,
+  NotifyLevelInput,
+  StartDirectMessageInput,
 } from "../validators/chat.schemas";
 
 export const chatController = {
@@ -15,6 +19,18 @@ export const chatController = {
       req.params.startupId as string,
       req.body as CreateConversationInput,
       req.user!.userId,
+      req.member!.id,
+    );
+    res.status(201).json(result);
+  }),
+
+  startDirectMessage: asyncHandler(async (req, res) => {
+    const { memberId } = req.body as StartDirectMessageInput;
+    const result = await chatService.startDirectMessage(
+      req.params.startupId as string,
+      req.member!.id,
+      req.user!.userId,
+      memberId,
     );
     res.status(201).json(result);
   }),
@@ -42,9 +58,62 @@ export const chatController = {
       req.params.startupId as string,
       req.params.conversationId as string,
       req.member!.id,
+      req.member!.roleId,
       req.body as SendMessageInput,
     );
     res.status(201).json(result);
+  }),
+
+  listReplies: asyncHandler(async (req, res) => {
+    const { limit } = req.query as unknown as RepliesQuery;
+    const result = await chatService.listReplies(
+      req.params.startupId as string,
+      req.params.conversationId as string,
+      req.member!.id,
+      req.params.messageId as string,
+      limit,
+    );
+    res.json(result);
+  }),
+
+  toggleReaction: asyncHandler(async (req, res) => {
+    const { emoji } = req.body as ToggleReactionInput;
+    const result = await chatService.toggleReaction(
+      req.params.startupId as string,
+      req.params.messageId as string,
+      req.member!.id,
+      emoji,
+    );
+    res.json(result);
+  }),
+
+  markRead: asyncHandler(async (req, res) => {
+    const result = await chatService.markRead(
+      req.params.startupId as string,
+      req.params.conversationId as string,
+      req.member!.id,
+    );
+    res.json(result);
+  }),
+
+  setNotifyLevel: asyncHandler(async (req, res) => {
+    const { level } = req.body as NotifyLevelInput;
+    const result = await chatService.setNotifyLevel(
+      req.params.startupId as string,
+      req.params.conversationId as string,
+      req.member!.id,
+      level,
+    );
+    res.json(result);
+  }),
+
+  notifyTyping: asyncHandler(async (req, res) => {
+    await chatService.notifyTyping(
+      req.params.startupId as string,
+      req.params.conversationId as string,
+      req.member!.id,
+    );
+    res.status(204).send();
   }),
 
   searchMentionables: asyncHandler(async (req, res) => {

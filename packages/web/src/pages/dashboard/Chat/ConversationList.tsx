@@ -1,4 +1,4 @@
-import { Hash, Plus } from "lucide-react";
+import { BellOff, Hash, Plus, User } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import type { Conversation } from "../../../lib/chat-api";
 import { Skeleton } from "../../../components/ui/skeleton";
@@ -20,13 +20,64 @@ function formatRelative(iso: string): string {
   );
 }
 
+function conversationLabel(conversation: Conversation): string {
+  if (conversation.type === "channel") return conversation.name ?? "";
+  const c = conversation.counterpart;
+  return c ? `${c.firstName ?? ""} ${c.lastName ?? ""}`.trim() || "Teammate" : "Direct message";
+}
+
+type ConversationRowProps = {
+  conversation: Conversation;
+  active: boolean;
+  onSelect: () => void;
+};
+
+function ConversationRow({ conversation, active, onSelect }: ConversationRowProps) {
+  const Icon = conversation.type === "channel" ? Hash : User;
+  const unread = conversation.unreadCount > 0;
+
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onSelect}
+        className={cn(
+          "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors",
+          active
+            ? "bg-sidebar-accent font-medium text-primary"
+            : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground",
+        )}
+      >
+        <Icon className={cn("h-3.5 w-3.5 shrink-0", active ? "text-primary" : "text-muted-foreground")} />
+        <span className={cn("min-w-0 flex-1 truncate", unread && !active && "font-semibold text-foreground")}>
+          {conversationLabel(conversation)}
+        </span>
+        {conversation.notifyLevel === "none" && (
+          <BellOff className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Muted" />
+        )}
+        {unread && (
+          <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-primary px-1 font-mono text-[10px] font-semibold tabular-nums text-primary-foreground">
+            {conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}
+          </span>
+        )}
+        {!unread && conversation.lastMessageAt && (
+          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+            {formatRelative(conversation.lastMessageAt)}
+          </span>
+        )}
+      </button>
+    </li>
+  );
+}
+
 type ConversationListProps = {
   conversations: Conversation[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   isLoading: boolean;
   canCreate: boolean;
-  onCreate: () => void;
+  onCreateChannel: () => void;
+  onCreateDm: () => void;
   className?: string;
 };
 
@@ -36,9 +87,13 @@ export function ConversationList({
   onSelect,
   isLoading,
   canCreate,
-  onCreate,
+  onCreateChannel,
+  onCreateDm,
   className,
 }: ConversationListProps) {
+  const channels = conversations.filter((c) => c.type === "channel");
+  const dms = conversations.filter((c) => c.type === "dm");
+
   return (
     <div className={cn("flex flex-col", className)}>
       <div className="flex items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
@@ -52,7 +107,7 @@ export function ConversationList({
             size="icon"
             className="h-6 w-6"
             aria-label="New channel"
-            onClick={onCreate}
+            onClick={onCreateChannel}
           >
             <Plus className="h-3.5 w-3.5" />
           </Button>
@@ -77,7 +132,7 @@ export function ConversationList({
             }
             action={
               canCreate ? (
-                <Button type="button" size="sm" onClick={onCreate}>
+                <Button type="button" size="sm" onClick={onCreateChannel}>
                   <Plus className="h-3.5 w-3.5" />
                   New channel
                 </Button>
@@ -86,35 +141,51 @@ export function ConversationList({
             compact
           />
         ) : (
-          <ul className="space-y-0.5 p-2">
-            {conversations.map((conversation) => {
-              const active = conversation.id === selectedId;
-              return (
-                <li key={conversation.id}>
-                  <button
-                    type="button"
-                    onClick={() => onSelect(conversation.id)}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors",
-                      active
-                        ? "bg-sidebar-accent font-medium text-primary"
-                        : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground",
-                    )}
-                  >
-                    <Hash
-                      className={cn("h-3.5 w-3.5 shrink-0", active ? "text-primary" : "text-muted-foreground")}
-                    />
-                    <span className="min-w-0 flex-1 truncate">{conversation.name}</span>
-                    {conversation.lastMessageAt && (
-                      <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-                        {formatRelative(conversation.lastMessageAt)}
-                      </span>
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <>
+            {channels.length > 0 && (
+              <ul className="space-y-0.5 p-2">
+                {channels.map((conversation) => (
+                  <ConversationRow
+                    key={conversation.id}
+                    conversation={conversation}
+                    active={conversation.id === selectedId}
+                    onSelect={() => onSelect(conversation.id)}
+                  />
+                ))}
+              </ul>
+            )}
+
+            {canCreate && (
+              <div className="flex items-center justify-between gap-2 border-t border-border/60 px-4 py-3">
+                <span className="font-mono text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+                  Direct messages
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  aria-label="New direct message"
+                  onClick={onCreateDm}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            )}
+
+            {dms.length > 0 && (
+              <ul className="space-y-0.5 p-2">
+                {dms.map((conversation) => (
+                  <ConversationRow
+                    key={conversation.id}
+                    conversation={conversation}
+                    active={conversation.id === selectedId}
+                    onSelect={() => onSelect(conversation.id)}
+                  />
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </div>
     </div>

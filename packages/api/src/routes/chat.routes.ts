@@ -11,6 +11,12 @@ import {
   mentionableQuerySchema,
   resolveMentionsSchema,
   mentionsBacklinkQuerySchema,
+  messageIdParamSchema,
+  repliesQuerySchema,
+  reactionIdParamSchema,
+  toggleReactionSchema,
+  notifyLevelSchema,
+  startDirectMessageSchema,
 } from "../validators/chat.schemas";
 import { chatController } from "../controllers/chat.controller";
 
@@ -28,6 +34,19 @@ router.post(
   requirePermission("chat", "create"),
   validate(createConversationSchema),
   chatController.createConversation,
+);
+
+// POST /api/v1/startups/:startupId/chat/dm — chat:create
+// Finds or creates the 1:1 DM with another active member — see
+// ChatService.startDirectMessage for the dmKey dedup logic.
+router.post(
+  "/dm",
+  authenticate,
+  validate(startupIdParamSchema, "params"),
+  requireMember,
+  requirePermission("chat", "create"),
+  validate(startDirectMessageSchema),
+  chatController.startDirectMessage,
 );
 
 // GET /api/v1/startups/:startupId/chat/conversations — chat:read
@@ -60,6 +79,63 @@ router.post(
   requirePermission("chat", "create"),
   validate(sendMessageSchema),
   chatController.sendMessage,
+);
+
+// GET /api/v1/startups/:startupId/chat/conversations/:conversationId/messages/:messageId/replies — chat:read
+router.get(
+  "/conversations/:conversationId/messages/:messageId/replies",
+  authenticate,
+  validate(messageIdParamSchema, "params"),
+  requireMember,
+  requirePermission("chat", "read"),
+  validate(repliesQuerySchema, "query"),
+  chatController.listReplies,
+);
+
+// POST /api/v1/startups/:startupId/chat/conversations/:conversationId/read — chat:read
+// Marks the caller caught up through the latest top-level message.
+router.post(
+  "/conversations/:conversationId/read",
+  authenticate,
+  validate(conversationIdParamSchema, "params"),
+  requireMember,
+  requirePermission("chat", "read"),
+  chatController.markRead,
+);
+
+// PATCH /api/v1/startups/:startupId/chat/conversations/:conversationId/notify-level — chat:read
+// Muting your own view of a room only needs read access, not create.
+router.patch(
+  "/conversations/:conversationId/notify-level",
+  authenticate,
+  validate(conversationIdParamSchema, "params"),
+  requireMember,
+  requirePermission("chat", "read"),
+  validate(notifyLevelSchema),
+  chatController.setNotifyLevel,
+);
+
+// POST /api/v1/startups/:startupId/chat/conversations/:conversationId/typing — chat:create
+// Fire-and-forget presence ping, gated the same as actually posting.
+router.post(
+  "/conversations/:conversationId/typing",
+  authenticate,
+  validate(conversationIdParamSchema, "params"),
+  requireMember,
+  requirePermission("chat", "create"),
+  chatController.notifyTyping,
+);
+
+// POST /api/v1/startups/:startupId/chat/messages/:messageId/reactions — chat:create
+// Toggle semantics: posting the same emoji again removes it.
+router.post(
+  "/messages/:messageId/reactions",
+  authenticate,
+  validate(reactionIdParamSchema, "params"),
+  requireMember,
+  requirePermission("chat", "create"),
+  validate(toggleReactionSchema),
+  chatController.toggleReaction,
 );
 
 // GET /api/v1/startups/:startupId/chat/mentionables — chat:read

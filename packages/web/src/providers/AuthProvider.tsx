@@ -38,6 +38,13 @@ interface AuthContextValue {
   forgotPassword: (email: string) => Promise<string>;
   resetPassword: (token: string, newPassword: string) => Promise<void>;
   googleAuth: (idToken: string) => Promise<void>;
+  updateProfile: (input: UpdateProfileInput) => Promise<void>;
+}
+
+export interface UpdateProfileInput {
+  firstName?: string;
+  lastName?: string;
+  avatarUrl?: string | null;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -209,6 +216,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.data.user);
   }, [resetIdentityScopedState]);
 
+  const updateProfile = useCallback(async (input: UpdateProfileInput): Promise<void> => {
+    const { data } = await apiClient.patch<{ data: AuthUser }>("/users/me", input);
+    setUser(data.data);
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -222,6 +234,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         forgotPassword,
         resetPassword,
         googleAuth,
+        updateProfile,
       }}
     >
       {children}

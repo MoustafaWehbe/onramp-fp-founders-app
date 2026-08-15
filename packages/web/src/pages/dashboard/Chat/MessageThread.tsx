@@ -1,15 +1,24 @@
-import { useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Hash, MessageSquare } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Bell, BellOff, Hash, MessageSquare, User } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "../../../components/ui/button";
 import { EmptyState } from "../../../components/shared/EmptyState";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { apiErrorMessage } from "../../../lib/api-error";
 import { qk } from "../../../lib/query-keys";
-import { listMessages, type Conversation } from "../../../lib/chat-api";
+import {
+  listMessages,
+  markConversationRead,
+  setNotifyLevel,
+  toggleReaction,
+  type Conversation,
+} from "../../../lib/chat-api";
 import { useResolvedMentions } from "../../../hooks/useResolvedMentions";
+import { useTypingUsers } from "../../../hooks/useTypingUsers";
 import { MessageItem } from "../../../components/mentions/MessageItem";
 import { Composer } from "./Composer";
+import { ThreadDialog } from "./ThreadDialog";
 
 type MessageThreadProps = {
   startupId: string;
@@ -18,8 +27,18 @@ type MessageThreadProps = {
   onBack?: () => void;
 };
 
+function conversationDisplayName(conversation: Conversation): string {
+  if (conversation.type === "channel") return conversation.name ?? "";
+  const c = conversation.counterpart;
+  return c ? `${c.firstName ?? ""} ${c.lastName ?? ""}`.trim() || "Teammate" : "Direct message";
+}
+
 export function MessageThread({ startupId, conversation, canSend, onBack }: MessageThreadProps) {
+  const queryClient = useQueryClient();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [threadMessageId, setThreadMessageId] = useState<string | null>(null);
+  const typingNames = useTypingUsers(conversation.id);
+  const displayName = conversationDisplayName(conversation);
 
   const messagesQuery = useQuery({
     queryKey: qk.messages(startupId, conversation.id),
@@ -34,6 +53,33 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages.length, conversation.id]);
+
+  // Opening a room (or a new message landing while it's open) counts as
+  // having seen it — clears the unread badge without the founder doing
+  // anything extra.
+  useEffect(() => {
+    if (conversation.unreadCount === 0) return;
+    void markConversationRead(startupId, conversation.id)
+      .then(() => void queryClient.invalidateQueries({ queryKey: qk.conversations(startupId) }))
+      .catch(() => {
+        // A missed read receipt just leaves the badge stale — not worth surfacing.
+      });
+  }, [startupId, conversation.id, conversation.unreadCount, queryClient]);
+
+  const reactMutation = useMutation({
+    mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
+      toggleReaction(startupId, messageId, emoji),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: qk.messages(startupId, conversation.id) }),
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not react to that message")),
+  });
+
+  const muteMutation = useMutation({
+    mutationFn: () => setNotifyLevel(startupId, conversation.id, conversation.notifyLevel === "none" ? "all" : "none"),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: qk.conversations(startupId) }),
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not update notifications")),
+  });
+
+  const muted = conversation.notifyLevel === "none";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -50,13 +96,28 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
             <ArrowLeft className="h-4 w-4" />
           </Button>
         )}
-        <Hash className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <div className="min-w-0">
-          <div className="truncate text-sm font-medium">{conversation.name}</div>
+        {conversation.type === "channel" ? (
+          <Hash className="h-4 w-4 shrink-0 text-muted-foreground" />
+        ) : (
+          <User className="h-4 w-4 shrink-0 text-muted-foreground" />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium">{displayName}</div>
           {conversation.topic && (
             <div className="truncate text-xs text-muted-foreground">{conversation.topic}</div>
           )}
         </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0"
+          aria-label={muted ? "Unmute this conversation" : "Mute this conversation"}
+          onClick={() => muteMutation.mutate()}
+          disabled={muteMutation.isPending}
+        >
+          {muted ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+        </Button>
       </div>
 
       <div ref={scrollRef} className="scrollbar-slim min-h-0 flex-1 overflow-y-auto px-4 py-4">
@@ -90,19 +151,51 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
         ) : (
           <div className="space-y-4">
             {messages.map((message) => (
-              <MessageItem key={message.id} message={message} resolved={resolved} />
+              <MessageItem
+                key={message.id}
+                message={message}
+                resolved={resolved}
+                onReact={canSend ? (emoji) => reactMutation.mutate({ messageId: message.id, emoji }) : undefined}
+                onOpenThread={canSend ? () => setThreadMessageId(message.id) : undefined}
+              />
             ))}
           </div>
         )}
       </div>
 
+      {typingNames.length > 0 && (
+        <div className="px-4 pb-1 text-xs italic text-muted-foreground">
+          {typingNames.length === 1
+            ? `${typingNames[0]} is typing…`
+            : `${typingNames.slice(0, 2).join(", ")}${typingNames.length > 2 ? " and others" : ""} are typing…`}
+        </div>
+      )}
+
       {canSend ? (
-        <Composer startupId={startupId} conversationId={conversation.id} conversationName={conversation.name} />
+        <Composer
+          startupId={startupId}
+          conversationId={conversation.id}
+          conversationName={displayName}
+          placeholder={
+            conversation.type === "dm"
+              ? `Message ${displayName}`
+              : `Message #${displayName} — type @ to reference an investor, deal, task, round or document`
+          }
+        />
       ) : (
         <div className="border-t border-border/60 px-4 py-3 text-center text-xs text-muted-foreground">
           You don't have permission to post in this channel.
         </div>
       )}
+
+      <ThreadDialog
+        startupId={startupId}
+        conversationId={conversation.id}
+        conversationName={displayName}
+        canSend={canSend}
+        messageId={threadMessageId}
+        onClose={() => setThreadMessageId(null)}
+      />
     </div>
   );
 }

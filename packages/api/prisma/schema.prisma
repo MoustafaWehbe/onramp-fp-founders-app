@@ -64,14 +64,8 @@ model GoogleConnection {
   // AES-256-GCM ciphertext (iv + auth tag + ciphertext, base64) — never the raw token.
   refreshTokenCipher String @map("refresh_token_cipher")
 
-  // "active": usable. "needs_reauth": Google returned invalid_grant (the user
-  // revoked access at Google, or the token expired from disuse) — sync stops
-  // and the UI must prompt to reconnect rather than fail silently.
-  // "revoked": disconnected from our side.
   status String @default("active")
 
-  // A founder-facing pause, distinct from `status` — "I don't want this right
-  // now" versus "this is broken". Gmail send (Phase 3) does not depend on it.
   calendarSyncEnabled Boolean @default(true) @map("calendar_sync_enabled")
 
   // Calendar's incremental sync cursor. Null forces a full resync.
@@ -120,6 +114,8 @@ model Startup {
   conversationMembers    ConversationMember[]
   messages               Message[]
   messageMentions        MessageMention[]
+  messageReactions       MessageReaction[]
+  messageAttachments     MessageAttachment[]
 
   @@map("startups")
 }
@@ -148,6 +144,7 @@ model StartupMember {
   conversationMemberships ConversationMember[]
   messagesSent            Message[]            @relation("MessageSender")
   chatMentions            MessageMention[]     @relation("MentionedMember")
+  messageReactions        MessageReaction[]
 
   @@unique([startupId, userId])
   @@unique([startupId, invitedEmail])
@@ -538,13 +535,14 @@ model Document {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  startup          Startup                      @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  creator          User                         @relation(fields: [createdBy], references: [id])
-  versions         DocumentVersion[]
-  reviewerDocs     ReviewerInvitationDocument[]
-  reviewerComments ReviewerComment[]
-  aiChatSessions   AiChatSession[]              @relation("AiChatSessionDocument")
-  mentions         MessageMention[]
+  startup            Startup                      @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  creator            User                         @relation(fields: [createdBy], references: [id])
+  versions           DocumentVersion[]
+  reviewerDocs       ReviewerInvitationDocument[]
+  reviewerComments   ReviewerComment[]
+  aiChatSessions     AiChatSession[]              @relation("AiChatSessionDocument")
+  mentions           MessageMention[]
+  messageAttachments MessageAttachment[]
 
   @@unique([startupId, id])
   @@map("documents")
@@ -680,18 +678,13 @@ model AiChatMessage {
 }
 
 // ─── TEAM CHAT ────────────────────────────────────────────────────────────────
-// Phase 1: named channels only. Every active member is added on creation —
-// there is no invite-to-channel UI yet, so membership is workspace-wide by
-// default. DMs, entity-scoped threads (@-references into a deal/task/round)
-// and per-channel read state are deliberately not modeled yet; adding them
-// later is additive (new nullable columns / a new membership row shape), not
-// a rewrite of what's here.
-
 model Conversation {
   id            String    @id @default(uuid())
   startupId     String    @map("startup_id")
-  name          String
+  type          String    @default("channel")
+  name          String?
   topic         String?
+  dmKey         String?   @map("dm_key")
   lastMessageAt DateTime? @map("last_message_at")
   archivedAt    DateTime? @map("archived_at")
   createdBy     String    @map("created_by")
@@ -706,6 +699,7 @@ model Conversation {
 
   @@unique([startupId, id])
   @@unique([startupId, name])
+  @@unique([startupId, dmKey])
   @@index([startupId, lastMessageAt])
   @@map("conversations")
 }
@@ -717,10 +711,12 @@ model ConversationMember {
   memberId       String   @map("member_id")
   joinedAt       DateTime @default(now()) @map("joined_at")
 
+  lastReadSeq BigInt?   @map("last_read_seq")
+  lastReadAt  DateTime? @map("last_read_at")
+
+  notifyLevel String    @default("all") @map("notify_level")
+
   conversation Conversation  @relation(fields: [conversationId, startupId], references: [id, startupId], onDelete: Cascade)
-  // Cascade here (unlike Pipeline.owner / Task.assignee) is safe: this row is
-  // pure membership, not content — losing it when the member is removed loses
-  // nothing worth keeping.
   member       StartupMember @relation(fields: [memberId, startupId], references: [id, startupId], onDelete: Cascade)
   startup      Startup       @relation(fields: [startupId], references: [id], onDelete: Cascade)
 
@@ -735,6 +731,8 @@ model Message {
   conversationId String  @map("conversation_id")
   seq            BigInt  @default(autoincrement())
   senderId       String? @map("sender_id")
+  parentMessageId String? @map("parent_message_id")
+  replyCount      Int     @default(0) @map("reply_count")
 
   body String
 
@@ -743,15 +741,54 @@ model Message {
   deletedAt   DateTime? @map("deleted_at") // tombstone, never a hard delete
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  startup      Startup          @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  conversation Conversation     @relation(fields: [conversationId, startupId], references: [id, startupId], onDelete: Cascade)
-  sender       StartupMember?   @relation("MessageSender", fields: [senderId, startupId], references: [id, startupId], onDelete: NoAction)
+  startup      Startup             @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  conversation Conversation        @relation(fields: [conversationId, startupId], references: [id, startupId], onDelete: Cascade)
+  sender       StartupMember?      @relation("MessageSender", fields: [senderId, startupId], references: [id, startupId], onDelete: NoAction)
+  parent       Message?            @relation("MessageReplies", fields: [parentMessageId], references: [id], onDelete: Cascade)
+  replies      Message[]           @relation("MessageReplies")
   mentions     MessageMention[]
+  reactions    MessageReaction[]
+  attachments  MessageAttachment[]
 
   @@unique([startupId, id])
   @@unique([conversationId, clientNonce])
   @@index([conversationId, seq])
+  @@index([parentMessageId, seq])
   @@map("messages")
+}
+
+model MessageReaction {
+  id        String   @id @default(uuid())
+  startupId String   @map("startup_id")
+  messageId String   @map("message_id")
+  memberId  String   @map("member_id")
+  emoji     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  startup Startup       @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  message Message       @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  member  StartupMember @relation(fields: [memberId, startupId], references: [id, startupId], onDelete: Cascade)
+
+  @@unique([messageId, memberId, emoji])
+  @@index([messageId])
+  @@map("message_reactions")
+}
+
+model MessageAttachment {
+  id         String   @id @default(uuid())
+  startupId  String   @map("startup_id")
+  messageId  String   @map("message_id")
+  documentId String   @map("document_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  startup  Startup  @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  message  Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId, startupId], references: [id, startupId], onDelete: Cascade)
+
+  @@unique([messageId, documentId])
+  @@index([messageId])
+  @@map("message_attachments")
 }
 
 model MessageMention {

@@ -322,6 +322,9 @@ components:
         avatarUrl:
           type: string
           format: uri
+          nullable: true
+          maxLength: 750000
+          description: An http(s) image URL or compact JPEG, PNG, or WebP data URL; null removes the photo.
 
     ChangePasswordBody:
       type: object
@@ -1467,12 +1470,44 @@ components:
         startupId:
           type: string
           format: uuid
+        type:
+          type: string
+          enum: [channel, dm]
         name:
           type: string
-          description: Unique within the startup.
+          nullable: true
+          description: Unique within the startup among channels. Null for a DM — see `counterpart`.
         topic:
           type: string
           nullable: true
+        counterpart:
+          type: object
+          nullable: true
+          description: Set only when type is "dm" — the other participant, resolved for the calling viewer.
+          properties:
+            memberId:
+              type: string
+              format: uuid
+            firstName:
+              type: string
+              nullable: true
+            lastName:
+              type: string
+              nullable: true
+            avatarUrl:
+              type: string
+              nullable: true
+        lastReadSeq:
+          type: string
+          nullable: true
+          description: The caller's own read pointer — a decimal string, same encoding as Message.seq.
+        notifyLevel:
+          type: string
+          enum: [all, mentions, none]
+          description: The caller's own mute level for this conversation.
+        unreadCount:
+          type: integer
+          description: Top-level messages from someone else, sent after the caller's lastReadSeq.
         lastMessageAt:
           type: string
           format: date-time
@@ -1503,6 +1538,15 @@ components:
         topic:
           type: string
           maxLength: 200
+
+    StartDirectMessageBody:
+      type: object
+      required: [memberId]
+      properties:
+        memberId:
+          type: string
+          format: uuid
+          description: The other active StartupMember to open (or reuse) a 1:1 DM with.
 
     MessageSender:
       type: object
@@ -1549,6 +1593,14 @@ components:
           $ref: "#/components/schemas/MessageSender"
         body:
           type: string
+        parentMessageId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Set for a thread reply. Threads are flat — always the top-level ancestor's id.
+        replyCount:
+          type: integer
+          description: Denormalized count of replies to this message.
         editedAt:
           type: string
           format: date-time
@@ -1560,6 +1612,37 @@ components:
         createdAt:
           type: string
           format: date-time
+        reactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageReactionSummary"
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageAttachment"
+
+    MessageReactionSummary:
+      type: object
+      description: One emoji's tally on a message.
+      properties:
+        emoji:
+          type: string
+        count:
+          type: integer
+        reactedByMe:
+          type: boolean
+
+    MessageAttachment:
+      type: object
+      description: A vault document attached to a message at send time.
+      properties:
+        documentId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        documentType:
+          type: string
 
     SendMessageBody:
       type: object
@@ -1576,6 +1659,36 @@ components:
             Client-generated once per send attempt and reused on retry, so a
             retried POST resolves to the original message instead of
             duplicating it.
+        parentMessageId:
+          type: string
+          format: uuid
+          description: Reply in a thread — must name a message already in this conversation.
+        documentIds:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            format: uuid
+          description: >-
+            Vault documents to attach. Silently dropped if the caller lacks
+            documents:read, same as an invalid @-mention.
+
+    ToggleReactionBody:
+      type: object
+      required: [emoji]
+      properties:
+        emoji:
+          type: string
+          minLength: 1
+          maxLength: 16
+
+    NotifyLevelBody:
+      type: object
+      required: [level]
+      properties:
+        level:
+          type: string
+          enum: [all, mentions, none]
 
     MentionTargetType:
       type: string
@@ -1683,8 +1796,21 @@ components:
           format: uuid
         conversationName:
           type: string
+          nullable: true
+          description: Null when the source conversation is a DM.
         message:
           $ref: "#/components/schemas/Message"
+
+    ReplyThread:
+      type: object
+      description: Response for GET .../messages/{messageId}/replies.
+      properties:
+        parent:
+          $ref: "#/components/schemas/Message"
+        replies:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
 
     CreateInteractionLogBody:
       type: object
@@ -5356,6 +5482,71 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /startups/{startupId}/chat/dm:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Chat]
+      summary: Start or reuse a 1:1 direct message
+      description: >
+        Finds the existing DM with this member if one exists (keyed on the
+        sorted member-id pair), otherwise creates it. Idempotent from either
+        side of the pair.
+      operationId: startDirectMessage
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartDirectMessageBody"
+      responses:
+        "201":
+          description: The DM conversation, new or pre-existing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Conversation"
+        "400":
+          description: INVALID_DM_TARGET — cannot DM yourself
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing chat:create
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: MEMBER_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
   /startups/{startupId}/chat/conversations/{conversationId}/messages:
     parameters:
       - name: startupId
@@ -5455,6 +5646,312 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: CONVERSATION_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /startups/{startupId}/chat/conversations/{conversationId}/messages/{messageId}/replies:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: conversationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: messageId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Chat]
+      summary: List a thread's replies
+      description: >
+        Threads are flat and unpaginated beyond `limit` — replying to a reply
+        re-parents onto the same top-level message rather than nesting.
+      operationId: listReplies
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+      responses:
+        "200":
+          description: The parent message and its replies, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ReplyThread"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing chat:read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: CONVERSATION_NOT_FOUND or MESSAGE_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /startups/{startupId}/chat/conversations/{conversationId}/read:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: conversationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Chat]
+      summary: Mark a channel read
+      description: Advances the caller's read pointer to the latest top-level message — clears its unread badge.
+      operationId: markRead
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: The caller's new read pointer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      lastReadSeq:
+                        type: string
+                        nullable: true
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing chat:read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: CONVERSATION_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /startups/{startupId}/chat/conversations/{conversationId}/notify-level:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: conversationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: [Chat]
+      summary: Set the caller's mute level for a channel
+      description: >-
+        "all" and "mentions" currently behave identically — chat volume
+        itself never raises a Notification row, so only "none" (fully muted)
+        has an observable effect: it also suppresses the @-mention
+        notification for this conversation.
+      operationId: setNotifyLevel
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotifyLevelBody"
+      responses:
+        "200":
+          description: The new mute level
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      notifyLevel:
+                        type: string
+                        enum: [all, mentions, none]
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing chat:read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: CONVERSATION_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /startups/{startupId}/chat/conversations/{conversationId}/typing:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: conversationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Chat]
+      summary: Ping "I am typing" to the rest of the room
+      description: >-
+        Fire-and-forget — no row is written. Fans out a chat.typing SSE event
+        to the conversation's other members; the client lets it expire a few
+        seconds after the last ping.
+      operationId: notifyTyping
+      security:
+        - cookieAuth: []
+      responses:
+        "204":
+          description: Ping sent
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing chat:create
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: CONVERSATION_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /startups/{startupId}/chat/messages/{messageId}/reactions:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: messageId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Chat]
+      summary: Toggle a reaction on a message
+      description: Posting the same emoji a second time removes it — this is a toggle, not an add-only endpoint.
+      operationId: toggleReaction
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToggleReactionBody"
+      responses:
+        "200":
+          description: The message's fresh reaction summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      messageId:
+                        type: string
+                        format: uuid
+                      reactions:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/MessageReactionSummary"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing chat:create
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: MESSAGE_NOT_FOUND or CONVERSATION_NOT_FOUND
           content:
             application/json:
               schema:

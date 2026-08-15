@@ -7,10 +7,16 @@ import { useActiveStartupId } from "../../../hooks/useWorkspace";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { qk } from "../../../lib/query-keys";
 import { cn } from "../../../lib/utils";
-import { createConversation, listConversations, type CreateConversationInput } from "../../../lib/chat-api";
+import {
+  createConversation,
+  listConversations,
+  startDirectMessage,
+  type CreateConversationInput,
+} from "../../../lib/chat-api";
 import { ConversationList } from "./ConversationList";
 import { MessageThread } from "./MessageThread";
 import { NewChannelDialog } from "./NewChannelDialog";
+import { NewDirectMessageDialog } from "./NewDirectMessageDialog";
 import { EmptyState } from "../../../components/shared/EmptyState";
 import { MessageSquare } from "lucide-react";
 
@@ -22,6 +28,7 @@ export function Chat() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [createDmOpen, setCreateDmOpen] = useState(false);
 
   const conversationsQuery = useQuery({
     queryKey: qk.conversations(startupId),
@@ -53,6 +60,16 @@ export function Chat() {
     onError: (err) => toast.error(apiErrorMessage(err, "Could not create that channel")),
   });
 
+  const startDmMutation = useMutation({
+    mutationFn: (memberId: string) => startDirectMessage(startupId, memberId),
+    onSuccess: (conversation) => {
+      setCreateDmOpen(false);
+      setSelectedId(conversation.id);
+      void queryClient.invalidateQueries({ queryKey: qk.conversations(startupId) });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not start that conversation")),
+  });
+
   const selected = conversations.find((c) => c.id === selectedId) ?? null;
 
   return (
@@ -66,7 +83,8 @@ export function Chat() {
           onSelect={setSelectedId}
           isLoading={conversationsQuery.isLoading}
           canCreate={canCreate}
-          onCreate={() => setCreateOpen(true)}
+          onCreateChannel={() => setCreateOpen(true)}
+          onCreateDm={() => setCreateDmOpen(true)}
           className={cn(
             "w-full shrink-0 border-r border-border/60 md:w-64",
             selected ? "hidden md:flex" : "flex",
@@ -95,6 +113,13 @@ export function Chat() {
         onOpenChange={setCreateOpen}
         isSubmitting={createMutation.isPending}
         onSubmit={(input) => createMutation.mutate(input)}
+      />
+
+      <NewDirectMessageDialog
+        startupId={startupId}
+        open={createDmOpen}
+        onOpenChange={setCreateDmOpen}
+        onSelect={(memberId) => startDmMutation.mutate(memberId)}
       />
     </div>
   );

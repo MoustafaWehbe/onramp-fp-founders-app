@@ -11,16 +11,47 @@ export type MessageSender = {
   avatarUrl: string | null;
 } | null;
 
+export type ConversationCounterpart = {
+  /** A StartupMember id. */
+  memberId: string;
+  firstName: string | null;
+  lastName: string | null;
+  avatarUrl: string | null;
+} | null;
+
+export type NotifyLevel = "all" | "mentions" | "none";
+
 export type Conversation = {
   id: string;
   startupId: string;
-  name: string;
+  type: "channel" | "dm";
+  /** Null for a DM — see `counterpart`. */
+  name: string | null;
   topic: string | null;
+  /** Set only when type is "dm" — the other participant, resolved for the calling viewer. */
+  counterpart: ConversationCounterpart;
+  /** The caller's own read pointer — a decimal string, same encoding as Message.seq. */
+  lastReadSeq: string | null;
+  /** The caller's own mute level for this conversation. */
+  notifyLevel: NotifyLevel;
+  unreadCount: number;
   lastMessageAt: string | null;
   archivedAt: string | null;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type MessageReactionSummary = {
+  emoji: string;
+  count: number;
+  reactedByMe: boolean;
+};
+
+export type MessageAttachment = {
+  documentId: string;
+  title: string;
+  documentType: string;
 };
 
 export type Message = {
@@ -32,9 +63,19 @@ export type Message = {
   senderId: string | null;
   sender: MessageSender;
   body: string;
+  /** Set for a thread reply — always the top-level ancestor's id, since threads are flat. */
+  parentMessageId: string | null;
+  replyCount: number;
   editedAt: string | null;
   deletedAt: string | null;
   createdAt: string;
+  reactions: MessageReactionSummary[];
+  attachments: MessageAttachment[];
+};
+
+export type ReplyThread = {
+  parent: Message;
+  replies: Message[];
 };
 
 export type CreateConversationInput = {
@@ -46,6 +87,10 @@ export type SendMessageInput = {
   body: string;
   /** Reused on retry so a resend never duplicates the message. */
   clientNonce: string;
+  /** Reply in a thread — must name a message already in this conversation. */
+  parentMessageId?: string;
+  /** Vault documents to attach, beyond anything referenced inline with @doc. */
+  documentIds?: string[];
 };
 
 export async function listConversations(startupId: string) {
@@ -60,6 +105,14 @@ export async function createConversation(startupId: string, input: CreateConvers
     `/startups/${startupId}/chat/conversations`,
     input,
   );
+  return data.data;
+}
+
+/** Finds or creates the 1:1 DM with another active member. */
+export async function startDirectMessage(startupId: string, memberId: string) {
+  const { data } = await apiClient.post<{ data: Conversation }>(`/startups/${startupId}/chat/dm`, {
+    memberId,
+  });
   return data.data;
 }
 
@@ -85,6 +138,50 @@ export async function sendMessage(
     input,
   );
   return data.data;
+}
+
+/** Every reply to one top-level message, oldest first, plus the parent itself. */
+export async function listReplies(
+  startupId: string,
+  conversationId: string,
+  messageId: string,
+  limit = 100,
+) {
+  const { data } = await apiClient.get<{ data: ReplyThread }>(
+    `/startups/${startupId}/chat/conversations/${conversationId}/messages/${messageId}/replies`,
+    { params: { limit } },
+  );
+  return data.data;
+}
+
+/** Toggle semantics — reacting with the same emoji a second time removes it. */
+export async function toggleReaction(startupId: string, messageId: string, emoji: string) {
+  const { data } = await apiClient.post<{ data: { messageId: string; reactions: MessageReactionSummary[] } }>(
+    `/startups/${startupId}/chat/messages/${messageId}/reactions`,
+    { emoji },
+  );
+  return data.data;
+}
+
+/** Advances the caller's read pointer to the latest message — clears the unread badge. */
+export async function markConversationRead(startupId: string, conversationId: string) {
+  const { data } = await apiClient.post<{ data: { lastReadSeq: string | null } }>(
+    `/startups/${startupId}/chat/conversations/${conversationId}/read`,
+  );
+  return data.data;
+}
+
+export async function setNotifyLevel(startupId: string, conversationId: string, level: NotifyLevel) {
+  const { data } = await apiClient.patch<{ data: { notifyLevel: NotifyLevel } }>(
+    `/startups/${startupId}/chat/conversations/${conversationId}/notify-level`,
+    { level },
+  );
+  return data.data;
+}
+
+/** Fire-and-forget presence ping — no response payload to wait on. */
+export async function pingTyping(startupId: string, conversationId: string) {
+  await apiClient.post(`/startups/${startupId}/chat/conversations/${conversationId}/typing`);
 }
 
 export type MentionableItem = {
@@ -139,7 +236,8 @@ export type ResolvedMention =
 export type MentionBacklinkEntry = {
   mentionId: string;
   conversationId: string;
-  conversationName: string;
+  /** Null when the source conversation is a DM. */
+  conversationName: string | null;
   message: Message;
 };
 
