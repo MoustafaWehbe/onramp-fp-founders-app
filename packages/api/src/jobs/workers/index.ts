@@ -4,6 +4,7 @@ import { Worker, type Processor } from "bullmq";
 import { getRedis } from "../queue";
 import { emailJob } from "./email.worker";
 import { embeddingsJob } from "./embeddings.worker";
+import { documentProcessingJob } from "./document-processing.worker";
 import { calendarSyncJob } from "./calendar-sync.worker";
 import { gmailLogRetryJob } from "./gmail-log-retry.worker";
 
@@ -13,7 +14,13 @@ interface WorkerDef {
   process: Processor;
 }
 
-const JOBS: WorkerDef[] = [emailJob, embeddingsJob, calendarSyncJob, gmailLogRetryJob];
+const JOBS: WorkerDef[] = [
+  emailJob,
+  embeddingsJob,
+  documentProcessingJob,
+  calendarSyncJob,
+  gmailLogRetryJob,
+];
 
 export function startWorkers(): Worker[] {
   const conn = getRedis();

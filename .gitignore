@@ -49,3 +49,7 @@ Thumbs.db
 # ─── TypeScript ───────────────────────────────────────────────────────────────
 *.tsbuildinfo
 cookies.txt
+
+# Local document storage fallback
+packages/api/.uploads/
+

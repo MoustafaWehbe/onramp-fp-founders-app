@@ -21,7 +21,7 @@ import { useRoundTasks } from "../../hooks/useRoundTasks";
 import { useWorkspace } from "../../hooks/useWorkspace";
 import { apiErrorMessage } from "../../lib/api-error";
 import { useAppStore } from "../../lib/app-store";
-import { isBankable, listCommitments, listFundraisingRounds, type FundraisingRound } from "../../lib/fundraising-api";
+import { listFundraisingRounds, getRoundMetrics, type FundraisingRound } from "../../lib/fundraising-api";
 import { fetchAllPages } from "../../lib/pagination";
 import { STAGES } from "../../lib/mock-data";
 import { getPipelineFocus, listPipelineEntries, type PipelineEntry, type PipelineFocusEntry } from "../../lib/pipeline-api";
@@ -98,7 +98,11 @@ function TodayWorkspace({ startupId }: { startupId: string }) {
   // "open" are narrowed below rather than server-side, so both readers of this
   // key get the same rows.
   const tasksQuery = useRoundTasks(startupId, activeRound?.id);
-  const commitmentsQuery = useQuery({ queryKey: qk.commitments(startupId, activeRound?.id), queryFn: () => listCommitments(startupId, activeRound!.id), enabled: Boolean(activeRound) });
+  const metricsQuery = useQuery({
+    queryKey: ["round-metrics", startupId, activeRound?.id],
+    queryFn: () => getRoundMetrics(startupId, activeRound!.id),
+    enabled: Boolean(activeRound),
+  });
 
   const entries = pipelineQuery.data?.data ?? [];
   const entriesById = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries]);
@@ -109,9 +113,13 @@ function TodayWorkspace({ startupId }: { startupId: string }) {
   const focusItems = focusQuery.data ?? [];
   const unassigned = entries.filter((entry) => entry.stage !== "passed" && !entry.ownerId);
   const leadAlerts = focusItems.filter((entry) => entry.isLead);
-  const bankable = (commitmentsQuery.data?.data ?? []).filter((item) => isBankable(item.status)).reduce((sum, item) => sum + (item.amount ?? 0), 0);
-  const target = activeRound?.targetAmount ?? 0;
-  const progress = target ? Math.min(100, Math.round((bankable / target) * 100)) : 0;
+  const bankable = metricsQuery.data?.bankableRaised ?? 0;
+  const target = metricsQuery.data?.targetAmount ?? activeRound?.targetAmount ?? 0;
+  const progress = metricsQuery.data
+    ? Math.min(100, Math.round(metricsQuery.data.percentToTarget))
+    : target
+      ? Math.min(100, Math.round((bankable / target) * 100))
+      : 0;
   const stageData = useMemo(() => STAGES.map((stage, index) => ({
     name: stage.label,
     stageId: stage.id,
@@ -119,9 +127,9 @@ function TodayWorkspace({ startupId }: { startupId: string }) {
     color: STAGE_COLORS[index],
   })).filter((stage) => stage.value > 0), [entries]);
   const loading = roundsQuery.isPending || (Boolean(activeRound) && (
-    pipelineQuery.isPending || focusQuery.isPending || tasksQuery.isPending || commitmentsQuery.isPending || membersQuery.isPending
+    pipelineQuery.isPending || focusQuery.isPending || tasksQuery.isPending || metricsQuery.isPending || membersQuery.isPending
   ));
-  const loadError = roundsQuery.error ?? pipelineQuery.error ?? focusQuery.error ?? tasksQuery.error ?? commitmentsQuery.error ?? membersQuery.error;
+  const loadError = roundsQuery.error ?? pipelineQuery.error ?? focusQuery.error ?? tasksQuery.error ?? metricsQuery.error ?? membersQuery.error;
 
   const completeMutation = useMutation({
     mutationFn: (task: Task) => setTaskStatus(startupId, task.id, "completed"),

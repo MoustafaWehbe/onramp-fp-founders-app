@@ -19,11 +19,17 @@ import { Documents } from "../pages/dashboard/Documents/Documents";
 import { AiInsights } from "../pages/dashboard/AiInsights/AiInsights";
 import { Team } from "../pages/dashboard/Team/Team";
 import { Settings } from "../pages/dashboard/Settings";
+import { Reviewers } from "../pages/dashboard/Reviewers";
+import { Audit } from "../pages/dashboard/Audit";
+import { Startup } from "../pages/dashboard/Startup";
 import { Profile } from "../pages/dashboard/Profile";
 import { NotFound } from "../pages/NotFound";
 import { LandingPage } from "../pages/landing/Landing";
 import PricingPage from "../pages/landing/Pricing";
 import { AboutPage } from "../pages/landing/About";
+import { ReviewerAccess } from "../pages/review/ReviewerAccess";
+import { ReviewerExpired } from "../pages/review/ReviewerExpired";
+import { ReviewerWorkspace } from "../pages/review/ReviewerWorkspace";
 
 export function AppRoutes() {
   return (
@@ -32,6 +38,11 @@ export function AppRoutes() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/pricing" element={<PricingPage />} />
       <Route path="/about" element={<AboutPage />} />
+
+      {/* External reviewer portal — no founder auth / workspace shell */}
+      <Route path="/review/expired" element={<ReviewerExpired />} />
+      <Route path="/review/workspace" element={<ReviewerWorkspace />} />
+      <Route path="/review/:token" element={<ReviewerAccess />} />
 
       {/* Public auth routes */}
       <Route element={<AuthLayout />}>
@@ -68,6 +79,9 @@ export function AppRoutes() {
             <Route path="/documents" element={<Documents />} />
             <Route path="/ai-insights" element={<AiInsights />} />
             <Route path="/team" element={<Team />} />
+            <Route path="/reviewers" element={<Reviewers />} />
+            <Route path="/startup" element={<Startup />} />
+            <Route path="/audit" element={<Audit />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Route>
