@@ -27,7 +27,7 @@ export function Chat() {
   const canCreate = can("chat", "create");
 
   // A notification (a mention or a DM) can deep-link straight to a
-  // conversation via `?c=` — read once on mount.
+  // conversation via `?c=` read once on mount.
   const [selectedId, setSelectedId] = useState<string | null>(
     () => new URLSearchParams(window.location.search).get("c"),
   );
@@ -43,7 +43,7 @@ export function Chat() {
 
   // Land on the most recently active channel by default, and follow along if
   // the one that was selected gets archived out from under the list. Wait
-  // for the list to actually load first — otherwise this would clobber a
+  // for the list to actually load first otherwise this would clobber a
   // `?c=` deep link with `null` before the real conversations ever arrive.
   useEffect(() => {
     if (conversationsQuery.isLoading) return;

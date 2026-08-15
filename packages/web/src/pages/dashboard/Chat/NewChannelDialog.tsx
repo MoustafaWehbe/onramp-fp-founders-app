@@ -48,7 +48,7 @@ export function NewChannelDialog({
         <DialogHeader>
           <DialogTitle>New channel</DialogTitle>
           <DialogDescription>
-            Every active teammate is added automatically — there's no separate invite step yet.
+            Every active teammate is added automatically there's no separate invite step yet.
           </DialogDescription>
         </DialogHeader>
 

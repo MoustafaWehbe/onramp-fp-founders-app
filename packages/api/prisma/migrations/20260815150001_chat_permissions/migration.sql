@@ -23,7 +23,7 @@ JOIN "permissions" p ON p."resource" = 'chat'
 WHERE r."name" = 'owner'
 ON CONFLICT ("role_id", "permission_id") DO NOTHING;
 
--- collaborator and viewer: read + create, not manage — matches
+-- collaborator and viewer: read + create, not manage matches
 -- ROLE_TEMPLATES in config/permissions.ts.
 INSERT INTO "role_permissions" ("id", "role_id", "permission_id")
 SELECT gen_random_uuid(), r."id", p."id"

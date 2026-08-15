@@ -31,7 +31,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
 /**
  * Populates req.user when a valid session cookie is present and does nothing
  * otherwise. For endpoints that must be reachable signed-out but still need to
- * know who is asking — accepting an invitation is the case in point: a stranger
+ * know who is asking accepting an invitation is the case in point: a stranger
  * holding the link must not be able to act as the invited person.
  */
 export function optionalAuthenticate(req: Request, _res: Response, next: NextFunction): void {

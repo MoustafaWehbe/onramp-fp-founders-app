@@ -28,7 +28,7 @@ function messageIdDomain(): string {
 
 /**
  * Builds the base64url `raw` payload Gmail's `messages.send` expects. The body
- * is always base64-encoded regardless of content — simpler and more robust
+ * is always base64-encoded regardless of content simpler and more robust
  * than picking 7bit vs quoted-printable based on what characters happen to be
  * in a founder's message.
  */
@@ -70,7 +70,7 @@ export interface SendInvestorEmailResult {
   messageId: string;
   threadId: string;
   /** False only if the send succeeded but the log write had to be retried on
-   *  the queue — the send itself is never rolled back or reported as failed. */
+   *  the queue the send itself is never rolled back or reported as failed. */
   logCreated: boolean;
 }
 
@@ -86,7 +86,7 @@ export class GmailSendService {
       select: { id: true, email: true },
     });
     if (!investor) throw createError("Investor contact not found", 404, "INVESTOR_NOT_FOUND");
-    // The only recipient this endpoint will ever address — an investor with no
+    // The only recipient this endpoint will ever address an investor with no
     // stored email has nowhere for the endpoint to send that isn't caller-supplied,
     // and accepting a caller-supplied "to" would turn this into an open relay
     // operating under the founder's own Gmail identity.
@@ -119,7 +119,7 @@ export class GmailSendService {
     }
 
     // Thread continuity: the most recent prior email to this same investor
-    // (any deal — the relationship, not the round, is what a thread follows)
+    // (any deal the relationship, not the round, is what a thread follows)
     // supplies the References/threadId a reply needs to land in that thread
     // instead of starting a new one.
     const priorEmail = await prisma.interactionLog.findFirst({
@@ -176,7 +176,7 @@ export class GmailSendService {
       interactionDate: new Date().toISOString(),
     };
 
-    // The email is already sent and irreversible at this point — a failure
+    // The email is already sent and irreversible at this point a failure
     // here must never be reported to the founder as a failed send. Retry the
     // write on the queue instead; externalId's uniqueness makes that retry
     // idempotent even if it races a second attempt.

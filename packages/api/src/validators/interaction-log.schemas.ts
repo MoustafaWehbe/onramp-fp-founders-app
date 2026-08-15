@@ -11,7 +11,7 @@ function optionalText(max: number, label: string) {
     .optional();
 }
 
-// z.coerce.date() runs `new Date(input)` on whatever it's given — null, false,
+// z.coerce.date() runs `new Date(input)` on whatever it's given null, false,
 // and 0 all coerce to the 1970 epoch instead of failing. Only strings and Date
 // instances are legitimate wire representations of a datetime, so anything
 // else is forced to NaN first, which z.coerce.date() reliably rejects.

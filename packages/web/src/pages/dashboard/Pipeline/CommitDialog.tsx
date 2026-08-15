@@ -24,7 +24,7 @@ type CommitDialogProps = {
   open: boolean;
   investorName: string;
   roundName: string;
-  /** Seeds the amount field — usually the deal's expected amount. */
+  /** Seeds the amount field usually the deal's expected amount. */
   suggestedAmount: number | null;
   isSubmitting: boolean;
   onCancel: () => void;

@@ -35,7 +35,7 @@ export const INVESTOR_SOURCE_LABELS: Record<InvestorSource, string> = {
 
 /**
  * Whether this startup has actually approached the contact. Derived server-side
- * from pipeline entries and interaction logs — see ENGAGEMENT_FILTERS in
+ * from pipeline entries and interaction logs see ENGAGEMENT_FILTERS in
  * packages/api/src/services/investor.service.ts.
  */
 export type Engagement = "engaged" | "prospect";
@@ -53,7 +53,7 @@ export type InvestorContact = {
   notes: string | null;
   /**
    * Who wrote and last changed `notes`, and when. Server-derived from the
-   * authenticated caller — never sent on the way in.
+   * authenticated caller never sent on the way in.
    */
   notesCreatedAt: string | null;
   notesCreatedBy: string | null;
@@ -67,13 +67,13 @@ export type InvestorContact = {
 export type InvestorListItem = InvestorContact & {
   pipeline: {
     id: string;
-    /** Which round this entry belongs to — expectedAmount is in that round's currency, not necessarily USD. */
+    /** Which round this entry belongs to expectedAmount is in that round's currency, not necessarily USD. */
     roundId: string;
     stage: PipelineStageId;
     expectedAmount: number | null;
     probabilityPercentage: number | null;
   } | null;
-  /** Legacy: no new logs set a follow-up date — Task superseded it. */
+  /** Legacy: no new logs set a follow-up date Task superseded it. */
   nextFollowupDate: string | null;
   /** Newest interaction on record for this contact; null if never contacted. */
   lastInteractionDate: string | null;
@@ -148,7 +148,7 @@ export async function updateInvestor(
 
 /**
  * Fails with 409 HAS_DEPENDENTS when the contact has pipeline entries,
- * commitments or interaction logs — the API refuses rather than cascading them
+ * commitments or interaction logs the API refuses rather than cascading them
  * away, so callers must surface that instead of retrying.
  */
 export async function deleteInvestor(startupId: string, investorId: string) {

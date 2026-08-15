@@ -100,7 +100,7 @@ function logErrorMessage(err: unknown, fallback: string): string {
     case "PIPELINE_MISMATCH":
       return "That pipeline entry belongs to a different contact.";
     case "LOG_NOT_FOUND":
-      return "That entry no longer exists — a teammate may have removed it.";
+      return "That entry no longer exists a teammate may have removed it.";
     case "PIPELINE_NOT_FOUND":
       return "This deal is no longer on the board.";
     case "HAS_DEPENDENTS":
@@ -127,7 +127,7 @@ function sendEmailErrorMessage(err: unknown): string {
     case "GOOGLE_NOT_CONNECTED":
       return "Connect your Google account in Settings to send email.";
     case "GOOGLE_NEEDS_REAUTH":
-      return "Your Google connection needs to be reconnected — see Settings.";
+      return "Your Google connection needs to be reconnected see Settings.";
     case "GMAIL_SEND_FAILED":
       return "Google rejected the send. Please try again.";
     default:
@@ -145,7 +145,7 @@ function scheduleMeetingErrorMessage(err: unknown): string {
       return "Connect your Google account in Settings to schedule meetings.";
     case "GOOGLE_NEEDS_REAUTH":
     case "GOOGLE_INSUFFICIENT_SCOPE":
-      return "Your Google connection needs to be reconnected — see Settings.";
+      return "Your Google connection needs to be reconnected see Settings.";
     case "CALENDAR_EVENT_FAILED":
       return "Google rejected the request. Please try again.";
     default:
@@ -213,7 +213,7 @@ export function DealDetailDialog({
     enabled: investorId !== null,
   });
 
-  // Who added this deal and who's moved its stage since — shown alongside
+  // Who added this deal and who's moved its stage since shown alongside
   // the logged interactions so "what happened" always answers "who did it".
   const stageEventsQuery = useQuery({
     queryKey: qk.stageEvents(startupId, deal?.id),
@@ -288,7 +288,7 @@ export function DealDetailDialog({
       toast.success(
         result.logCreated
           ? "Email sent and logged"
-          : "Email sent — it'll appear in the timeline shortly",
+          : "Email sent it'll appear in the timeline shortly",
       );
       setComposeOpen(false);
       invalidate();
@@ -310,7 +310,7 @@ export function DealDetailDialog({
       toast.success(
         result.logCreated
           ? "Meeting scheduled and logged"
-          : "Meeting scheduled — it'll appear in the timeline shortly",
+          : "Meeting scheduled it'll appear in the timeline shortly",
       );
       setScheduleOpen(false);
       invalidate();
@@ -397,7 +397,7 @@ export function DealDetailDialog({
       return;
     }
     // Committing writes money against the round, so it collects the amount
-    // first — same holding pattern as passing.
+    // first same holding pattern as passing.
     if (stage === "committed") {
       setCommitOpen(true);
       return;
@@ -449,7 +449,7 @@ export function DealDetailDialog({
   const currentIndex = deal ? PROGRESSION.findIndex((stage) => stage.id === deal.stage) : -1;
   const investor = deal?.investor;
   // Looked up from the deal's own round rather than assumed from whichever
-  // round the board happens to be viewing — a deal only shows the wrong
+  // round the board happens to be viewing a deal only shows the wrong
   // currency if it were guessed instead of resolved this way.
   const currency = rounds.find((round) => round.id === deal?.roundId)?.currency ?? "USD";
 
@@ -731,7 +731,7 @@ export function DealDetailDialog({
                 <div className="space-y-1.5"><span className="text-sm font-medium">Weighted value</span><div className="flex h-9 items-center rounded-md border border-border/70 bg-card px-3 font-mono text-sm tabular-nums text-muted-foreground">{weighted == null ? "—" : formatCompactMoney(Math.round(weighted), currency)}</div></div>
               </section>
               {/* A deal in a round that later closes would otherwise be
-                  stranded — the only way out was delete-and-recreate, which
+                  stranded the only way out was delete-and-recreate, which
                   throws away its stage history. */}
               {roundOptions.length > 1 && (
                 <section aria-label="Fundraising round" className="space-y-1.5">
@@ -804,7 +804,7 @@ export function DealDetailDialog({
                   logs={logs}
                   stageEvents={stageEventsQuery.data ?? []}
                   authorNames={authorNames}
-                  // Logs are the investor's, not the deal's — this marks the
+                  // Logs are the investor's, not the deal's this marks the
                   // ones that actually belong to a different deal.
                   currentPipelineId={deal.id}
                   // Same guard as InvestorDetailDialog: a disabled query's
@@ -917,7 +917,7 @@ export function DealDetailDialog({
           deal?.isLead
             ? `${roundName} will show no lead from this investor. Nothing else about the deal changes, and you can set it back at any time.`
             : otherLeadNames.length > 0
-              ? `${otherLeadNames.join(", ")} ${otherLeadNames.length === 1 ? "is" : "are"} already marked as leading ${roundName}. Co-leads are allowed — both will be shown to the team.`
+              ? `${otherLeadNames.join(", ")} ${otherLeadNames.length === 1 ? "is" : "are"} already marked as leading ${roundName}. Co-leads are allowed both will be shown to the team.`
               : `The whole team will see this investor as the anchor for ${roundName}. It can be undone at any time.`
         }
         variant={deal?.isLead ? "destructive" : "default"}

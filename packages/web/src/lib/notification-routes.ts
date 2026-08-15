@@ -14,7 +14,7 @@ export function notificationHref(n: AppNotification): string | null {
     case "pipeline":
       return `/pipeline?deal=${n.entityId}`;
     case "task":
-      // Task notifications don't carry the parent deal id — the Tasks view is the honest destination.
+      // Task notifications don't carry the parent deal id the Tasks view is the honest destination.
       return "/pipeline?view=tasks";
     case "interaction_log":
       return "/pipeline";

@@ -8,7 +8,7 @@ import { DealCardBody } from "./DealCard";
 
 type MobilePipelineBoardProps = {
   stages: PipelineStage[];
-  /** The round's own currency — a deal's amount is never assumed to be USD. */
+  /** The round's own currency a deal's amount is never assumed to be USD. */
   currency: string;
   entriesByStage: Map<PipelineStageId, PipelineEntry[]>;
   signalsFor: (dealId: string) => DealSignals;
@@ -25,8 +25,8 @@ type MobilePipelineBoardProps = {
  * The board's small-screen equivalent: one stage on screen at a time instead
  * of seven columns squeezed into a swipeable strip. Touch drag-reordering
  * between narrow columns is fiddly and error-prone on a phone, so this reuses
- * each card's own "Move to stage" menu — already keyboard- and
- * screen-reader-accessible — as the only way to change stage here, and drops
+ * each card's own "Move to stage" menu already keyboard- and
+ * screen-reader-accessible as the only way to change stage here, and drops
  * pointer/keyboard drag entirely rather than forcing the desktop board's
  * interaction model onto a touchscreen.
  */

@@ -18,7 +18,7 @@ export function startCronJobs(): void {
     }
   });
 
-  // Once a day is enough — notifyOverdueAndDueTodayTasks skips tasks it has
+  // Once a day is enough notifyOverdueAndDueTodayTasks skips tasks it has
   // already notified about, so a missed or re-run tick never duplicates a
   // notice. (The follow-up equivalent used to run here too; tasks replaced
   // it, and nothing writes a follow-up date any more.)
@@ -38,7 +38,7 @@ export function startCronJobs(): void {
     }
   });
 
-  // Every 30 minutes rather than once a day like the reminders above — a
+  // Every 30 minutes rather than once a day like the reminders above a
   // meeting is only useful on an investor's timeline soon after it happens,
   // not the next morning. Skipped entirely when the integration isn't
   // configured, so an unconfigured deployment isn't polling Google for nothing.

@@ -33,7 +33,7 @@ export function startWorkers(): Worker[] {
   return workers;
 }
 
-// Entry point — only runs when executed directly
+// Entry point only runs when executed directly
 if (require.main === module) {
   const workers = startWorkers();
 

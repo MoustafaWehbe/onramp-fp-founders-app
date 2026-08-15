@@ -19,8 +19,8 @@ type AddNoteDialogProps = {
 };
 
 /**
- * Notes are logged the same way a call or meeting is — a "note" typed
- * interaction, timestamped now — rather than living in a separate freeform
+ * Notes are logged the same way a call or meeting is a "note" typed
+ * interaction, timestamped now rather than living in a separate freeform
  * field on the contact. That keeps the timeline the one place relationship
  * history accumulates, instead of splitting it between there and Overview.
  */

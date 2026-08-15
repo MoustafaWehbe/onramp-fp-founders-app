@@ -1,5 +1,5 @@
 /**
- * Minimal RFC 4180 parser — handles quoted fields containing commas,
+ * Minimal RFC 4180 parser handles quoted fields containing commas,
  * newlines and escaped ("") quotes. Good enough for hand-exported investor
  * lists (Excel/Sheets/Airtable CSV exports) without pulling in a dependency.
  */
@@ -43,7 +43,7 @@ export function parseCsv(text: string): string[][] {
     } else if (char === "\n") {
       pushRow();
     } else if (char === "\r") {
-      // swallow — the following \n (if any) drives the row break
+      // swallow the following \n (if any) drives the row break
     } else {
       field += char;
     }

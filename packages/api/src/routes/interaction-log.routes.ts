@@ -11,11 +11,11 @@ import {
 } from "../validators/interaction-log.schemas";
 import { interactionLogController } from "../controllers/interaction-log.controller";
 
-// Mounted at /api/v1/startups/:startupId/interaction-logs — mergeParams keeps
+// Mounted at /api/v1/startups/:startupId/interaction-logs mergeParams keeps
 // :startupId visible to the RBAC middleware and the controllers.
 const router = Router({ mergeParams: true });
 
-// POST /api/v1/startups/:startupId/interaction-logs — pipeline:create
+// POST /api/v1/startups/:startupId/interaction-logs pipeline:create
 router.post(
   "/",
   authenticate,
@@ -26,7 +26,7 @@ router.post(
   interactionLogController.createLog,
 );
 
-// GET /api/v1/startups/:startupId/interaction-logs — pipeline:read
+// GET /api/v1/startups/:startupId/interaction-logs pipeline:read
 router.get(
   "/",
   authenticate,
@@ -37,7 +37,7 @@ router.get(
   interactionLogController.listLogs,
 );
 
-// GET /api/v1/startups/:startupId/interaction-logs/:logId — pipeline:read
+// GET /api/v1/startups/:startupId/interaction-logs/:logId pipeline:read
 router.get(
   "/:logId",
   authenticate,
@@ -47,7 +47,7 @@ router.get(
   interactionLogController.getLog,
 );
 
-// PATCH /api/v1/startups/:startupId/interaction-logs/:logId — pipeline:update
+// PATCH /api/v1/startups/:startupId/interaction-logs/:logId pipeline:update
 router.patch(
   "/:logId",
   authenticate,
@@ -58,7 +58,7 @@ router.patch(
   interactionLogController.updateLog,
 );
 
-// DELETE /api/v1/startups/:startupId/interaction-logs/:logId — pipeline:delete
+// DELETE /api/v1/startups/:startupId/interaction-logs/:logId pipeline:delete
 router.delete(
   "/:logId",
   authenticate,

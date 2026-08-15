@@ -45,7 +45,7 @@ type CreateStartupDialogProps = {
 /**
  * Creating a workspace is a step inside the app, not a place you get sent to.
  * Someone with no startup can dismiss this and sit on an empty dashboard until
- * an invitation arrives — so nothing here may trap them.
+ * an invitation arrives so nothing here may trap them.
  */
 export function CreateStartupDialog({ open, onOpenChange }: CreateStartupDialogProps) {
   const queryClient = useQueryClient();

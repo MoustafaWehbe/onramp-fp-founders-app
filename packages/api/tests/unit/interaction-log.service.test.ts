@@ -232,7 +232,7 @@ describe("InteractionLogService.listLogs", () => {
   });
 
   // Settings' "Remove synced meetings" fetches exactly this filter to find
-  // what it's about to bulk-delete — it must never see a manual log.
+  // what it's about to bulk-delete it must never see a manual log.
   it("filters by source when asked, for bulk-removing synced entries", async () => {
     (mockPrisma.interactionLog.count as jest.Mock).mockResolvedValue(0);
     (mockPrisma.interactionLog.findMany as jest.Mock).mockResolvedValue([]);

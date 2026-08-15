@@ -3,7 +3,7 @@ import type { MessageReactionSummary } from "../../lib/chat-api";
 
 type ReactionRowProps = {
   reactions: MessageReactionSummary[];
-  /** Omitted in read-only contexts (the Discussion tab) — counts still show, but nothing is clickable. */
+  /** Omitted in read-only contexts (the Discussion tab) counts still show, but nothing is clickable. */
   onToggle?: (emoji: string) => void;
 };
 
@@ -17,7 +17,7 @@ function pillClass(reactedByMe: boolean, interactive: boolean): string {
   );
 }
 
-/** Existing reactions only — adding a new one lives in the hover-revealed MessageHoverActions instead, since an empty message shouldn't carry a permanent "add reaction" row. */
+/** Existing reactions only adding a new one lives in the hover-revealed MessageHoverActions instead, since an empty message shouldn't carry a permanent "add reaction" row. */
 export function ReactionRow({ reactions, onToggle }: ReactionRowProps) {
   if (reactions.length === 0) return null;
 

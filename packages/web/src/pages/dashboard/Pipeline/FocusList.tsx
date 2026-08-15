@@ -8,15 +8,15 @@ import { FOCUS_REASON_LABELS, FOCUS_REASON_TONES, formatDaysAgo } from "./deal-s
 
 type FocusListProps = {
   items: PipelineFocusEntry[];
-  /** The round's own currency — a deal's amount is never assumed to be USD. */
+  /** The round's own currency a deal's amount is never assumed to be USD. */
   currency: string;
   canCreate: boolean;
-  /** Whether the founder's Google account is connected — scheduling needs it. */
+  /** Whether the founder's Google account is connected scheduling needs it. */
   googleConnected: boolean;
   onOpen: (deal: PipelineFocusEntry) => void;
   onSchedule: (deal: PipelineFocusEntry) => void;
   onEmail: (deal: PipelineFocusEntry) => void;
-  /** Sets the next step straight from the row — most of this queue is here for want of one. */
+  /** Sets the next step straight from the row most of this queue is here for want of one. */
   onAddTask: (deal: PipelineFocusEntry) => void;
 };
 

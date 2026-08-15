@@ -192,7 +192,7 @@ function UserMenu({ onNavigate }: { onNavigate?: () => void }) {
       >
         <DropdownMenuLabel>Account</DropdownMenuLabel>
         <DropdownMenuItem asChild>
-          {/* Closes the mobile drawer too — otherwise it stays open over Settings. */}
+          {/* Closes the mobile drawer too otherwise it stays open over Settings. */}
           <NavLink to="/profile" onClick={onNavigate}>
             <User className="mr-2 h-4 w-4" /> Profile
           </NavLink>
@@ -233,7 +233,7 @@ function StartupSwitcher({ onNavigate }: { onNavigate?: () => void }) {
     if (startupId === activeStartup?.id) return;
     setActiveStartupId(startupId);
     // Every cached list is keyed by startup id, so the new workspace's queries
-    // simply miss the cache — but drop the old ones so a switch back is fresh.
+    // simply miss the cache but drop the old ones so a switch back is fresh.
     void queryClient.invalidateQueries();
     onNavigate?.();
     navigate("/dashboard");

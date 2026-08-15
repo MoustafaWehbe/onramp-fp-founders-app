@@ -378,7 +378,7 @@ describe("ChatService.sendMessage", () => {
     const tx = mockTransaction();
     (mockPrisma.conversationMember.findMany as jest.Mock).mockResolvedValue([
       { member: { userId: OTHER_USER_ID } },
-      { member: { userId: null } }, // pending invite — no open tab to reach
+      { member: { userId: null } }, // pending invite no open tab to reach
     ]);
 
     const result = await service.sendMessage(STARTUP_ID, CONVERSATION_ID, MEMBER_ID, ROLE_ID, {
@@ -436,12 +436,12 @@ describe("ChatService.sendMessage", () => {
     (mockPrisma.message.findUnique as jest.Mock).mockResolvedValue(null);
     (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([{ id: DEAL_ID }]);
     // Same mock backs both the existence check (`id`) and the notify lookup
-    // (`userId`) — two different callers of startupMember.findMany select
+    // (`userId`) two different callers of startupMember.findMany select
     // different fields, so include both here rather than distinguishing calls.
     (mockPrisma.startupMember.findMany as jest.Mock).mockResolvedValue([
       { id: OTHER_MEMBER_ID, userId: OTHER_USER_ID, conversationMemberships: [{ notifyLevel: "all" }] },
     ]);
-    const body = `check @[Sequoia — Seed](deal:${DEAL_ID}) and @[Maya](member:${OTHER_MEMBER_ID})`;
+    const body = `check @[Sequoia Seed](deal:${DEAL_ID}) and @[Maya](member:${OTHER_MEMBER_ID})`;
     const tx = mockTransaction({
       message: {
         create: jest.fn().mockResolvedValue(messageRow({ body })),
@@ -468,11 +468,11 @@ describe("ChatService.sendMessage", () => {
 
   it("drops a mention whose target does not exist in this startup, without failing the send", async () => {
     (mockPrisma.message.findUnique as jest.Mock).mockResolvedValue(null);
-    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([]); // stale/cross-tenant id — not found
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([]); // stale/cross-tenant id not found
     const tx = mockTransaction();
 
     const result = await service.sendMessage(STARTUP_ID, CONVERSATION_ID, MEMBER_ID, ROLE_ID, {
-      body: `check @[Sequoia — Seed](deal:${DEAL_ID})`,
+      body: `check @[Sequoia Seed](deal:${DEAL_ID})`,
       clientNonce: "nonce-1",
     } as never);
 
@@ -493,7 +493,7 @@ describe("ChatService.sendMessage", () => {
       clientNonce: "nonce-1",
     } as never);
 
-    // The token is still real and valid — self-mentioning is harmless, so the
+    // The token is still real and valid self-mentioning is harmless, so the
     // mention row is written. Only the notification is suppressed.
     expect(tx.messageMention.createMany).toHaveBeenCalledWith({
       data: [expect.objectContaining({ targetType: "member", mentionedMemberId: MEMBER_ID })],
@@ -520,7 +520,7 @@ describe("ChatService.sendMessage", () => {
 
   it("re-parents a reply-to-a-reply onto the original top-level ancestor and increments its replyCount", async () => {
     (mockPrisma.message.findUnique as jest.Mock).mockResolvedValue(null);
-    // The named parent is itself a reply — its own parentMessageId points at
+    // The named parent is itself a reply its own parentMessageId points at
     // the true top-level ancestor.
     (mockPrisma.message.findFirst as jest.Mock).mockResolvedValue({
       id: "some-reply",
@@ -656,7 +656,7 @@ describe("ChatService.markRead", () => {
   /**
    * conversationMember.findUnique backs two different callers here —
    * verifyMembership's own-row-with-conversation lookup, and markRead's
-   * read-back of the stored pointer afterward — so branch on the `select`
+   * read-back of the stored pointer afterward so branch on the `select`
    * shape rather than a single mockResolvedValue that would answer both alike.
    */
   function mockOwnLastReadSeq(lastReadSeq: bigint) {
@@ -690,7 +690,7 @@ describe("ChatService.markRead", () => {
 
   it("reports the caller's actual stored pointer, not the top-level latest, when it was already advanced further (e.g. by their own send of a reply)", async () => {
     (mockPrisma.message.findFirst as jest.Mock).mockResolvedValue({ seq: BigInt(12) }); // latest top-level message
-    // The stored pointer is already ahead — e.g. sendMessage advanced it to
+    // The stored pointer is already ahead e.g. sendMessage advanced it to
     // a reply's seq (13), which isn't itself a top-level message.
     mockOwnLastReadSeq(BigInt(13));
 

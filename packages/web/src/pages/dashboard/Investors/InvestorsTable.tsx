@@ -8,7 +8,7 @@ type InvestorsTableProps = {
   investors: InvestorRow[];
   /** roundId -> currency, so each contact's amount shows in its own round's currency. */
   currencyByRoundId: Map<string, string>;
-  /** null hides selection entirely — same convention as the Pipeline board. */
+  /** null hides selection entirely same convention as the Pipeline board. */
   selectedIds: Set<string> | null;
   onToggleOne: (id: string) => void;
   onMoveToPipeline: (investor: InvestorRow) => void;
@@ -70,8 +70,8 @@ export function InvestorsTable({
                   <div className="flex items-center gap-3">
                     {/* Same slot whether selection mode is on or not, so entering it
                         never reflows the table. In selection mode the avatar itself
-                        becomes the selected indicator — a filled circle with a check
-                        — rather than a separate checkbox; the whole row is already
+                        becomes the selected indicator a filled circle with a check
+                        rather than a separate checkbox; the whole row is already
                         the hit area. */}
                     <div
                       className={cn(

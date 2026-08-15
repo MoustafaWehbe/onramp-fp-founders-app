@@ -21,7 +21,7 @@ export const notificationController = {
    * trust-proxy setup apply unchanged, and the browser handles reconnection.
    *
    * Despite the route name, this stream carries every RealtimeEvent for the
-   * signed-in user, chat included — see events/realtime-bus.ts. Multiplexing
+   * signed-in user, chat included see events/realtime-bus.ts. Multiplexing
    * onto the one connection this endpoint already opens avoids a second
    * EventSource per tab; an unrecognized `event:` name is simply ignored by
    * whichever listeners haven't been added for it yet.
@@ -34,7 +34,7 @@ export const notificationController = {
       "Cache-Control": "no-store",
       Connection: "keep-alive",
       // nginx buffers proxied responses by default, which would hold every
-      // event back until the buffer filled — i.e. forever, on a quiet stream.
+      // event back until the buffer filled i.e. forever, on a quiet stream.
       "X-Accel-Buffering": "no",
     });
     res.flushHeaders();

@@ -65,7 +65,7 @@ export class TaskService {
 
   /**
    * Returns the assignee's user id, or null when the member is still a
-   * pending invite with no account yet — there is nobody to notify in that
+   * pending invite with no account yet there is nobody to notify in that
    * case, but the assignment itself is allowed.
    */
   private async verifyAssignee(startupId: string, assigneeId: string): Promise<string | null> {
@@ -180,7 +180,7 @@ export class TaskService {
       await this.verifyPipeline(startupId, input.pipelineId);
     }
 
-    // Only a genuine hand-over is worth announcing — editing a due date on a
+    // Only a genuine hand-over is worth announcing editing a due date on a
     // task someone already holds is not news.
     const reassigned =
       input.assigneeId !== undefined &&
@@ -191,7 +191,7 @@ export class TaskService {
       : null;
 
     // Completion timestamp is derived server-side, not trusted from the
-    // client — the same approach updateEntry uses for stageChangedAt.
+    // client the same approach updateEntry uses for stageChangedAt.
     const statusChanged = input.status !== undefined && input.status !== existing.status;
     const completedAt =
       statusChanged && input.status === "completed"

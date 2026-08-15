@@ -23,13 +23,13 @@ type ChatTypingEvent = { conversationId: string; memberId: string; memberName: s
  * server-sent events connection.
  *
  * Despite the endpoint's name, the server multiplexes every realtime event
- * for the signed-in user onto this one stream — see the comment on
- * notificationController.stream — so chat listens here too rather than
+ * for the signed-in user onto this one stream see the comment on
+ * notificationController.stream so chat listens here too rather than
  * opening a second EventSource.
  *
  * The stream is a signal, not a data source: every event just invalidates the
  * queries and lets them refetch. Trying to splice pushed payloads into the
- * cache would mean two code paths that can disagree, for no gain — the refetch
+ * cache would mean two code paths that can disagree, for no gain the refetch
  * is one request against an endpoint that already exists.
  *
  * Mount once, high in the tree.
@@ -41,7 +41,7 @@ export function useNotificationStream() {
 
   // Chat is startup-scoped, so the active workspace decides which
   // conversations query a chat event should invalidate. Read through a ref
-  // rather than a hook dependency — switching workspaces must not tear down
+  // rather than a hook dependency switching workspaces must not tear down
   // and reopen the one live connection the whole app shares.
   const activeStartupId = useAppStore((s) => s.preferredStartupId);
   const activeStartupIdRef = useRef(activeStartupId);
@@ -50,7 +50,7 @@ export function useNotificationStream() {
   useEffect(() => {
     if (!userId) return;
 
-    // Same origin in every environment — dev goes through the Vite proxy — so
+    // Same origin in every environment dev goes through the Vite proxy so
     // the HttpOnly session cookie rides along without withCredentials.
     const source = new EventSource(STREAM_URL);
 
@@ -92,7 +92,7 @@ export function useNotificationStream() {
           void queryClient.invalidateQueries({ queryKey: qk.replies(startupId, parentMessageId) });
         }
       } catch {
-        // Same fallback as above — nothing more specific to recover with.
+        // Same fallback as above nothing more specific to recover with.
       }
     });
 
@@ -103,12 +103,12 @@ export function useNotificationStream() {
       try {
         const { conversationId } = JSON.parse((event as MessageEvent).data) as ChatMessageReactedEvent;
         void queryClient.invalidateQueries({ queryKey: qk.messages(startupId, conversationId) });
-        // The reacted message could be a thread reply — no way to know which
+        // The reacted message could be a thread reply no way to know which
         // thread from here, so invalidate every open thread query rather
         // than tracking a messageId -> parentId map just for this.
         void queryClient.invalidateQueries({ queryKey: ["chat-replies", startupId] });
       } catch {
-        // Same fallback as above — nothing more specific to recover with.
+        // Same fallback as above nothing more specific to recover with.
       }
     });
 
@@ -116,7 +116,7 @@ export function useNotificationStream() {
       try {
         publishTyping(JSON.parse((event as MessageEvent).data) as ChatTypingEvent);
       } catch {
-        // A dropped typing ping is invisible by design — nothing to recover.
+        // A dropped typing ping is invisible by design nothing to recover.
       }
     });
 
@@ -126,7 +126,7 @@ export function useNotificationStream() {
     });
 
     // EventSource reconnects on its own. The one case it cannot fix is an
-    // expired access token — the reconnect 401s — but any ordinary request
+    // expired access token the reconnect 401s but any ordinary request
     // refreshes the cookie through the axios interceptor, and the next
     // reconnect then succeeds.
     source.onerror = () => {

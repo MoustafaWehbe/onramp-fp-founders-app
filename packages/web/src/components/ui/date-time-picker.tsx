@@ -47,7 +47,7 @@ type DateTimePickerProps = {
 
 /**
  * A calendar + quarter-hour time list, styled to match the app instead of
- * relying on the browser's native date/time chrome — which can't be themed
+ * relying on the browser's native date/time chrome which can't be themed
  * or restyled and looks jarring against a dark UI.
  */
 export function DateTimePicker({

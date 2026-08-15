@@ -28,11 +28,11 @@ export const sendMessageSchema = z.object({
     .trim()
     .min(1, "Message body is required")
     .max(4000, "Message must be at most 4000 characters"),
-  // Client-generated once per send attempt and reused on retry — see
+  // Client-generated once per send attempt and reused on retry see
   // Message.clientNonce in schema.prisma for why this makes a send exactly-once.
   clientNonce: z.string().uuid("clientNonce must be a valid UUID"),
   // Set to reply in a thread. Must name a top-level message in the same
-  // conversation — enforced in ChatService, not here, since it needs a DB lookup.
+  // conversation enforced in ChatService, not here, since it needs a DB lookup.
   parentMessageId: z.string().uuid("parentMessageId must be a valid UUID").optional(),
   // Vault documents to attach, beyond anything referenced inline with @doc.
   documentIds: z.array(z.string().uuid("documentIds must be valid UUIDs")).max(10).optional(),
@@ -87,7 +87,7 @@ export const listMessagesQuerySchema = z.object({
 
 export const mentionableQuerySchema = z.object({
   q: z.string().trim().max(120, "q must be at most 120 characters").default(""),
-  // Comma-separated in the URL, e.g. "investor,deal" — narrows the picker
+  // Comma-separated in the URL, e.g. "investor,deal" narrows the picker
   // once the composer knows the user typed "@deal:" or similar.
   types: z.preprocess(
     (value) =>

@@ -47,7 +47,7 @@ const ENTRY_SELECT = {
   startupInvestor: { select: CONTACT_SELECT },
 } as const;
 
-/** Gap between freshly-appended cards — wide enough that inserting between two
+/** Gap between freshly-appended cards wide enough that inserting between two
  *  of them by averaging never needs a follow-up renumbering pass. */
 const SORT_ORDER_STEP = 1000;
 
@@ -149,7 +149,7 @@ export class PipelineService {
       // silently under-counts every deal whose event write failed.
       const entry = await prisma.$transaction(async (tx) => {
         // New cards join the bottom of their column, same as a fresh Trello/Asana
-        // card — after whatever currently has the highest position there.
+        // card after whatever currently has the highest position there.
         const bottom = await tx.pipeline.aggregate({
           where: { startupId, roundId, stage: input.stage },
           _max: { sortOrder: true },
@@ -275,14 +275,14 @@ export class PipelineService {
 
     if (input.ownerId) await this.verifyMember(startupId, input.ownerId);
 
-    // Neither of these is a column on Pipeline — the reason travels to the
-    // stage-history row and the commitment to the round's own table — so both
+    // Neither of these is a column on Pipeline the reason travels to the
+    // stage-history row and the commitment to the round's own table so both
     // are stripped before the rest of the input reaches Prisma.
     const { reason, commitment, ...fields } = input;
 
     // Moving a deal between raises. Without it a deal stranded in a round that
     // later closed could only be deleted and rebuilt, which throws away its
-    // stage history — and is refused outright once it has tasks.
+    // stage history and is refused outright once it has tasks.
     const movedToRound =
       input.roundId !== undefined && input.roundId !== existing.roundId ? input.roundId : null;
     // The pipeline row is updated before a new commitment is inserted inside
@@ -306,7 +306,7 @@ export class PipelineService {
       }
 
       // Land at the bottom of the matching column in the destination, the same
-      // way a freshly added card does — its old position means nothing there.
+      // way a freshly added card does its old position means nothing there.
       const bottom = await prisma.pipeline.aggregate({
         where: { startupId, roundId: movedToRound, stage: input.stage ?? existing.stage },
         _max: { sortOrder: true },
@@ -425,7 +425,7 @@ export class PipelineService {
 
       if (movedTo === "committed" && commitment) {
         if (liveCommitment) {
-          // A commitment already recorded for this deal — most likely added
+          // A commitment already recorded for this deal most likely added
           // from the round page, or withdrawn when the deal moved back out
           // and now revived. Update it rather than stacking a second row.
           await tx.commitment.update({
@@ -445,7 +445,7 @@ export class PipelineService {
               startupInvestorId: existing.startupInvestorId,
               pipelineId,
               // A commitment blocks a round move, so the deal's round cannot
-              // have changed in this same request — existing.roundId is still
+              // have changed in this same request existing.roundId is still
               // the round the money is being pledged to.
               roundId: commitmentRoundId,
               amount: commitment.amount,
@@ -522,7 +522,7 @@ export class PipelineService {
     });
     if (!existing) throw createError("Pipeline entry not found", 404, "PIPELINE_NOT_FOUND");
 
-    // Phase 5 Commitments FK onto pipeline — guard now so Phase 5 does not retrofit it.
+    // Phase 5 Commitments FK onto pipeline guard now so Phase 5 does not retrofit it.
     const [commitmentCount, openTaskCount] = await Promise.all([
       prisma.commitment.count({ where: { pipelineId, startupId } }),
       // Only *unfinished* work blocks: outstanding tasks mean someone still
@@ -539,7 +539,7 @@ export class PipelineService {
     }
 
     // Whatever tasks are left are all completed. They belong to the deal being
-    // removed, and the Restrict FK means they have to go first — in the same
+    // removed, and the Restrict FK means they have to go first in the same
     // transaction, so a failure never leaves a deal stripped of its tasks.
     await prisma.$transaction(async (tx) => {
       await tx.task.deleteMany({ where: { pipelineId, startupId } });
@@ -551,7 +551,7 @@ export class PipelineService {
    * Funnel, conversion and velocity, computed from the append-only stage
    * history rather than from current state. Current state alone cannot tell you
    * that a deal now marked "passed" once reached diligence, and deals can be
-   * added at any stage — so a snapshot would invent transitions.
+   * added at any stage so a snapshot would invent transitions.
    *
    * Deals that predate the history table contribute a single "joined" event
    * from the backfill, so they count toward funnel reach but show no movement
@@ -594,7 +594,7 @@ export class PipelineService {
 
     const durationsByStage = new Map<string, number[]>();
     for (const timeline of eventsByDeal.values()) {
-      // The last entry is the stage the deal sits in now — that visit is still
+      // The last entry is the stage the deal sits in now that visit is still
       // running, so it would drag every median down if counted.
       for (let i = 0; i < timeline.length - 1; i += 1) {
         const days = (timeline[i + 1].at - timeline[i].at) / (24 * 60 * 60 * 1000);
@@ -613,7 +613,7 @@ export class PipelineService {
     }
 
     // A deal added directly at, say, Diligence has no recorded "sourced" or
-    // "meeting_scheduled" events — only its highest rank reached tells us it
+    // "meeting_scheduled" events only its highest rank reached tells us it
     // implicitly cleared every earlier stage too. Without this, funnel counts
     // stop being monotonic (a later stage can outnumber an earlier one) the
     // moment any deal skips stages, which breaks the funnel shape itself.
@@ -692,7 +692,7 @@ export class PipelineService {
   }
 
   /**
-   * The full stage history for one deal — who added it (the first event,
+   * The full stage history for one deal who added it (the first event,
    * fromStage null) and who moved it since. Exposed so the UI can answer
    * "who did this" instead of just "what changed", which the board alone
    * cannot show.
@@ -726,7 +726,7 @@ export class PipelineService {
    * server-side: overdue tasks, deals with no open task at all, deals gone
    * quiet with nothing scheduled, and high-priority deals with no other
    * signal. Settled deals (committed/passed) never qualify. Returning only
-   * the qualifying rows — pre-sorted by urgency — means the client does no
+   * the qualifying rows pre-sorted by urgency means the client does no
    * aggregation and never has to page through every interaction log to
    * build this list.
    */
@@ -828,7 +828,7 @@ export class PipelineService {
    * where the distinction actually matters.
    *
    * "Last touch" is the newest interactionDate, falling back to when the log
-   * was written for the ones that never got a date — two cases a single
+   * was written for the ones that never got a date two cases a single
    * groupBy cannot express, because there is nothing to aggregate over but
    * the raw column and Prisma has no COALESCE.
    *
@@ -903,7 +903,7 @@ export class PipelineService {
         await this.verifyRoundAcceptsDeals(startupId, requestedRoundId);
         return requestedRoundId;
       }
-      // Reads must keep working for a finished raise — that is where its
+      // Reads must keep working for a finished raise that is where its
       // history lives.
       const round = await prisma.fundraisingRound.findUnique({
         where: { startupId_id: { startupId, id: requestedRoundId } },

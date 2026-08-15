@@ -35,7 +35,7 @@ export const integrationsController = {
   }),
 
   /**
-   * Google redirects the browser here directly — this is a page navigation,
+   * Google redirects the browser here directly this is a page navigation,
    * not an API call, so failures redirect back into the app with a reason
    * rather than answering with a JSON error the user would never see rendered.
    */
@@ -67,7 +67,7 @@ export const integrationsController = {
     res.status(204).send();
   }),
 
-  /** On-demand sync, for the Settings "Sync now" button — runs inline rather
+  /** On-demand sync, for the Settings "Sync now" button runs inline rather
    * than through the queue, since a manual click wants an immediate result,
    * not a job id to poll. */
   triggerCalendarSync: asyncHandler(async (req: Request, res: Response) => {

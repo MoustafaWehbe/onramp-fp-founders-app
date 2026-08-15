@@ -2,7 +2,7 @@
 -- application-level typed-FK-per-target-type schemas like this one need the
 -- invariant written by hand. Two constraints together enforce it: exactly one
 -- of the six target columns is non-null, and target_type names the right one
--- — the same NOT VALID pattern as 20260815140000_enforce_crm_vocabularies.
+-- the same NOT VALID pattern as 20260815140000_enforce_crm_vocabularies.
 
 ALTER TABLE "message_mentions"
   ADD CONSTRAINT "message_mentions_target_type_check"

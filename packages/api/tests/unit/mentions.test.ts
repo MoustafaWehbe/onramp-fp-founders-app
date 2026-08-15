@@ -5,8 +5,8 @@ const UUID_2 = "1a2b3c4d-5e6f-7081-92a3-b4c5d6e7f809";
 
 describe("parseMentions", () => {
   it("extracts a single reference token", () => {
-    expect(parseMentions(`ping @[Sequoia — Seed](deal:${UUID}) about the deck`)).toEqual([
-      { type: "deal", id: UUID, label: "Sequoia — Seed" },
+    expect(parseMentions(`ping @[Sequoia Seed](deal:${UUID}) about the deck`)).toEqual([
+      { type: "deal", id: UUID, label: "Sequoia Seed" },
     ]);
   });
 
@@ -19,7 +19,7 @@ describe("parseMentions", () => {
   });
 
   it("deduplicates the same (type, id) referenced twice", () => {
-    const body = `@[Sequoia — Seed](deal:${UUID}) — following up on @[Sequoia — Seed](deal:${UUID}) again`;
+    const body = `@[Sequoia Seed](deal:${UUID}) following up on @[Sequoia Seed](deal:${UUID}) again`;
     expect(parseMentions(body)).toHaveLength(1);
   });
 
@@ -42,8 +42,8 @@ describe("parseMentions", () => {
 
 describe("toPlainExcerpt", () => {
   it("renders a token down to its display label", () => {
-    expect(toPlainExcerpt(`ping @[Sequoia — Seed](deal:${UUID}) about the deck`)).toBe(
-      "ping @Sequoia — Seed about the deck",
+    expect(toPlainExcerpt(`ping @[Sequoia Seed](deal:${UUID}) about the deck`)).toBe(
+      "ping @Sequoia Seed about the deck",
     );
   });
 

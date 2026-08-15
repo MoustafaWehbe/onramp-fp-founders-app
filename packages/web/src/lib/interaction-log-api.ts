@@ -17,7 +17,7 @@ export type InteractionLog = {
   id: string;
   investorId: string;
   pipelineId: string | null;
-  /** User id of whoever logged it — resolve against the members list for a name. */
+  /** User id of whoever logged it resolve against the members list for a name. */
   createdBy: string;
   type: InteractionType;
   subject: string | null;
@@ -30,7 +30,7 @@ export type InteractionLog = {
    * logged for the same contact that satisfies it.
    */
   followupCompletedAt: string | null;
-  /** "manual" (default) / "google_calendar" / "gmail" — who actually wrote this row. */
+  /** "manual" (default) / "google_calendar" / "gmail" who actually wrote this row. */
   source: "manual" | "google_calendar" | "gmail";
   /** The Google event/message id this row was synced from, when `source` isn't "manual". */
   externalId: string | null;
@@ -113,7 +113,7 @@ export async function deleteInteractionLog(startupId: string, logId: string) {
 }
 
 /**
- * For "Remove synced meetings" in Settings — there's no bulk-delete endpoint,
+ * For "Remove synced meetings" in Settings there's no bulk-delete endpoint,
  * so this walks every page of synced logs and removes them the same way a
  * founder deleting them one at a time would, just with several in flight.
  * Returns the count actually removed so the caller can report a real number

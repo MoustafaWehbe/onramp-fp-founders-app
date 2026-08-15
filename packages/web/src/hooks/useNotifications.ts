@@ -11,7 +11,7 @@ export const NOTIFICATIONS_KEY = ["notifications"] as const;
 
 export type NotificationRow = AppNotification & {
   read: boolean;
-  /** Short relative age, e.g. "2h" — the list is scanned, not studied. */
+  /** Short relative age, e.g. "2h" the list is scanned, not studied. */
   when: string;
 };
 

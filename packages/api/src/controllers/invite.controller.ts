@@ -11,7 +11,7 @@ import type { InviteMemberInput, AcceptInviteInput, ChangeRoleInput } from "../v
  * Builds and enqueues the invitation email.
  *
  * The membership row is already committed by the time this runs, so a queue
- * outage must not fail the request — it reports back instead, and the caller
+ * outage must not fail the request it reports back instead, and the caller
  * tells the inviter the mail never went out.
  */
 async function queueInviteEmail(
@@ -123,7 +123,7 @@ export const inviteController = {
     const input = req.body as AcceptInviteInput;
     const result = await inviteService.acceptInvite(input, req.user?.userId ?? null);
 
-    // 202 — the invitation is untouched and still pending; the caller has to
+    // 202 the invitation is untouched and still pending; the caller has to
     // sign in or register as the invited person before it can be accepted.
     if ("requiresRegistration" in result || "requiresLogin" in result) {
       res.status(202).json(result);

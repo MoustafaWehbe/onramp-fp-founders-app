@@ -130,7 +130,7 @@ describe("Investors", () => {
   it("labels both tabs from the counts in one response", async () => {
     renderInvestors();
 
-    // Wait for the response, not just the request — the badges start at 0.
+    // Wait for the response, not just the request the badges start at 0.
     await screen.findAllByText("Ada Lovelace");
     const tabs = screen.getAllByRole("tab");
     expect(within(tabs[0]).getByText("2")).toBeInTheDocument();

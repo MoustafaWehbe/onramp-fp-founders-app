@@ -122,7 +122,7 @@ export class AuthService {
 
     // Carry the failed-attempt count across the reissue. Starting the new row
     // at zero would let a caller sit just under MAX_OTP_ATTEMPTS, resend, and
-    // guess again indefinitely — the cap has to survive a new code.
+    // guess again indefinitely the cap has to survive a new code.
     await prisma.pendingRegistration.update({
       where: { email },
       data: {
@@ -232,7 +232,7 @@ export class AuthService {
       throw createError("Invalid refresh token", 401, "INVALID_TOKEN");
     }
 
-    // REPLAY ATTACK DETECTION — if token was already revoked, revoke entire family
+    // REPLAY ATTACK DETECTION if token was already revoked, revoke entire family
     if (stored.revokedAt !== null) {
       if (stored.familyId) {
         await prisma.refreshToken.updateMany({
@@ -240,7 +240,7 @@ export class AuthService {
           data: { revokedAt: new Date() },
         });
       } else {
-        // No familyId — fall back to revoking all sessions for this user
+        // No familyId fall back to revoking all sessions for this user
         await prisma.refreshToken.updateMany({
           where: { userId: stored.userId, revokedAt: null },
           data: { revokedAt: new Date() },
@@ -286,7 +286,7 @@ export class AuthService {
   }
   async forgotPassword(input: { email: string }) {
     const user = await prisma.user.findUnique({ where: { email: input.email } });
-    // Always return 200 — prevent email enumeration
+    // Always return 200 prevent email enumeration
     if (!user) {
       return {
         message: "If an account exists with that email, a password reset link has been sent.",

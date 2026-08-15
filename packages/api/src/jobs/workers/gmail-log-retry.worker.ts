@@ -12,7 +12,7 @@ export interface GmailLogRetryJobData {
   emailMessageId: string;
   subject: string;
   description: string;
-  /** ISO string — job data must be JSON-serializable, so this isn't a Date. */
+  /** ISO string job data must be JSON-serializable, so this isn't a Date. */
   interactionDate: string;
 }
 

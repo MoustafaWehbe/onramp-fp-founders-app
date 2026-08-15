@@ -8,7 +8,7 @@ import { PipelineFunnel } from "./PipelineFunnel";
 
 type PipelineAnalyticsViewProps = {
   analytics: PipelineAnalytics;
-  /** The round's own currency — a deal's amount is never assumed to be USD. */
+  /** The round's own currency a deal's amount is never assumed to be USD. */
   currency: string;
 };
 
@@ -57,7 +57,7 @@ export function PipelineAnalyticsView({ analytics, currency }: PipelineAnalytics
         <div>
           <h2 className="font-display text-sm font-semibold">Funnel</h2>
           <p className="text-xs text-muted-foreground">
-            How many deals have ever reached each stage, from stage history — a deal that later
+            How many deals have ever reached each stage, from stage history a deal that later
             passed still counts for every stage it got to. Hover a stage for the detail.
           </p>
         </div>

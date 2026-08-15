@@ -33,7 +33,7 @@ export function columnOf(columns: BoardColumns, dealId: string): PipelineStageId
 }
 
 /**
- * Live-reorders `columns` as a drag passes over `overId` — a card, or a
+ * Live-reorders `columns` as a drag passes over `overId` a card, or a
  * column's droppable id when hovering its empty space. Returns the same
  * `columns` reference when nothing actually needs to move.
  */

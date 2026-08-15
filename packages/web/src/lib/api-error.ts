@@ -13,7 +13,7 @@ export function apiErrorMessage(
   if (!isAxiosError(err)) return fallback;
 
   const status = err.response?.status;
-  if (status === 401) return "Not signed in — please log in again.";
+  if (status === 401) return "Not signed in please log in again.";
   if (status === 403) return forbiddenMessage;
 
   const data = err.response?.data as { error?: string; message?: string } | undefined;

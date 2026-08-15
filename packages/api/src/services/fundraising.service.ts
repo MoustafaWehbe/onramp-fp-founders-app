@@ -221,7 +221,7 @@ export class FundraisingService {
         select: COMMITMENT_SELECT,
       });
 
-      // The first point in this commitment's funding history — recorded even
+      // The first point in this commitment's funding history recorded even
       // though nothing has "changed" yet, so the funding chart has somewhere
       // to start from.
       await tx.commitmentStatusEvent.create({
@@ -245,7 +245,7 @@ export class FundraisingService {
 
   /**
    * Move a deal to `stage` and append the matching history row, but only if
-   * it is not already there — so re-saving a commitment does not litter the
+   * it is not already there so re-saving a commitment does not litter the
    * timeline with no-op transitions. Runs inside the caller's transaction.
    */
   private async moveDealToStage(
@@ -295,7 +295,7 @@ export class FundraisingService {
       });
 
       // The funding chart is built from these transitions, not from
-      // commitments.createdAt or .updatedAt — an edit that leaves status
+      // commitments.createdAt or .updatedAt an edit that leaves status
       // alone (just the amount, say) is not a new point on that chart.
       if (input.status && input.status !== existing.status) {
         await tx.commitmentStatusEvent.create({
@@ -336,7 +336,7 @@ export class FundraisingService {
     await prisma.$transaction(async (tx) => {
       await tx.commitment.delete({ where: { id: commitmentId } });
       // Nothing records this money any more, so the deal cannot stay on
-      // Committed — that is exactly the divergence this link exists to stop.
+      // Committed that is exactly the divergence this link exists to stop.
       if (existing.status !== "withdrawn") {
         const remainingLiveCommitments = await tx.commitment.count({
           where: { startupId, pipelineId: existing.pipelineId, status: { not: "withdrawn" } },
@@ -350,7 +350,7 @@ export class FundraisingService {
 
   /**
    * Every real status transition any commitment in this round has gone
-   * through, oldest first — what the funding chart is built from instead of
+   * through, oldest first what the funding chart is built from instead of
    * commitments.createdAt. A commitment created as soft-circled and wired a
    * month later shows up here as raising its money in that later month, not
    * the month it was first typed in.
@@ -406,7 +406,7 @@ export class FundraisingService {
           startupInvestor: { select: { fullName: true } },
         },
       }),
-      // Weighted pipeline is what's still uncertain — a committed deal
+      // Weighted pipeline is what's still uncertain a committed deal
       // already has an exact commitment amount, so folding its probability
       // weight back in here would count the same money twice, and a passed
       // deal contributes nothing.

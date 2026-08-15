@@ -10,7 +10,7 @@ type MessageHoverActionsProps = {
 
 /**
  * The react/reply affordances float over the message's top-right corner and
- * stay invisible until the row is hovered or focused — the message itself
+ * stay invisible until the row is hovered or focused the message itself
  * (and any reactions/replies it already has) is the content; these are just
  * entry points for adding more, so they shouldn't compete for attention at
  * rest. Requires a `group` class on the message row this is nested in.

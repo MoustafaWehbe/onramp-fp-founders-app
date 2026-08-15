@@ -10,7 +10,7 @@ import { DealCard } from "./DealCard";
 
 type PipelineColumnProps = {
   stage: PipelineStage;
-  /** The round's own currency — a deal's amount is never assumed to be USD. */
+  /** The round's own currency a deal's amount is never assumed to be USD. */
   currency: string;
   dealIds: string[];
   entriesById: Map<string, PipelineEntry>;
@@ -31,7 +31,7 @@ type PipelineColumnProps = {
 /**
  * Memoized for the same reason DealCard is: a drag re-derives `columns` on
  * every pointer move, but only the from/to columns actually get a new
- * dealIds array — every other column's props stay referentially identical
+ * dealIds array every other column's props stay referentially identical
  * and can skip re-rendering entirely.
  */
 export const PipelineColumn = memo(function PipelineColumn({
@@ -51,7 +51,7 @@ export const PipelineColumn = memo(function PipelineColumn({
   onAddTask,
   onToggleSelected,
 }: PipelineColumnProps) {
-  // A fallback drop target for a column's empty space — cards themselves are
+  // A fallback drop target for a column's empty space cards themselves are
   // the finer-grained targets while the column has any.
   const { setNodeRef, isOver } = useDroppable({ id: columnDropId(stage.id) });
 
@@ -81,7 +81,7 @@ export const PipelineColumn = memo(function PipelineColumn({
         )}
       </div>
 
-      {/* Fixed height — about three cards — so no column ever grows past its
+      {/* Fixed height about three cards so no column ever grows past its
           neighbours; anything beyond that scrolls inside. */}
       <div
         ref={setNodeRef}

@@ -420,7 +420,7 @@ describe("POST /api/v1/auth/refresh", () => {
   });
 
   // A refresh token that's missing, expired, or already revoked will never
-  // work again — the stale cookies must be cleared so the browser stops
+  // work again the stale cookies must be cleared so the browser stops
   // resending a dead token on every subsequent request.
   it("clears the auth cookies when the refresh token is invalid", async () => {
     mock.refresh.mockRejectedValue(

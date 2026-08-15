@@ -6,7 +6,7 @@ import { Skeleton } from "../../../components/ui/skeleton";
 import { EmptyState } from "../../../components/shared/EmptyState";
 import { Button } from "../../../components/ui/button";
 
-/** Short relative label for a channel's last activity — "2h", "3d", "just now". */
+/** Short relative label for a channel's last activity "2h", "3d", "just now". */
 function formatRelative(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const minutes = Math.floor(diffMs / 60_000);

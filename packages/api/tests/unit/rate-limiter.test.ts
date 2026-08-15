@@ -28,7 +28,7 @@ describe("credentialRateLimiter", () => {
   const app = appWith(credentialRateLimiter);
 
   it("never blocks a client whose attempts keep succeeding", async () => {
-    // Comfortably past the max of 10 — successes must not accumulate.
+    // Comfortably past the max of 10 successes must not accumulate.
     for (let i = 0; i < 25; i++) {
       const res = await request(app).post("/").send({});
       expect(res.status).toBe(200);
@@ -73,7 +73,7 @@ describe("authRateLimiter", () => {
 
 describe("emailSendRateLimiter", () => {
   // Stands in for `authenticate`, which normally populates req.user before
-  // this limiter runs — the limiter keys on it, so the test has to too.
+  // this limiter runs the limiter keys on it, so the test has to too.
   function appWithUser() {
     const app = express();
     app.use(express.json());
@@ -99,9 +99,9 @@ describe("emailSendRateLimiter", () => {
 
     const blocked = await request(app).post("/").set("x-test-user", "founder-a").send({});
     expect(blocked.status).toBe(429);
-    expect(blocked.body.error).toBe("Too many emails sent — please wait before sending more.");
+    expect(blocked.body.error).toBe("Too many emails sent please wait before sending more.");
 
-    // Same test process, same IP, different user — must not inherit the block.
+    // Same test process, same IP, different user must not inherit the block.
     const otherFounder = await request(app).post("/").set("x-test-user", "founder-b").send({});
     expect(otherFounder.status).toBe(200);
   });

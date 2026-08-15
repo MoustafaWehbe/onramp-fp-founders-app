@@ -18,7 +18,7 @@ export type StartupMembership = {
   id: string;
   status: string;
   role: string;
-  /** The role's live "resource:action" grants — the actual source of truth for what the caller may do. */
+  /** The role's live "resource:action" grants the actual source of truth for what the caller may do. */
   permissions: string[];
   joinedAt: string | null;
 };
@@ -35,7 +35,7 @@ export type CreateStartupInput = {
 
 /**
  * Workspaces the signed-in user can actually open. An empty array is a normal
- * answer — it means the user has no startup yet, not that something failed.
+ * answer it means the user has no startup yet, not that something failed.
  */
 export async function listMyStartups() {
   const { data } = await apiClient.get<{ data: { startups: WorkspaceSummary[] } }>("/startups");

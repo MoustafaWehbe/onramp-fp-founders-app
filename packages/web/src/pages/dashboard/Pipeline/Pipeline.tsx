@@ -100,11 +100,11 @@ function pipelineErrorMessage(err: unknown, fallback: string): string {
     case "ALREADY_IN_PIPELINE":
       return "That investor is already on the board.";
     case "PIPELINE_NOT_FOUND":
-      return "That deal no longer exists — a teammate may have removed it.";
+      return "That deal no longer exists a teammate may have removed it.";
     case "HAS_DEPENDENTS":
       return "This deal has commitments or open tasks attached, so it can't be removed.";
     case "PASSED_REASON_REQUIRED":
-      return "Marking a deal as passed needs a reason — open the deal to add one.";
+      return "Marking a deal as passed needs a reason open the deal to add one.";
     case "COMMITMENT_DETAILS_REQUIRED":
       return "Moving a deal to Committed needs a commitment amount.";
     case "ROUND_NOT_OPEN":
@@ -121,7 +121,7 @@ function sendEmailErrorMessage(err: unknown): string {
     case "GOOGLE_NOT_CONNECTED":
       return "Connect your Google account in Settings to send email.";
     case "GOOGLE_NEEDS_REAUTH":
-      return "Your Google connection needs to be reconnected — see Settings.";
+      return "Your Google connection needs to be reconnected see Settings.";
     case "GMAIL_SEND_FAILED":
       return "Google rejected the send. Please try again.";
     default:
@@ -137,7 +137,7 @@ function scheduleMeetingErrorMessage(err: unknown): string {
       return "Connect your Google account in Settings to schedule meetings.";
     case "GOOGLE_NEEDS_REAUTH":
     case "GOOGLE_INSUFFICIENT_SCOPE":
-      return "Your Google connection needs to be reconnected — see Settings.";
+      return "Your Google connection needs to be reconnected see Settings.";
     case "CALENDAR_EVENT_FAILED":
       return "Google rejected the request. Please try again.";
     default:
@@ -170,7 +170,7 @@ export function Pipeline() {
   // Collaborators may add and move deals; viewers may only look.
   const canCreate = can("pipeline", "create");
   const canUpdate = can("pipeline", "update");
-  // Below this, the board becomes the tap-driven single-stage list — see
+  // Below this, the board becomes the tap-driven single-stage list see
   // MobilePipelineBoard for why pointer/keyboard drag isn't offered there.
   const isCompactBoard = useMediaQuery("(max-width: 767px)");
 
@@ -181,7 +181,7 @@ export function Pipeline() {
   const pendingDragRef = useRef<{ activeId: string; overId: string } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   // A chat unfurl card or notification can deep-link straight to a deal (and,
-  // optionally, a tab within it) via `?deal=`/`?tab=` — read once on mount,
+  // optionally, a tab within it) via `?deal=`/`?tab=` read once on mount,
   // same pattern as `activeView` below.
   const [openDealId, setOpenDealId] = useState<string | null>(() =>
     new URLSearchParams(window.location.search).get("deal"),
@@ -199,7 +199,7 @@ export function Pipeline() {
   });
   // Scheduling straight from the focus list, without opening the deal first.
   const [quickScheduleDeal, setQuickScheduleDeal] = useState<PipelineEntry | null>(null);
-  // Same idea for email — send straight from the focus row.
+  // Same idea for email send straight from the focus row.
   const [quickEmailDeal, setQuickEmailDeal] = useState<PipelineEntry | null>(null);
   // Same idea for the next step: a card or focus row can set one without the
   // detour through the deal sheet.
@@ -207,7 +207,7 @@ export function Pipeline() {
   // null means the board is not in selection mode at all; an empty set means
   // it is, with nothing picked yet.
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string> | null>(null);
-  // A move into Passed is held here until a reason is given — the server
+  // A move into Passed is held here until a reason is given the server
   // rejects the transition without one, whichever way it was triggered.
   const [pendingPass, setPendingPass] = useState<{
     pipelineId: string;
@@ -230,8 +230,8 @@ export function Pipeline() {
     // clicking the card to open it (or its move menu) isn't swallowed.
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     // Tabbing to a card and pressing space picks it up; arrow keys step to
-    // the nearest droppable in that direction — including across into a
-    // neighboring column — and space/enter drops it there, Escape cancels.
+    // the nearest droppable in that direction including across into a
+    // neighboring column and space/enter drops it there, Escape cancels.
     // Same drag/drop handlers below as a pointer drag, so a keyboard move
     // persists identically. Each card's "Move to stage" menu remains the
     // more explicit, no-spatial-reasoning-required fallback.
@@ -252,7 +252,7 @@ export function Pipeline() {
   }, [activeRound, preferredRoundId, setActiveRoundId, startupId]);
 
   // Every amount on this board belongs to activeRound and must be shown in
-  // its currency — "USD" here is only the fallback for the moment before a
+  // its currency "USD" here is only the fallback for the moment before a
   // round has loaded, never a guess once one has.
   const currency = activeRound?.currency ?? "USD";
 
@@ -287,7 +287,7 @@ export function Pipeline() {
   });
 
   // Deals needing attention, computed server-side from tasks and last-touch
-  // dates — never a page-through of every interaction log. Fetched whenever
+  // dates never a page-through of every interaction log. Fetched whenever
   // the board itself is (not just the Focus tab) so cards can flag it too.
   const focusQuery = useQuery({
     queryKey: qk.pipelineFocus(startupId, activeRound?.id),
@@ -346,7 +346,7 @@ export function Pipeline() {
     [membersQuery.data, user?.id],
   );
 
-  // Typing shouldn't fire a request per keystroke — the same debounce used on
+  // Typing shouldn't fire a request per keystroke the same debounce used on
   // the Investors directory's search box.
   const [debouncedSearch, setDebouncedSearch] = useState("");
   useEffect(() => {
@@ -358,7 +358,7 @@ export function Pipeline() {
     debouncedSearch !== "" || view.attentionOnly || view.mineOnly || !view.showPassed;
 
   // Search, Mine, Attention and Show passed are answered by the API, not by
-  // re-filtering whatever page happened to load — the same reasoning as the
+  // re-filtering whatever page happened to load the same reasoning as the
   // Investors directory's server-side filters. Kept as a second query,
   // separate from the unfiltered one above, so typing a search term can never
   // change what the summary tiles or the lead banner report: those always
@@ -430,7 +430,7 @@ export function Pipeline() {
   const entriesById = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries]);
 
   // Rebuilt straight from visibleEntries rather than the drag-frozen `columns`
-  // state above — the mobile list never drags, so it has no reason to hold
+  // state above the mobile list never drags, so it has no reason to hold
   // still mid-gesture the way the desktop board's columns do.
   const entriesByStage = useMemo(() => {
     const map = new Map<PipelineStageId, PipelineEntry[]>();
@@ -454,7 +454,7 @@ export function Pipeline() {
   );
 
   // The live board arrangement. Rebuilt from server truth whenever it's safe
-  // to — not while a drag or its mutation owns the arrangement, or the board
+  // to not while a drag or its mutation owns the arrangement, or the board
   // would snap back to the pre-drag order for a frame before catching up.
   useEffect(() => {
     if (activeId !== null) return;
@@ -590,7 +590,7 @@ export function Pipeline() {
       toast.success(
         result.logCreated
           ? "Meeting scheduled and logged"
-          : "Meeting scheduled — it'll appear in the timeline shortly",
+          : "Meeting scheduled it'll appear in the timeline shortly",
       );
       setQuickScheduleDeal(null);
       invalidateLogs();
@@ -606,7 +606,7 @@ export function Pipeline() {
       }),
     onSuccess: (result) => {
       toast.success(
-        result.logCreated ? "Email sent and logged" : "Email sent — it'll appear in the timeline shortly",
+        result.logCreated ? "Email sent and logged" : "Email sent it'll appear in the timeline shortly",
       );
       setQuickEmailDeal(null);
       invalidateLogs();
@@ -614,7 +614,7 @@ export function Pipeline() {
     onError: (err) => toast.error(sendEmailErrorMessage(err)),
   });
 
-  /** Used by the card's "Move to stage" menu — always lands at the bottom of the target column. */
+  /** Used by the card's "Move to stage" menu always lands at the bottom of the target column. */
   const moveDeal = useCallback(
     (pipelineId: string, stage: PipelineStageId) => {
       if (!canUpdate) return;
@@ -796,7 +796,7 @@ export function Pipeline() {
           />
           {!activeRound && <span className="text-muted-foreground">Create a round before adding pipeline deals.</span>}
           {/* A priced round needs a lead, and this is the one place a founder
-              looks at the whole raise at once — so it answers it here. */}
+              looks at the whole raise at once so it answers it here. */}
           {activeRound && entries.length > 0 && (
             <span
               className={cn(

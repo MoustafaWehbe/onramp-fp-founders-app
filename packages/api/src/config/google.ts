@@ -8,11 +8,11 @@ import { getGoogleRedirectUri } from "./env";
  *
  * "openid" + "email" are non-sensitive; the rest are Google "sensitive" scopes
  * (app-verification required, but not the restricted-scope CASA tier). See
- * plan.md — deliberately staying off restricted scopes is what keeps this
+ * plan.md deliberately staying off restricted scopes is what keeps this
  * integration reachable without an annual third-party security assessment.
  *
  * calendar.events (not .readonly): scheduling writes events, so the grant
- * needs write access too — still the same sensitive tier as the read-only
+ * needs write access too still the same sensitive tier as the read-only
  * scope it replaces. A connection made under the old readonly-only grant
  * will 403 on a write until the founder reconnects through Settings.
  */

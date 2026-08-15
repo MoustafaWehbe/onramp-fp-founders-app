@@ -9,7 +9,7 @@ import {
 
 const router = Router();
 
-// Google's own redirect lands here — a plain browser navigation that may
+// Google's own redirect lands here a plain browser navigation that may
 // arrive after the access-token cookie has expired during consent. It proves
 // itself via the state token instead, so it is reachable without a session.
 router.get(

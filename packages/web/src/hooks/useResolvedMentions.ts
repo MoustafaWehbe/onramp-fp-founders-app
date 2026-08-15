@@ -6,7 +6,7 @@ import { qk } from "../lib/query-keys";
 
 /**
  * Batch-resolves every distinct reference across a list of messages in one
- * request, rather than one /chat/resolve call per chip — a 30-message
+ * request, rather than one /chat/resolve call per chip a 30-message
  * screen stays at one request. Returns a lookup keyed by "type:id"; a chip
  * whose key is missing (unresolved, permission-filtered, or deleted) simply
  * renders without its unfurl card.

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-// Non-auth app state — auth is managed by AuthProvider, and which workspace is
+// Non-auth app state auth is managed by AuthProvider, and which workspace is
 // actually open is resolved by useWorkspace. This only remembers the user's
 // last explicit choice; it is a preference, not a source of truth, because the
 // stored id may point at a workspace they have since been removed from.
@@ -20,7 +20,7 @@ interface AppState {
   setActiveStartupId: (startupId: string) => void;
   setActiveRoundId: (startupId: string, roundId: string) => void;
   setFundingChartRange: (startupId: string, range: FundingChartRange) => void;
-  /** Drops the stored preference — it belongs to whoever was signed in. */
+  /** Drops the stored preference it belongs to whoever was signed in. */
   clearActiveStartupId: () => void;
 }
 

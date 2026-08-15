@@ -41,7 +41,7 @@ type ScheduleMeetingDialogProps = {
 
 /**
  * Creates a Google Calendar event with the investor invited, rather than
- * just recording that a call/meeting happened — that's what "schedule"
+ * just recording that a call/meeting happened that's what "schedule"
  * means here, distinct from the edit path (LogInteractionDialog), which
  * still handles correcting an entry after the fact.
  */

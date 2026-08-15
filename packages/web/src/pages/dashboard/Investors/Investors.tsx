@@ -46,7 +46,7 @@ const VALID_STAGE_IDS = new Set<string>(STAGES.map((stage) => stage.id));
 /**
  * A chart segment elsewhere in the app (a pipeline stage on the Dashboard
  * pie, a funnel bar) links here as `?tab=engaged&stage=X` to open already
- * filtered to what was clicked — read once on mount, same as Pipeline.tsx
+ * filtered to what was clicked read once on mount, same as Pipeline.tsx
  * does for its own `?view=` param.
  */
 function initialStateFromUrl(): { tab: Engagement; stage: PipelineStageId | null } {
@@ -62,7 +62,7 @@ const TABS: { id: Engagement; label: string; blurb: string }[] = [
   {
     id: "engaged",
     label: "My investors",
-    blurb: "Contacts you've approached — on the pipeline board, or with a logged interaction.",
+    blurb: "Contacts you've approached on the pipeline board, or with a logged interaction.",
   },
   {
     id: "prospect",
@@ -81,7 +81,7 @@ function mutationErrorMessage(err: unknown, fallback: string): string {
     case "HAS_DEPENDENTS":
       return "This contact has pipeline entries, commitments or logged interactions, so it can't be deleted.";
     case "INVESTOR_NOT_FOUND":
-      return "That contact no longer exists — it may have been removed by a teammate.";
+      return "That contact no longer exists it may have been removed by a teammate.";
     case "ALREADY_IN_PIPELINE":
       return "Already in the pipeline.";
     default:
@@ -96,7 +96,7 @@ function sendEmailErrorMessage(err: unknown): string {
     case "GOOGLE_NOT_CONNECTED":
       return "Connect your Google account in Settings to send email.";
     case "GOOGLE_NEEDS_REAUTH":
-      return "Your Google connection needs to be reconnected — see Settings.";
+      return "Your Google connection needs to be reconnected see Settings.";
     case "GMAIL_SEND_FAILED":
       return "Google rejected the send. Please try again.";
     default:
@@ -124,7 +124,7 @@ export function Investors() {
   }));
   const [page, setPage] = useState(1);
   // null means selection mode is off entirely; an empty set means it's on,
-  // with nothing picked yet — same convention as the Pipeline board.
+  // with nothing picked yet same convention as the Pipeline board.
   const [selectedIds, setSelectedIds] = useState<Set<string> | null>(null);
 
   const [formOpen, setFormOpen] = useState(false);
@@ -136,7 +136,7 @@ export function Investors() {
   const [quickEmailInvestor, setQuickEmailInvestor] = useState<InvestorRow | null>(null);
 
   // A chat unfurl card or notification can deep-link straight to one contact
-  // via `?investor=` — it may not be on the current filtered/paginated page,
+  // via `?investor=` it may not be on the current filtered/paginated page,
   // so it's fetched directly rather than looked up in `rows`.
   const [deepLinkInvestorId] = useState(() => new URLSearchParams(window.location.search).get("investor"));
   const deepLinkInvestorQuery = useQuery({
@@ -182,7 +182,7 @@ export function Investors() {
   );
 
   // A contact's expectedAmount belongs to whichever round its pipeline entry
-  // is in — this directory can span several rounds, each with its own
+  // is in this directory can span several rounds, each with its own
   // currency, so amounts are never assumed to be USD.
   const roundsQuery = useQuery({ queryKey: qk.rounds(startupId), queryFn: () => listFundraisingRounds(startupId) });
   const currencyByRoundId = useMemo(
@@ -237,7 +237,7 @@ export function Investors() {
         toast.success(`${succeeded} investor${succeeded === 1 ? "" : "s"} deleted`);
       } else {
         toast.error(
-          `${succeeded} deleted, ${failedIds.length} could not be removed — ${mutationErrorMessage(firstFailure, "some have related records")}`,
+          `${succeeded} deleted, ${failedIds.length} could not be removed ${mutationErrorMessage(firstFailure, "some have related records")}`,
         );
       }
     },
@@ -291,7 +291,7 @@ export function Investors() {
         toast.success(`${succeeded} investor${succeeded === 1 ? "" : "s"} added to pipeline`);
       } else {
         toast.error(
-          `${succeeded} added, ${failedIds.length} could not be added — ${mutationErrorMessage(firstFailure, "some are already in the pipeline")}`,
+          `${succeeded} added, ${failedIds.length} could not be added ${mutationErrorMessage(firstFailure, "some are already in the pipeline")}`,
         );
       }
     },
@@ -302,7 +302,7 @@ export function Investors() {
       sendInvestorEmail(startupId, quickEmailInvestor!.id, values),
     onSuccess: (result) => {
       toast.success(
-        result.logCreated ? "Email sent and logged" : "Email sent — it'll appear in the timeline shortly",
+        result.logCreated ? "Email sent and logged" : "Email sent it'll appear in the timeline shortly",
       );
       setQuickEmailInvestor(null);
       invalidateInteractionData(queryClient, startupId);
@@ -598,7 +598,7 @@ export function Investors() {
         open={pendingDelete !== null}
         onOpenChange={(open) => !open && setPendingDelete(null)}
         title={`Delete ${pendingDelete?.name}?`}
-        description="This removes the contact from your directory. If they're on the pipeline board or have logged interactions, the delete will be refused — remove those first."
+        description="This removes the contact from your directory. If they're on the pipeline board or have logged interactions, the delete will be refused remove those first."
         confirmLabel="Delete investor"
         pendingLabel="Deleting…"
         isPending={deleteMutation.isPending}

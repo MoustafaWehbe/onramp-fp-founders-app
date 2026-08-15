@@ -17,7 +17,7 @@ type DiscussionTabProps = {
 
 /**
  * Every chat message across the workspace's channels that @-references this
- * deal, newest first — the backlink query turns an offhand mention into part
+ * deal, newest first the backlink query turns an offhand mention into part
  * of the deal's permanent record instead of something you had to be in the
  * room to see. See ChatService.getMentionsForTarget.
  */
@@ -60,7 +60,7 @@ export function DiscussionTab({ startupId, pipelineId, dealLabel }: DiscussionTa
         <EmptyState
           icon={MessageSquare}
           title="Not mentioned yet"
-          description={`Reference this deal with @ in any channel — type "@" then start typing its investor's name.`}
+          description={`Reference this deal with @ in any channel type "@" then start typing its investor's name.`}
           compact
         />
       ) : (

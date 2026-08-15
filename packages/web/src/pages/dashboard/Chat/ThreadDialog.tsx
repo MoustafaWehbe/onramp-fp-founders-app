@@ -20,7 +20,7 @@ type ThreadDialogProps = {
   conversationId: string;
   conversationName: string;
   canSend: boolean;
-  /** Null closes the dialog — same "controlled by the parent's selection" pattern as Chat's own selectedId. */
+  /** Null closes the dialog same "controlled by the parent's selection" pattern as Chat's own selectedId. */
   messageId: string | null;
   onClose: () => void;
 };

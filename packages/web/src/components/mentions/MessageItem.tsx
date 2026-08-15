@@ -23,17 +23,17 @@ function formatTime(iso: string): string {
 type MessageItemProps = {
   message: Message;
   resolved: Map<string, ResolvedMention>;
-  /** True when the previous message in the list is from the same sender, close enough in time to read as one run — collapses the avatar/name into a hover-only timestamp, Slack-style. */
+  /** True when the previous message in the list is from the same sender, close enough in time to read as one run collapses the avatar/name into a hover-only timestamp, Slack-style. */
   grouped?: boolean;
-  /** Extra content to the right of the timestamp — DiscussionTab uses this for the source channel. */
+  /** Extra content to the right of the timestamp DiscussionTab uses this for the source channel. */
   meta?: React.ReactNode;
-  /** Present only where reacting makes sense (the live thread) — DiscussionTab omits it and reactions render read-only. */
+  /** Present only where reacting makes sense (the live thread) DiscussionTab omits it and reactions render read-only. */
   onReact?: (emoji: string) => void;
-  /** Present only on a top-level message in a live channel — opens the ThreadDialog. */
+  /** Present only on a top-level message in a live channel opens the ThreadDialog. */
   onOpenThread?: () => void;
 };
 
-/** One chat message — avatar, name, time, body with reference chips, attachments, reactions, and any unfurl cards. Shared by MessageThread, ThreadDialog and DiscussionTab so a message renders identically everywhere. */
+/** One chat message avatar, name, time, body with reference chips, attachments, reactions, and any unfurl cards. Shared by MessageThread, ThreadDialog and DiscussionTab so a message renders identically everywhere. */
 export function MessageItem({ message, resolved, grouped, meta, onReact, onOpenThread }: MessageItemProps) {
   const refs = collectMentionRefs(message.body).filter((ref) => isUnfurlable(ref.type));
   const hasReplies = message.replyCount > 0;

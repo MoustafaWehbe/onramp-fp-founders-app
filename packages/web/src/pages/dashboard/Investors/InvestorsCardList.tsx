@@ -8,7 +8,7 @@ type InvestorsCardListProps = {
   investors: InvestorRow[];
   /** roundId -> currency, so each contact's amount shows in its own round's currency. */
   currencyByRoundId: Map<string, string>;
-  /** null hides selection entirely — same convention as the Pipeline board. */
+  /** null hides selection entirely same convention as the Pipeline board. */
   selectedIds: Set<string> | null;
   onToggleOne: (id: string) => void;
   onMoveToPipeline: (investor: InvestorRow) => void;
@@ -50,8 +50,8 @@ export function InvestorsCardList({
               selected && "bg-primary/[0.06]",
             )}
           >
-            {/* Avatar doubles as the selection indicator in selection mode — a
-                filled circle with a check — rather than a separate checkbox. */}
+            {/* Avatar doubles as the selection indicator in selection mode a
+                filled circle with a check rather than a separate checkbox. */}
             <div
               className={cn(
                 "grid h-9 w-9 shrink-0 place-items-center rounded-full font-display text-xs font-semibold transition-colors",

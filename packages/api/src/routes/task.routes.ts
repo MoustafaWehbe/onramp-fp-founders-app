@@ -11,13 +11,13 @@ import {
 } from "../validators/task.schemas";
 import { taskController } from "../controllers/task.controller";
 
-// Mounted at /api/v1/startups/:startupId/tasks — mergeParams keeps
+// Mounted at /api/v1/startups/:startupId/tasks mergeParams keeps
 // :startupId visible to the RBAC middleware and the controller. Tasks reuse
-// pipeline:* permissions, the same way interaction logs do — there is no
+// pipeline:* permissions, the same way interaction logs do there is no
 // separate "task" resource.
 const router = Router({ mergeParams: true });
 
-// POST /api/v1/startups/:startupId/tasks — pipeline:create
+// POST /api/v1/startups/:startupId/tasks pipeline:create
 router.post(
   "/",
   authenticate,
@@ -28,7 +28,7 @@ router.post(
   taskController.createTask,
 );
 
-// GET /api/v1/startups/:startupId/tasks — pipeline:read
+// GET /api/v1/startups/:startupId/tasks pipeline:read
 router.get(
   "/",
   authenticate,
@@ -39,7 +39,7 @@ router.get(
   taskController.listTasks,
 );
 
-// GET /api/v1/startups/:startupId/tasks/:taskId — pipeline:read
+// GET /api/v1/startups/:startupId/tasks/:taskId pipeline:read
 router.get(
   "/:taskId",
   authenticate,
@@ -49,7 +49,7 @@ router.get(
   taskController.getTask,
 );
 
-// PATCH /api/v1/startups/:startupId/tasks/:taskId — pipeline:update
+// PATCH /api/v1/startups/:startupId/tasks/:taskId pipeline:update
 router.patch(
   "/:taskId",
   authenticate,
@@ -60,7 +60,7 @@ router.patch(
   taskController.updateTask,
 );
 
-// DELETE /api/v1/startups/:startupId/tasks/:taskId — pipeline:delete
+// DELETE /api/v1/startups/:startupId/tasks/:taskId pipeline:delete
 router.delete(
   "/:taskId",
   authenticate,

@@ -52,7 +52,7 @@ function baseEvent(overrides: Record<string, unknown> = {}) {
     summary: "Intro call",
     description: "Discussing the seed round.",
     start: { dateTime: "2026-05-30T10:00:00Z" },
-    end: { dateTime: "2026-05-30T10:30:00Z" }, // 2 days before the fake "now" below — past, and within the recency window
+    end: { dateTime: "2026-05-30T10:30:00Z" }, // 2 days before the fake "now" below past, and within the recency window
     attendees: [{ email: "investor@example.com" }],
     ...overrides,
   };
@@ -73,7 +73,7 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-describe("syncUserCalendar — guard clauses", () => {
+describe("syncUserCalendar guard clauses", () => {
   it("no-ops when there is no connection", async () => {
     mockPrisma.googleConnection.findUnique.mockResolvedValue(null);
     const stats = await service.syncUserCalendar(USER_ID);
@@ -118,7 +118,7 @@ describe("syncUserCalendar — guard clauses", () => {
   });
 });
 
-describe("syncUserCalendar — request shape", () => {
+describe("syncUserCalendar request shape", () => {
   // Verified live against a real calendar: Google only returns nextSyncToken
   // on a listing with no time bound at all. Sending timeMin "to keep the
   // bootstrap walk small" gets a response back with no usable cursor, so
@@ -163,7 +163,7 @@ describe("syncUserCalendar — request shape", () => {
   });
 });
 
-describe("syncUserCalendar — sync token lifecycle", () => {
+describe("syncUserCalendar sync token lifecycle", () => {
   it("persists nextSyncToken only once the full pass completes", async () => {
     mockPrisma.googleConnection.findUnique.mockResolvedValue(ACTIVE_CONNECTION as never);
     mockFetchOnce(200, { items: [], nextSyncToken: "final-token" });
@@ -228,13 +228,13 @@ describe("syncUserCalendar — sync token lifecycle", () => {
       where: { userId: USER_ID },
       data: { lastSyncedAt: expect.any(Date), lastError: "sync_incomplete_will_resume" },
     });
-    // Explicitly not present — the previous cursor must be left alone.
+    // Explicitly not present the previous cursor must be left alone.
     const call = mockPrisma.googleConnection.update.mock.calls[0][0] as { data: object };
     expect(call.data).not.toHaveProperty("calendarSyncToken");
   });
 });
 
-describe("syncUserCalendar — event filtering", () => {
+describe("syncUserCalendar event filtering", () => {
   async function runWithEvents(events: unknown[]) {
     mockPrisma.googleConnection.findUnique.mockResolvedValue(ACTIVE_CONNECTION as never);
     mockFetchOnce(200, { items: events, nextSyncToken: "t" });
@@ -258,7 +258,7 @@ describe("syncUserCalendar — event filtering", () => {
   });
 
   // The bootstrap walk sees a founder's whole calendar history (Google won't
-  // hand back a sync token for a time-bounded query — see fetchAllEvents), so
+  // hand back a sync token for a time-bounded query see fetchAllEvents), so
   // this is what actually keeps years-old meetings off the timeline.
   it("skips a meeting older than the 90-day recency window", async () => {
     const stats = await runWithEvents([
@@ -279,7 +279,7 @@ describe("syncUserCalendar — event filtering", () => {
     expect(mockPrisma.interactionLog.create).not.toHaveBeenCalled();
   });
 
-  it("skips an event with no attendees — nothing to match", async () => {
+  it("skips an event with no attendees nothing to match", async () => {
     const stats = await runWithEvents([baseEvent({ attendees: [] })]);
     expect(stats.skipped).toBe(1);
   });
@@ -292,7 +292,7 @@ describe("syncUserCalendar — event filtering", () => {
   });
 });
 
-describe("syncUserCalendar — matching and writing logs", () => {
+describe("syncUserCalendar matching and writing logs", () => {
   it("creates a meeting log for a matched investor, sourced and tagged with the event id", async () => {
     mockPrisma.googleConnection.findUnique.mockResolvedValue(ACTIVE_CONNECTION as never);
     mockPrisma.startupInvestor.findMany.mockResolvedValue([{ id: "investor-1" }] as never);
@@ -382,7 +382,7 @@ describe("syncUserCalendar — matching and writing logs", () => {
   });
 });
 
-describe("syncUserCalendar — cancellation retracts unedited logs only", () => {
+describe("syncUserCalendar cancellation retracts unedited logs only", () => {
   it("deletes untouched synced logs for a cancelled event", async () => {
     mockPrisma.googleConnection.findUnique.mockResolvedValue(ACTIVE_CONNECTION as never);
     mockPrisma.interactionLog.deleteMany.mockResolvedValue({ count: 1 } as never);

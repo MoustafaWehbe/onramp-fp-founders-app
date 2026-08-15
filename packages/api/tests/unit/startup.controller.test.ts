@@ -203,7 +203,7 @@ describe("PUT /api/v1/startups/:startupId/activate", () => {
   });
 
   it("refuses for someone who is not an active member", async () => {
-    // Guarded by requireMember alone — any role may switch into a workspace
+    // Guarded by requireMember alone any role may switch into a workspace
     // they belong to, so no extra permission is required.
     mockPrisma.startupMember.findUnique.mockResolvedValue(null);
 

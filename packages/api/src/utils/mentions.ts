@@ -1,6 +1,6 @@
 /**
  * A chat message body is stored as plain text carrying inline reference
- * tokens — `@[Sequoia — Seed](deal:3f9c...)` — rather than pre-rendered HTML.
+ * tokens `@[Sequoia Seed](deal:3f9c...)` rather than pre-rendered HTML.
  * That keeps the column searchable (full-text search, embeddings later) and
  * means a renamed investor doesn't leave every historical message showing a
  * stale name: the label is a display hint, the id after the colon is what
@@ -42,7 +42,7 @@ export interface ParsedMention {
 
 /**
  * Extracts every reference token from a message body, deduplicated by
- * (type, id) — mentioning the same deal twice in one message still produces
+ * (type, id) mentioning the same deal twice in one message still produces
  * one MessageMention row, since the backlink only needs to know "this
  * message references that deal," not how many times.
  */
@@ -61,7 +61,7 @@ export function parseMentions(body: string): ParsedMention[] {
   return mentions;
 }
 
-/** Renders `@[Label](type:id)` down to `@Label` — for notification previews, not the message view itself. */
+/** Renders `@[Label](type:id)` down to `@Label` for notification previews, not the message view itself. */
 export function toPlainExcerpt(body: string, maxLength = 140): string {
   const plain = body.replace(MENTION_PATTERN, (_match, label: string) => `@${label}`).trim();
   return plain.length > maxLength ? `${plain.slice(0, maxLength - 1)}…` : plain;

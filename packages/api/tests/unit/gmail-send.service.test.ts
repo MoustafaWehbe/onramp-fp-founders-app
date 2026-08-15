@@ -66,7 +66,7 @@ beforeEach(() => {
   mockPrisma.interactionLog.create.mockResolvedValue({} as never);
 });
 
-describe("sendInvestorEmail — guard clauses", () => {
+describe("sendInvestorEmail guard clauses", () => {
   it("throws INVESTOR_NOT_FOUND when the investor doesn't belong to the startup", async () => {
     mockPrisma.startupInvestor.findUnique.mockResolvedValue(null);
     await expect(
@@ -104,7 +104,7 @@ describe("sendInvestorEmail — guard clauses", () => {
   });
 });
 
-describe("sendInvestorEmail — the raw message", () => {
+describe("sendInvestorEmail the raw message", () => {
   it("addresses only the investor's stored email, regardless of anything else", async () => {
     mockSendResponse(200, { id: "msg-1", threadId: "thread-1" });
 
@@ -174,7 +174,7 @@ describe("sendInvestorEmail — the raw message", () => {
   });
 });
 
-describe("sendInvestorEmail — deal linking", () => {
+describe("sendInvestorEmail deal linking", () => {
   it("uses the explicitly given pipelineId once it's verified", async () => {
     mockPrisma.pipeline.findUnique.mockResolvedValue({ startupInvestorId: INVESTOR_ID } as never);
     mockSendResponse(200, { id: "msg-1", threadId: "thread-1" });
@@ -203,7 +203,7 @@ describe("sendInvestorEmail — deal linking", () => {
   });
 });
 
-describe("sendInvestorEmail — failure ordering", () => {
+describe("sendInvestorEmail failure ordering", () => {
   it("never writes a log when the send itself fails", async () => {
     mockSendResponse(502, "upstream error");
 
@@ -237,7 +237,7 @@ describe("sendInvestorEmail — failure ordering", () => {
     );
   });
 
-  it("never reports the send as failed when only the log write fails — retries on the queue instead", async () => {
+  it("never reports the send as failed when only the log write fails retries on the queue instead", async () => {
     mockSendResponse(200, { id: "msg-1", threadId: "thread-1" });
     mockPrisma.interactionLog.create.mockRejectedValue(new Error("db down"));
     jest.spyOn(console, "error").mockImplementation(() => {});

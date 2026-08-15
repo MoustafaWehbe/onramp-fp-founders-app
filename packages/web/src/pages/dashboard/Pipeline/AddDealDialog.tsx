@@ -117,7 +117,7 @@ export function AddDealDialog({
                   <span className="min-w-0 truncate">
                     {selectedContact
                       ? `${selectedContact.fullName}${
-                          selectedContact.ventureFirm ? ` — ${selectedContact.ventureFirm}` : ""
+                          selectedContact.ventureFirm ? ` ${selectedContact.ventureFirm}` : ""
                         }`
                       : contactsQuery.isLoading
                         ? "Loading contacts…"
@@ -148,7 +148,7 @@ export function AddDealDialog({
                 <div className="scrollbar-slim max-h-56 overflow-y-auto">
                   {contactsQuery.isError && (
                     <DropdownMenuItem disabled>
-                      Failed to load contacts — check you are signed in
+                      Failed to load contacts check you are signed in
                     </DropdownMenuItem>
                   )}
                   {!contactsQuery.isLoading && !contactsQuery.isError && unassignedContacts.length === 0 && (

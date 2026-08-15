@@ -5,17 +5,17 @@ const CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3/calendars/prim
 
 // A safety bound, not a Google limit. Bootstrapping a sync token requires
 // walking the *entire* calendar once with no time bound (see fetchAllEvents),
-// so this needs real headroom — 40 pages * 250 is 10,000 events, comfortably
+// so this needs real headroom 40 pages * 250 is 10,000 events, comfortably
 // past what most personal calendars accumulate in their whole history. A
 // calendar that exceeds it never completes the bootstrap walk in one cron
 // tick; each tick restarts the walk from page one rather than resuming,
 // since page-level position isn't persisted. Known limitation, not solved
-// here — worth revisiting if it turns out to matter for a real founder.
+// here worth revisiting if it turns out to matter for a real founder.
 const MAX_PAGES_PER_SYNC = 40;
 const PAGE_SIZE = 250;
 
 // How far back a meeting is still worth logging. Applied per-event after the
-// fetch, not as a query filter — Google won't hand back a sync token if the
+// fetch, not as a query filter Google won't hand back a sync token if the
 // query is time-bounded (see fetchAllEvents), so this is the only place a
 // backfill window can be enforced. A founder connecting today cares about
 // recent context, not a decade of old meetings.
@@ -69,15 +69,15 @@ async function fetchEventsPage(
 /**
  * Pages through events.list. Deliberately never sends `timeMin`/`orderBy`, on
  * the bootstrap walk or any other: verified live against a real calendar that
- * Google only returns `nextSyncToken` — the thing that makes every later sync
- * incremental instead of a full re-walk — when the query carries no time
+ * Google only returns `nextSyncToken` the thing that makes every later sync
+ * incremental instead of a full re-walk when the query carries no time
  * bound at all. Adding `timeMin` "to keep the bootstrap walk small" silently
  * gets a listing back with no usable cursor, forcing a full walk forever.
  * The 90-day recency window is enforced per-event in the caller instead, once
  * events are already in hand.
  *
  * `complete` distinguishes "reached the real end, nextSyncToken is trustworthy"
- * from "hit the page cap mid-walk" — the caller must not persist a sync token
+ * from "hit the page cap mid-walk" the caller must not persist a sync token
  * from an incomplete pass, or it would silently drop whatever was left unread.
  */
 async function fetchAllEvents(
@@ -116,7 +116,7 @@ async function fetchAllEvents(
     pageToken = result.nextPageToken;
   }
 
-  // Capped before Google told us we were done — treat as a normal, resumable
+  // Capped before Google told us we were done treat as a normal, resumable
   // partial pass rather than an error.
   return { events, nextSyncToken: null, tokenExpired: false, complete: false };
 }
@@ -159,7 +159,7 @@ export class CalendarSyncService {
       accessToken = await googleConnectionService.getValidAccessToken(userId);
     } catch (err) {
       // getValidAccessToken already flips the connection to needs_reauth on
-      // invalid_grant — this just records what actually happened for support.
+      // invalid_grant this just records what actually happened for support.
       await prisma.googleConnection.update({
         where: { userId },
         data: { lastError: err instanceof Error ? err.message : "access token error" },
@@ -200,7 +200,7 @@ export class CalendarSyncService {
         stats.skipped++;
         continue;
       }
-      // Only a meeting that actually happened gets logged — one still on the
+      // Only a meeting that actually happened gets logged one still on the
       // calendar could still move or be cancelled before it occurs.
       const endMs = new Date(event.end.dateTime).getTime();
       if (endMs > now) {
@@ -208,7 +208,7 @@ export class CalendarSyncService {
         continue;
       }
       // The bootstrap walk necessarily sees a founder's entire calendar
-      // history (see fetchAllEvents) — this is what actually keeps decade-old
+      // history (see fetchAllEvents) this is what actually keeps decade-old
       // meetings off the timeline, since the query itself can't.
       if (endMs < now - RECENCY_WINDOW_DAYS * 86_400_000) {
         stats.skipped++;
@@ -249,7 +249,7 @@ export class CalendarSyncService {
     await prisma.googleConnection.update({
       where: { userId },
       data: {
-        // Only a *complete* pass earns a new cursor — a capped one leaves the
+        // Only a *complete* pass earns a new cursor a capped one leaves the
         // old cursor in place so the same delta is retried next cycle.
         ...(complete && { calendarSyncToken: nextSyncToken }),
         lastSyncedAt: new Date(),
@@ -261,7 +261,7 @@ export class CalendarSyncService {
   }
 
   /**
-   * Never persists an event that matched no investor — Phase 2's privacy
+   * Never persists an event that matched no investor Phase 2's privacy
    * decision is that only matched events are worth storing at all, so this is
    * the only place a row gets written, and only after a match is confirmed.
    */
@@ -303,7 +303,7 @@ export class CalendarSyncService {
       return "created";
     }
 
-    // A human already edited this row — a re-sync must never overwrite what
+    // A human already edited this row a re-sync must never overwrite what
     // they wrote, even if the underlying event also changed.
     if (existing.editedByUser) return "unchanged";
 

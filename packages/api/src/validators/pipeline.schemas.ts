@@ -76,8 +76,8 @@ export const updatePipelineEntrySchema = z
         z.null(),
       ])
       .optional(),
-    // Board position within a stage. The client computes this — typically the
-    // midpoint of the two cards it was dropped between — so the server just
+    // Board position within a stage. The client computes this typically the
+    // midpoint of the two cards it was dropped between so the server just
     // stores whatever value places it there; it doesn't renumber anything.
     sortOrder: z
       .number({ invalid_type_error: "sortOrder must be a number" })
@@ -106,7 +106,7 @@ export const updatePipelineEntrySchema = z
       .max(500, "reason must be at most 500 characters")
       .optional(),
     // Required by the server when stage transitions to "committed" and the
-    // deal has no live commitment yet — the transition writes the round's
+    // deal has no live commitment yet the transition writes the round's
     // Commitment row so the board and the round can't disagree. Ignored for
     // every other transition.
     commitment: z
@@ -143,11 +143,11 @@ export const listPipelineQuerySchema = z.object({
     .max(100, "limit must be at most 100")
     .default(20),
   stage: pipelineStageEnum.optional(),
-  // Matched against the investor's name and firm, server-side — the board
+  // Matched against the investor's name and firm, server-side the board
   // never filters an already-fetched page in memory.
   search: z.string().trim().min(1).max(100).optional(),
   ownerId: z.string().uuid("ownerId must be a valid UUID").optional(),
-  // Narrows to exactly what getFocus() would return — the same criteria
+  // Narrows to exactly what getFocus() would return the same criteria
   // used to badge deals as needing attention.
   attentionOnly: optionalBooleanFlag,
   // Defaults true; false excludes stage=passed. Ignored when `stage` is set.

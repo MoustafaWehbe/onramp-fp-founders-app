@@ -81,7 +81,7 @@ describe("AcceptInvite", () => {
   });
 
   it("sends a signed-out visitor to sign in and back to the invitation", async () => {
-    // Nothing has been accepted yet — the invite is still pending server-side.
+    // Nothing has been accepted yet the invite is still pending server-side.
     acceptInvite.mockResolvedValue({ status: "requires_login", email: "bob@corp.io" });
 
     renderWithToken("tok");

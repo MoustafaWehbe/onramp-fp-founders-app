@@ -539,7 +539,7 @@ describe("PipelineService.updateEntry moving between rounds", () => {
   it("does not touch the round when the same one is sent back", async () => {
     await service.updateEntry(STARTUP_ID, PIPELINE_ID, { roundId: ROUND_ID } as never);
 
-    // No verification, no repositioning — it is not a move.
+    // No verification, no repositioning it is not a move.
     expect(mockPrisma.pipeline.aggregate).not.toHaveBeenCalled();
     expect(mockPrisma.commitment.count).not.toHaveBeenCalled();
   });
@@ -630,7 +630,7 @@ describe("PipelineService.updateEntry committing", () => {
 
     await service.updateEntry(STARTUP_ID, PIPELINE_ID, { stage: "term_sheet" } as never);
 
-    // The row survives as history rather than being deleted — anything
+    // The row survives as history rather than being deleted anything
     // already marked funded must not silently vanish from the round.
     expect(mockPrisma.commitment.updateMany).toHaveBeenCalledWith({
       where: { startupId: STARTUP_ID, pipelineId: PIPELINE_ID, status: { not: "withdrawn" } },
@@ -925,7 +925,7 @@ describe("PipelineService.getAnalytics", () => {
       event("p1", "contacted", 2),
       event("p1", "meeting_scheduled", 3),
       event("p1", "due_diligence", 4),
-      // p2 was added directly at due diligence — no sourced/contacted/meeting
+      // p2 was added directly at due diligence no sourced/contacted/meeting
       // events exist for it, but it plainly cleared those stages too.
       event("p2", "due_diligence", 1),
     ]);
@@ -934,7 +934,7 @@ describe("PipelineService.getAnalytics", () => {
 
     const byStage = (stage: string) => data.funnel.find((row) => row.stage === stage)!.everReached;
     // Every earlier stage must count both deals, not just the one with a
-    // matching literal event — otherwise a later stage can end up with a
+    // matching literal event otherwise a later stage can end up with a
     // higher count than an earlier one, which isn't a funnel anymore.
     expect(byStage("sourced")).toBe(2);
     expect(byStage("contacted")).toBe(2);
@@ -966,7 +966,7 @@ describe("PipelineService.deleteEntry", () => {
     expect(mockPrisma.commitment.count).toHaveBeenCalledWith({
       where: { pipelineId: PIPELINE_ID, startupId: STARTUP_ID },
     });
-    // Only unfinished work blocks — a completed checklist must not strand the
+    // Only unfinished work blocks a completed checklist must not strand the
     // deal on the board forever.
     expect(mockPrisma.task.count).toHaveBeenCalledWith({
       where: { pipelineId: PIPELINE_ID, startupId: STARTUP_ID, status: "open" },
@@ -1002,7 +1002,7 @@ describe("PipelineService.deleteEntry", () => {
     expect(mockPrisma.pipeline.delete).not.toHaveBeenCalled();
   });
 
-  it("throws HAS_DEPENDENTS when open tasks exist — someone still expects to act on this deal", async () => {
+  it("throws HAS_DEPENDENTS when open tasks exist someone still expects to act on this deal", async () => {
     (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({ id: PIPELINE_ID });
     (mockPrisma.commitment.count as jest.Mock).mockResolvedValue(0);
     (mockPrisma.task.count as jest.Mock).mockResolvedValue(3);
@@ -1080,7 +1080,7 @@ describe("PipelineService.getFocus", () => {
   }
 
   /**
-   * Last touch is two grouped queries — dated logs aggregated by
+   * Last touch is two grouped queries dated logs aggregated by
    * interactionDate, undated ones by createdAt. `dated`/`undated` map a
    * contact id to the aggregate that query should report for it.
    */
@@ -1195,7 +1195,7 @@ describe("PipelineService.getFocus", () => {
 
     const { data } = await service.getFocus(STARTUP_ID, ROUND_ID);
 
-    // Spoken to yesterday, so not quiet — and nothing else applies.
+    // Spoken to yesterday, so not quiet and nothing else applies.
     expect(data).toHaveLength(0);
   });
 

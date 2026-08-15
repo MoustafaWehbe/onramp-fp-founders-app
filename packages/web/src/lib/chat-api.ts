@@ -25,12 +25,12 @@ export type Conversation = {
   id: string;
   startupId: string;
   type: "channel" | "dm";
-  /** Null for a DM — see `counterpart`. */
+  /** Null for a DM see `counterpart`. */
   name: string | null;
   topic: string | null;
-  /** Set only when type is "dm" — the other participant, resolved for the calling viewer. */
+  /** Set only when type is "dm" the other participant, resolved for the calling viewer. */
   counterpart: ConversationCounterpart;
-  /** The caller's own read pointer — a decimal string, same encoding as Message.seq. */
+  /** The caller's own read pointer a decimal string, same encoding as Message.seq. */
   lastReadSeq: string | null;
   /** The caller's own mute level for this conversation. */
   notifyLevel: NotifyLevel;
@@ -58,12 +58,12 @@ export type Message = {
   id: string;
   startupId: string;
   conversationId: string;
-  /** A decimal string — BigInt has no JSON representation. */
+  /** A decimal string BigInt has no JSON representation. */
   seq: string;
   senderId: string | null;
   sender: MessageSender;
   body: string;
-  /** Set for a thread reply — always the top-level ancestor's id, since threads are flat. */
+  /** Set for a thread reply always the top-level ancestor's id, since threads are flat. */
   parentMessageId: string | null;
   replyCount: number;
   editedAt: string | null;
@@ -87,7 +87,7 @@ export type SendMessageInput = {
   body: string;
   /** Reused on retry so a resend never duplicates the message. */
   clientNonce: string;
-  /** Reply in a thread — must name a message already in this conversation. */
+  /** Reply in a thread must name a message already in this conversation. */
   parentMessageId?: string;
   /** Vault documents to attach, beyond anything referenced inline with @doc. */
   documentIds?: string[];
@@ -154,7 +154,7 @@ export async function listReplies(
   return data.data;
 }
 
-/** Toggle semantics — reacting with the same emoji a second time removes it. */
+/** Toggle semantics reacting with the same emoji a second time removes it. */
 export async function toggleReaction(startupId: string, messageId: string, emoji: string) {
   const { data } = await apiClient.post<{ data: { messageId: string; reactions: MessageReactionSummary[] } }>(
     `/startups/${startupId}/chat/messages/${messageId}/reactions`,
@@ -163,7 +163,7 @@ export async function toggleReaction(startupId: string, messageId: string, emoji
   return data.data;
 }
 
-/** Advances the caller's read pointer to the latest message — clears the unread badge. */
+/** Advances the caller's read pointer to the latest message clears the unread badge. */
 export async function markConversationRead(startupId: string, conversationId: string) {
   const { data } = await apiClient.post<{ data: { lastReadSeq: string | null } }>(
     `/startups/${startupId}/chat/conversations/${conversationId}/read`,
@@ -179,7 +179,7 @@ export async function setNotifyLevel(startupId: string, conversationId: string, 
   return data.data;
 }
 
-/** Fire-and-forget presence ping — no response payload to wait on. */
+/** Fire-and-forget presence ping no response payload to wait on. */
 export async function pingTyping(startupId: string, conversationId: string) {
   await apiClient.post(`/startups/${startupId}/chat/conversations/${conversationId}/typing`);
 }
@@ -191,7 +191,7 @@ export type MentionableItem = {
   sublabel: string | null;
 };
 
-/** One rendered reference chip's unfurl data — see chat.service.resolveOneType on the API. */
+/** One rendered reference chip's unfurl data see chat.service.resolveOneType on the API. */
 export type ResolvedMention =
   | { type: "member"; id: string; title: string; subtitle: null; avatarUrl: string | null }
   | {
@@ -221,7 +221,7 @@ export type ResolvedMention =
       status: string;
       dueDate: string | null;
       priority: Priority;
-      /** The deal this task belongs to — used to deep-link the unfurl card into the right Pipeline dialog. */
+      /** The deal this task belongs to used to deep-link the unfurl card into the right Pipeline dialog. */
       pipelineId: string;
     }
   | {
@@ -243,7 +243,7 @@ export type MentionBacklinkEntry = {
   message: Message;
 };
 
-/** Empty or whitespace-only `q` returns no results — the caller decides when to fetch. */
+/** Empty or whitespace-only `q` returns no results the caller decides when to fetch. */
 export async function searchMentionables(
   startupId: string,
   params: { q: string; types?: MentionTargetType[] },
@@ -268,7 +268,7 @@ export async function resolveMentions(
   return data.data;
 }
 
-/** The backlink query behind the Discussion tab — every message referencing one entity. */
+/** The backlink query behind the Discussion tab every message referencing one entity. */
 export async function listMentionsForTarget(
   startupId: string,
   targetType: MentionTargetType,

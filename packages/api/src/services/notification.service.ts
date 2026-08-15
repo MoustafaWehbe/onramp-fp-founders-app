@@ -20,7 +20,7 @@ export const NOTIFICATION_TYPES = {
 
 /**
  * How long a deal reminder suppresses the next one for the same deal. Unlike
- * an overdue task, a quiet lead never "completes" — it simply stays quiet — so
+ * an overdue task, a quiet lead never "completes" it simply stays quiet so
  * these cannot dedupe on the entity forever or a deal that goes cold again in
  * three months would never be mentioned twice.
  */
@@ -40,7 +40,7 @@ const NOTIFICATION_SELECT = {
 
 export class NotificationService {
   /**
-   * Notifications belong to a user, not to a workspace — someone who has been
+   * Notifications belong to a user, not to a workspace someone who has been
    * invited but has not joined anything yet still needs to see the invitation
    * sitting on their otherwise empty dashboard.
    */
@@ -79,7 +79,7 @@ export class NotificationService {
       if (!exists) {
         throw createError("Notification not found", 404, "NOT_FOUND");
       }
-      // Already read — nothing changed, so nobody needs telling.
+      // Already read nothing changed, so nobody needs telling.
       return;
     }
 
@@ -105,7 +105,7 @@ export class NotificationService {
    *
    * Invitations go to an email that may not have an account yet; there is
    * nobody to notify in that case and the emailed link is the only channel.
-   * Never throws — a notification is an extra, and losing one must not fail the
+   * Never throws a notification is an extra, and losing one must not fail the
    * action that produced it.
    */
   async notifyInvitedUser(input: {
@@ -135,7 +135,7 @@ export class NotificationService {
         select: { id: true, type: true, title: true, body: true },
       });
 
-      // Reaches them immediately if they have the app open — which is the
+      // Reaches them immediately if they have the app open which is the
       // whole point, since they may well be signed in already.
       notificationBus.publish(user.id, { type: "notification.created", notification: created });
     } catch (err) {
@@ -165,7 +165,7 @@ export class NotificationService {
 
   /**
    * One notification per overdue follow-up, not one per day it stays
-   * overdue — skips silently if this log already has one, so the daily cron
+   * overdue skips silently if this log already has one, so the daily cron
    * can run every day without duplicating what it already told someone.
    */
   async notifyFollowupDue(input: {
@@ -211,7 +211,7 @@ export class NotificationService {
 
   /**
    * Clears pending overdue-follow-up notifications once their log stops
-   * being open — completed, rescheduled, or deleted. Takes a batch because
+   * being open completed, rescheduled, or deleted. Takes a batch because
    * logging a new interaction can auto-close several older follow-ups at once.
    */
   async clearFollowupNotifications(logIds: string[]): Promise<void> {
@@ -326,7 +326,7 @@ export class NotificationService {
     startupId: string;
     conversationId: string;
     senderName: string;
-    // Null for a DM — a direct message has no channel name to show.
+    // Null for a DM a direct message has no channel name to show.
     conversationName: string | null;
     excerpt: string;
   }): Promise<void> {
@@ -343,7 +343,7 @@ export class NotificationService {
           type: NOTIFICATION_TYPES.CHAT_MENTION,
           title,
           body: input.excerpt,
-          // Points at the conversation, not the message — there's no
+          // Points at the conversation, not the message there's no
           // per-message deep link, but the conversation is exactly where a
           // click on this notification should land.
           entityType: "conversation",
@@ -364,7 +364,7 @@ export class NotificationService {
   /**
    * A plain (non-mention) message in a DM. Unlike `notifyMention`, this is
    * suppressed by the caller when the recipient already has the room open —
-   * see chat.service.ts's notifyDmRecipient — so it only fires for messages
+   * see chat.service.ts's notifyDmRecipient so it only fires for messages
    * someone would otherwise miss.
    */
   async notifyDirectMessage(input: {
@@ -418,7 +418,7 @@ export class NotificationService {
     });
   }
 
-  /** A live deal nobody has given a next step — the quiet way a raise stalls. */
+  /** A live deal nobody has given a next step the quiet way a raise stalls. */
   async notifyDealNoNextStep(input: {
     userId: string;
     startupId: string;
@@ -511,7 +511,7 @@ export class NotificationService {
 
   /**
    * Clears pending overdue/due-today notifications once their task stops
-   * being open — completed, reopened, rescheduled, or deleted.
+   * being open completed, reopened, rescheduled, or deleted.
    */
   async clearTaskNotifications(taskIds: string[]): Promise<void> {
     if (taskIds.length === 0) return;

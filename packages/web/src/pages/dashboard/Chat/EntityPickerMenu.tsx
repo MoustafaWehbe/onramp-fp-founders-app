@@ -8,7 +8,7 @@ import type { MentionTargetType } from "../../../lib/mentions";
 
 type EntityPickerMenuProps = {
   startupId: string;
-  /** Locks the search to one or more mention types — the server still enforces read permission per type. */
+  /** Locks the search to one or more mention types the server still enforces read permission per type. */
   types: MentionTargetType[];
   icon: LucideIcon;
   searchPlaceholder: string;
@@ -18,7 +18,7 @@ type EntityPickerMenuProps = {
   onSelect: (item: MentionableItem) => void;
 };
 
-/** A small standalone search dropdown used by the composer's attach and share buttons — no message-body mention token is written here, the caller decides what a selection means. */
+/** A small standalone search dropdown used by the composer's attach and share buttons no message-body mention token is written here, the caller decides what a selection means. */
 export function EntityPickerMenu({
   startupId,
   types,

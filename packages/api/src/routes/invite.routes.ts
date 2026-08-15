@@ -26,7 +26,7 @@ router.post(
   inviteController.declineMyInvite,
 );
 
-// POST /api/v1/invites/accept — reachable signed-out, but the invitation is
+// POST /api/v1/invites/accept reachable signed-out, but the invitation is
 // only ever activated for a signed-in user whose email matches the invite.
 router.post(
   "/accept",

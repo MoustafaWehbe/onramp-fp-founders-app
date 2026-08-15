@@ -81,7 +81,7 @@
   h6 {
     @apply font-semibold tracking-tight text-foreground;
 
-    /* "Space Grotesk" keeps its quotes — multi-word family names require them. */
+    /* "Space Grotesk" keeps its quotes multi-word family names require them. */
     font-family: "Space Grotesk", Inter, sans-serif;
   }
 
@@ -139,7 +139,7 @@
     background: transparent;
   }
 
-  /* Fully hidden scrollbar — the element still scrolls, nothing is drawn for it. */
+  /* Fully hidden scrollbar the element still scrolls, nothing is drawn for it. */
   .scrollbar-none {
     scrollbar-width: none;
     -ms-overflow-style: none;

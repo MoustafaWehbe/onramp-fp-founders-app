@@ -60,7 +60,7 @@ beforeEach(() => {
   mockPrisma.interactionLog.create.mockResolvedValue({} as never);
 });
 
-describe("scheduleMeeting — guard clauses", () => {
+describe("scheduleMeeting guard clauses", () => {
   it("throws INVESTOR_NOT_FOUND when the investor doesn't belong to the startup", async () => {
     mockPrisma.startupInvestor.findUnique.mockResolvedValue(null);
     await expect(
@@ -115,7 +115,7 @@ describe("scheduleMeeting — guard clauses", () => {
   });
 });
 
-describe("scheduleMeeting — the event request", () => {
+describe("scheduleMeeting the event request", () => {
   it("invites only the investor's stored email", async () => {
     mockEventResponse(200, { id: "event-1", htmlLink: "https://calendar.google.com/event-1" });
 
@@ -183,7 +183,7 @@ describe("scheduleMeeting — the event request", () => {
   });
 });
 
-describe("scheduleMeeting — deal linking", () => {
+describe("scheduleMeeting deal linking", () => {
   it("uses the explicitly given pipelineId once it's verified", async () => {
     mockPrisma.pipeline.findUnique.mockResolvedValue({ startupInvestorId: INVESTOR_ID } as never);
     mockEventResponse(200, { id: "event-1", htmlLink: "https://calendar.google.com/event-1" });
@@ -217,7 +217,7 @@ describe("scheduleMeeting — deal linking", () => {
   });
 });
 
-describe("scheduleMeeting — failure ordering", () => {
+describe("scheduleMeeting failure ordering", () => {
   it("never writes a log when event creation itself fails", async () => {
     mockEventResponse(502, "upstream error");
 

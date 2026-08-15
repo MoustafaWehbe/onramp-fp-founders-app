@@ -8,7 +8,7 @@ type MentionChipProps = {
 
 /**
  * The label always comes from the token itself (what the sender saw when
- * they picked it), not from a resolved lookup — so a chip still reads fine
+ * they picked it), not from a resolved lookup so a chip still reads fine
  * even before /chat/resolve returns, or for a target the viewer can't read.
  * EntityUnfurl is where the live, permission-filtered detail lives.
  */

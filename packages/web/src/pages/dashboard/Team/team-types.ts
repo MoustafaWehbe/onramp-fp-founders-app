@@ -2,7 +2,7 @@ import type { StartupMember } from "../../../lib/team-api";
 import { formatDate } from "../../../lib/utils";
 
 export type TeamMemberRow = {
-  /** Membership id — what the role and remove endpoints are keyed by. */
+  /** Membership id what the role and remove endpoints are keyed by. */
   id: string;
   /** Null until the invite is accepted and an account is attached. */
   userId: string | null;

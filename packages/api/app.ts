@@ -14,7 +14,7 @@ import { router } from "./src/routes";
 
 const app = express();
 
-// Must be set before any middleware reads req.ip — the rate limiters key on it.
+// Must be set before any middleware reads req.ip the rate limiters key on it.
 app.set("trust proxy", getTrustProxy());
 
 // Security

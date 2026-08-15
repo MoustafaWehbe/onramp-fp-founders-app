@@ -30,7 +30,7 @@ const CONVERSATION_SELECT = {
   createdBy: true,
   createdAt: true,
   updatedAt: true,
-  // Every membership row, not just the caller's — cheap for a workspace-sized
+  // Every membership row, not just the caller's cheap for a workspace-sized
   // channel, and it is what lets a single query answer three different
   // per-viewer questions below: my own read state, my mute level, and (for a
   // DM) who the other person is.
@@ -87,7 +87,7 @@ function summarizeReactions(rows: { emoji: string; memberId: string }[], callerM
 }
 
 /**
- * A DM's display name is not stored — it is the *other* participant, and
+ * A DM's display name is not stored it is the *other* participant, and
  * that is inherently per-viewer (A sees "B", B sees "A"), so it has to be
  * resolved here rather than baked into the row at write time.
  */
@@ -127,7 +127,7 @@ function serializeMessage(row: MessageRow, callerMemberId: string) {
     id: row.id,
     startupId: row.startupId,
     conversationId: row.conversationId,
-    // BigInt has no JSON representation — the wire format is a decimal
+    // BigInt has no JSON representation the wire format is a decimal
     // string, which listMessagesQuerySchema's `before` field reads back in.
     seq: row.seq.toString(),
     senderId: row.senderId,
@@ -212,7 +212,7 @@ export class ChatService {
   /**
    * Phase 1 channels are workspace-wide: every active member is added at
    * creation time, since there is no invite-to-channel UI yet. Selective
-   * membership (private channels, DMs) is additive later — see the schema
+   * membership (private channels, DMs) is additive later see the schema
    * comment above the Conversation model.
    */
   async createConversation(
@@ -233,7 +233,7 @@ export class ChatService {
           name: input.name,
           topic: input.topic ?? null,
           createdBy: actorUserId,
-          // startupId is deliberately omitted here — ConversationMember's
+          // startupId is deliberately omitted here ConversationMember's
           // `conversation` relation shares that scalar with its `member`
           // relation (both are part of composite FKs), so Prisma fills it in
           // from the parent Conversation being created; passing it explicitly
@@ -253,7 +253,7 @@ export class ChatService {
 
   /**
    * Finds or creates the 1:1 DM between the caller and another active
-   * member. `dmKey` (the sorted member-id pair) is the dedup key — a second
+   * member. `dmKey` (the sorted member-id pair) is the dedup key a second
    * call from either side always lands back on the same conversation.
    */
   async startDirectMessage(startupId: string, actorMemberId: string, actorUserId: string, otherMemberId: string) {
@@ -290,7 +290,7 @@ export class ChatService {
       return { data: serializeConversation(conversation, actorMemberId, 0) };
     } catch (err) {
       // Two tabs opening the same DM at once both lose the race to the
-      // unique dmKey index — the loser just reads back the winner's row
+      // unique dmKey index the loser just reads back the winner's row
       // instead of surfacing an error for something that isn't one.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
         const winner = await prisma.conversation.findUniqueOrThrow({
@@ -341,7 +341,7 @@ export class ChatService {
     if (!membership || membership.conversation.startupId !== startupId) {
       throw createError("Conversation not found", 404, "CONVERSATION_NOT_FOUND");
     }
-    // A DM has no stored name (see counterpartOf) — the mention-notification
+    // A DM has no stored name (see counterpartOf) the mention-notification
     // title falls back to type-based phrasing instead in notifyMentionedMembers.
     return {
       conversationName: membership.conversation.name ?? "",
@@ -410,7 +410,7 @@ export class ChatService {
 
   /**
    * Every member's userId, for live fan-out. Excludes members who are only a
-   * pending invite (no linked user yet) — there is no open tab to reach.
+   * pending invite (no linked user yet) there is no open tab to reach.
    */
   private async memberUserIds(conversationId: string, excludingMemberId: string): Promise<string[]> {
     const rows = await prisma.conversationMember.findMany({
@@ -424,7 +424,7 @@ export class ChatService {
 
   /**
    * Drops any parsed token whose target does not actually exist in this
-   * startup — a stale reference (the target was deleted between the picker
+   * startup a stale reference (the target was deleted between the picker
    * opening and the send) or a crafted token degrades to plain unlinked text
    * rather than failing the whole send. Scoping every lookup by startupId is
    * also what stops a crafted token from linking into another tenant's row.
@@ -513,7 +513,7 @@ export class ChatService {
     const { conversationName, conversationType } = await this.verifyMembership(startupId, conversationId, memberId);
 
     // Retried POST with the same nonce resolves to the original row instead
-    // of creating a duplicate — the unique constraint is the source of truth,
+    // of creating a duplicate the unique constraint is the source of truth,
     // this lookup just avoids a needless failed-insert round trip.
     const existing = await prisma.message.findUnique({
       where: { conversationId_clientNonce: { conversationId, clientNonce: input.clientNonce } },
@@ -538,7 +538,7 @@ export class ChatService {
     const validMentions = await this.filterValidMentions(startupId, parsedMentions);
 
     // Attaching a vault document requires the same visibility a mention of
-    // one would — a caller who cannot read documents silently loses the
+    // one would a caller who cannot read documents silently loses the
     // attachment rather than the whole send failing, same as an invalid
     // mention token.
     let validDocumentIds: string[] = [];
@@ -593,7 +593,7 @@ export class ChatService {
       }
 
       // The sender has, by construction, seen everything up to their own
-      // send — advancing their own read pointer keeps them from seeing an
+      // send advancing their own read pointer keeps them from seeing an
       // unread badge on the room they just posted in.
       await tx.conversationMember.update({
         where: { conversationId_memberId: { conversationId, memberId } },
@@ -612,7 +612,7 @@ export class ChatService {
 
     const serialized = serializeMessage(withRelations, memberId);
 
-    // Chat volume does not belong on the notification bell — this is a live
+    // Chat volume does not belong on the notification bell this is a live
     // signal for whoever already has the room open, not a persisted
     // Notification row.
     const recipientUserIds = await this.memberUserIds(conversationId, memberId);
@@ -626,7 +626,7 @@ export class ChatService {
       });
     }
 
-    // Being @-referenced is different from chat volume — it's addressed to
+    // Being @-referenced is different from chat volume it's addressed to
     // someone specifically, so it does earn a real notification.
     const senderName = this.senderDisplayName(serialized.sender);
     const excerpt = toPlainExcerpt(input.body);
@@ -684,7 +684,7 @@ export class ChatService {
     for (const member of members) {
       if (!member.userId) continue;
       // Fully muting the room suppresses even a direct @-mention; "all" and
-      // "mentions" both still let this through — see ConversationMember.notifyLevel.
+      // "mentions" both still let this through see ConversationMember.notifyLevel.
       if (member.conversationMemberships[0]?.notifyLevel === "none") continue;
       notified.add(member.userId);
       void notificationService.notifyMention({
@@ -706,7 +706,7 @@ export class ChatService {
    * tracking: `MessageThread` marks the conversation read on open, and again
    * whenever a live message arrives while it's mounted (the SSE handler
    * invalidates the conversations query on every `chat.message.created`,
-   * which re-triggers the read-on-open effect) — so an open thread's
+   * which re-triggers the read-on-open effect) so an open thread's
    * `lastReadAt` keeps refreshing on its own, while a closed one goes stale
    * within this window.
    */
@@ -734,7 +734,7 @@ export class ChatService {
       const userId = other.member.userId;
       if (!userId) continue;
       if (alreadyNotified.has(userId)) continue;
-      // "mentions" exists precisely to suppress this — a plain message is
+      // "mentions" exists precisely to suppress this a plain message is
       // exactly what it's meant to hold back, while an explicit @-mention
       // still goes through notifyMentionedMembers above regardless.
       if (other.notifyLevel !== "all") continue;
@@ -876,7 +876,7 @@ export class ChatService {
 
   /**
    * Batch-renders reference chips into unfurl cards. Best-effort: an item the
-   * caller cannot read, or that no longer exists, is simply omitted — the
+   * caller cannot read, or that no longer exists, is simply omitted the
    * client falls back to the token's plain-text label rather than erroring
    * the whole message out.
    */
@@ -1012,7 +1012,7 @@ export class ChatService {
    * The backlink query: every message across the workspace's channels that
    * references this entity, newest first. This is what turns a chat mention
    * into part of the entity's permanent record rather than something you had
-   * to be there to see — see DiscussionTab.tsx.
+   * to be there to see see DiscussionTab.tsx.
    */
   async getMentionsForTarget(
     startupId: string,
@@ -1032,7 +1032,7 @@ export class ChatService {
         startupId,
         targetType,
         ...mentionTargetWhere(targetType, targetId),
-        // Scoped to conversations the caller actually belongs to — a no-op
+        // Scoped to conversations the caller actually belongs to a no-op
         // today since Phase 1 channels are workspace-wide, but load-bearing
         // once private channels exist.
         conversation: { members: { some: { memberId } } },
@@ -1057,7 +1057,7 @@ export class ChatService {
     };
   }
 
-  /** Toggles one (message, member, emoji) reaction — a second click removes it. Returns the message's fresh reaction summary. */
+  /** Toggles one (message, member, emoji) reaction a second click removes it. Returns the message's fresh reaction summary. */
   async toggleReaction(startupId: string, messageId: string, memberId: string, emoji: string) {
     const message = await prisma.message.findFirst({
       where: { startupId, id: messageId },
@@ -1093,7 +1093,7 @@ export class ChatService {
     return { data: { messageId, reactions } };
   }
 
-  /** Advances the caller's read pointer to the latest top-level message — clears the unread badge. */
+  /** Advances the caller's read pointer to the latest top-level message clears the unread badge. */
   async markRead(startupId: string, conversationId: string, memberId: string) {
     await this.verifyMembership(startupId, conversationId, memberId);
 
@@ -1104,7 +1104,7 @@ export class ChatService {
     });
     if (!latest) return { data: { lastReadSeq: null } };
 
-    // Only ever moves forward — a concurrent read from another tab that
+    // Only ever moves forward a concurrent read from another tab that
     // already caught up further (or the caller's own send, which advances
     // this same pointer) must not be walked backward by a slow one.
     await prisma.conversationMember.updateMany({
@@ -1116,7 +1116,7 @@ export class ChatService {
       data: { lastReadSeq: latest.seq, lastReadAt: new Date() },
     });
 
-    // Read back rather than trusting `latest.seq` — the guard above may have
+    // Read back rather than trusting `latest.seq` the guard above may have
     // been a no-op, and reporting a seq lower than what is actually stored
     // would be a lie the caller has no way to detect.
     const own = await prisma.conversationMember.findUnique({
@@ -1127,7 +1127,7 @@ export class ChatService {
     return { data: { lastReadSeq: own?.lastReadSeq?.toString() ?? null } };
   }
 
-  /** "all" | "mentions" | "none" — see ConversationMember.notifyLevel for what each currently changes. */
+  /** "all" | "mentions" | "none" see ConversationMember.notifyLevel for what each currently changes. */
   async setNotifyLevel(startupId: string, conversationId: string, memberId: string, level: NotifyLevelInput["level"]) {
     await this.verifyMembership(startupId, conversationId, memberId);
 
@@ -1142,7 +1142,7 @@ export class ChatService {
   /**
    * Fire-and-forget: no DB row, just an SSE ping to the other open tabs in
    * this room. The client debounces calls and lets the "X is typing…" line
-   * expire client-side a few seconds after the last ping — there is nothing
+   * expire client-side a few seconds after the last ping there is nothing
    * here for a server-side timeout to clean up.
    */
   async notifyTyping(startupId: string, conversationId: string, memberId: string): Promise<void> {

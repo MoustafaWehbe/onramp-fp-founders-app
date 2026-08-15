@@ -1,5 +1,5 @@
 /**
- * A typing ping never touches React Query — there is no cache entry that
+ * A typing ping never touches React Query there is no cache entry that
  * makes sense for something that expires itself a few seconds after arrival.
  * This is a tiny module-level pub/sub instead: useNotificationStream
  * publishes into it on a `chat.typing` SSE event, and useTypingUsers

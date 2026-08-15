@@ -1,7 +1,7 @@
 import { getTrustProxy } from "../../src/config/env";
 
 // getTrustProxy decides what req.ip resolves to, which is what every rate
-// limiter keys on — a wrong value silently breaks throttling in one of two
+// limiter keys on a wrong value silently breaks throttling in one of two
 // directions, so each branch is pinned here.
 
 const original = process.env.TRUST_PROXY;
@@ -12,7 +12,7 @@ afterEach(() => {
 });
 
 describe("getTrustProxy", () => {
-  it("trusts nothing when unset — the safe default for local and direct exposure", () => {
+  it("trusts nothing when unset the safe default for local and direct exposure", () => {
     delete process.env.TRUST_PROXY;
     expect(getTrustProxy()).toBe(0);
   });

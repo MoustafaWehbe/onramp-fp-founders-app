@@ -46,7 +46,7 @@ export function Fundraising() {
   const preferredRoundId = useAppStore((s) => s.activeRoundIds[startupId]);
   const setActiveRoundId = useAppStore((s) => s.setActiveRoundId);
   // A chat unfurl card or notification can deep-link straight to a round via
-  // `?round=` — read once on mount and fed into the same "active round"
+  // `?round=` read once on mount and fed into the same "active round"
   // selection state the round switcher already uses.
   const [deepLinkRoundId] = useState(() => new URLSearchParams(window.location.search).get("round"));
   useEffect(() => {
@@ -60,11 +60,11 @@ export function Fundraising() {
   const selectedRound = useMemo(() => rounds.find((round) => round.id === preferredRoundId) ?? rounds.find((round) => round.status === "active") ?? rounds[0] ?? null, [preferredRoundId, rounds]);
   useEffect(() => { if (selectedRound && selectedRound.id !== preferredRoundId) setActiveRoundId(startupId, selectedRound.id); }, [preferredRoundId, selectedRound, setActiveRoundId, startupId]);
   const commitmentsQuery = useQuery({ queryKey: qk.commitments(startupId, selectedRound?.id), queryFn: () => listCommitments(startupId, selectedRound?.id), enabled: Boolean(selectedRound) });
-  // Clicking a status tile filters the table below in place — no navigation
+  // Clicking a status tile filters the table below in place no navigation
   // needed, the data is already on screen.
   const [statusFilter, setStatusFilter] = useState<CommitmentStatus | null>(null);
   useEffect(() => setStatusFilter(null), [selectedRound?.id]);
-  // A separate request for the status a founder clicked — kept apart from the
+  // A separate request for the status a founder clicked kept apart from the
   // fetch above so filtering the table can never change what the total tiles
   // report; those always read every commitment in the round.
   const filteredCommitmentsQuery = useQuery({
@@ -72,7 +72,7 @@ export function Fundraising() {
     queryFn: () => listCommitments(startupId, selectedRound?.id, statusFilter!),
     enabled: Boolean(selectedRound) && statusFilter !== null,
   });
-  // Target, bankable, weighted pipeline, days to close, at-risk — computed
+  // Target, bankable, weighted pipeline, days to close, at-risk computed
   // once server-side rather than re-derived here, so this page can never
   // disagree with Dashboard about what "this round's numbers" are.
   const metricsQuery = useQuery({
@@ -80,7 +80,7 @@ export function Fundraising() {
     queryFn: () => getRoundMetrics(startupId, selectedRound!.id),
     enabled: Boolean(selectedRound),
   });
-  // The same board entry Dashboard and Pipeline read, envelope and all — this
+  // The same board entry Dashboard and Pipeline read, envelope and all this
   // used to hold a bare array under a near-identical key, so the two copies
   // could disagree about the round after a commitment moved a deal.
   const pipelineQuery = useQuery({
@@ -117,7 +117,7 @@ export function Fundraising() {
   const visibleCommitments = statusFilter ? (filteredCommitmentsQuery.data?.data ?? []) : commitments;
   /**
    * Three numbers, not two. Soft-circled money is a verbal yes with nothing
-   * signed — it belongs on screen, because it is the pipeline of near-money a
+   * signed it belongs on screen, because it is the pipeline of near-money a
    * founder works, but it must never be added to what has been raised. Only
    * hard-circled and wired count against the target.
    */
@@ -195,7 +195,7 @@ export function Fundraising() {
           <section aria-label="Round totals" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Metric title="Wired" value={money(totals.wired, selectedRound.currency)} detail="In the bank" active={statusFilter === "wired"} onClick={() => setStatusFilter((s) => (s === "wired" ? null : "wired"))} />
             <Metric title="Hard-circled" value={money(totals.hardCircled, selectedRound.currency)} detail="Signed, not yet wired" active={statusFilter === "hard_circled"} onClick={() => setStatusFilter((s) => (s === "hard_circled" ? null : "hard_circled"))} />
-            <Metric title="Soft-circled" value={money(totals.softCircled, selectedRound.currency)} detail="Verbal — not counted" muted active={statusFilter === "soft_circled"} onClick={() => setStatusFilter((s) => (s === "soft_circled" ? null : "soft_circled"))} />
+            <Metric title="Soft-circled" value={money(totals.softCircled, selectedRound.currency)} detail="Verbal not counted" muted active={statusFilter === "soft_circled"} onClick={() => setStatusFilter((s) => (s === "soft_circled" ? null : "soft_circled"))} />
             <Metric title={totals.oversubscribed ? "Oversubscribed" : "Gap to target"} value={money(totals.oversubscribed ? totals.bankable - (selectedRound.targetAmount ?? 0) : totals.remaining, selectedRound.currency)} detail={`${totals.percent}% of ${money(selectedRound.targetAmount, selectedRound.currency)}`} />
           </section>
 
@@ -274,7 +274,7 @@ function CommitmentDialog({ commitment, open, pipeline, round, busy, onOpenChang
   const [form, setForm] = useState<{ pipelineId: string; amount: string; status: CommitmentStatus; expectedCloseDate: Date | null }>({ pipelineId: "", amount: "", status: "soft_circled", expectedCloseDate: null });
   useEffect(() => { setForm(existing ? { pipelineId: existing.pipelineId, amount: String(existing.amount ?? ""), status: existing.status, expectedCloseDate: dateForPicker(existing.expectedCloseDate) } : { pipelineId: pipeline[0]?.id ?? "", amount: "", status: "soft_circled", expectedCloseDate: null }); }, [existing, open, pipeline]);
   function submit(event: FormEvent) { event.preventDefault(); const amount = Number(form.amount); const deal = pipeline.find((item) => item.id === form.pipelineId); if (!Number.isFinite(amount) || amount < 0) return toast.error("Enter a valid commitment amount."); const expectedCloseDate = form.expectedCloseDate ? form.expectedCloseDate.toISOString() : undefined; if (existing) return onUpdate({ amount, status: form.status, expectedCloseDate: expectedCloseDate ?? null }); if (!deal || !round) return toast.error("Choose an investor from this round’s pipeline."); onCreate({ investorId: deal.investorId, pipelineId: deal.id, roundId: round.id, amount, status: form.status, ...(expectedCloseDate && { expectedCloseDate }) }); }
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-xl gap-0 overflow-hidden p-0 sm:p-0"><DialogHeader className="border-b border-border/70 bg-surface/40 px-6 py-5"><DialogTitle>{existing ? "Edit commitment" : "Record a commitment"}</DialogTitle><DialogDescription>{existing ? "Keep the amount, confidence, and close date current." : "Choose an investor already in this round, then capture what they committed."}</DialogDescription></DialogHeader><form className="space-y-5 px-6 py-5" onSubmit={submit}>{!existing && <Field label="Investor"><Select value={form.pipelineId} onValueChange={(value) => setForm({ ...form, pipelineId: value })} options={pipeline.map((deal) => ({ value: deal.id, label: `${deal.investor.fullName}${deal.investor.ventureFirm ? ` — ${deal.investor.ventureFirm}` : ""}` }))} /></Field>}<div className="grid gap-4 rounded-xl border border-border/70 bg-surface/30 p-4 sm:grid-cols-2"><Field label="Commitment amount"><Input type="number" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="250000" autoFocus={Boolean(existing)} /></Field><Field label="Expected close"><DatePicker value={form.expectedCloseDate} onChange={(date) => setForm({ ...form, expectedCloseDate: date })} /></Field></div><Field label="Confidence"><Select value={form.status} onValueChange={(value) => setForm({ ...form, status: value as CommitmentStatus })} options={COMMITMENT_STATUSES.map((status) => ({ value: status, label: `${COMMITMENT_STATUS_LABELS[status]} — ${COMMITMENT_STATUS_HINTS[status]}` }))} /></Field><DialogFooter className="border-t border-border/70 pt-5"><Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit" disabled={busy}>{busy ? "Saving…" : existing ? "Save changes" : "Add commitment"}</Button></DialogFooter></form></DialogContent></Dialog>;
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-xl gap-0 overflow-hidden p-0 sm:p-0"><DialogHeader className="border-b border-border/70 bg-surface/40 px-6 py-5"><DialogTitle>{existing ? "Edit commitment" : "Record a commitment"}</DialogTitle><DialogDescription>{existing ? "Keep the amount, confidence, and close date current." : "Choose an investor already in this round, then capture what they committed."}</DialogDescription></DialogHeader><form className="space-y-5 px-6 py-5" onSubmit={submit}>{!existing && <Field label="Investor"><Select value={form.pipelineId} onValueChange={(value) => setForm({ ...form, pipelineId: value })} options={pipeline.map((deal) => ({ value: deal.id, label: `${deal.investor.fullName}${deal.investor.ventureFirm ? ` ${deal.investor.ventureFirm}` : ""}` }))} /></Field>}<div className="grid gap-4 rounded-xl border border-border/70 bg-surface/30 p-4 sm:grid-cols-2"><Field label="Commitment amount"><Input type="number" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="250000" autoFocus={Boolean(existing)} /></Field><Field label="Expected close"><DatePicker value={form.expectedCloseDate} onChange={(date) => setForm({ ...form, expectedCloseDate: date })} /></Field></div><Field label="Confidence"><Select value={form.status} onValueChange={(value) => setForm({ ...form, status: value as CommitmentStatus })} options={COMMITMENT_STATUSES.map((status) => ({ value: status, label: `${COMMITMENT_STATUS_LABELS[status]} ${COMMITMENT_STATUS_HINTS[status]}` }))} /></Field><DialogFooter className="border-t border-border/70 pt-5"><Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit" disabled={busy}>{busy ? "Saving…" : existing ? "Save changes" : "Add commitment"}</Button></DialogFooter></form></DialogContent></Dialog>;
 }
 
 /**
@@ -311,7 +311,7 @@ type RoundIntelligenceProps = {
 };
 
 /**
- * Weighted pipeline, days to close, and at-risk commitments — the forward-
+ * Weighted pipeline, days to close, and at-risk commitments the forward-
  * looking half of "how is this round actually going", as opposed to the
  * totals above which only describe money already recorded. Fails
  * independently of the rest of the page: a metrics-endpoint error here does
@@ -419,7 +419,7 @@ function closeCountdown(iso: string | null): { text: string; overdue: boolean } 
 
 function Field({ label, children }: { label: string; children: ReactNode }) { return <div className="grid gap-2"><Label>{label}</Label>{children}</div>; }
 /**
- * `muted` dims the tile — used for soft-circled, which is not raised money.
+ * `muted` dims the tile used for soft-circled, which is not raised money.
  * `onClick`, when given, turns the tile into a filter toggle for whatever
  * list sits below it; `active` reflects whether that filter is currently on.
  */

@@ -717,7 +717,7 @@ describe("InviteService.removeMember", () => {
           }),
           delete: jest.fn().mockResolvedValue({}),
         },
-        // Removing a member hands back what they held first — the composite
+        // Removing a member hands back what they held first the composite
         // FKs cannot SET NULL alone without nulling startupId too.
         pipeline: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         task: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
@@ -744,7 +744,7 @@ describe("InviteService.removeMember", () => {
           }),
           delete: jest.fn().mockResolvedValue({}),
         },
-        // Removing a member hands back what they held first — the composite
+        // Removing a member hands back what they held first the composite
         // FKs cannot SET NULL alone without nulling startupId too.
         pipeline: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         task: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
@@ -932,8 +932,8 @@ describe("InviteService.claimPendingInvites", () => {
       joinedAt: expect.any(Date),
       inviteExpiresAt: null,
     });
-    // The hash is kept so the emailed link still resolves — to "you're in"
-    // rather than "invalid invitation" — now that registration has claimed it.
+    // The hash is kept so the emailed link still resolves to "you're in"
+    // rather than "invalid invitation" now that registration has claimed it.
     expect(claim.data.inviteTokenHash).toBeUndefined();
   });
 

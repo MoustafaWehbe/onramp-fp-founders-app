@@ -41,7 +41,7 @@ export function getAppUrl(): string {
   const raw = process.env.APP_URL ?? process.env.CORS_ORIGIN;
 
   if (!raw) {
-    throw new Error("APP_URL is not set (CORS_ORIGIN is unset too) — cannot build email links");
+    throw new Error("APP_URL is not set (CORS_ORIGIN is unset too) cannot build email links");
   }
 
   let parsed: URL;
@@ -68,7 +68,7 @@ export function getAppUrl(): string {
  * too high (or `true`) and a client can forge `X-Forwarded-For` to present a
  * fresh IP on every request and never be limited at all.
  *
- * Defaults to 0 — trust nothing — which is correct for local development and
+ * Defaults to 0 trust nothing which is correct for local development and
  * for a process exposed directly. Set TRUST_PROXY to the number of hops you
  * actually run behind (typically 1 for a single nginx/ALB/Cloudflare layer).
  */
@@ -81,7 +81,7 @@ export function getTrustProxy(): number | string | boolean {
 
   // Anything else is treated as a comma-separated list of trusted addresses or
   // subnets, which Express parses itself. `true` is deliberately not special-
-  // cased — spell out the hop count or the addresses instead.
+  // cased spell out the hop count or the addresses instead.
   return raw;
 }
 

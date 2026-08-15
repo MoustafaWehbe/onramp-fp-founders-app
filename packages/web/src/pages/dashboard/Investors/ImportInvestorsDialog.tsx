@@ -218,7 +218,7 @@ export function ImportInvestorsDialog({
         <DialogHeader>
           <DialogTitle>Import investors from CSV</DialogTitle>
           <DialogDescription>
-            Upload a CSV of investor contacts — columns are matched automatically.
+            Upload a CSV of investor contacts columns are matched automatically.
           </DialogDescription>
         </DialogHeader>
 
@@ -239,7 +239,7 @@ export function ImportInvestorsDialog({
               ))}
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
-              Only <span className="font-medium text-foreground">name</span> is required — column
+              Only <span className="font-medium text-foreground">name</span> is required column
               order doesn't matter, and unrecognized columns are ignored. Valid types:{" "}
               {INVESTOR_TYPES.join(", ")}.
             </p>

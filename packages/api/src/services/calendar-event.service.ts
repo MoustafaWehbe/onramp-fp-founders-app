@@ -22,7 +22,7 @@ export interface ScheduleMeetingResult {
   eventId: string;
   htmlLink: string;
   /** False only if the event was created at Google but the log write had to
-   *  be deferred — the event itself is never rolled back or reported as failed. */
+   *  be deferred the event itself is never rolled back or reported as failed. */
   logCreated: boolean;
 }
 
@@ -89,11 +89,11 @@ export class CalendarEventService {
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
       // A connection made before the write scope existed still has a valid
-      // grant — it just lacks this permission, so it won't hit the
+      // grant it just lacks this permission, so it won't hit the
       // invalid_grant path getValidAccessToken already handles.
       if (res.status === 403 && /insufficient/i.test(detail)) {
         throw createError(
-          "Google needs a fresh permission grant to create calendar events — reconnect your account in Settings.",
+          "Google needs a fresh permission grant to create calendar events reconnect your account in Settings.",
           409,
           "GOOGLE_INSUFFICIENT_SCOPE",
         );
@@ -108,7 +108,7 @@ export class CalendarEventService {
     const created = (await res.json()) as { id: string; htmlLink: string };
 
     // The event is already created and the investor already invited at this
-    // point — a log-write failure here must never be reported as a failed
+    // point a log-write failure here must never be reported as a failed
     // schedule. Unlike Gmail send, this has no dedicated retry queue: the
     // normal calendar-sync cron will pick the event up on its own once the
     // meeting time has passed (it matches by attendee email and dedupes on

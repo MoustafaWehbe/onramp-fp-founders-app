@@ -10,7 +10,7 @@
  *
  * The implementation here is in-process: it only reaches clients connected to
  * *this* API process. That is correct for a single instance and wrong the
- * moment there are two — an event raised on instance A never reaches a stream
+ * moment there are two an event raised on instance A never reaches a stream
  * held open by instance B. Swapping in Redis pub/sub means writing another
  * RealtimeBus and changing the export at the bottom of this file; nothing
  * that publishes or subscribes needs to know which one it got.
@@ -29,7 +29,7 @@ export type ChatEvent =
       conversationId: string;
       messageId: string;
       seq: string;
-      /** Set when the message is a thread reply — lets the client also refresh the open thread panel. */
+      /** Set when the message is a thread reply lets the client also refresh the open thread panel. */
       parentMessageId: string | null;
     }
   | { type: "chat.conversation.changed"; conversationId: string }
@@ -82,7 +82,7 @@ class InProcessRealtimeBus implements RealtimeBus {
 
     let released = false;
     return () => {
-      // Guard against a double call — the SSE handler unsubscribes on both
+      // Guard against a double call the SSE handler unsubscribes on both
       // "close" and its own error path.
       if (released) return;
       released = true;

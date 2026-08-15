@@ -28,7 +28,7 @@ vi.mock("../../lib/team-api", () => ({
 }));
 
 // Drives usePermissions, which is what gates every management action. The
-// real hook reads member.permissions (live grants), not the role name — so
+// real hook reads member.permissions (live grants), not the role name so
 // the fixture derives them the same way the server would, from the same
 // per-role template used to cross-check the server in lib/permissions.test.ts.
 let workspaceRole = "owner";
@@ -347,7 +347,7 @@ describe("Team", () => {
     await user.click(screen.getByRole("button", { name: /invite teammate/i }));
     await user.click(screen.getByRole("button", { name: /viewer/i }));
 
-    // Radix nests a DropdownMenu inside the invite Dialog — each layer's own
+    // Radix nests a DropdownMenu inside the invite Dialog each layer's own
     // "hide the rest of the page" aria-hidden trick makes the open menu
     // invisible to testing-library's accessibility-tree-aware role queries,
     // even though it's genuinely open and interactive. Query the raw DOM node
@@ -421,7 +421,7 @@ describe("Team", () => {
     renderTeam();
     await screen.findAllByText("Jane Doe");
 
-    expect(screen.getByText("Full access — can't be changed.")).toBeInTheDocument();
+    expect(screen.getByText("Full access can't be changed.")).toBeInTheDocument();
     // Only the two non-owner roles (collaborator, viewer) get an edit button.
     expect(screen.getAllByRole("button", { name: /edit permissions/i })).toHaveLength(2);
   });

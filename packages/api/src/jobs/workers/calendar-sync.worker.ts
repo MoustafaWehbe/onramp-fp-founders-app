@@ -7,7 +7,7 @@ export interface CalendarSyncJobData {
 
 export const calendarSyncJob = {
   name: "calendar-sync" as const,
-  // Google Calendar API quota is per-project, not per-connection — a low
+  // Google Calendar API quota is per-project, not per-connection a low
   // concurrency keeps many connections syncing at once from bursting it.
   concurrency: 3,
 

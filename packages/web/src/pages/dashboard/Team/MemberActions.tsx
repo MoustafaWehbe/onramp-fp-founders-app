@@ -14,7 +14,7 @@ import { roleLabel, type TeamMemberRow } from "./team-types";
 type MemberActionsProps = {
   member: TeamMemberRow;
   roles: StartupRole[];
-  /** team:create — resending only re-issues a link for a role already decided. */
+  /** team:create resending only re-issues a link for a role already decided. */
   canResend: boolean;
   /** team:update */
   canChangeRole: boolean;

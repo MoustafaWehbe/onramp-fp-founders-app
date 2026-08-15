@@ -64,7 +64,7 @@ export class InviteService {
       throw createError("Only owners can assign the owner role", 403, "OWNER_ONLY");
     }
     // A non-owner (i.e. a collaborator, the only other role with team:create
-    // today) may only invite into the viewer role — owner invites anyone.
+    // today) may only invite into the viewer role owner invites anyone.
     if (!actorIsOwner && role.name !== "viewer") {
       throw createError("Only owners can invite into this role", 403, "INVITE_ROLE_FORBIDDEN");
     }
@@ -111,7 +111,7 @@ export class InviteService {
   /**
    * Issues a fresh token for a still-pending invitation and restarts its 7-day
    * clock. Only the hash of the original is stored, so the old link cannot be
-   * re-sent — it is replaced, and any copy already in someone's inbox stops
+   * re-sent it is replaced, and any copy already in someone's inbox stops
    * working.
    */
   async resendInvite(startupId: string, memberId: string) {
@@ -162,8 +162,8 @@ export class InviteService {
     }
 
     // Accepting is idempotent for the person it belongs to. The link survives
-    // activation precisely so that opening it a second time — or opening it
-    // after registration already claimed the invite — says "you're in" rather
+    // activation precisely so that opening it a second time or opening it
+    // after registration already claimed the invite says "you're in" rather
     // than "invalid link".
     if (member.status === "active") {
       if (viewerUserId && member.userId === viewerUserId) {
@@ -219,7 +219,7 @@ export class InviteService {
   private async activateMembership(memberId: string, userId: string) {
     return prisma.$transaction(async (tx) => {
       // Re-check status inside the transaction so two concurrent accepts cannot
-      // both activate — the second finds nothing pending and bails.
+      // both activate the second finds nothing pending and bails.
       const claimed = await tx.startupMember.updateMany({
         where: { id: memberId, status: "pending" },
         data: {
@@ -283,7 +283,7 @@ export class InviteService {
   }
 
   /**
-   * Accepts by membership id rather than token — the caller proved who they are
+   * Accepts by membership id rather than token the caller proved who they are
    * with their session, so no secret from the email is needed.
    */
   async acceptMyInvite(memberId: string, userId: string) {
@@ -428,7 +428,7 @@ export class InviteService {
       // Hand back whatever this member held before the row goes. The FKs
       // point at the composite [id, startupId], so the database cannot do
       // this for us: ON DELETE SET NULL would null startupId too, and that
-      // column is NOT NULL — the delete fails outright. Clearing the
+      // column is NOT NULL the delete fails outright. Clearing the
       // references here also keeps the intent visible: removing someone
       // un-owns their deals and unassigns their tasks, it does not delete
       // either.
@@ -440,7 +440,7 @@ export class InviteService {
         where: { startupId, assigneeId: memberId },
         data: { assigneeId: null },
       });
-      // Their chat history stays — only the attribution is cleared, the same
+      // Their chat history stays only the attribution is cleared, the same
       // way an unassigned task keeps its title.
       await tx.message.updateMany({
         where: { startupId, senderId: memberId },

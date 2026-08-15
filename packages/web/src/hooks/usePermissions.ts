@@ -11,7 +11,7 @@ type Permissions = {
 /**
  * What the signed-in user may do in the workspace they currently have open.
  * Checked against the role's live "resource:action" grants (from the DB, via
- * the workspace list response) rather than a hardcoded per-role table — a
+ * the workspace list response) rather than a hardcoded per-role table a
  * role's permissions can be edited, or a workspace can define its own custom
  * role, and this must reflect that without a code change.
  */

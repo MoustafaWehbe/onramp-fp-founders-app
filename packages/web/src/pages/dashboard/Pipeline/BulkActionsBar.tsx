@@ -34,7 +34,7 @@ type BulkActionsBarProps = {
   onClear: () => void;
 };
 
-/** "3 of 5 succeeded" phrasing — a bulk action must never claim more than it did. */
+/** "3 of 5 succeeded" phrasing a bulk action must never claim more than it did. */
 function reportOutcome(
   results: PromiseSettledResult<unknown>[],
   { done, failed }: { done: (count: number) => string; failed: string },
@@ -55,7 +55,7 @@ function reportOutcome(
 /**
  * Acts on every picked card at once. Assigning ten deals to a teammate, or
  * giving a batch of new investors the same first next step, was ten trips
- * through the deal sheet — the kind of chore that quietly stops happening.
+ * through the deal sheet the kind of chore that quietly stops happening.
  */
 export function BulkActionsBar({
   startupId,
@@ -119,7 +119,7 @@ export function BulkActionsBar({
                 disabled={busy || selected.length === 0}
                 onValueChange={(value) => {
                   setOwnerId(value);
-                  // Selecting a name is the action — an extra "apply" click
+                  // Selecting a name is the action an extra "apply" click
                   // buys nothing when the bar disappears straight afterwards.
                   if (value !== "") assignMutation.mutate(value);
                 }}
@@ -182,7 +182,7 @@ type BulkTaskDialogProps = {
   onDone: () => void;
 };
 
-/** One task, copied onto every selected deal — same title, owner and due date. */
+/** One task, copied onto every selected deal same title, owner and due date. */
 function BulkTaskDialog({
   open,
   onOpenChange,

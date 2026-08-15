@@ -61,7 +61,7 @@ export function LogInteractionDialog({
   useEffect(() => {
     if (!open) return;
     setType(log?.type ?? "call");
-    // A new entry defaults to now — most interactions are logged just after
+    // A new entry defaults to now most interactions are logged just after
     // they happen.
     setInteractionDate(log?.interactionDate ? new Date(log.interactionDate) : new Date());
     setSubject(log?.subject ?? "");

@@ -36,7 +36,7 @@ function conversationDisplayName(conversation: Conversation): string {
   return c ? `${c.firstName ?? ""} ${c.lastName ?? ""}`.trim() || "Teammate" : "Direct message";
 }
 
-/** Consecutive messages from the same sender, close enough together to read as one run, collapse under a single avatar/name — same 5-minute window Slack uses. */
+/** Consecutive messages from the same sender, close enough together to read as one run, collapse under a single avatar/name same 5-minute window Slack uses. */
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
 
 function isGrouped(previous: Message | undefined, message: Message): boolean {
@@ -60,26 +60,26 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
   const messages = messagesQuery.data ?? [];
   const resolved = useResolvedMentions(startupId, messages);
 
-  /** Scrolling to a sentinel at the very end is more reliable than computing scrollHeight by hand — it can't drift out of sync with layout the way a manual scrollTo can. */
+  /** Scrolling to a sentinel at the very end is more reliable than computing scrollHeight by hand it can't drift out of sync with layout the way a manual scrollTo can. */
   function scrollToBottom(behavior: ScrollBehavior = "auto") {
     bottomRef.current?.scrollIntoView({ behavior, block: "end" });
   }
 
   // A new channel or an incoming live message should both land at the bottom
-  // — the newest message is what a founder opened the thread to see.
+  // the newest message is what a founder opened the thread to see.
   useEffect(() => {
     scrollToBottom();
   }, [messages.length, conversation.id]);
 
   // Opening a room (or a new message landing while it's open) counts as
-  // having seen it — clears the unread badge without the founder doing
+  // having seen it clears the unread badge without the founder doing
   // anything extra.
   useEffect(() => {
     if (conversation.unreadCount === 0) return;
     void markConversationRead(startupId, conversation.id)
       .then(() => void queryClient.invalidateQueries({ queryKey: qk.conversations(startupId) }))
       .catch(() => {
-        // A missed read receipt just leaves the badge stale — not worth surfacing.
+        // A missed read receipt just leaves the badge stale not worth surfacing.
       });
   }, [startupId, conversation.id, conversation.unreadCount, queryClient]);
 

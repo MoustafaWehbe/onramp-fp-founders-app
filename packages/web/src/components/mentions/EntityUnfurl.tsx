@@ -10,7 +10,7 @@ import { entityHref } from "../../lib/entity-routes";
 import type { ResolvedMention } from "../../lib/chat-api";
 
 /**
- * Only the CRM-anchored reference types unfurl into a card — a chip that
+ * Only the CRM-anchored reference types unfurl into a card a chip that
  * just names a teammate ("hey @Alice") does not need a card underneath it
  * the way a deal or a document does.
  */

@@ -15,7 +15,7 @@ type EmptyStateProps = {
 
 /**
  * One empty-state layout for every "nothing here" moment in the workspace —
- * icon, title, short detail, optional action — so founders learn its shape
+ * icon, title, short detail, optional action so founders learn its shape
  * once instead of re-reading a differently laid out message on every page.
  */
 export function EmptyState({

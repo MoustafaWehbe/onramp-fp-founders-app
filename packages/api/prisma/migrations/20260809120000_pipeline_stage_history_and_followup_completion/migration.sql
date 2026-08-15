@@ -1,10 +1,10 @@
 -- Follow-up completion + pipeline stage history.
 --
--- 1. interaction_logs.followup_completed_at — a follow-up is outstanding while
+-- 1. interaction_logs.followup_completed_at a follow-up is outstanding while
 --    this is null, so an old nextFollowupDate stops reading as overdue forever.
--- 2. pipeline.stage_changed_at — time-in-stage. updated_at cannot serve, it
+-- 2. pipeline.stage_changed_at time-in-stage. updated_at cannot serve, it
 --    moves whenever the amount or probability is edited.
--- 3. pipeline_stage_events — append-only history, the only way to answer
+-- 3. pipeline_stage_events append-only history, the only way to answer
 --    "how many deals that reached a meeting went on to diligence".
 
 ALTER TABLE "interaction_logs"

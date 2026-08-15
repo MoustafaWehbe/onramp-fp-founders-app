@@ -47,7 +47,7 @@ function sendEmailErrorMessage(err: unknown): string {
     case "GOOGLE_NOT_CONNECTED":
       return "Connect your Google account in Settings to send email.";
     case "GOOGLE_NEEDS_REAUTH":
-      return "Your Google connection needs to be reconnected — see Settings.";
+      return "Your Google connection needs to be reconnected see Settings.";
     case "GMAIL_SEND_FAILED":
       return "Google rejected the send. Please try again.";
     default:
@@ -65,7 +65,7 @@ function scheduleMeetingErrorMessage(err: unknown): string {
       return "Connect your Google account in Settings to schedule meetings.";
     case "GOOGLE_NEEDS_REAUTH":
     case "GOOGLE_INSUFFICIENT_SCOPE":
-      return "Your Google connection needs to be reconnected — see Settings.";
+      return "Your Google connection needs to be reconnected see Settings.";
     case "CALENDAR_EVENT_FAILED":
       return "Google rejected the request. Please try again.";
     default:
@@ -85,7 +85,7 @@ function logErrorMessage(err: unknown, fallback: string): string {
     case "PIPELINE_MISMATCH":
       return "That pipeline entry belongs to a different contact.";
     case "LOG_NOT_FOUND":
-      return "That entry no longer exists — a teammate may have removed it.";
+      return "That entry no longer exists a teammate may have removed it.";
     case "INVESTOR_NOT_FOUND":
       return "This contact no longer exists.";
     default:
@@ -163,7 +163,7 @@ export function InvestorDetailDialog({
   const logs = logsQuery.data?.data ?? [];
 
   // Logging an interaction is what moves a contact out of Prospects, and it
-  // also feeds nextFollowupDate on the list — both come from the list query.
+  // also feeds nextFollowupDate on the list both come from the list query.
   const invalidate = () => invalidateInteractionData(queryClient, startupId);
 
   const saveMutation = useMutation({
@@ -200,7 +200,7 @@ export function InvestorDetailDialog({
       toast.success(
         result.logCreated
           ? "Email sent and logged"
-          : "Email sent — it'll appear in the timeline shortly",
+          : "Email sent it'll appear in the timeline shortly",
       );
       setComposeOpen(false);
       invalidate();
@@ -222,7 +222,7 @@ export function InvestorDetailDialog({
       toast.success(
         result.logCreated
           ? "Meeting scheduled and logged"
-          : "Meeting scheduled — it'll appear in the timeline shortly",
+          : "Meeting scheduled it'll appear in the timeline shortly",
       );
       setScheduleOpen(false);
       invalidate();
@@ -401,7 +401,7 @@ export function InvestorDetailDialog({
                   stageEvents={stageEventsQuery.data ?? []}
                   authorNames={authorNames}
                   // stageEventsQuery is disabled for a prospect with no pipeline
-                  // entry — isPending stays true forever on a disabled query, so
+                  // entry isPending stays true forever on a disabled query, so
                   // it must not count as "loading" while fetchStatus is idle.
                   isLoading={
                     logsQuery.isPending ||

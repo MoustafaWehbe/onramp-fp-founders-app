@@ -240,7 +240,7 @@ describe("InvestorDetailDialog interaction history", () => {
     );
   });
 
-  it("offers only Delete for a note, never Edit — the edit dialog's type/date form doesn't fit a note", async () => {
+  it("offers only Delete for a note, never Edit the edit dialog's type/date form doesn't fit a note", async () => {
     listLogsForInvestor.mockResolvedValue({
       data: [log({ id: "log-note", type: "note", subject: null, description: "Prefers async updates." })],
       meta: { page: 1, limit: 50, total: 1, totalPages: 1 },

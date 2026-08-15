@@ -99,7 +99,7 @@ export class StartupService {
   /**
    * Every workspace the caller can actually open. Scoped by membership rather
    * than by a startup id, so this is the one startup endpoint that cannot use
-   * requireMember — it is what the client calls before it knows which startup
+   * requireMember it is what the client calls before it knows which startup
    * it is in.
    */
   async listMyStartups(userId: string) {
@@ -333,7 +333,7 @@ export class StartupService {
       throw createError("System roles can't be deleted", 403, "SYSTEM_ROLE");
     }
     if (role._count.members > 0) {
-      throw createError("This role is still assigned to members — move them to another role first", 409, "ROLE_IN_USE");
+      throw createError("This role is still assigned to members move them to another role first", 409, "ROLE_IN_USE");
     }
 
     await prisma.role.delete({ where: { id: roleId } });

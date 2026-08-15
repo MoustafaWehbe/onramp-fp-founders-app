@@ -37,7 +37,7 @@ import { RolePermissionsDialog, type RolePermissionsFormValues } from "./RolePer
 import { mapMemberToRow, roleLabel, type TeamMemberRow } from "./team-types";
 
 const FORBIDDEN_HINT =
-  "You don't have permission to manage this team — only owners can invite, change roles, or remove members.";
+  "You don't have permission to manage this team only owners can invite, change roles, or remove members.";
 
 /** Maps the API's operational error codes onto copy that explains the rule. */
 function mutationErrorMessage(err: unknown, fallback: string): string {
@@ -59,7 +59,7 @@ function mutationErrorMessage(err: unknown, fallback: string): string {
     case "SYSTEM_ROLE":
       return "Built-in roles can't be deleted.";
     case "ROLE_IN_USE":
-      return "This role is still assigned to members — move them to another role first.";
+      return "This role is still assigned to members move them to another role first.";
     default:
       return apiErrorMessage(err, fallback, FORBIDDEN_HINT);
   }
@@ -101,7 +101,7 @@ export function Team() {
   const canRemoveMember = can("team", "delete");
   const canManageRoles = can("team", "manage");
   // Owners may invite into any role; collaborators (the only other holder of
-  // team:create) may only invite viewers — enforced server-side too.
+  // team:create) may only invite viewers enforced server-side too.
   const canInviteAnyRole = myRole === "owner";
 
   const activeCount = members.filter((member) => !member.isPending).length;
@@ -113,7 +113,7 @@ export function Team() {
   const invalidateRoles = () => {
     void queryClient.invalidateQueries({ queryKey: qk.roles(startupId) });
     // A role's own permissions may have just changed, which changes what the
-    // signed-in owner (or anyone else) is allowed to do — refresh the
+    // signed-in owner (or anyone else) is allowed to do refresh the
     // workspace list so usePermissions sees the new grants right away.
     void queryClient.invalidateQueries({ queryKey: MY_STARTUPS_KEY });
   };
@@ -126,7 +126,7 @@ export function Team() {
         toast.success(`Invitation sent to ${input.email}`);
       } else {
         // The membership row exists either way. The raw token never leaves the
-        // server, so there is no link to share by hand — resending issues a
+        // server, so there is no link to share by hand resending issues a
         // fresh one and mails it again.
         toast.warning(
           `${input.email} was invited, but the email failed to send. Use Resend invitation to try again.`,
@@ -292,7 +292,7 @@ export function Team() {
                       {role.description || `${role.permissions.length} permissions granted`}
                     </p>
                     {isOwnerRole ? (
-                      <p className="text-xs text-muted-foreground">Full access — can't be changed.</p>
+                      <p className="text-xs text-muted-foreground">Full access can't be changed.</p>
                     ) : (
                       canManageRoles && (
                         <div className="flex items-center gap-2">

@@ -119,7 +119,7 @@ describe("useWorkspace", () => {
   });
 
   it("ignores a stored id that is no longer in the list", async () => {
-    // Left the workspace, or it was seeded by an older build — either way the
+    // Left the workspace, or it was seeded by an older build either way the
     // stored preference must not strand the user on a 403.
     preferredStartupId = "s-deleted";
 

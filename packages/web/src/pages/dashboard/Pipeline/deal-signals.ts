@@ -3,7 +3,7 @@ import type { FocusReason, PipelineEntry } from "../../../lib/pipeline-api";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Short chip copy for why a deal showed up in Focus — server-computed, client just labels it. */
+/** Short chip copy for why a deal showed up in Focus server-computed, client just labels it. */
 export const FOCUS_REASON_LABELS: Record<FocusReason, string> = {
   overdue: "Task overdue",
   today: "Task due today",

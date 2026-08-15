@@ -1,4 +1,4 @@
--- Commitment status history — the funding chart needs to know when money
+-- Commitment status history the funding chart needs to know when money
 -- actually moved from soft-circled to hard-circled to wired, not just when
 -- the commitment row was first created.
 
@@ -32,7 +32,7 @@ ALTER TABLE "commitment_status_events" ADD CONSTRAINT "commitment_status_events_
 -- Existing commitments predate this table, so there is no real transition
 -- moment to record for them. Backfilling one synthetic "recorded at creation"
 -- event (fromStatus null, same as a fresh commitment) means every commitment
--- has at least one point in its history rather than none — the funding chart
+-- has at least one point in its history rather than none the funding chart
 -- would otherwise show these as never having become bankable.
 INSERT INTO "commitment_status_events" ("id", "startup_id", "commitment_id", "from_status", "to_status", "created_at")
 SELECT gen_random_uuid(), "startup_id", "id", NULL, "status", "created_at"

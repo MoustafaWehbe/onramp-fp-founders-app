@@ -169,7 +169,7 @@ describe("StartupService.listMyStartups", () => {
       name: "Acme Corp",
       member: { role: "owner", status: "active", permissions: ["startup:read"] },
     });
-    // Pending invitations are not openable workspaces — they must not appear.
+    // Pending invitations are not openable workspaces they must not appear.
     expect(mockPrisma.startupMember.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { userId: USER_ID, status: "active" } }),
     );

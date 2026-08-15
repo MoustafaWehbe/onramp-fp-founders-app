@@ -14,11 +14,11 @@ import { listInteractionLogQuerySchema } from "../validators/interaction-log.sch
 import { pipelineController } from "../controllers/pipeline.controller";
 import { interactionLogController } from "../controllers/interaction-log.controller";
 
-// Mounted at /api/v1/startups/:startupId/pipeline — mergeParams keeps
+// Mounted at /api/v1/startups/:startupId/pipeline mergeParams keeps
 // :startupId visible to the RBAC middleware and the controllers.
 const router = Router({ mergeParams: true });
 
-// POST /api/v1/startups/:startupId/pipeline — pipeline:create
+// POST /api/v1/startups/:startupId/pipeline pipeline:create
 router.post(
   "/",
   authenticate,
@@ -29,7 +29,7 @@ router.post(
   pipelineController.createEntry,
 );
 
-// GET /api/v1/startups/:startupId/pipeline — pipeline:read
+// GET /api/v1/startups/:startupId/pipeline pipeline:read
 router.get(
   "/",
   authenticate,
@@ -40,7 +40,7 @@ router.get(
   pipelineController.listEntries,
 );
 
-// GET /api/v1/startups/:startupId/pipeline/analytics — pipeline:read
+// GET /api/v1/startups/:startupId/pipeline/analytics pipeline:read
 // Registered before /:pipelineId so "analytics" is never parsed as an id.
 router.get(
   "/analytics",
@@ -52,7 +52,7 @@ router.get(
   pipelineController.getAnalytics,
 );
 
-// GET /api/v1/startups/:startupId/pipeline/focus — pipeline:read
+// GET /api/v1/startups/:startupId/pipeline/focus pipeline:read
 // Registered before /:pipelineId so "focus" is never parsed as an id.
 router.get(
   "/focus",
@@ -64,7 +64,7 @@ router.get(
   pipelineController.getFocus,
 );
 
-// GET /api/v1/startups/:startupId/pipeline/:pipelineId — pipeline:read
+// GET /api/v1/startups/:startupId/pipeline/:pipelineId pipeline:read
 router.get(
   "/:pipelineId",
   authenticate,
@@ -74,7 +74,7 @@ router.get(
   pipelineController.getEntry,
 );
 
-// PATCH /api/v1/startups/:startupId/pipeline/:pipelineId — pipeline:update
+// PATCH /api/v1/startups/:startupId/pipeline/:pipelineId pipeline:update
 router.patch(
   "/:pipelineId",
   authenticate,
@@ -85,7 +85,7 @@ router.patch(
   pipelineController.updateEntry,
 );
 
-// DELETE /api/v1/startups/:startupId/pipeline/:pipelineId — pipeline:delete
+// DELETE /api/v1/startups/:startupId/pipeline/:pipelineId pipeline:delete
 router.delete(
   "/:pipelineId",
   authenticate,
@@ -95,7 +95,7 @@ router.delete(
   pipelineController.deleteEntry,
 );
 
-// GET /api/v1/startups/:startupId/pipeline/:pipelineId/interaction-logs — pipeline:read
+// GET /api/v1/startups/:startupId/pipeline/:pipelineId/interaction-logs pipeline:read
 router.get(
   "/:pipelineId/interaction-logs",
   authenticate,
@@ -106,7 +106,7 @@ router.get(
   interactionLogController.listLogsByPipeline,
 );
 
-// GET /api/v1/startups/:startupId/pipeline/:pipelineId/stage-events — pipeline:read
+// GET /api/v1/startups/:startupId/pipeline/:pipelineId/stage-events pipeline:read
 router.get(
   "/:pipelineId/stage-events",
   authenticate,

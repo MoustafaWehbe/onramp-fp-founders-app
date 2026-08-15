@@ -8,7 +8,7 @@ export type GoogleConnectionStatus = {
   calendarSyncEnabled?: boolean;
   lastSyncedAt?: string | null;
   lastError?: string | null;
-  /** Whether this deployment has the integration set up at all — see config/env.ts. */
+  /** Whether this deployment has the integration set up at all see config/env.ts. */
   configured: boolean;
 };
 
@@ -27,7 +27,7 @@ export async function getGoogleConnectionStatus(): Promise<GoogleConnectionStatu
 }
 
 /**
- * A full-page navigation, not a fetch — Google's consent screen has to be the
+ * A full-page navigation, not a fetch Google's consent screen has to be the
  * top-level document, and the callback lands back on /settings with the
  * result already applied server-side.
  */

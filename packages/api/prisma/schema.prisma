@@ -55,13 +55,13 @@ model GoogleConnection {
   id     String @id @default(uuid())
   userId String @unique @map("user_id")
 
-  // The Google account actually connected — may differ from the sign-in email.
+  // The Google account actually connected may differ from the sign-in email.
   googleEmail String @map("google_email")
 
   // OAuth scopes granted at consent time, e.g. "calendar.events gmail.send".
   scopes String @map("scopes")
 
-  // AES-256-GCM ciphertext (iv + auth tag + ciphertext, base64) — never the raw token.
+  // AES-256-GCM ciphertext (iv + auth tag + ciphertext, base64) never the raw token.
   refreshTokenCipher String @map("refresh_token_cipher")
 
   status String @default("active")
@@ -509,7 +509,7 @@ model CommitmentStatusEvent {
   id           String   @id @default(uuid())
   startupId    String   @map("startup_id")
   commitmentId String   @map("commitment_id")
-  // Null for the first event — the commitment being recorded.
+  // Null for the first event the commitment being recorded.
   fromStatus   String?  @map("from_status")
   toStatus     String   @map("to_status")
   changedBy    String?  @map("changed_by")

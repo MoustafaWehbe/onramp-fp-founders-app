@@ -27,7 +27,7 @@ type MentionContext = {
 /**
  * `@` anywhere in the message opens the picker. Only fires after
  * start-of-string or whitespace, so "email@x.com" never triggers it.
- * Teammates only — referencing an investor, deal, task or round goes through
+ * Teammates only referencing an investor, deal, task or round goes through
  * the Share button instead, see `SHARE_TYPES` below.
  */
 function detectMentionContext(value: string, cursor: number): MentionContext | null {
@@ -44,7 +44,7 @@ const SHARE_TYPES: {
   type: MentionTargetType;
   label: string;
   icon: typeof Briefcase;
-  /** The read permission that gates offering this type at all — mirrors TYPE_PERMISSION_RESOURCE server-side. */
+  /** The read permission that gates offering this type at all mirrors TYPE_PERMISSION_RESOURCE server-side. */
   resource: "pipeline" | "financial";
 }[] = [
   { type: "investor", label: "Investor", icon: Users, resource: "pipeline" },
@@ -53,7 +53,7 @@ const SHARE_TYPES: {
   { type: "round", label: "Round", icon: Wallet, resource: "financial" },
 ];
 
-/** Minimum gap between typing pings — pinging on every keystroke would flood the SSE fan-out for no UX gain. */
+/** Minimum gap between typing pings pinging on every keystroke would flood the SSE fan-out for no UX gain. */
 const TYPING_PING_INTERVAL_MS = 2500;
 
 type ComposerProps = {
@@ -63,7 +63,7 @@ type ComposerProps = {
   /** Set to post a thread reply instead of a top-level message. */
   parentMessageId?: string;
   placeholder?: string;
-  /** Fires after a successful send, in addition to the composer's own cache invalidation — ThreadDialog uses this to refresh its reply list. */
+  /** Fires after a successful send, in addition to the composer's own cache invalidation ThreadDialog uses this to refresh its reply list. */
   onSent?: () => void;
 };
 
@@ -118,7 +118,7 @@ export function Composer({
       setBody("");
       setMention(null);
       setAttachedDocs([]);
-      // Only rotate the nonce once the send is confirmed — an error leaves it
+      // Only rotate the nonce once the send is confirmed an error leaves it
       // in place so retrying the same draft can't double-post.
       nonceRef.current = crypto.randomUUID();
       void queryClient.invalidateQueries({ queryKey: qk.messages(startupId, conversationId) });
@@ -137,7 +137,7 @@ export function Composer({
     if (now - lastTypingPingRef.current < TYPING_PING_INTERVAL_MS) return;
     lastTypingPingRef.current = now;
     void pingTyping(startupId, conversationId).catch(() => {
-      // A missed typing ping is invisible by design — nothing to recover.
+      // A missed typing ping is invisible by design nothing to recover.
     });
   }
 
@@ -173,7 +173,7 @@ export function Composer({
     setAttachedDocs((prev) => prev.filter((d) => d.id !== id));
   }
 
-  /** A Share-button pick is appended to the draft rather than spliced at the caret — it's an attachment-style reference, not something typed mid-sentence. */
+  /** A Share-button pick is appended to the draft rather than spliced at the caret it's an attachment-style reference, not something typed mid-sentence. */
   function appendMentionToken(item: MentionableItem) {
     const textarea = textareaRef.current;
     const token = mentionToken(item.type, item.id, item.label);

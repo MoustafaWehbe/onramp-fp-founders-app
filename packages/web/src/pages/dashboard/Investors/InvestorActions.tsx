@@ -25,7 +25,7 @@ type InvestorActionsProps = {
   onDelete?: (investor: InvestorRow) => void;
   onViewHistory?: (investor: InvestorRow) => void;
   onEmail?: (investor: InvestorRow) => void;
-  /** Whether the founder's Google account is connected — sending needs it. */
+  /** Whether the founder's Google account is connected sending needs it. */
   googleConnected?: boolean;
   moving?: boolean;
 };

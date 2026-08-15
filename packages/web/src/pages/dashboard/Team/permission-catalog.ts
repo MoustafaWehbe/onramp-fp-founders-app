@@ -1,5 +1,5 @@
 /**
- * Display metadata only — labels for the permission matrix editor. Mirrors
+ * Display metadata only labels for the permission matrix editor. Mirrors
  * packages/api/src/config/permissions.ts's PERMISSIONS array, but purely for
  * rendering; it never decides what a role may actually be granted. The server
  * validates every "resource:action" key against its own catalog.

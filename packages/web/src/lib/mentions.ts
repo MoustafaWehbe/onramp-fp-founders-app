@@ -1,5 +1,5 @@
 /**
- * Client-side mirror of packages/api/src/utils/mentions.ts — same token
+ * Client-side mirror of packages/api/src/utils/mentions.ts same token
  * format, same regex. A message body is plain text carrying inline
  * `@[Label](type:id)` tokens; this file is what turns those back into
  * renderable segments, and what the composer writes when a MentionPicker
@@ -26,7 +26,7 @@ export const MENTION_TYPE_LABELS: Record<MentionTargetType, string> = {
   document: "Documents",
 };
 
-/** The fixed reaction palette — the API accepts any short string, but the picker only ever offers these. */
+/** The fixed reaction palette the API accepts any short string, but the picker only ever offers these. */
 export const REACTION_EMOJIS = ["👍", "❤️", "🎉", "👀", "✅", "🚀"] as const;
 
 const UUID_PATTERN = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
@@ -38,7 +38,7 @@ const MENTION_PATTERN = new RegExp(
 
 /** Builds the literal text a MentionPicker selection inserts into the composer. */
 export function mentionToken(type: MentionTargetType, id: string, label: string): string {
-  // A label can't contain "]" — the picker's own labels never do, but guard
+  // A label can't contain "]" the picker's own labels never do, but guard
   // against a display name that does so the token still parses back out.
   return `@[${label.replace(/\]/g, "")}](${type}:${id})`;
 }
@@ -64,7 +64,7 @@ export function splitMessageBody(body: string): MessageSegment[] {
   return segments;
 }
 
-/** Every distinct (type, id) referenced in a body — what a batch /chat/resolve call needs. */
+/** Every distinct (type, id) referenced in a body what a batch /chat/resolve call needs. */
 export function collectMentionRefs(body: string): { type: MentionTargetType; id: string }[] {
   const seen = new Set<string>();
   const refs: { type: MentionTargetType; id: string }[] = [];

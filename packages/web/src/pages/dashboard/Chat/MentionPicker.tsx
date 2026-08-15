@@ -13,7 +13,7 @@ type MentionPickerProps = {
 };
 
 /**
- * Docked above the composer rather than tracking the caret — the caret-
+ * Docked above the composer rather than tracking the caret the caret-
  * coordinate mirroring trick a contenteditable picker would need is a lot of
  * fragile DOM measurement for a cosmetic gain. See Composer.tsx for how
  * selection splices the token into the textarea.

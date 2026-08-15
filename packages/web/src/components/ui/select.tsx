@@ -146,7 +146,7 @@ export type SelectOption = {
 };
 
 /**
- * Radix forbids an empty-string item value — it reserves "" for "nothing
+ * Radix forbids an empty-string item value it reserves "" for "nothing
  * selected". Callers here legitimately have an empty choice ("Unassigned",
  * "Unset"), so it is swapped for a sentinel on the way in and back out again,
  * keeping "" as the value every call site actually deals in.

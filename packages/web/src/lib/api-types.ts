@@ -52,7 +52,7 @@ export interface paths {
         put?: never;
         /**
          * Verify the code, create the account and sign in
-         * @description On success the pending registration becomes a real user, auth cookies are set, and any unexpired invitations addressed to that email are claimed automatically — so an invited person lands in their workspace without visiting the invite link again.
+         * @description On success the pending registration becomes a real user, auth cookies are set, and any unexpired invitations addressed to that email are claimed automatically so an invited person lands in their workspace without visiting the invite link again.
          */
         post: operations["registerVerify"];
         delete?: never;
@@ -218,7 +218,7 @@ export interface paths {
         };
         /**
          * List the workspaces the current user can open
-         * @description Scoped by the caller's active memberships, so this is the one startup endpoint that takes no startupId — it is what a client calls before it knows which workspace it is in. Pending invitations are excluded, since they are not openable. Not paginated: a user belongs to a handful of workspaces. An empty list means the user has no workspace yet and should be sent to onboarding — it is not a permission failure.
+         * @description Scoped by the caller's active memberships, so this is the one startup endpoint that takes no startupId it is what a client calls before it knows which workspace it is in. Pending invitations are excluded, since they are not openable. Not paginated: a user belongs to a handful of workspaces. An empty list means the user has no workspace yet and should be sent to onboarding it is not a permission failure.
          */
         get: operations["listStartups"];
         put?: never;
@@ -351,7 +351,7 @@ export interface paths {
         put?: never;
         /**
          * Reissue and resend a pending invitation
-         * @description Mints a new token and restarts the 7-day clock, then emails the link again. Only the hash of the previous token is stored, so the old link cannot be re-sent — it is replaced, and any copy already sitting in an inbox stops working.
+         * @description Mints a new token and restarts the 7-day clock, then emails the link again. Only the hash of the previous token is stored, so the old link cannot be re-sent it is replaced, and any copy already sitting in an inbox stops working.
          */
         post: operations["resendStartupInvite"];
         delete?: never;
@@ -459,7 +459,7 @@ export interface paths {
         put?: never;
         /**
          * Accept an invitation addressed to you
-         * @description Accepts by membership id rather than by token — the session already proves who the caller is. An invitation addressed to anybody else is reported as 404, not 403: the caller has no business learning it exists.
+         * @description Accepts by membership id rather than by token the session already proves who the caller is. An invitation addressed to anybody else is reported as 404, not 403: the caller has no business learning it exists.
          */
         post: operations["acceptMyInvite"];
         delete?: never;
@@ -497,7 +497,7 @@ export interface paths {
         };
         /**
          * List the signed-in user's notifications
-         * @description Notifications belong to a user, not to a workspace — someone who has been invited but has not joined anything yet still sees the invitation on their otherwise empty dashboard. There is therefore no startupId in the path and no membership check.
+         * @description Notifications belong to a user, not to a workspace someone who has been invited but has not joined anything yet still sees the invitation on their otherwise empty dashboard. There is therefore no startupId in the path and no membership check.
          */
         get: operations["listNotifications"];
         put?: never;
@@ -519,7 +519,7 @@ export interface paths {
          * Live notification stream (server-sent events)
          * @description A long-lived text/event-stream carrying the caller's notification events. Chosen over WebSockets because the traffic is one-directional: it rides ordinary HTTP, so cookie auth applies unchanged and the browser reconnects on its own (the stream advertises `retry: 5000`).
          *
-         *     Events are signals, not data — each one means "refetch". A comment heartbeat is sent every 25s to stop idle proxies hanging up, and the response sets `X-Accel-Buffering: no` because nginx would otherwise buffer the stream indefinitely.
+         *     Events are signals, not data each one means "refetch". A comment heartbeat is sent every 25s to stop idle proxies hanging up, and the response sets `X-Accel-Buffering: no` because nginx would otherwise buffer the stream indefinitely.
          *
          *     Event names: `ready` once on connect; `notification.created` when one arrives; `notifications.changed` when the unread state moved elsewhere (another tab marking read, or an invitation being accepted).
          *
@@ -581,7 +581,7 @@ export interface paths {
          * Accept a startup membership invitation
          * @description Reachable signed-out, but the membership is only ever activated for a signed-in user whose account email matches the invited address. Holding the link is not enough: an anonymous caller, or one signed in as anybody else, gets a 202 or 403 and the invitation is left untouched.
          *
-         *     Accepting is idempotent — the invited member may open the link again (including after registration already claimed the invite) and gets 200 with the same membership rather than an error.
+         *     Accepting is idempotent the invited member may open the link again (including after registration already claimed the invite) and gets 200 with the same membership rather than an error.
          */
         post: operations["acceptStartupInvite"];
         delete?: never;
@@ -691,7 +691,7 @@ export interface paths {
         put?: never;
         /**
          * Create an investor contact
-         * @description Creates a contact private to this startup. Contacts are never shared between startups — two startups tracking the same person hold two independent records.
+         * @description Creates a contact private to this startup. Contacts are never shared between startups two startups tracking the same person hold two independent records.
          */
         post: operations["createInvestor"];
         delete?: never;
@@ -927,7 +927,7 @@ export interface paths {
         };
         /**
          * List tasks in a startup
-         * @description Filterable by pipelineId, roundId, status, assigneeId, and priority — used both for a single deal's task list and cross-deal views.
+         * @description Filterable by pipelineId, roundId, status, assigneeId, and priority used both for a single deal's task list and cross-deal views.
          */
         get: operations["listTasks"];
         put?: never;
@@ -981,7 +981,7 @@ export interface paths {
         put?: never;
         /**
          * Create a channel
-         * @description Every active member of the startup is added at creation time — there is no invite-to-channel UI yet, so Phase 1 channels are workspace-wide.
+         * @description Every active member of the startup is added at creation time there is no invite-to-channel UI yet, so Phase 1 channels are workspace-wide.
          */
         post: operations["createConversation"];
         delete?: never;
@@ -1024,7 +1024,7 @@ export interface paths {
         };
         /**
          * List messages in a channel
-         * @description Cursor pagination on `seq` — pass the oldest message's `seq` on the current page as `before` to load the page above it. Returned oldest-first.
+         * @description Cursor pagination on `seq` pass the oldest message's `seq` on the current page as `before` to load the page above it. Returned oldest-first.
          */
         get: operations["listMessages"];
         put?: never;
@@ -1049,7 +1049,7 @@ export interface paths {
         };
         /**
          * List a thread's replies
-         * @description Threads are flat and unpaginated beyond `limit` — replying to a reply re-parents onto the same top-level message rather than nesting.
+         * @description Threads are flat and unpaginated beyond `limit` replying to a reply re-parents onto the same top-level message rather than nesting.
          */
         get: operations["listReplies"];
         put?: never;
@@ -1074,7 +1074,7 @@ export interface paths {
         put?: never;
         /**
          * Mark a channel read
-         * @description Advances the caller's read pointer to the latest top-level message — clears its unread badge.
+         * @description Advances the caller's read pointer to the latest top-level message clears its unread badge.
          */
         post: operations["markRead"];
         delete?: never;
@@ -1101,7 +1101,7 @@ export interface paths {
         head?: never;
         /**
          * Set the caller's mute level for a channel
-         * @description "all" and "mentions" currently behave identically — chat volume itself never raises a Notification row, so only "none" (fully muted) has an observable effect: it also suppresses the @-mention notification for this conversation.
+         * @description "all" and "mentions" currently behave identically chat volume itself never raises a Notification row, so only "none" (fully muted) has an observable effect: it also suppresses the @-mention notification for this conversation.
          */
         patch: operations["setNotifyLevel"];
         trace?: never;
@@ -1120,7 +1120,7 @@ export interface paths {
         put?: never;
         /**
          * Ping "I am typing" to the rest of the room
-         * @description Fire-and-forget — no row is written. Fans out a chat.typing SSE event to the conversation's other members; the client lets it expire a few seconds after the last ping.
+         * @description Fire-and-forget no row is written. Fans out a chat.typing SSE event to the conversation's other members; the client lets it expire a few seconds after the last ping.
          */
         post: operations["notifyTyping"];
         delete?: never;
@@ -1143,7 +1143,7 @@ export interface paths {
         put?: never;
         /**
          * Toggle a reaction on a message
-         * @description Posting the same emoji a second time removes it — this is a toggle, not an add-only endpoint.
+         * @description Posting the same emoji a second time removes it this is a toggle, not an add-only endpoint.
          */
         post: operations["toggleReaction"];
         delete?: never;
@@ -1163,7 +1163,7 @@ export interface paths {
         };
         /**
          * Autocomplete for @-references
-         * @description Fans out across members, investors, deals, tasks, rounds and documents. Each type is only searched if the caller's role holds the read permission that type is gated on (deal/investor/task need pipeline:read, round needs financial:read, document needs documents:read; member needs nothing beyond chat:read itself) — filtered server-side, not left to the client to hide.
+         * @description Fans out across members, investors, deals, tasks, rounds and documents. Each type is only searched if the caller's role holds the read permission that type is gated on (deal/investor/task need pipeline:read, round needs financial:read, document needs documents:read; member needs nothing beyond chat:read itself) filtered server-side, not left to the client to hide.
          */
         get: operations["searchMentionables"];
         put?: never;
@@ -1187,7 +1187,7 @@ export interface paths {
         put?: never;
         /**
          * Batch-render reference chips into unfurl cards
-         * @description One request per message list instead of one per chip. An item the caller cannot read, or that no longer exists, is simply absent from the response — the client falls back to the token's plain-text label rather than the whole render failing.
+         * @description One request per message list instead of one per chip. An item the caller cannot read, or that no longer exists, is simply absent from the response the client falls back to the token's plain-text label rather than the whole render failing.
          */
         post: operations["resolveMentions"];
         delete?: never;
@@ -1206,7 +1206,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Backlink — every message that references one entity
+         * Backlink every message that references one entity
          * @description Powers the Discussion tab on a deal (and, by the same query, any other entity type). Scoped to conversations the caller is a member of, newest first.
          */
         get: operations["listMentions"];
@@ -1270,7 +1270,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Round health metrics — target, raised, weighted pipeline, days to close, at-risk commitments */
+        /** Round health metrics target, raised, weighted pipeline, days to close, at-risk commitments */
         get: operations["getRoundMetrics"];
         put?: never;
         post?: never;
@@ -1292,7 +1292,7 @@ export interface paths {
         };
         /**
          * Every real commitment status transition in this round, oldest first
-         * @description What a funding-over-time chart should be built from. Does not include commitments with no status change yet beyond their initial recording — every commitment has at least that one event.
+         * @description What a funding-over-time chart should be built from. Does not include commitments with no status change yet beyond their initial recording every commitment has at least that one event.
          */
         get: operations["getFundingHistory"];
         put?: never;
@@ -1529,7 +1529,7 @@ export interface paths {
         put?: never;
         /**
          * Start access with an invitation token (triggers OTP email)
-         * @description Validates the token and, if valid and not expired/revoked, emails a fresh 6-digit OTP (10-minute TTL) to the invitation's address. Does NOT grant access by itself — call POST /reviewer-portal/verify next.
+         * @description Validates the token and, if valid and not expired/revoked, emails a fresh 6-digit OTP (10-minute TTL) to the invitation's address. Does NOT grant access by itself call POST /reviewer-portal/verify next.
          */
         post: operations["reviewerPortalAccess"];
         delete?: never;
@@ -1773,7 +1773,7 @@ export interface components {
             emailVerifiedAt?: string | null;
             /**
              * Format: uuid
-             * @description Which workspace to reopen on load. Null for someone who has neither created a startup nor accepted an invite — a client should route those users to onboarding instead of into a 403. Only returned by GET /auth/me; the sign-in responses carry a narrower user object.
+             * @description Which workspace to reopen on load. Null for someone who has neither created a startup nor accepted an invite a client should route those users to onboarding instead of into a 403. Only returned by GET /auth/me; the sign-in responses carry a narrower user object.
              */
             lastActiveStartupId?: string | null;
             /**
@@ -1992,7 +1992,7 @@ export interface components {
         PendingInvite: {
             /**
              * Format: uuid
-             * @description The membership id — what the accept and decline paths take
+             * @description The membership id what the accept and decline paths take
              */
             id?: string;
             /** Format: date-time */
@@ -2022,7 +2022,7 @@ export interface components {
             /** Format: uuid */
             id?: string;
             /**
-             * @description Rendered specially when known. The API emits "team_invite", "task_assigned", "task_overdue", "task_due_today", "lead_stale" and "deal_no_next_step"; anything else falls back to a generic icon on the client. "followup_due" is legacy — no new one is created now that tasks have superseded follow-ups, but old rows may still be present.
+             * @description Rendered specially when known. The API emits "team_invite", "task_assigned", "task_overdue", "task_due_today", "lead_stale" and "deal_no_next_step"; anything else falls back to a generic icon on the client. "followup_due" is legacy no new one is created now that tasks have superseded follow-ups, but old rows may still be present.
              * @example team_invite
              */
             type?: string;
@@ -2064,7 +2064,7 @@ export interface components {
             fullName?: string;
             /**
              * Format: email
-             * @description Optional — a contact can be added before an address is known.
+             * @description Optional a contact can be added before an address is known.
              */
             email?: string | null;
             /** @example Acme Ventures */
@@ -2111,7 +2111,7 @@ export interface components {
                 id?: string;
                 /**
                  * Format: uuid
-                 * @description Which round this entry belongs to — expectedAmount is in that round's currency, not necessarily USD. Look up GET .../fundraising-rounds for the currency.
+                 * @description Which round this entry belongs to expectedAmount is in that round's currency, not necessarily USD. Look up GET .../fundraising-rounds for the currency.
                  */
                 roundId?: string;
                 stage?: components["schemas"]["PipelineStage"];
@@ -2121,7 +2121,7 @@ export interface components {
             } | null;
             /**
              * Format: date-time
-             * @description Earliest upcoming nextFollowupDate across this contact's interaction logs; null when none is scheduled. Legacy — no new interaction log sets a follow-up date, so this only reflects data recorded before tasks superseded follow-ups.
+             * @description Earliest upcoming nextFollowupDate across this contact's interaction logs; null when none is scheduled. Legacy no new interaction log sets a follow-up date, so this only reflects data recorded before tasks superseded follow-ups.
              */
             nextFollowupDate?: string | null;
             /**
@@ -2203,11 +2203,11 @@ export interface components {
             ownerId?: string | null;
             priority?: components["schemas"]["Priority"] | null;
             investorFitScore?: number | null;
-            /** @description Whether this investor is leading the round. Not constrained to one per round — co-leads are common. */
+            /** @description Whether this investor is leading the round. Not constrained to one per round co-leads are common. */
             isLead?: boolean;
             /**
              * Format: double
-             * @description Manual position within its stage's column, ascending. Not necessarily contiguous — the client places a moved card by averaging the sortOrder of its new neighbors.
+             * @description Manual position within its stage's column, ascending. Not necessarily contiguous the client places a moved card by averaging the sortOrder of its new neighbors.
              * @example 2000
              */
             sortOrder?: number;
@@ -2284,19 +2284,19 @@ export interface components {
             probabilityPercentage?: number;
             /**
              * Format: uuid
-             * @description A StartupMember id — must belong to the same startup.
+             * @description A StartupMember id must belong to the same startup.
              */
             ownerId?: string;
             priority?: components["schemas"]["Priority"];
             investorFitScore?: number;
-            /** @description Whether this investor is leading the round. Not constrained to one per round — co-leads are common. */
+            /** @description Whether this investor is leading the round. Not constrained to one per round co-leads are common. */
             isLead?: boolean;
         };
         /** @description At least one field is required. */
         UpdatePipelineEntryBody: {
             /**
              * Format: uuid
-             * @description Carries the deal into another fundraising round, which must belong to this startup and still be draft or active. Refused with 409 HAS_DEPENDENTS when the deal has commitments — that money belongs to the round it was pledged to — and with 409 ALREADY_IN_PIPELINE when the investor already holds a deal in the destination. When combined with a new committed-stage transition, the commitment is recorded against the destination round. The deal lands at the bottom of the matching column there.
+             * @description Carries the deal into another fundraising round, which must belong to this startup and still be draft or active. Refused with 409 HAS_DEPENDENTS when the deal has commitments that money belongs to the round it was pledged to and with 409 ALREADY_IN_PIPELINE when the investor already holds a deal in the destination. When combined with a new committed-stage transition, the commitment is recorded against the destination round. The deal lands at the bottom of the matching column there.
              */
             roundId?: string;
             stage?: components["schemas"]["PipelineStage"];
@@ -2310,12 +2310,12 @@ export interface components {
             sortOrder?: number;
             /**
              * Format: uuid
-             * @description A StartupMember id — must belong to the same startup.
+             * @description A StartupMember id must belong to the same startup.
              */
             ownerId?: string | null;
             priority?: components["schemas"]["Priority"] | null;
             investorFitScore?: number | null;
-            /** @description Whether this investor is leading the round. Not constrained to one per round — co-leads are common. */
+            /** @description Whether this investor is leading the round. Not constrained to one per round co-leads are common. */
             isLead?: boolean;
             /** @description Required when stage is being set to "passed"; ignored for every other transition. Recorded on the deal's stage history, not overwritten on reopen, so a deal passed more than once keeps every reason. */
             reason?: string;
@@ -2369,7 +2369,7 @@ export interface components {
              * @description Fundraising round that owned this transition when it occurred.
              */
             roundId?: string;
-            /** @description Null for the first event — the deal being added to the pipeline. */
+            /** @description Null for the first event the deal being added to the pipeline. */
             fromStage?: components["schemas"]["PipelineStage"] | null;
             toStage?: components["schemas"]["PipelineStage"];
             /** @description Only present when toStage is "passed". */
@@ -2444,7 +2444,7 @@ export interface components {
             dueDate?: string;
             /**
              * Format: uuid
-             * @description A StartupMember id — must belong to the same startup.
+             * @description A StartupMember id must belong to the same startup.
              */
             assigneeId?: string;
         };
@@ -2471,10 +2471,10 @@ export interface components {
             startupId?: string;
             /** @enum {string} */
             type?: "channel" | "dm";
-            /** @description Unique within the startup among channels. Null for a DM — see `counterpart`. */
+            /** @description Unique within the startup among channels. Null for a DM see `counterpart`. */
             name?: string | null;
             topic?: string | null;
-            /** @description Set only when type is "dm" — the other participant, resolved for the calling viewer. */
+            /** @description Set only when type is "dm" the other participant, resolved for the calling viewer. */
             counterpart?: {
                 /** Format: uuid */
                 memberId?: string;
@@ -2482,7 +2482,7 @@ export interface components {
                 lastName?: string | null;
                 avatarUrl?: string | null;
             } | null;
-            /** @description The caller's own read pointer — a decimal string, same encoding as Message.seq. */
+            /** @description The caller's own read pointer a decimal string, same encoding as Message.seq. */
             lastReadSeq?: string | null;
             /**
              * @description The caller's own mute level for this conversation.
@@ -2535,7 +2535,7 @@ export interface components {
             /** Format: uuid */
             conversationId?: string;
             /**
-             * @description A decimal string, not a number — BigInt has no JSON representation. Orders the room and is the cursor `before` reads.
+             * @description A decimal string, not a number BigInt has no JSON representation. Orders the room and is the cursor `before` reads.
              * @example 42
              */
             seq?: string;
@@ -2545,7 +2545,7 @@ export interface components {
             body?: string;
             /**
              * Format: uuid
-             * @description Set for a thread reply. Threads are flat — always the top-level ancestor's id.
+             * @description Set for a thread reply. Threads are flat always the top-level ancestor's id.
              */
             parentMessageId?: string | null;
             /** @description Denormalized count of replies to this message. */
@@ -2581,7 +2581,7 @@ export interface components {
             clientNonce: string;
             /**
              * Format: uuid
-             * @description Reply in a thread — must name a message already in this conversation.
+             * @description Reply in a thread must name a message already in this conversation.
              */
             parentMessageId?: string;
             /** @description Vault documents to attach. Silently dropped if the caller lacks documents:read, same as an invalid @-mention. */
@@ -2595,7 +2595,7 @@ export interface components {
             level: "all" | "mentions" | "none";
         };
         /**
-         * @description What a `@[Label](type:id)` reference token inside a message body points at. "deal" is a Pipeline entry — investor + round together.
+         * @description What a `@[Label](type:id)` reference token inside a message body points at. "deal" is a Pipeline entry investor + round together.
          * @example deal
          * @enum {string}
          */
@@ -2615,7 +2615,7 @@ export interface components {
                 id: string;
             }[];
         };
-        /** @description One rendered reference chip's unfurl data. Fields beyond type/id/ title/subtitle are type-specific — a "deal" carries stage/isLead/ expectedAmount (expectedAmount is null without financial:read, even though the deal itself is visible with pipeline:read alone); a "task" carries status/dueDate/priority; a "round" carries status/ targetAmount/currency; a "document" carries documentType; a "member" carries avatarUrl. An id the caller cannot read, or that no longer exists, is simply absent from the response rather than erroring. */
+        /** @description One rendered reference chip's unfurl data. Fields beyond type/id/ title/subtitle are type-specific a "deal" carries stage/isLead/ expectedAmount (expectedAmount is null without financial:read, even though the deal itself is visible with pipeline:read alone); a "task" carries status/dueDate/priority; a "round" carries status/ targetAmount/currency; a "document" carries documentType; a "member" carries avatarUrl. An id the caller cannot read, or that no longer exists, is simply absent from the response rather than erroring. */
         ResolvedMention: {
             type?: components["schemas"]["MentionTargetType"];
             /** Format: uuid */
@@ -2636,7 +2636,7 @@ export interface components {
             avatarUrl?: string | null;
             investorType?: components["schemas"]["InvestorType"];
         };
-        /** @description One message referencing the requested entity — the Discussion tab's unit of data. */
+        /** @description One message referencing the requested entity the Discussion tab's unit of data. */
         MentionBacklinkEntry: {
             /** Format: uuid */
             mentionId?: string;
@@ -2810,7 +2810,7 @@ export interface components {
             /** Format: date-time */
             expectedCloseDate?: string;
         };
-        /** @description One real transition a commitment made from one confidence status to another. The first event on any commitment has fromStatus null — that is the commitment being recorded, not a change. Ordered oldest first; this is what a funding-over-time chart should be built from, since commitments.createdAt only says when the row was typed in, not when the money actually became soft-circled, signed, or wired. */
+        /** @description One real transition a commitment made from one confidence status to another. The first event on any commitment has fromStatus null that is the commitment being recorded, not a change. Ordered oldest first; this is what a funding-over-time chart should be built from, since commitments.createdAt only says when the row was typed in, not when the money actually became soft-circled, signed, or wired. */
         CommitmentStatusEvent: {
             /** Format: uuid */
             id?: string;
@@ -2821,7 +2821,7 @@ export interface components {
             toStatus?: components["schemas"]["CommitmentStatus"];
             /**
              * Format: double
-             * @description The commitment's current amount — not necessarily what it was at this specific transition, since amount can be edited independently of status.
+             * @description The commitment's current amount not necessarily what it was at this specific transition, since amount can be edited independently of status.
              */
             amount?: number | null;
             /** Format: date-time */
@@ -2848,22 +2848,22 @@ export interface components {
             targetAmount?: number;
             /**
              * Format: double
-             * @description Sum of commitments with status "wired" — money actually in the bank.
+             * @description Sum of commitments with status "wired" money actually in the bank.
              */
             wired?: number;
             /**
              * Format: double
-             * @description Sum of commitments with status "hard_circled" — signed, not yet wired.
+             * @description Sum of commitments with status "hard_circled" signed, not yet wired.
              */
             hardCircled?: number;
             /**
              * Format: double
-             * @description Sum of commitments with status "soft_circled" — verbal only, never counted toward the target.
+             * @description Sum of commitments with status "soft_circled" verbal only, never counted toward the target.
              */
             softCircled?: number;
             /**
              * Format: double
-             * @description wired + hardCircled — the money a founder may legitimately call raised.
+             * @description wired + hardCircled the money a founder may legitimately call raised.
              */
             bankableRaised?: number;
             /**
@@ -2875,7 +2875,7 @@ export interface components {
             percentToTarget?: number;
             /**
              * Format: double
-             * @description Sum of expectedAmount × probabilityPercentage / 100 across this round's live pipeline deals — everything except stage "committed" (already counted exactly via its commitment, not an estimate) and "passed" (contributes nothing).
+             * @description Sum of expectedAmount × probabilityPercentage / 100 across this round's live pipeline deals everything except stage "committed" (already counted exactly via its commitment, not an estimate) and "passed" (contributes nothing).
              */
             weightedPipeline?: number;
             /** @description Days until targetCloseDate (falling back to firstCloseDate when unset); negative once that date has passed. Null when the round has neither date set. */
@@ -2970,7 +2970,7 @@ export interface components {
             email: string;
             /**
              * Format: uuid
-             * @description Optional — link to an existing CRM investor record
+             * @description Optional link to an existing CRM investor record
              */
             investorId?: string;
             documentIds: string[];
@@ -3894,7 +3894,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Invitation created. `emailQueued` is false when the member row was committed but the notification email could not be queued (e.g. a Redis outage) — the caller should tell the inviter to follow up with the person directly. */
+            /** @description Invitation created. `emailQueued` is false when the member row was committed but the notification email could not be queued (e.g. a Redis outage) the caller should tell the inviter to follow up with the person directly. */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -3924,7 +3924,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description ROLE_NOT_FOUND — the role does not belong to this startup */
+            /** @description ROLE_NOT_FOUND the role does not belong to this startup */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -3933,7 +3933,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description ALREADY_MEMBER — already a member or already invited */
+            /** @description ALREADY_MEMBER already a member or already invited */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4004,7 +4004,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description ALREADY_ACCEPTED — there is nothing left to resend */
+            /** @description ALREADY_ACCEPTED there is nothing left to resend */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4107,7 +4107,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description LAST_OWNER — cannot change the role of the last active owner */
+            /** @description LAST_OWNER cannot change the role of the last active owner */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4173,7 +4173,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description LAST_OWNER — cannot remove the last active owner */
+            /** @description LAST_OWNER cannot remove the last active owner */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4246,7 +4246,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description NOT_FOUND — no pending invitation for this caller */
+            /** @description NOT_FOUND no pending invitation for this caller */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4255,7 +4255,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description ALREADY_ACCEPTED — the invitation is no longer pending */
+            /** @description ALREADY_ACCEPTED the invitation is no longer pending */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4264,7 +4264,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description TOKEN_EXPIRED — the invitation is older than 7 days */
+            /** @description TOKEN_EXPIRED the invitation is older than 7 days */
             410: {
                 headers: {
                     [name: string]: unknown;
@@ -4302,7 +4302,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description NOT_FOUND — no pending invitation for this caller */
+            /** @description NOT_FOUND no pending invitation for this caller */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4452,7 +4452,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description NOT_FOUND — no such notification for this user */
+            /** @description NOT_FOUND no such notification for this user */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4487,7 +4487,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Nobody is signed in as the invited person yet, so nothing was changed. `requiresRegistration` means no account exists for the invited address — registering with it claims the invite automatically. `requiresLogin` means the account exists and only needs to sign in. */
+            /** @description Nobody is signed in as the invited person yet, so nothing was changed. `requiresRegistration` means no account exists for the invited address registering with it claims the invite automatically. `requiresLogin` means the account exists and only needs to sign in. */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -4498,7 +4498,7 @@ export interface operations {
                         requiresRegistration: boolean;
                         /**
                          * Format: email
-                         * @description The invited address — the account must be created with it
+                         * @description The invited address the account must be created with it
                          */
                         email: string;
                     } | {
@@ -4506,13 +4506,13 @@ export interface operations {
                         requiresLogin: boolean;
                         /**
                          * Format: email
-                         * @description The invited address — sign in as this account to accept
+                         * @description The invited address sign in as this account to accept
                          */
                         email: string;
                     };
                 };
             };
-            /** @description EMAIL_MISMATCH — signed in as someone other than the invited person. The invitation stays pending. */
+            /** @description EMAIL_MISMATCH signed in as someone other than the invited person. The invitation stays pending. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -4526,7 +4526,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description INVALID_TOKEN — no invitation matches this token */
+            /** @description INVALID_TOKEN no invitation matches this token */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4535,7 +4535,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description ALREADY_ACCEPTED — this invitation was already used by the person it was sent to. */
+            /** @description ALREADY_ACCEPTED this invitation was already used by the person it was sent to. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4544,7 +4544,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description TOKEN_EXPIRED — the invitation is older than 7 days */
+            /** @description TOKEN_EXPIRED the invitation is older than 7 days */
             410: {
                 headers: {
                     [name: string]: unknown;
@@ -5285,7 +5285,7 @@ export interface operations {
                 search?: string;
                 /** @description Only deals owned by this startup member. */
                 ownerId?: string;
-                /** @description Only deals that would appear on the Focus tab — the same criteria as GET /pipeline/focus. */
+                /** @description Only deals that would appear on the Focus tab the same criteria as GET /pipeline/focus. */
                 attentionOnly?: boolean;
                 /** @description When false, excludes deals in the "passed" stage. Ignored when `stage` is also given. */
                 showPassed?: boolean;
@@ -5853,7 +5853,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description INVESTOR_NOT_FOUND — no such contact in this startup */
+            /** @description INVESTOR_NOT_FOUND no such contact in this startup */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -5914,7 +5914,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description LOG_NOT_FOUND — no such log in this startup */
+            /** @description LOG_NOT_FOUND no such log in this startup */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -5964,7 +5964,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description LOG_NOT_FOUND — no such log in this startup */
+            /** @description LOG_NOT_FOUND no such log in this startup */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -6020,7 +6020,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description LOG_NOT_FOUND — no such log in this startup */
+            /** @description LOG_NOT_FOUND no such log in this startup */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -6457,7 +6457,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description INVALID_DM_TARGET — cannot DM yourself */
+            /** @description INVALID_DM_TARGET cannot DM yourself */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -6981,7 +6981,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Resolved items — may be fewer than requested */
+            /** @description Resolved items may be fewer than requested */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8455,7 +8455,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Verified — reviewer session established */
+            /** @description Verified reviewer session established */
             200: {
                 headers: {
                     "Set-Cookie"?: string;

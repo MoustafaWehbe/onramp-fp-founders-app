@@ -73,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [user, setUser] = useState<AuthUser | null>(null);
   // Only show a loading state if we expect a session to restore.
-  // Unauthenticated users get isLoading=false immediately — no spinner.
+  // Unauthenticated users get isLoading=false immediately no spinner.
   const [isLoading, setIsLoading] = useState(hasSessionHint);
 
   /**
@@ -82,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * lists: react-query serves them from cache on the spot and only corrects
    * itself on the following refetch, which is why a manual refresh appeared to
    * "fix" it. The stored workspace preference is user-scoped for the same
-   * reason — the server's lastActiveStartupId is what remembers it properly.
+   * reason the server's lastActiveStartupId is what remembers it properly.
    */
   const resetIdentityScopedState = useCallback(() => {
     queryClient.clear();
@@ -91,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!readSessionHint()) {
-      // No hint — skip the probe entirely, nothing to restore.
+      // No hint skip the probe entirely, nothing to restore.
       return;
     }
 
@@ -102,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .get<{ data: AuthUser }>("/auth/me", { signal: controller.signal })
       .then(({ data }) => {
         if (!mounted) return;
-        // The cookie may belong to an account this tab has never seen — another
+        // The cookie may belong to an account this tab has never seen another
         // tab could have signed in as somebody else while this one sat idle.
         if (readSessionHint() !== data.data.id) {
           resetIdentityScopedState();
@@ -112,7 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch((err) => {
         if (mounted && !axios.isCancel(err)) {
-          // Session is gone (cookies expired/cleared) — remove the hint.
+          // Session is gone (cookies expired/cleared) remove the hint.
           clearSessionHint();
         }
       })

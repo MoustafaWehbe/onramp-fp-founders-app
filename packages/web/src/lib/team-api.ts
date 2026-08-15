@@ -83,7 +83,7 @@ export async function deleteRole(startupId: string, roleId: string) {
 
 /**
  * `emailQueued: false` means the membership row was created but the invitation
- * email never left — the caller has to tell the inviter to follow up manually.
+ * email never left the caller has to tell the inviter to follow up manually.
  */
 export async function inviteMember(startupId: string, body: { email: string; roleId: string }) {
   const { data } = await apiClient.post<{ message: string; emailQueued: boolean }>(
@@ -95,7 +95,7 @@ export async function inviteMember(startupId: string, body: { email: string; rol
 
 /**
  * Issues a fresh invite link and emails it again. The previous link stops
- * working — only its hash was stored, so it cannot be re-sent, only replaced.
+ * working only its hash was stored, so it cannot be re-sent, only replaced.
  * Fails with 409 ALREADY_ACCEPTED if the person has since joined.
  */
 export async function resendInvite(startupId: string, memberId: string) {

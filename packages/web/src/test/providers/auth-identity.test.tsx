@@ -166,7 +166,7 @@ describe("identity-scoped cache", () => {
   });
 
   it("restores a session whose cookie belongs to a different account", async () => {
-    // Hint says Alice, but the cookie is Bob's — reload after another tab
+    // Hint says Alice, but the cookie is Bob's reload after another tab
     // switched accounts. Nothing cached under the hint may be trusted.
     localStorage.setItem(SESSION_KEY, ALICE.id);
     useAppStore.setState({ preferredStartupId: "s-alice" });

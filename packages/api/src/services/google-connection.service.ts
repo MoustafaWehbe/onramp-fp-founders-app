@@ -52,7 +52,7 @@ export class GoogleConnectionService {
     return client.generateAuthUrl({
       access_type: "offline",
       // Forces Google to return a refresh token even on a reconnect where the
-      // user already granted consent once before — without this, a second
+      // user already granted consent once before without this, a second
       // consent silently omits it.
       prompt: "consent",
       scope: [...GOOGLE_OAUTH_SCOPES],
@@ -62,7 +62,7 @@ export class GoogleConnectionService {
 
   /**
    * Completes the consent flow. Resolves the user from the state token rather
-   * than the session cookie — Google's redirect is a plain browser navigation
+   * than the session cookie Google's redirect is a plain browser navigation
    * that may arrive after the access-token cookie has expired, and the state
    * token is what actually proves this callback belongs to the request that
    * started it.
@@ -217,7 +217,7 @@ export class GoogleConnectionService {
   }
 
   /**
-   * Revokes the grant at Google first — deleting only our row would leave the
+   * Revokes the grant at Google first deleting only our row would leave the
    * founder believing they disconnected while our refresh token (if it leaked)
    * remained usable at Google.
    */
@@ -231,7 +231,7 @@ export class GoogleConnectionService {
     } catch (err) {
       // Already revoked at Google (e.g. the user disconnected from their
       // Google Account settings first) is the common case here, not an error
-      // worth failing the request over — we still clear our own side below.
+      // worth failing the request over we still clear our own side below.
       console.error("[google-connection] revoke failed, clearing local record anyway:", err);
     }
 
