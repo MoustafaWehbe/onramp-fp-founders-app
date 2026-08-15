@@ -36,10 +36,10 @@ export const COMMITMENT_STATUS_LABELS: Record<CommitmentStatus, string> = {
 
 /** Shown next to the choice, so the distinction is made at the point of entry. */
 export const COMMITMENT_STATUS_HINTS: Record<CommitmentStatus, string> = {
-  soft_circled: "Verbal only not counted toward the target",
-  hard_circled: "Docs signed counts toward the target",
-  wired: "Money received",
-  withdrawn: "Backed out",
+  soft_circled: "",
+  hard_circled: "",
+  wired: "",
+  withdrawn: "",
 };
 
 /** Signed or better the money you may legitimately call raised. */
