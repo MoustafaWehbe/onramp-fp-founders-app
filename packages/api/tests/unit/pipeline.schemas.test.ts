@@ -52,6 +52,10 @@ describe("createPipelineEntrySchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it.each(["committed", "passed"])("rejects terminal initial stage %s", (stage) => {
+    expect(createPipelineEntrySchema.safeParse({ investorId: UUID, stage }).success).toBe(false);
+  });
+
   it("rejects probabilityPercentage outside 0–100", () => {
     expect(
       createPipelineEntrySchema.safeParse({

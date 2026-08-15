@@ -32,6 +32,8 @@ export type AddDealValues = {
   expectedAmount?: number;
 };
 
+const INITIAL_STAGES = STAGES.filter((stage) => stage.id !== "committed" && stage.id !== "passed");
+
 type AddDealDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -87,7 +89,7 @@ export function AddDealDialog({
   }, [unassignedContacts, contactQuery]);
 
   const selectedContact = availableContacts.find((contact) => contact.id === investorId);
-  const selectedStage = STAGES.find((item) => item.id === stage) ?? STAGES[0];
+  const selectedStage = INITIAL_STAGES.find((item) => item.id === stage) ?? INITIAL_STAGES[0];
 
   const parsedAmount = amount.trim() === "" ? undefined : Number(amount);
   const amountInvalid = parsedAmount !== undefined && Number.isNaN(parsedAmount);
@@ -200,7 +202,7 @@ export function AddDealDialog({
                 align="start"
                 className="w-[var(--radix-dropdown-menu-trigger-width)]"
               >
-                {STAGES.map((item) => (
+                {INITIAL_STAGES.map((item) => (
                   <DropdownMenuItem key={item.id} onSelect={() => setStage(item.id)}>
                     <span className={cn("mr-2 h-2 w-2 rounded-full", item.dotClass)} />
                     {item.label}

@@ -988,7 +988,11 @@ components:
         investor:
           $ref: "#/components/schemas/Investor"
         stage:
-          $ref: "#/components/schemas/PipelineStage"
+          type: string
+          enum: [sourced, contacted, meeting_scheduled, due_diligence, term_sheet]
+          description: >-
+            Initial stage only. Use the update endpoint to move to committed
+            (with commitment details) or passed (with a reason).
         expectedAmount:
           type: number
           format: double

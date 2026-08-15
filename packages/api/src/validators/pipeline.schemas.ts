@@ -1,8 +1,17 @@
 import { z } from "zod";
-import { COMMITMENT_STATUSES, PIPELINE_STAGES, PRIORITIES } from "../config/crm";
+import {
+  COMMITMENT_STATUSES,
+  INITIAL_PIPELINE_STAGES,
+  PIPELINE_STAGES,
+  PRIORITIES,
+} from "../config/crm";
 
 const pipelineStageEnum = z.enum(PIPELINE_STAGES, {
   errorMap: () => ({ message: "Invalid pipeline stage" }),
+});
+
+const initialPipelineStageEnum = z.enum(INITIAL_PIPELINE_STAGES, {
+  errorMap: () => ({ message: "A new deal must start before committed or passed" }),
 });
 
 const priorityEnum = z.enum(PRIORITIES, {
@@ -32,7 +41,7 @@ const optionalProbability = z
 export const createPipelineEntrySchema = z.object({
   roundId: z.string().uuid("roundId must be a valid UUID").optional(),
   investorId: z.string().uuid("investorId must be a valid UUID"),
-  stage: pipelineStageEnum,
+  stage: initialPipelineStageEnum,
   expectedAmount: optionalExpectedAmount,
   probabilityPercentage: optionalProbability,
   ownerId: z.string().uuid("ownerId must be a valid UUID").optional(),

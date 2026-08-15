@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
-import { OPEN_ROUND_STATUSES, PIPELINE_STAGES } from "../config/crm";
+import { INITIAL_PIPELINE_STAGES, OPEN_ROUND_STATUSES, PIPELINE_STAGES } from "../config/crm";
 import { createError } from "../utils/errors";
 import type {
   CreatePipelineEntryInput,
@@ -122,6 +122,16 @@ function median(values: number[]): number | null {
 
 export class PipelineService {
   async createEntry(startupId: string, input: CreatePipelineEntryInput, userId?: string) {
+    // Validators protect HTTP callers, but services are also used directly by
+    // jobs and tests. Do not let either bypass the commitment/pass audit flows.
+    if (!(INITIAL_PIPELINE_STAGES as readonly string[]).includes(input.stage)) {
+      throw createError(
+        "A new deal must start before committed or passed",
+        400,
+        "INITIAL_STAGE_NOT_ALLOWED",
+      );
+    }
+
     const contact = await prisma.startupInvestor.findUnique({
       where: { startupId_id: { startupId, id: input.investorId } },
       select: { id: true },

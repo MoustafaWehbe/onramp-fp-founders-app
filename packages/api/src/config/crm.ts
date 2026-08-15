@@ -10,6 +10,14 @@ export const PIPELINE_STAGES = [
   "passed",
 ] as const;
 
+export const INITIAL_PIPELINE_STAGES = [
+  "sourced",
+  "contacted",
+  "meeting_scheduled",
+  "due_diligence",
+  "term_sheet",
+] as const;
+
 export const ROUND_STATUSES = ["draft", "active", "closed", "cancelled"] as const;
 
 /** Rounds that can still take new outreach. A raise that is closed or
@@ -43,6 +51,7 @@ export const PRIORITIES = ["low", "medium", "high"] as const;
 
 export type InvestorType = (typeof INVESTOR_TYPES)[number];
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
+export type InitialPipelineStage = (typeof INITIAL_PIPELINE_STAGES)[number];
 export type RoundStatus = (typeof ROUND_STATUSES)[number];
 export type CommitmentStatus = (typeof COMMITMENT_STATUSES)[number];
 export type TaskStatus = (typeof TASK_STATUSES)[number];

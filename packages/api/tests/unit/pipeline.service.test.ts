@@ -86,6 +86,14 @@ beforeEach(() => {
 });
 
 describe("PipelineService.createEntry", () => {
+  it.each(["committed", "passed"])("rejects terminal initial stage %s before touching the database", async (stage) => {
+    await expect(
+      service.createEntry(STARTUP_ID, { investorId: CONTACT_ID, stage } as never),
+    ).rejects.toMatchObject({ statusCode: 400, code: "INITIAL_STAGE_NOT_ALLOWED" });
+
+    expect(mockPrisma.startupInvestor.findUnique).not.toHaveBeenCalled();
+  });
+
   it("creates an entry scoped to the startup and nests the contact", async () => {
     (mockPrisma.startupInvestor.findUnique as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
     (mockPrisma.pipeline.create as jest.Mock).mockResolvedValue(entryRow());
