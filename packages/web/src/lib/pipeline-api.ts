@@ -135,7 +135,7 @@ export async function updatePipelineEntry(
   startupId: string,
   pipelineId: string,
   body: {
-    /** Moves the deal into another open round; refused if it has commitments. */
+    /** Moves the deal into another open round; a simultaneous new commitment belongs to that destination round. */
     roundId?: string;
     stage?: PipelineStageId;
     expectedAmount?: number | null;

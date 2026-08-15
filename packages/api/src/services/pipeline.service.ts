@@ -284,6 +284,9 @@ export class PipelineService {
     // stage history — and is refused outright once it has tasks.
     const movedToRound =
       input.roundId !== undefined && input.roundId !== existing.roundId ? input.roundId : null;
+    // The pipeline row is updated before a new commitment is inserted inside
+    // the transaction, so its commitment FK must point at the destination.
+    const commitmentRoundId = movedToRound ?? existing.roundId;
     if (movedToRound) {
       await this.verifyRoundAcceptsDeals(startupId, movedToRound);
 
@@ -402,7 +405,7 @@ export class PipelineService {
               // A commitment blocks a round move, so the deal's round cannot
               // have changed in this same request — existing.roundId is still
               // the round the money is being pledged to.
-              roundId: existing.roundId,
+              roundId: commitmentRoundId,
               amount: commitment.amount,
               status: commitment.status ?? "soft_circled",
               ...(commitment.expectedCloseDate && {
@@ -417,10 +420,25 @@ export class PipelineService {
       // withdrawn is part of the round's history, and deleting it would also
       // strand any amount already wired.
       if (existing.stage === "committed" && movedTo !== "committed") {
+        const liveCommitments = await tx.commitment.findMany({
+          where: { startupId, pipelineId, status: { not: "withdrawn" } },
+          select: { id: true, status: true },
+        });
         await tx.commitment.updateMany({
           where: { startupId, pipelineId, status: { not: "withdrawn" } },
           data: { status: "withdrawn" },
         });
+        if (liveCommitments.length > 0) {
+          await tx.commitmentStatusEvent.createMany({
+            data: liveCommitments.map((current) => ({
+              startupId,
+              commitmentId: current.id,
+              fromStatus: current.status,
+              toStatus: "withdrawn",
+              changedBy: userId ?? null,
+            })),
+          });
+        }
       }
 
       return updated;

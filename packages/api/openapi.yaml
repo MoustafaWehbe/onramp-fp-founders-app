@@ -1167,8 +1167,10 @@ components:
             to this startup and still be draft or active. Refused with 409
             HAS_DEPENDENTS when the deal has commitments — that money belongs
             to the round it was pledged to — and with 409 ALREADY_IN_PIPELINE
-            when the investor already holds a deal in the destination. The
-            deal lands at the bottom of the matching column there.
+            when the investor already holds a deal in the destination. When
+            combined with a new committed-stage transition, the commitment is
+            recorded against the destination round. The deal lands at the
+            bottom of the matching column there.
         stage:
           $ref: "#/components/schemas/PipelineStage"
         expectedAmount:

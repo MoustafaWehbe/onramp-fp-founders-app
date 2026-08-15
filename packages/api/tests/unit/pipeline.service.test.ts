@@ -17,10 +17,12 @@ jest.mock("../../src/db/prisma", () => {
     commitment: {
       count: jest.fn(),
       findFirst: jest.fn(),
+      findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
     },
+    commitmentStatusEvent: { createMany: jest.fn() },
     fundraisingRound: { findUnique: jest.fn(), findMany: jest.fn() },
     task: { count: jest.fn(), findMany: jest.fn(), deleteMany: jest.fn() },
     interactionLog: { groupBy: jest.fn() },
@@ -80,6 +82,7 @@ function entryRow(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   jest.clearAllMocks();
   (mockPrisma.pipelineStageEvent.create as jest.Mock).mockResolvedValue({});
+  (mockPrisma.commitment.findMany as jest.Mock).mockResolvedValue([]);
   (mockPrisma.pipeline.aggregate as jest.Mock).mockResolvedValue({ _max: { sortOrder: null } });
   (mockPrisma.fundraisingRound.findMany as jest.Mock).mockResolvedValue([{ id: ROUND_ID }]);
   (mockPrisma.task.count as jest.Mock).mockResolvedValue(0);
@@ -456,6 +459,27 @@ describe("PipelineService.updateEntry moving between rounds", () => {
     );
   });
 
+  it("records a simultaneous new commitment against the destination round", async () => {
+    (mockPrisma.commitment.findFirst as jest.Mock).mockResolvedValue(null);
+
+    await service.updateEntry(STARTUP_ID, PIPELINE_ID, {
+      roundId: OTHER_ROUND,
+      stage: "committed",
+      commitment: { amount: 250_000, status: "soft_circled" },
+    } as never);
+
+    expect(mockPrisma.pipeline.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ roundId: OTHER_ROUND, stage: "committed" }),
+      }),
+    );
+    expect(mockPrisma.commitment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ roundId: OTHER_ROUND, pipelineId: PIPELINE_ID }),
+      }),
+    );
+  });
+
   it.each(["closed", "cancelled"])("refuses to carry a deal into a %s round", async (status) => {
     (mockPrisma.fundraisingRound.findUnique as jest.Mock).mockResolvedValue({
       id: OTHER_ROUND,
@@ -602,6 +626,27 @@ describe("PipelineService.updateEntry committing", () => {
     expect(mockPrisma.commitment.updateMany).toHaveBeenCalledWith({
       where: { startupId: STARTUP_ID, pipelineId: PIPELINE_ID, status: { not: "withdrawn" } },
       data: { status: "withdrawn" },
+    });
+  });
+
+  it("records funding-history events for automatic commitment withdrawals", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({
+      ...COMMITTING,
+      stage: "committed",
+    });
+    (mockPrisma.pipeline.update as jest.Mock).mockResolvedValue(entryRow({ stage: "term_sheet" }));
+    (mockPrisma.commitment.findMany as jest.Mock).mockResolvedValue([
+      { id: "commitment-1", status: "hard_circled" },
+      { id: "commitment-2", status: "soft_circled" },
+    ]);
+
+    await service.updateEntry(STARTUP_ID, PIPELINE_ID, { stage: "term_sheet" } as never, USER_ID);
+
+    expect(mockPrisma.commitmentStatusEvent.createMany).toHaveBeenCalledWith({
+      data: [
+        { startupId: STARTUP_ID, commitmentId: "commitment-1", fromStatus: "hard_circled", toStatus: "withdrawn", changedBy: USER_ID },
+        { startupId: STARTUP_ID, commitmentId: "commitment-2", fromStatus: "soft_circled", toStatus: "withdrawn", changedBy: USER_ID },
+      ],
     });
   });
 
