@@ -3001,6 +3001,8 @@ export interface components {
             summary?: string | null;
             /** Format: uuid */
             uploadedBy?: string;
+            /** @description Joined only where the caller actually needs to attribute a version to someone (currently GET .../documents/{documentId}); null on the create/version-upload/confirm responses, where the uploader is trivially the caller. */
+            uploaderName?: string | null;
             /** Format: date-time */
             createdAt?: string;
             hasFile?: boolean;

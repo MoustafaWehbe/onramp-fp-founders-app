@@ -5,6 +5,7 @@ import { createError } from "../utils/errors";
 import { generateOTP, hashOTP, hashToken } from "../utils/auth";
 import { emailQueue } from "../jobs/queue";
 import { storageService } from "./storage.service";
+import { reviewerOtpEmail } from "../emails/templates/reviewer-otp";
 import type {
   ReviewerAccessInput,
   ReviewerCommentInput,
@@ -104,12 +105,8 @@ export class ReviewerPortalService {
       });
     }
 
-    await emailQueue.add("send-reviewer-otp", {
-      to: invitation.emailNormalized,
-      subject: "Your reviewer verification code",
-      html: `<p>Your verification code is <strong>${raw}</strong>.</p>
-             <p>It expires in 10 minutes.</p>`,
-    });
+    const { subject, html } = reviewerOtpEmail(raw);
+    await emailQueue.add("send-reviewer-otp", { to: invitation.emailNormalized, subject, html });
 
     if (process.env.NODE_ENV !== "production") {
       console.info(`[reviewer-portal] OTP for ${invitation.emailNormalized}: ${raw}`);

@@ -2300,6 +2300,10 @@ components:
         uploadedBy:
           type: string
           format: uuid
+        uploaderName:
+          type: string
+          nullable: true
+          description: Joined only where the caller actually needs to attribute a version to someone (currently GET .../documents/{documentId}); null on the create/version-upload/confirm responses, where the uploader is trivially the caller.
         createdAt:
           type: string
           format: date-time

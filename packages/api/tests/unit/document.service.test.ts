@@ -172,6 +172,73 @@ describe("DocumentService.confirmVersion", () => {
   });
 });
 
+describe("DocumentService.getDocument", () => {
+  it("resolves uploaderName from the joined uploader, and null when a version has none", async () => {
+    mockPrisma.document.findUnique.mockResolvedValue({
+      id: DOC_ID,
+      startupId: STARTUP_ID,
+      title: "Pitch deck",
+      documentType: "pitch_deck",
+      createdBy: "user-1",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      versions: [
+        {
+          id: VER_ID,
+          documentId: DOC_ID,
+          versionNumber: 2,
+          isCurrent: true,
+          fileSize: 100,
+          mimeType: "application/pdf",
+          originalFilename: "deck.pdf",
+          processingStatus: "ready",
+          processingError: null,
+          summary: null,
+          uploadedBy: "user-1",
+          createdAt: new Date(),
+          storageProvider: "local",
+          storageKey: "key-2",
+          uploader: { firstName: "Ada", lastName: "Lovelace" },
+        },
+        {
+          id: "ver-1",
+          documentId: DOC_ID,
+          versionNumber: 1,
+          isCurrent: false,
+          fileSize: 90,
+          mimeType: "application/pdf",
+          originalFilename: "deck-v1.pdf",
+          processingStatus: "ready",
+          processingError: null,
+          summary: null,
+          uploadedBy: "deleted-user",
+          createdAt: new Date(),
+          storageProvider: "local",
+          storageKey: "key-1",
+          uploader: null,
+        },
+      ],
+    } as never);
+
+    const result = await documentService.getDocument(STARTUP_ID, DOC_ID);
+
+    expect(result.versions).toHaveLength(2);
+    expect(result.versions[0].uploaderName).toBe("Ada Lovelace");
+    expect(result.versions[1].uploaderName).toBeNull();
+    // The joined uploader object itself is an internal detail never returned.
+    expect(result.versions[0]).not.toHaveProperty("uploader");
+  });
+
+  it("throws DOCUMENT_NOT_FOUND when the document does not exist", async () => {
+    mockPrisma.document.findUnique.mockResolvedValue(null);
+
+    await expect(documentService.getDocument(STARTUP_ID, DOC_ID)).rejects.toMatchObject({
+      statusCode: 404,
+      code: "DOCUMENT_NOT_FOUND",
+    });
+  });
+});
+
 describe("DocumentService.getSignedReadUrl", () => {
   it("returns signed access for a ready version", async () => {
     mockPrisma.document.findUnique.mockResolvedValue({

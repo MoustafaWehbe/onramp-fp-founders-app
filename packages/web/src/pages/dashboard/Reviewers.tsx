@@ -8,6 +8,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { MultiSelect } from "../../components/ui/multi-select";
 import { Skeleton } from "../../components/ui/skeleton";
 import {
   Dialog,
@@ -252,34 +253,24 @@ export function Reviewers() {
               />
             </div>
             <div>
-              <Label>Documents (ready versions only)</Label>
-              <div className="mt-2 max-h-48 space-y-2 overflow-y-auto rounded-md border border-border p-3">
+              <Label>Documents</Label>
+              <div className="mt-2">
                 {readyVersions.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     No ready documents yet. Upload a document from the Documents page first — it needs to finish processing before it can be shared.
                   </p>
                 ) : (
-                  readyVersions.map((item) => {
-                    const checked = selectedVersionIds.includes(item.versionId);
-                    return (
-                      <label key={item.versionId} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() =>
-                            setSelectedVersionIds((current) =>
-                              checked
-                                ? current.filter((id) => id !== item.versionId)
-                                : [...current, item.versionId],
-                            )
-                          }
-                        />
-                        <span>
-                          {item.title} <span className="text-muted-foreground">v{item.versionNumber}</span>
-                        </span>
-                      </label>
-                    );
-                  })
+                  <MultiSelect
+                    options={readyVersions.map((item) => ({
+                      value: item.versionId,
+                      label: item.title,
+                      description: `v${item.versionNumber}`,
+                    }))}
+                    selected={selectedVersionIds}
+                    onChange={setSelectedVersionIds}
+                    placeholder="Choose documents to share"
+                    searchPlaceholder="Search documents…"
+                  />
                 )}
               </div>
             </div>

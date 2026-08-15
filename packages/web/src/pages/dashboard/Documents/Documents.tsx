@@ -1,24 +1,16 @@
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Download,
-  Eye,
-  FileText,
-  MoreHorizontal,
-  Search,
-  Sparkles,
-  Upload,
-} from "lucide-react";
+import { FileText, Upload } from "lucide-react";
 import { toast } from "sonner";
+import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
 import { EmptyState } from "../../../components/shared/EmptyState";
 import { PageHeader } from "../../../components/layout/PageHeader";
-import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
-import { Input } from "../../../components/ui/input";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { useActiveStartupId } from "../../../hooks/useWorkspace";
 import { apiErrorMessage } from "../../../lib/api-error";
+import { runWithConcurrency } from "../../../lib/concurrency";
 import {
   confirmDocumentVersion,
   createDocumentUploadSession,
@@ -26,67 +18,18 @@ import {
   deleteDocument,
   getDocumentFileAccess,
   listDocuments,
+  updateDocument,
   uploadToSignedUrl,
   type DocumentType,
+  type DocumentVersion,
   type VaultDocument,
 } from "../../../lib/document-api";
-import { cn, formatDate } from "../../../lib/utils";
-
-const TYPE_LABELS: Record<string, string> = {
-  pitch_deck: "Pitch deck",
-  financial_model: "Financial model",
-  cap_table: "Cap table",
-  term_sheet: "Term sheet",
-  data_room: "Data room",
-  other: "Other",
-};
-
-function scoreColor(score: number) {
-  if (score >= 80) return "bg-success/15 text-success";
-  if (score >= 65) return "bg-warning/20 text-warning";
-  return "bg-destructive/15 text-destructive";
-}
-
-function formatSize(bytes: number | null | undefined) {
-  if (!bytes) return "—";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function guessDocumentType(filename: string): DocumentType {
-  const lower = filename.toLowerCase();
-  if (lower.includes("deck") || lower.includes("pitch")) return "pitch_deck";
-  if (lower.includes("cap")) return "cap_table";
-  if (lower.includes("term")) return "term_sheet";
-  if (lower.includes("model") || lower.includes("financial")) return "financial_model";
-  return "other";
-}
-
-const UPLOAD_ACCEPT =
-  ".pdf,.docx,.xlsx,.pptx,.txt,application/pdf,text/plain," +
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document," +
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet," +
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-
-const UNSUPPORTED_TYPE_MESSAGE = "Unsupported file type. Allowed: PDF, DOCX, XLSX, PPTX, TXT";
-
-function guessMimeType(file: File): string {
-  if (file.type) return file.type;
-  const lower = file.name.toLowerCase();
-  if (lower.endsWith(".pdf")) return "application/pdf";
-  if (lower.endsWith(".docx")) {
-    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-  }
-  if (lower.endsWith(".xlsx")) {
-    return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-  }
-  if (lower.endsWith(".pptx")) {
-    return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-  }
-  if (lower.endsWith(".txt")) return "text/plain";
-  return "application/octet-stream";
-}
+import { DocumentFormDialog, type DocumentFormValues } from "./DocumentFormDialog";
+import { DocumentVersionsSheet } from "./DocumentVersionsSheet";
+import { DocumentsCardList } from "./DocumentsCardList";
+import { DocumentsTable } from "./DocumentsTable";
+import { DocumentsToolbar, type DocumentFilters } from "./DocumentsToolbar";
+import { UNSUPPORTED_TYPE_MESSAGE, UPLOAD_ACCEPT, guessMimeType, statusOf } from "./document-types";
 
 export function Documents() {
   const startupId = useActiveStartupId();
@@ -94,18 +37,28 @@ export function Documents() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const versionInputRef = useRef<HTMLInputElement>(null);
+
   const [versionTargetId, setVersionTargetId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<string>("");
+  const [filters, setFilters] = useState<DocumentFilters>({ documentType: null, status: null });
+  const [selectedIds, setSelectedIds] = useState<Set<string> | null>(null);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [editingDoc, setEditingDoc] = useState<VaultDocument | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<VaultDocument | null>(null);
+  const [versionsSheetDocId, setVersionsSheetDocId] = useState<string | null>(null);
+
+  const queryKey = ["documents", startupId, search, filters.documentType];
 
   const docsQuery = useQuery({
-    queryKey: ["documents", startupId, search, typeFilter],
+    queryKey,
     queryFn: () =>
       listDocuments(startupId, {
         page: 1,
         limit: 100,
         search: search.trim() || undefined,
-        documentType: typeFilter || undefined,
+        documentType: filters.documentType || undefined,
       }),
     refetchInterval: (query) => {
       const rows = query.state.data?.data ?? [];
@@ -117,23 +70,34 @@ export function Documents() {
     },
   });
 
-  const rows = docsQuery.data?.data ?? [];
+  const allRows = docsQuery.data?.data ?? [];
+  // Status has no server-side filter (the API only filters by type/search), so
+  // it narrows whatever page is already loaded.
+  const rows = filters.status
+    ? allRows.filter((row) => statusOf(row.currentVersion) === filters.status)
+    : allRows;
+
   const canUpload = can("documents", "create");
   const canUpdate = can("documents", "update");
   const canDelete = can("documents", "delete");
 
+  function invalidateDocuments() {
+    void queryClient.invalidateQueries({ queryKey: ["documents", startupId] });
+  }
+
   const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async ({ file, values }: { file: File; values: DocumentFormValues }) => {
       const mimeType = guessMimeType(file);
       if (mimeType === "application/octet-stream") {
         throw new Error(UNSUPPORTED_TYPE_MESSAGE);
       }
       const session = await createDocumentUploadSession(startupId, {
-        title: file.name.replace(/\.[^.]+$/, "") || file.name,
-        documentType: guessDocumentType(file.name),
+        title: values.title,
+        documentType: values.documentType,
         originalFilename: file.name,
         mimeType,
         fileSize: file.size,
+        summary: values.summary,
       });
       try {
         await uploadToSignedUrl(session.upload.uploadUrl, file, session.upload.headers);
@@ -148,11 +112,12 @@ export function Documents() {
       return session.document;
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["documents", startupId] });
+      setPendingFile(null);
+      invalidateDocuments();
       toast.success("Document uploaded — processing started");
     },
     onError: (error) => {
-      void queryClient.invalidateQueries({ queryKey: ["documents", startupId] });
+      invalidateDocuments();
       toast.error(apiErrorMessage(error, "Upload failed"));
     },
   });
@@ -173,43 +138,81 @@ export function Documents() {
     },
     onSuccess: () => {
       setVersionTargetId(null);
-      void queryClient.invalidateQueries({ queryKey: ["documents", startupId] });
+      invalidateDocuments();
       toast.success("New version uploaded — processing started");
     },
     onError: (error) => toast.error(apiErrorMessage(error, "Version upload failed")),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: (values: DocumentFormValues) => {
+      if (!editingDoc) throw new Error("No document selected");
+      return updateDocument(startupId, editingDoc.id, {
+        title: values.title,
+        documentType: values.documentType,
+      });
+    },
+    onSuccess: () => {
+      setEditingDoc(null);
+      invalidateDocuments();
+      toast.success("Document updated");
+    },
+    onError: (error) => toast.error(apiErrorMessage(error, "Could not update document")),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (documentId: string) => deleteDocument(startupId, documentId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["documents", startupId] });
+      setDeleteTarget(null);
+      invalidateDocuments();
       toast.success("Document deleted");
     },
     onError: (error) => toast.error(apiErrorMessage(error, "Could not delete document")),
   });
 
-  const openFile = async (doc: VaultDocument, disposition: "preview" | "download") => {
-    // Open the tab synchronously so the browser does not treat it as a blocked popup
-    // after the async file-access round-trip.
-    const previewTab =
-      disposition === "preview" ? window.open("about:blank", "_blank") : null;
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const settled = await runWithConcurrency(ids, 5, (id) => deleteDocument(startupId, id));
+      const failedIds = ids.filter((_, index) => settled[index].status === "rejected");
+      const firstFailure = settled.find(
+        (result): result is PromiseRejectedResult => result.status === "rejected",
+      )?.reason;
+      return { succeeded: ids.length - failedIds.length, failedIds, firstFailure };
+    },
+    onSuccess: ({ succeeded, failedIds, firstFailure }) => {
+      setBulkDeleteConfirm(false);
+      setSelectedIds(new Set(failedIds));
+      invalidateDocuments();
+      if (failedIds.length === 0) {
+        toast.success(`${succeeded} document${succeeded === 1 ? "" : "s"} deleted`);
+      } else {
+        toast.error(
+          `${succeeded} deleted, ${failedIds.length} could not be removed — ${apiErrorMessage(firstFailure, "some have related records")}`,
+        );
+      }
+    },
+  });
+
+  const openFileAccess = async (
+    documentId: string,
+    versionId: string | undefined,
+    disposition: "preview" | "download",
+    fallbackName: string,
+  ) => {
+    const previewTab = disposition === "preview" ? window.open("about:blank", "_blank") : null;
 
     try {
-      const access = await getDocumentFileAccess(startupId, doc.id, doc.currentVersion?.id);
+      const access = await getDocumentFileAccess(startupId, documentId, versionId);
       const fileRes = await fetch(access.url);
-      if (!fileRes.ok) {
-        throw new Error(`Could not fetch file (${fileRes.status})`);
-      }
+      if (!fileRes.ok) throw new Error(`Could not fetch file (${fileRes.status})`);
       const blob = await fileRes.blob();
-      const typed = new Blob([blob], {
-        type: access.mimeType || blob.type || "application/octet-stream",
-      });
+      const typed = new Blob([blob], { type: access.mimeType || blob.type || "application/octet-stream" });
       const objectUrl = URL.createObjectURL(typed);
 
       if (disposition === "download") {
         const a = document.createElement("a");
         a.href = objectUrl;
-        a.download = access.originalFilename || `${doc.title}.bin`;
+        a.download = access.originalFilename || fallbackName;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -227,10 +230,26 @@ export function Documents() {
     }
   };
 
-  const typeOptions = useMemo(
-    () => Array.from(new Set(rows.map((row) => row.documentType))).sort(),
-    [rows],
-  );
+  const openDocument = (doc: VaultDocument, disposition: "preview" | "download") =>
+    void openFileAccess(doc.id, doc.currentVersion?.id, disposition, `${doc.title}.bin`);
+  const openVersion = (version: DocumentVersion, disposition: "preview" | "download") =>
+    void openFileAccess(version.documentId, version.id, disposition, version.originalFilename);
+
+  const selectionActive = selectedIds !== null;
+  const selectedCount = selectedIds?.size ?? 0;
+
+  function toggleSelection() {
+    setSelectedIds((current) => (current === null ? new Set() : null));
+  }
+
+  function toggleOne(id: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current ?? []);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -247,7 +266,7 @@ export function Documents() {
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 event.target.value = "";
-                if (file) uploadMutation.mutate(file);
+                if (file) setPendingFile(file);
               }}
             />
             <input
@@ -265,39 +284,31 @@ export function Documents() {
             <Button
               size="sm"
               className="bg-primary text-primary-foreground hover:bg-primary-hover"
-              disabled={!canUpload || uploadMutation.isPending || versionMutation.isPending}
+              disabled={!canUpload}
               onClick={() => fileInputRef.current?.click()}
             >
               <Upload className="mr-1.5 h-4 w-4" />
-              {uploadMutation.isPending ? "Uploading…" : "Upload"}
+              Upload
             </Button>
           </>
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[220px] max-w-md flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search documents…"
-            className="h-9 border-border bg-surface pl-9"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </div>
-        <select
-          className="h-9 rounded-md border border-border bg-surface px-3 text-sm"
-          value={typeFilter}
-          onChange={(event) => setTypeFilter(event.target.value)}
-        >
-          <option value="">Type</option>
-          {typeOptions.map((type) => (
-            <option key={type} value={type}>
-              {TYPE_LABELS[type] ?? type}
-            </option>
-          ))}
-        </select>
-      </div>
+      <DocumentsToolbar
+        query={search}
+        onQueryChange={setSearch}
+        filters={filters}
+        onFilterChange={(key, value) => setFilters((prev) => ({ ...prev, [key]: value }))}
+        onClearFilters={() => setFilters({ documentType: null, status: null })}
+        canSelect={canDelete}
+        selectionActive={selectionActive}
+        onToggleSelection={toggleSelection}
+        onSelectAllVisible={() => setSelectedIds(new Set(rows.map((r) => r.id)))}
+        visibleCount={rows.length}
+        selectedCount={selectedCount}
+        onBulkDelete={() => setBulkDeleteConfirm(true)}
+        bulkDeleting={bulkDeleteMutation.isPending}
+      />
 
       {docsQuery.isPending ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -318,10 +329,14 @@ export function Documents() {
         <div className="card-elevated">
           <EmptyState
             icon={FileText}
-            title="No documents yet"
-            description="Upload a PDF, DOCX, XLSX, PPTX, or TXT file to start your data room."
+            title={allRows.length === 0 ? "No documents yet" : "No documents match your filters"}
+            description={
+              allRows.length === 0
+                ? "Upload a PDF, DOCX, XLSX, PPTX, or TXT file to start your data room."
+                : "Try a different search term or clear the active filters."
+            }
             action={
-              canUpload ? (
+              allRows.length === 0 && canUpload ? (
                 <Button onClick={() => fileInputRef.current?.click()}>
                   <Upload className="mr-1.5 h-4 w-4" /> Upload
                 </Button>
@@ -330,111 +345,105 @@ export function Documents() {
           />
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {rows.map((doc) => {
-            const version = doc.currentVersion;
-            const status = version?.processingStatus ?? "pending_upload";
-            return (
-              <div
-                key={doc.id}
-                className="card-elevated group p-4 transition-colors hover:border-primary/40"
-              >
-                <div className="mb-3 flex items-start justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
-                      <FileText className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold">{doc.title}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {TYPE_LABELS[doc.documentType] ?? doc.documentType}
-                        {version ? ` · v${version.versionNumber} · ${formatSize(version.fileSize)}` : ""}
-                      </div>
-                    </div>
-                  </div>
-                  {canDelete && (
-                    <button
-                      type="button"
-                      className="text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
-                      title="Delete"
-                      onClick={() => {
-                        if (window.confirm(`Delete “${doc.title}”?`)) {
-                          deleteMutation.mutate(doc.id);
-                        }
-                      }}
-                    >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex items-center justify-between border-t border-border pt-3 text-xs">
-                  <div className="flex items-center gap-1.5">
-                    <Sparkles className="h-3.5 w-3.5 text-primary" />
-                    <span className="font-medium">AI score</span>
-                    {doc.aiScore != null ? (
-                      <Badge className={cn(scoreColor(doc.aiScore), "border-0")}>{doc.aiScore}</Badge>
-                    ) : (
-                      <Badge className="border-0 bg-muted text-muted-foreground">—</Badge>
-                    )}
-                  </div>
-                  <span className="text-muted-foreground">
-                    {status === "ready"
-                      ? formatDate(doc.updatedAt)
-                      : status === "failed"
-                        ? "Failed"
-                        : status === "processing"
-                          ? "Processing…"
-                          : "Uploading…"}
-                  </span>
-                </div>
-
-                {version?.processingError && (
-                  <p className="mt-2 line-clamp-2 text-xs text-destructive">{version.processingError}</p>
-                )}
-
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-8 flex-1"
-                    disabled={status !== "ready"}
-                    onClick={() => void openFile(doc, "preview")}
-                  >
-                    <Eye className="mr-1.5 h-3.5 w-3.5" /> Preview
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-8 flex-1"
-                    disabled={status !== "ready"}
-                    onClick={() => void openFile(doc, "download")}
-                  >
-                    <Download className="mr-1.5 h-3.5 w-3.5" /> Download
-                  </Button>
-                  {canUpdate && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 w-full"
-                      disabled={versionMutation.isPending || status === "pending_upload"}
-                      onClick={() => {
-                        setVersionTargetId(doc.id);
-                        versionInputRef.current?.click();
-                      }}
-                    >
-                      <Upload className="mr-1.5 h-3.5 w-3.5" />
-                      {versionMutation.isPending && versionTargetId === doc.id
-                        ? "Uploading…"
-                        : "Upload new version"}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <>
+          <div className={docsQuery.isFetching ? "hidden opacity-60 lg:block" : "hidden lg:block"}>
+            <div className="card-elevated overflow-hidden p-0">
+              <DocumentsTable
+                documents={rows}
+                selectedIds={selectedIds}
+                onToggleOne={toggleOne}
+                canUpdate={canUpdate}
+                canDelete={canDelete}
+                uploadingVersionId={versionMutation.isPending ? versionTargetId : null}
+                onPreview={(doc) => openDocument(doc, "preview")}
+                onDownload={(doc) => openDocument(doc, "download")}
+                onUploadVersion={(doc) => {
+                  setVersionTargetId(doc.id);
+                  versionInputRef.current?.click();
+                }}
+                onEdit={setEditingDoc}
+                onViewVersions={(doc) => setVersionsSheetDocId(doc.id)}
+                onDelete={setDeleteTarget}
+              />
+            </div>
+          </div>
+          <div className={docsQuery.isFetching ? "opacity-60 lg:hidden" : "lg:hidden"}>
+            <DocumentsCardList
+              documents={rows}
+              selectedIds={selectedIds}
+              onToggleOne={toggleOne}
+              canUpdate={canUpdate}
+              canDelete={canDelete}
+              uploadingVersionId={versionMutation.isPending ? versionTargetId : null}
+              onPreview={(doc) => openDocument(doc, "preview")}
+              onDownload={(doc) => openDocument(doc, "download")}
+              onUploadVersion={(doc) => {
+                setVersionTargetId(doc.id);
+                versionInputRef.current?.click();
+              }}
+              onEdit={setEditingDoc}
+              onViewVersions={(doc) => setVersionsSheetDocId(doc.id)}
+              onDelete={setDeleteTarget}
+            />
+          </div>
+        </>
       )}
+
+      {pendingFile && (
+        <DocumentFormDialog
+          open
+          mode="create"
+          file={pendingFile}
+          isSubmitting={uploadMutation.isPending}
+          onOpenChange={(next) => !next && setPendingFile(null)}
+          onSubmit={(values) => uploadMutation.mutate({ file: pendingFile, values })}
+        />
+      )}
+
+      {editingDoc && (
+        <DocumentFormDialog
+          open
+          mode="edit"
+          initial={{ title: editingDoc.title, documentType: editingDoc.documentType as DocumentType }}
+          isSubmitting={updateMutation.isPending}
+          onOpenChange={(next) => !next && setEditingDoc(null)}
+          onSubmit={(values) => updateMutation.mutate(values)}
+        />
+      )}
+
+      <DocumentVersionsSheet
+        startupId={startupId}
+        documentId={versionsSheetDocId}
+        onOpenChange={(next) => !next && setVersionsSheetDocId(null)}
+        onPreview={(version) => openVersion(version, "preview")}
+        onDownload={(version) => openVersion(version, "download")}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(next) => !next && setDeleteTarget(null)}
+        title="Delete document?"
+        description={
+          deleteTarget
+            ? `“${deleteTarget.title}” and all of its versions will be permanently removed. This can't be undone.`
+            : ""
+        }
+        confirmLabel="Delete document"
+        pendingLabel="Deleting…"
+        isPending={deleteMutation.isPending}
+        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteConfirm}
+        onOpenChange={setBulkDeleteConfirm}
+        title={`Delete ${selectedCount} document${selectedCount === 1 ? "" : "s"}?`}
+        description="Every version of each selected document will be permanently removed. This can't be undone."
+        confirmLabel="Delete selected"
+        pendingLabel="Deleting…"
+        isPending={bulkDeleteMutation.isPending}
+        onConfirm={() => bulkDeleteMutation.mutate(Array.from(selectedIds ?? []))}
+      />
     </div>
   );
 }

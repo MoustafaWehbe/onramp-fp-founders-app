@@ -20,6 +20,9 @@ export type DocumentVersion = {
   processingError: string | null;
   summary: string | null;
   uploadedBy: string;
+  // Joined only on getDocument's version history; null from the
+  // create/version-upload/confirm responses, where the uploader is the caller.
+  uploaderName: string | null;
   createdAt: string;
   hasFile: boolean;
 };

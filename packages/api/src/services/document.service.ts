@@ -27,6 +27,10 @@ function serializeVersion(version: {
   createdAt: Date;
   storageProvider: string;
   storageKey: string;
+  // Only present where a caller actually joined it (getDocument's version
+  // history) — on the create/version-upload/confirm paths the uploader is
+  // trivially the caller, so nothing bothers to join it there.
+  uploader?: { firstName: string; lastName: string } | null;
 }) {
   return {
     id: version.id,
@@ -40,6 +44,7 @@ function serializeVersion(version: {
     processingError: version.processingError,
     summary: version.summary,
     uploadedBy: version.uploadedBy,
+    uploaderName: version.uploader ? `${version.uploader.firstName} ${version.uploader.lastName}` : null,
     createdAt: version.createdAt,
     storageProvider: version.storageProvider,
     // Never return permanent storage URLs — clients request signed access.
@@ -130,7 +135,10 @@ export class DocumentService {
     const doc = await prisma.document.findUnique({
       where: { startupId_id: { startupId, id: documentId } },
       include: {
-        versions: { orderBy: { versionNumber: "desc" } },
+        versions: {
+          orderBy: { versionNumber: "desc" },
+          include: { uploader: { select: { firstName: true, lastName: true } } },
+        },
       },
     });
     if (!doc) throw createError("Document not found", 404, "DOCUMENT_NOT_FOUND");

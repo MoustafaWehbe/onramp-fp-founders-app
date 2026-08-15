@@ -5,6 +5,7 @@ import { createError } from "../utils/errors";
 import { emailQueue } from "../jobs/queue";
 import { getAppUrl } from "../config/env";
 import { recordAuditEvent } from "./audit-writer";
+import { reviewerInviteEmail } from "../emails/templates/reviewer-invite";
 import type {
   CreateReviewerInvitationInput,
   ListReviewerInvitationsQuery,
@@ -134,14 +135,18 @@ export class ReviewerInvitationService {
 
     const accessUrl = `${getAppUrl()}/review/${rawToken}`;
     try {
-      await emailQueue.add("send-reviewer-invite", {
-        to: emailNormalized,
-        subject: "You've been invited to review documents",
-        html: `<p>You have been invited to review fundraising documents.</p>
-               <p><a href="${accessUrl}">Open secure review link</a></p>
-               <p>This link expires on ${expiresAt.toUTCString()}.</p>
-               ${input.personalMessage ? `<p>${input.personalMessage}</p>` : ""}`,
+      const startup = await prisma.startup.findUnique({
+        where: { id: startupId },
+        select: { name: true },
       });
+      const { subject, html } = reviewerInviteEmail(
+        startup?.name ?? "A startup on FP Founders",
+        input.reviewerName ?? null,
+        accessUrl,
+        expiresAt,
+        input.personalMessage ?? null,
+      );
+      await emailQueue.add("send-reviewer-invite", { to: emailNormalized, subject, html });
     } catch {
       // Invitation row still exists; founder can resend later.
     }
