@@ -953,11 +953,6 @@ export function Pipeline() {
           <div
             className={cn(
               "scrollbar-none flex touch-pan-x gap-3 overflow-x-auto scroll-smooth pb-1",
-              // Mandatory snap fights dnd-kit's own scrollLeft updates while
-              // it's auto-scrolling toward an off-screen column — the browser
-              // keeps snapping back to the nearest card, which is what made
-              // the drag-to-edge scroll feel stuck rather than smooth. Only
-              // snap when nothing is being dragged.
               activeId === null && "snap-x snap-proximity",
             )}
           >

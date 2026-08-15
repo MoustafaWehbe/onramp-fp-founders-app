@@ -34,6 +34,11 @@ const G = {
   LOG: 12,
   NOTIFICATION: 13,
   AUDIT: 14,
+  CONVERSATION: 15,
+  CONVERSATION_MEMBER: 16,
+  MESSAGE: 17,
+  MESSAGE_MENTION: 18,
+  MESSAGE_REACTION: 19,
 } as const;
 
 const uid = (group: number, n: number): string =>
@@ -44,6 +49,7 @@ const uid = (group: number, n: number): string =>
 const NOW = Date.now();
 const days = (n: number) => new Date(NOW + n * 86_400_000);
 const hours = (n: number) => new Date(NOW + n * 3_600_000);
+const minutes = (n: number) => new Date(NOW + n * 60_000);
 
 /**
  * "Due today" means later today, not this exact instant. The task queue sorts
@@ -1491,11 +1497,15 @@ async function seedWorkspace(
     }
   }
 
+  // Keyed by title — titles are unique within a workspace's seed fixtures, and
+  // chat seeding below needs a real task id to build a "share a task" message.
+  const tasksByKey = new Map<string, { id: string; title: string }>();
+
   for (const seed of spec.tasks) {
     const entry = dealsByKey.get(`${seed.contactKey}:${seed.round}`);
     if (!entry) throw new Error(`Task "${seed.title}" has no deal for ${seed.contactKey}`);
 
-    await prisma.task.create({
+    const task = await prisma.task.create({
       data: {
         id: nextId(G.TASK),
         startupId: startup.id,
@@ -1515,17 +1525,256 @@ async function seedWorkspace(
         createdBy: usersByKey.get(seed.creatorKey)!.id,
       },
     });
+    tasksByKey.set(seed.title, task);
   }
 
   return {
     startup,
     roles,
     membersByKey,
+    tasksByKey,
     roundsByKey,
     contactsByKey,
     dealsByKey,
     counts: { dealCount, commitmentCount, logCount, taskCount: spec.tasks.length },
   };
+}
+
+// ─── Chat ─────────────────────────────────────────────────────────────────────
+
+type MentionTargetType = "member" | "investor" | "deal" | "task" | "round" | "document";
+
+/** Same token format the composer's MentionPicker and Share menu write — see packages/api/src/utils/mentions.ts. */
+function mentionToken(type: MentionTargetType, id: string, label: string): string {
+  return `@[${label}](${type}:${id})`;
+}
+
+let seedNonceCounter = 0;
+const nextNonce = () => `seed-nonce-${++seedNonceCounter}`;
+
+/**
+ * Team chat for Northbeam only — the workspace the demo opens on. Gives the
+ * Chat page real content to render: a multi-person channel with grouped
+ * consecutive messages, a reply thread, reactions, a teammate @mention, and
+ * one of each shareable entity (investor, deal, task, round) so every
+ * EntityUnfurl card variant shows up somewhere; plus a DM with an unread
+ * message so the sidebar badge and the new direct-message notification both
+ * have something real to point at.
+ */
+async function seedChat(
+  startup: { id: string },
+  membersByKey: Map<string, { id: string }>,
+  usersByKey: Map<string, { id: string; firstName: string; lastName: string }>,
+  contactsByKey: Map<string, { id: string; fullName: string; ventureFirm: string | null }>,
+  dealsByKey: Map<string, { id: string }>,
+  roundsByKey: Map<string, { id: string; currency: string }>,
+  tasksByKey: Map<string, { id: string; title: string }>,
+) {
+  const muhamad = membersByKey.get("muhamad")!;
+  const raymond = membersByKey.get("raymond")!;
+  const rana = membersByKey.get("rana")!;
+  const lopna = membersByKey.get("lopna")!;
+  const muhamadUserId = usersByKey.get("muhamad")!.id;
+
+  const aisha = contactsByKey.get("aisha")!;
+  const aishaSeedDeal = dealsByKey.get("aisha:seed")!;
+  const james = dealsByKey.get("james:seed")!;
+  const seedRound = roundsByKey.get("seed")!;
+  const lodestarTask = tasksByKey.get("Chase Lodestar on signature")!;
+
+  async function send(
+    conversationId: string,
+    senderMemberId: string,
+    body: string,
+    createdAt: Date,
+    parentMessageId?: string,
+  ) {
+    return prisma.message.create({
+      data: {
+        id: nextId(G.MESSAGE),
+        startupId: startup.id,
+        conversationId,
+        senderId: senderMemberId,
+        body,
+        clientNonce: nextNonce(),
+        parentMessageId: parentMessageId ?? null,
+        createdAt,
+      },
+    });
+  }
+
+  async function mention(conversationId: string, messageId: string, type: MentionTargetType, targetId: string) {
+    const column =
+      type === "member"
+        ? { mentionedMemberId: targetId }
+        : type === "investor"
+          ? { investorId: targetId }
+          : type === "deal"
+            ? { pipelineId: targetId }
+            : type === "task"
+              ? { taskId: targetId }
+              : type === "round"
+                ? { roundId: targetId }
+                : { documentId: targetId };
+
+    await prisma.messageMention.create({
+      data: {
+        id: nextId(G.MESSAGE_MENTION),
+        startupId: startup.id,
+        messageId,
+        conversationId,
+        targetType: type,
+        ...column,
+      },
+    });
+  }
+
+  async function react(messageId: string, memberId: string, emoji: string) {
+    await prisma.messageReaction.create({
+      data: { id: nextId(G.MESSAGE_REACTION), startupId: startup.id, messageId, memberId, emoji },
+    });
+  }
+
+  async function join(conversationId: string, memberIds: string[], readSeq: bigint | null, readAt: Date | null) {
+    for (const memberId of memberIds) {
+      await prisma.conversationMember.create({
+        data: {
+          id: nextId(G.CONVERSATION_MEMBER),
+          startupId: startup.id,
+          conversationId,
+          memberId,
+          joinedAt: days(-120),
+          lastReadSeq: readSeq,
+          lastReadAt: readAt,
+        },
+      });
+    }
+  }
+
+  // ── #general — the whole team ──────────────────────────────────────────────
+  const general = await prisma.conversation.create({
+    data: {
+      id: nextId(G.CONVERSATION),
+      startupId: startup.id,
+      type: "channel",
+      name: "general",
+      topic: "Team-wide updates and quick questions.",
+      createdBy: muhamadUserId,
+      lastMessageAt: minutes(-5),
+    },
+  });
+
+  await send(general.id, muhamad.id, "Welcome to Northbeam's team chat 👋 This is #general — deal talk lives in #fundraising.", minutes(-300));
+  await send(general.id, raymond.id, "Sounds good, I'll keep pipeline chatter over there then.", minutes(-295));
+
+  const g3 = await send(
+    general.id,
+    rana.id,
+    `Quick one ${mentionToken("member", muhamad.id, "Muhamad Houda")} — did the term sheet redline go out to Aisha's team yet?`,
+    minutes(-200),
+  );
+  await mention(general.id, g3.id, "member", muhamad.id);
+
+  const g4 = await send(general.id, muhamad.id, "Not yet, doing it today.", minutes(-198));
+  await react(g4.id, raymond.id, "👍");
+
+  const g5 = await send(
+    general.id,
+    muhamad.id,
+    `please guys lets finish it ${mentionToken("task", lodestarTask.id, lodestarTask.title)}`,
+    minutes(-197),
+  );
+  await mention(general.id, g5.id, "task", lodestarTask.id);
+  await react(g5.id, raymond.id, "✅");
+  await react(g5.id, rana.id, "👀");
+
+  const g6 = await send(
+    general.id,
+    muhamad.id,
+    `we must focus on it ${mentionToken("investor", aisha.id, aisha.fullName)}`,
+    minutes(-196),
+  );
+  await mention(general.id, g6.id, "investor", aisha.id);
+
+  const g7 = await send(general.id, raymond.id, "On it — moving the Lodestar signature check to today.", minutes(-150));
+  await react(g7.id, muhamad.id, "👍");
+
+  const g8 = await send(
+    general.id,
+    rana.id,
+    `Also, this one's stalled — ${mentionToken("deal", aishaSeedDeal.id, aisha.fullName)} meeting is booked but there's no prep doc yet.`,
+    minutes(-100),
+  );
+  await mention(general.id, g8.id, "deal", aishaSeedDeal.id);
+
+  const g9 = await send(
+    general.id,
+    muhamad.id,
+    `Reminder — the ${mentionToken("round", seedRound.id, "Seed")} round closes in about a month, let's keep the pace up.`,
+    minutes(-60),
+  );
+  await mention(general.id, g9.id, "round", seedRound.id);
+  await react(g9.id, raymond.id, "🚀");
+
+  const g10 = await send(general.id, muhamad.id, "Anyone free to jump on a call with Lodestar this week to push the signature?", minutes(-30));
+  await send(general.id, raymond.id, "I can do Thursday afternoon.", minutes(-28), g10.id);
+  const g10b = await send(general.id, rana.id, "I'll join too.", minutes(-25), g10.id);
+  await prisma.message.update({ where: { id: g10.id }, data: { replyCount: 2 } });
+
+  const g11 = await send(general.id, lopna.id, "Following along — nice progress everyone!", minutes(-5));
+
+  await join(general.id, [raymond.id, rana.id, lopna.id], g11.seq, g11.createdAt);
+  // Muhamad was last active partway through the thread — the last word (g11)
+  // lands as this workspace's one unread badge in #general.
+  await join(general.id, [muhamad.id], g10b.seq, g10b.createdAt);
+
+  // ── #fundraising — a smaller working group ─────────────────────────────────
+  const fundraising = await prisma.conversation.create({
+    data: {
+      id: nextId(G.CONVERSATION),
+      startupId: startup.id,
+      type: "channel",
+      name: "fundraising",
+      topic: "Investor outreach, term sheets, closing logistics.",
+      createdBy: muhamadUserId,
+      lastMessageAt: minutes(-60),
+    },
+  });
+
+  await send(fundraising.id, muhamad.id, "Syncing here on deal-specific stuff so #general stays clean.", minutes(-180));
+  const f2 = await send(
+    fundraising.id,
+    raymond.id,
+    `${mentionToken("deal", james.id, "James O'Brien")} confirmed for a partner meeting today.`,
+    minutes(-120),
+  );
+  await mention(fundraising.id, f2.id, "deal", james.id);
+  const f3 = await send(fundraising.id, rana.id, "Nice, I'll prep the intro deck.", minutes(-60));
+
+  await join(fundraising.id, [muhamad.id, raymond.id, rana.id], f3.seq, f3.createdAt);
+
+  // ── Muhamad ↔ Raymond DM — left with an unread message on purpose, to
+  //    demo the unread badge and the plain-DM notification together ────────
+  const dm = await prisma.conversation.create({
+    data: {
+      id: nextId(G.CONVERSATION),
+      startupId: startup.id,
+      type: "dm",
+      dmKey: [muhamad.id, raymond.id].sort().join(":"),
+      createdBy: usersByKey.get("raymond")!.id,
+      lastMessageAt: minutes(-8),
+    },
+  });
+
+  await send(dm.id, raymond.id, "Hey — got a sec to review the pre-seed vs seed comparison deck before EOD?", hours(-3));
+  const dm2 = await send(dm.id, raymond.id, "No rush, just don't want it to slip.", minutes(-8));
+
+  // Raymond's own sends advance his own read pointer; Muhamad hasn't opened
+  // the DM yet, so both messages are still unread for him.
+  await join(dm.id, [raymond.id], dm2.seq, dm2.createdAt);
+  await join(dm.id, [muhamad.id], null, null);
+
+  return { general, fundraising, dm, mentionMessageId: g3.id, dmLastMessageId: dm2.id };
 }
 
 // ─── Seed ─────────────────────────────────────────────────────────────────────
@@ -1689,7 +1938,18 @@ async function main() {
     data: { lastActiveStartupId: northbeam.startup.id },
   });
 
-  // 5. A pending invitation — the Team page's invited-but-not-joined state.
+  // 5. Team chat — Northbeam only, the workspace the demo opens on.
+  const chat = await seedChat(
+    northbeam.startup,
+    northbeam.membersByKey,
+    usersByKey,
+    northbeam.contactsByKey,
+    northbeam.dealsByKey,
+    northbeam.roundsByKey,
+    northbeam.tasksByKey,
+  );
+
+  // 6. A pending invitation — the Team page's invited-but-not-joined state.
   await prisma.startupMember.create({
     data: {
       id: nextId(G.MEMBER),
@@ -1703,7 +1963,7 @@ async function main() {
     },
   });
 
-  // 6. Notifications — one of every type the client knows how to render, with
+  // 7. Notifications — one of every type the client knows how to render, with
   //    a mix of read and unread so the badge count is non-zero.
   const sarahDeal = northbeam.dealsByKey.get("sarah:seed")!;
   const owenDeal = northbeam.dealsByKey.get("owen:seed")!;
@@ -1769,10 +2029,28 @@ async function main() {
       type: "team_invite",
       title: "You were added to Drift Labs",
       body: "Karim Baz added you as a collaborator.",
-      entityType: "startup",
-      entityId: drift.startup.id,
+      entityType: "startup_member",
+      entityId: drift.membersByKey.get("muhamad")!.id,
       readAt: hours(-96),
       createdAt: hours(-120),
+    },
+    {
+      type: "chat_mention",
+      title: "Rana Nemer mentioned you in #general",
+      body: "Quick one @Muhamad Houda — did the term sheet redline go out to Aisha's team yet?",
+      entityType: "conversation",
+      entityId: chat.general.id,
+      readAt: null,
+      createdAt: minutes(-200),
+    },
+    {
+      type: "direct_message",
+      title: "Raymond Rached sent you a message",
+      body: "No rush, just don't want it to slip.",
+      entityType: "conversation",
+      entityId: chat.dm.id,
+      readAt: null,
+      createdAt: minutes(-8),
     },
   ];
 
@@ -1787,7 +2065,7 @@ async function main() {
     });
   }
 
-  // 7. Audit trail.
+  // 8. Audit trail.
   const AUDITS = [
     {
       action: "create",
@@ -1861,7 +2139,8 @@ async function main() {
   console.info(
     `  Interactions:  ${northbeam.counts.logCount + drift.counts.logCount} logs across call/email/meeting/note/other`,
   );
-  console.info(`  Notifications: ${NOTIFICATIONS.length} (5 unread)`);
+  console.info(`  Chat:          #general + #fundraising, a DM with Raymond (unread), reactions + a reply thread`);
+  console.info(`  Notifications: ${NOTIFICATIONS.length} (7 unread)`);
   console.info(`  Audit logs:    ${AUDITS.length} entries`);
   console.info("─────────────────────────────────────────────────────────");
 }
