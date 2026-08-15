@@ -76,10 +76,13 @@ export function Profile() {
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title="Profile" description="Manage how you appear across your workspace." />
 
-      <section className="overflow-hidden rounded-2xl border border-border/70 bg-card">
-        <div className="h-32 bg-gradient-to-r from-primary/30 via-primary/15 to-transparent sm:h-36" />
-        <div className="-mt-14 flex flex-col gap-5 px-6 pb-6 sm:-mt-16 sm:flex-row sm:items-end sm:px-8">
-          <div className="relative w-fit">
+      <section className="relative overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden bg-gradient-to-r from-primary/[0.09] via-primary/[0.04] to-transparent">
+          <div className="absolute -right-10 -top-24 h-56 w-56 rounded-full bg-primary/10 blur-3xl" />
+          <div className="absolute -bottom-20 left-1/3 h-40 w-40 rounded-full bg-primary/[0.07] blur-3xl" />
+        </div>
+        <div className="relative flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:p-8">
+          <div className="relative w-fit shrink-0">
             <Avatar className="h-28 w-28 border-4 border-card shadow-xl">
               <AvatarImage src={avatarUrl ?? undefined} alt={displayName} className="object-cover" />
               <AvatarFallback className="bg-primary/15 font-display text-2xl font-semibold text-primary">
@@ -94,7 +97,7 @@ export function Profile() {
               onChange={(event) => void choosePhoto(event.target.files?.[0])}
             />
           </div>
-          <div className="min-w-0 flex-1 pb-1">
+          <div className="min-w-0 flex-1">
             <h2 className="truncate font-display text-2xl font-semibold">{displayName}</h2>
             <p className="mt-1 truncate text-sm text-muted-foreground">{user.email}</p>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -102,7 +105,7 @@ export function Profile() {
               {activeStartup && <Badge variant="outline" className="capitalize">{activeStartup.member.role}</Badge>}
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 sm:ml-auto">
             <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isProcessingPhoto}>
               <Camera className="mr-2 h-4 w-4" />
               {isProcessingPhoto ? "Processing…" : "Change photo"}
