@@ -9,6 +9,7 @@ export const PERMISSIONS = [
   { resource: "team", action: "create", description: "Invite team members" },
   { resource: "team", action: "update", description: "Change member roles" },
   { resource: "team", action: "delete", description: "Remove team members" },
+  { resource: "team", action: "manage", description: "Create and edit roles and permission grants" },
 
   // CRM / Pipeline
   { resource: "pipeline", action: "read", description: "View investors and pipeline" },
@@ -44,6 +45,7 @@ export const ROLE_TEMPLATES = {
   collaborator: [
     "startup:read",
     "team:read",
+    "team:create",
     "pipeline:read",
     "pipeline:create",
     "pipeline:update",
@@ -61,7 +63,6 @@ export const ROLE_TEMPLATES = {
     "team:read",
     "pipeline:read",
     "documents:read",
-    "financial:read",
     "ai_reports:read",
     "chat:read",
     "chat:create",

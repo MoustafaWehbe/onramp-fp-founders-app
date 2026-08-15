@@ -59,8 +59,14 @@ export class InviteService {
       throw createError("Role not found in this startup", 404, "ROLE_NOT_FOUND");
     }
 
-    if (role.name === "owner") {
-      await this.assertActorIsOwner(prisma, actorMemberId, startupId);
+    const actorIsOwner = await this.isActorOwner(prisma, actorMemberId, startupId);
+    if (role.name === "owner" && !actorIsOwner) {
+      throw createError("Only owners can assign the owner role", 403, "OWNER_ONLY");
+    }
+    // A non-owner (i.e. a collaborator, the only other role with team:create
+    // today) may only invite into the viewer role — owner invites anyone.
+    if (!actorIsOwner && role.name !== "viewer") {
+      throw createError("Only owners can invite into this role", 403, "INVITE_ROLE_FORBIDDEN");
     }
 
     // Check if email already has an active or pending member row
@@ -445,14 +451,18 @@ export class InviteService {
     });
   }
 
-  // Helper to assert that the actor is an active owner of the startup
-  private async assertActorIsOwner(db: Db, actorMemberId: string, startupId: string): Promise<void> {
+  private async isActorOwner(db: Db, actorMemberId: string, startupId: string): Promise<boolean> {
     const actor = await db.startupMember.findUnique({
       where: { id: actorMemberId },
       include: { role: { select: { name: true } } },
     });
 
-    if (!actor || actor.startupId !== startupId || actor.status !== "active" || actor.role.name !== "owner") {
+    return Boolean(actor && actor.startupId === startupId && actor.status === "active" && actor.role.name === "owner");
+  }
+
+  // Helper to assert that the actor is an active owner of the startup
+  private async assertActorIsOwner(db: Db, actorMemberId: string, startupId: string): Promise<void> {
+    if (!(await this.isActorOwner(db, actorMemberId, startupId))) {
       throw createError("Only owners can assign the owner role", 403, "OWNER_ONLY");
     }
   }

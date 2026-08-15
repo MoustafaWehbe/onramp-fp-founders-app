@@ -14,7 +14,12 @@ import { roleLabel, type TeamMemberRow } from "./team-types";
 type MemberActionsProps = {
   member: TeamMemberRow;
   roles: StartupRole[];
-  canManage: boolean;
+  /** team:create — resending only re-issues a link for a role already decided. */
+  canResend: boolean;
+  /** team:update */
+  canChangeRole: boolean;
+  /** team:delete */
+  canRemove: boolean;
   isSelf: boolean;
   onChangeRole: (member: TeamMemberRow, roleId: string) => void;
   onRemove: (member: TeamMemberRow) => void;
@@ -25,7 +30,9 @@ type MemberActionsProps = {
 export function MemberActions({
   member,
   roles,
-  canManage,
+  canResend,
+  canChangeRole,
+  canRemove,
   isSelf,
   onChangeRole,
   onRemove,
@@ -59,13 +66,13 @@ export function MemberActions({
           </DropdownMenuItem>
         )}
 
-        {canManage && member.isPending && (
+        {canResend && member.isPending && (
           <DropdownMenuItem disabled={busy} onSelect={() => onResend(member)}>
             <Send className="mr-2 h-4 w-4" /> Resend invitation
           </DropdownMenuItem>
         )}
 
-        {canManage && roles.length > 0 && (
+        {canChangeRole && roles.length > 0 && (
           <>
             {member.email && <DropdownMenuSeparator />}
             <DropdownMenuLabel className="flex items-center gap-2">
@@ -86,7 +93,7 @@ export function MemberActions({
           </>
         )}
 
-        {canManage && (
+        {canRemove && (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem

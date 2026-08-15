@@ -18,6 +18,8 @@ export type StartupMembership = {
   id: string;
   status: string;
   role: string;
+  /** The role's live "resource:action" grants — the actual source of truth for what the caller may do. */
+  permissions: string[];
   joinedAt: string | null;
 };
 

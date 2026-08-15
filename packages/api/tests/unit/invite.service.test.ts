@@ -56,6 +56,7 @@ describe("InviteService.inviteMember", () => {
     (mockPrisma.role.findUnique as jest.Mock).mockResolvedValue({
       id: ROLE_ID,
       startupId: STARTUP_ID,
+      name: "viewer",
     });
     (mockPrisma.startupMember.findFirst as jest.Mock).mockResolvedValue(null);
     (mockPrisma.startupMember.create as jest.Mock).mockResolvedValue({
@@ -103,6 +104,7 @@ describe("InviteService.inviteMember", () => {
     (mockPrisma.role.findUnique as jest.Mock).mockResolvedValue({
       id: ROLE_ID,
       startupId: STARTUP_ID,
+      name: "viewer",
     });
     (mockPrisma.startupMember.findFirst as jest.Mock).mockResolvedValue(null);
     (mockPrisma.startupMember.create as jest.Mock).mockResolvedValue({});
@@ -141,6 +143,7 @@ describe("InviteService.inviteMember", () => {
     (mockPrisma.role.findUnique as jest.Mock).mockResolvedValue({
       id: ROLE_ID,
       startupId: STARTUP_ID,
+      name: "viewer",
     });
     (mockPrisma.startupMember.findFirst as jest.Mock).mockResolvedValue({
       id: MEMBER_ID,
@@ -156,6 +159,7 @@ describe("InviteService.inviteMember", () => {
     (mockPrisma.role.findUnique as jest.Mock).mockResolvedValue({
       id: ROLE_ID,
       startupId: STARTUP_ID,
+      name: "viewer",
     });
     (mockPrisma.startupMember.findFirst as jest.Mock).mockResolvedValue({
       id: MEMBER_ID,
@@ -171,6 +175,7 @@ describe("InviteService.inviteMember", () => {
     (mockPrisma.role.findUnique as jest.Mock).mockResolvedValue({
       id: ROLE_ID,
       startupId: STARTUP_ID,
+      name: "viewer",
     });
     (mockPrisma.startupMember.findFirst as jest.Mock).mockResolvedValue(null);
     (mockPrisma.startupMember.create as jest.Mock).mockResolvedValue({});
@@ -224,6 +229,44 @@ describe("InviteService.inviteMember", () => {
     await expect(
       service.inviteMember({ email: "new@example.com", roleId: ROLE_ID }, STARTUP_ID, INVITER_ID, ACTOR_ID),
     ).rejects.toMatchObject({ statusCode: 403, code: "OWNER_ONLY" });
+  });
+
+  it("allows a collaborator to invite a viewer", async () => {
+    (mockPrisma.role.findUnique as jest.Mock).mockResolvedValue({
+      id: ROLE_ID,
+      startupId: STARTUP_ID,
+      name: "viewer",
+    });
+    (mockPrisma.startupMember.findFirst as jest.Mock).mockResolvedValue(null);
+    (mockPrisma.startupMember.findUnique as jest.Mock).mockResolvedValue({
+      id: ACTOR_ID,
+      startupId: STARTUP_ID,
+      status: "active",
+      role: { name: "collaborator" },
+    });
+    (mockPrisma.startupMember.create as jest.Mock).mockResolvedValue({});
+
+    await expect(
+      service.inviteMember({ email: "new@example.com", roleId: ROLE_ID }, STARTUP_ID, INVITER_ID, ACTOR_ID),
+    ).resolves.toHaveProperty("rawToken");
+  });
+
+  it("rejects a collaborator inviting into a non-viewer role", async () => {
+    (mockPrisma.role.findUnique as jest.Mock).mockResolvedValue({
+      id: ROLE_ID,
+      startupId: STARTUP_ID,
+      name: "collaborator",
+    });
+    (mockPrisma.startupMember.findUnique as jest.Mock).mockResolvedValue({
+      id: ACTOR_ID,
+      startupId: STARTUP_ID,
+      status: "active",
+      role: { name: "collaborator" },
+    });
+
+    await expect(
+      service.inviteMember({ email: "new@example.com", roleId: ROLE_ID }, STARTUP_ID, INVITER_ID, ACTOR_ID),
+    ).rejects.toMatchObject({ statusCode: 403, code: "INVITE_ROLE_FORBIDDEN" });
   });
 });
 

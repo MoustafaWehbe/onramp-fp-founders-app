@@ -45,7 +45,7 @@ function workspace(id: string, name: string): WorkspaceSummary {
     createdBy: "u-1",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
-    member: { id: `m-${id}`, status: "active", role: "owner", joinedAt: null },
+    member: { id: `m-${id}`, status: "active", role: "owner", permissions: [], joinedAt: null },
   };
 }
 

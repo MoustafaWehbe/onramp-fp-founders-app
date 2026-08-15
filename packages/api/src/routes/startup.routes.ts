@@ -12,6 +12,11 @@ import {
   changeRoleSchema,
   memberIdParamSchema,
 } from "../validators/invite.schemas";
+import {
+  createRoleSchema,
+  updateRoleSchema,
+  roleIdParamSchema,
+} from "../validators/role.schemas";
 import { startupController } from "../controllers/startup.controller";
 import { inviteController } from "../controllers/invite.controller";
 import { investorRouter } from "./investor.routes";
@@ -95,6 +100,38 @@ router.get(
   requireMember,
   requirePermission("team", "read"),
   startupController.listRoles,
+);
+
+// POST /api/v1/startups/:startupId/roles — team:manage
+router.post(
+  "/:startupId/roles",
+  authenticate,
+  validate(startupIdParamSchema, "params"),
+  requireMember,
+  requirePermission("team", "manage"),
+  validate(createRoleSchema),
+  startupController.createRole,
+);
+
+// PATCH /api/v1/startups/:startupId/roles/:roleId — team:manage
+router.patch(
+  "/:startupId/roles/:roleId",
+  authenticate,
+  validate(roleIdParamSchema, "params"),
+  requireMember,
+  requirePermission("team", "manage"),
+  validate(updateRoleSchema),
+  startupController.updateRole,
+);
+
+// DELETE /api/v1/startups/:startupId/roles/:roleId — team:manage
+router.delete(
+  "/:startupId/roles/:roleId",
+  authenticate,
+  validate(roleIdParamSchema, "params"),
+  requireMember,
+  requirePermission("team", "manage"),
+  startupController.deleteRole,
 );
 
 // GET /api/v1/startups/:startupId/members — team:read

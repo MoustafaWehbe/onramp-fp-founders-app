@@ -24,6 +24,8 @@ type InviteMemberDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   roles: StartupRole[];
+  /** Owners may invite into any role; everyone else (collaborators) may only invite viewers. */
+  canInviteAnyRole: boolean;
   isSubmitting: boolean;
   onSubmit: (input: { email: string; roleId: string }) => void;
 };
@@ -37,21 +39,25 @@ export function InviteMemberDialog({
   open,
   onOpenChange,
   roles,
+  canInviteAnyRole,
   isSubmitting,
   onSubmit,
 }: InviteMemberDialogProps) {
   const [email, setEmail] = useState("");
   const [roleId, setRoleId] = useState("");
 
+  const assignableRoles = canInviteAnyRole ? roles : roles.filter((role) => role.name === "viewer");
+
   // Roles arrive asynchronously, so seed the picker whenever the dialog opens
   // or the list finally lands.
   useEffect(() => {
     if (!open) return;
     setEmail("");
-    setRoleId(defaultRoleId(roles));
-  }, [open, roles]);
+    setRoleId(canInviteAnyRole ? defaultRoleId(roles) : (assignableRoles[0]?.id ?? ""));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, roles, canInviteAnyRole]);
 
-  const selectedRole = roles.find((role) => role.id === roleId);
+  const selectedRole = assignableRoles.find((role) => role.id === roleId);
   const canSubmit = email.trim().length > 0 && roleId !== "" && !isSubmitting;
 
   function handleSubmit(event: React.FormEvent) {
@@ -68,6 +74,7 @@ export function InviteMemberDialog({
           <DialogDescription>
             They'll get an email with a link to join. The invitation is tied to this address and
             expires in 7 days.
+            {!canInviteAnyRole && " As a collaborator, you can only invite viewers."}
           </DialogDescription>
         </DialogHeader>
 
@@ -93,7 +100,7 @@ export function InviteMemberDialog({
                   type="button"
                   variant="outline"
                   className="h-9 w-full justify-between px-3 font-normal"
-                  disabled={roles.length === 0}
+                  disabled={assignableRoles.length === 0}
                 >
                   <span>
                     {selectedRole ? roleLabel(selectedRole.name) : "Loading roles…"}
@@ -105,7 +112,7 @@ export function InviteMemberDialog({
                 align="start"
                 className="w-[var(--radix-dropdown-menu-trigger-width)]"
               >
-                {roles.map((role) => (
+                {assignableRoles.map((role) => (
                   <DropdownMenuItem key={role.id} onSelect={() => setRoleId(role.id)}>
                     <div className="min-w-0">
                       <div className="font-medium">{roleLabel(role.name)}</div>

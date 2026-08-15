@@ -31,10 +31,12 @@ describe("roleCan", () => {
     expect(roleCan("viewer", "pipeline", "read")).toBe(true);
     expect(roleCan("viewer", "pipeline", "create")).toBe(false);
     expect(roleCan("viewer", "team", "create")).toBe(false);
+    expect(roleCan("viewer", "financial", "read")).toBe(false);
   });
 
-  it("keeps team management to owners", () => {
-    for (const action of ["create", "update", "delete"] as const) {
+  it("lets a collaborator invite teammates, but not change roles, remove members, or manage roles", () => {
+    expect(roleCan("collaborator", "team", "create")).toBe(true);
+    for (const action of ["update", "delete", "manage"] as const) {
       expect(roleCan("owner", "team", action)).toBe(true);
       expect(roleCan("collaborator", "team", action)).toBe(false);
       expect(roleCan("viewer", "team", action)).toBe(false);

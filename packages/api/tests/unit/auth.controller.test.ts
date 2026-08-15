@@ -414,9 +414,9 @@ describe("POST /api/v1/auth/refresh", () => {
     expect(cookies.some((c: string) => c.startsWith("refreshToken=new.refresh.token"))).toBe(true);
   });
 
-  it("returns 400 when no refresh token is supplied", async () => {
+  it("returns 401 when no refresh token is supplied", async () => {
     const res = await request(app).post("/api/v1/auth/refresh").send({});
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(401);
   });
 
   // A refresh token that's missing, expired, or already revoked will never

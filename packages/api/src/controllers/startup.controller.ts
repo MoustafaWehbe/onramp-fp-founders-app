@@ -1,6 +1,7 @@
 import { asyncHandler } from "../utils/errors";
 import { startupService } from "../services/startup.service";
 import type { CreateStartupInput, UpdateStartupInput } from "../validators/startup.schemas";
+import type { CreateRoleInput, UpdateRoleInput } from "../validators/role.schemas";
 
 export const startupController = {
   createStartup: asyncHandler(async (req, res) => {
@@ -42,6 +43,25 @@ export const startupController = {
   listRoles: asyncHandler(async (req, res) => {
     const roles = await startupService.listRoles(req.params.startupId as string);
     res.json({ data: { roles } });
+  }),
+
+  createRole: asyncHandler(async (req, res) => {
+    const role = await startupService.createRole(req.params.startupId as string, req.body as CreateRoleInput);
+    res.status(201).json({ data: { role } });
+  }),
+
+  updateRole: asyncHandler(async (req, res) => {
+    const role = await startupService.updateRole(
+      req.params.startupId as string,
+      req.params.roleId as string,
+      req.body as UpdateRoleInput,
+    );
+    res.json({ data: { role } });
+  }),
+
+  deleteRole: asyncHandler(async (req, res) => {
+    await startupService.deleteRole(req.params.startupId as string, req.params.roleId as string);
+    res.status(204).send();
   }),
 
   listMembers: asyncHandler(async (req, res) => {

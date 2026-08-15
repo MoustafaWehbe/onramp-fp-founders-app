@@ -5,6 +5,8 @@ export type StartupRole = {
   name: string;
   description: string | null;
   isSystemRole: boolean;
+  permissions: string[];
+  memberCount: number;
 };
 
 export type MemberUser = {
@@ -50,6 +52,33 @@ export async function listRoles(startupId: string) {
     `/startups/${startupId}/roles`,
   );
   return data.data.roles;
+}
+
+export async function createRole(
+  startupId: string,
+  input: { name: string; description?: string; permissions: string[] },
+) {
+  const { data } = await apiClient.post<{ data: { role: StartupRole } }>(
+    `/startups/${startupId}/roles`,
+    input,
+  );
+  return data.data.role;
+}
+
+export async function updateRole(
+  startupId: string,
+  roleId: string,
+  input: { description?: string; permissions?: string[] },
+) {
+  const { data } = await apiClient.patch<{ data: { role: StartupRole } }>(
+    `/startups/${startupId}/roles/${roleId}`,
+    input,
+  );
+  return data.data.role;
+}
+
+export async function deleteRole(startupId: string, roleId: string) {
+  await apiClient.delete(`/startups/${startupId}/roles/${roleId}`);
 }
 
 /**

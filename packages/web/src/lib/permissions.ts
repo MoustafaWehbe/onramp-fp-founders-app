@@ -17,6 +17,7 @@ const ALL_PERMISSIONS = [
   "team:create",
   "team:update",
   "team:delete",
+  "team:manage",
   "pipeline:read",
   "pipeline:create",
   "pipeline:update",
@@ -42,6 +43,7 @@ export const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
   collaborator: [
     "startup:read",
     "team:read",
+    "team:create",
     "pipeline:read",
     "pipeline:create",
     "pipeline:update",
@@ -59,7 +61,6 @@ export const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "team:read",
     "pipeline:read",
     "documents:read",
-    "financial:read",
     "ai_reports:read",
     "chat:read",
     "chat:create",
