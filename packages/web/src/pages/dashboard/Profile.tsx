@@ -76,9 +76,9 @@ export function Profile() {
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title="Profile" description="Manage how you appear across your workspace." />
 
-      <section className="relative overflow-hidden rounded-2xl border border-border/70 bg-card">
-        <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-r from-primary/25 via-primary/10 to-transparent" />
-        <div className="relative flex flex-col gap-5 px-6 pb-6 pt-12 sm:flex-row sm:items-end sm:px-8">
+      <section className="overflow-hidden rounded-2xl border border-border/70 bg-card">
+        <div className="h-32 bg-gradient-to-r from-primary/30 via-primary/15 to-transparent sm:h-36" />
+        <div className="-mt-14 flex flex-col gap-5 px-6 pb-6 sm:-mt-16 sm:flex-row sm:items-end sm:px-8">
           <div className="relative w-fit">
             <Avatar className="h-28 w-28 border-4 border-card shadow-xl">
               <AvatarImage src={avatarUrl ?? undefined} alt={displayName} className="object-cover" />

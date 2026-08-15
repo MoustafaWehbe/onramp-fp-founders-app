@@ -3,7 +3,6 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Briefcase,
-  Building2,
   Check,
   ChevronDown,
   FileText,
@@ -69,7 +68,6 @@ const navGroups = [
     label: "Workspace",
     items: [
       { to: "/team", label: "Team & Roles", icon: UserCog },
-      { to: "/startup", label: "Startup", icon: Building2 },
       { to: "/audit", label: "Audit Log", icon: ScrollText },
       { to: "/settings", label: "Settings", icon: Settings },
     ],

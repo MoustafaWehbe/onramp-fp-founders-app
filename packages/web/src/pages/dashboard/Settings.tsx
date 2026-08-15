@@ -10,6 +10,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { Input } from "../../components/ui/input";
@@ -43,6 +44,26 @@ const FUNDING_STAGES: { id: FundingStage; label: string }[] = [
 // a toast after a round trip.
 const LIMITS = { name: 100, description: 500, industry: 100 };
 
+/** Common startup industries; "Other" falls back to free text since the server accepts any string. */
+const INDUSTRIES = [
+  "Fintech",
+  "Healthtech",
+  "SaaS / Enterprise Software",
+  "AI / Machine Learning",
+  "E-commerce",
+  "Marketplace",
+  "Consumer",
+  "EdTech",
+  "Cybersecurity",
+  "Climate / CleanTech",
+  "Biotech / Life Sciences",
+  "Hardware",
+  "Real Estate / PropTech",
+  "Logistics / Supply Chain",
+  "Gaming",
+  "Media / Entertainment",
+];
+
 function CompanyProfileCard() {
   const queryClient = useQueryClient();
   const { can } = usePermissions();
@@ -53,6 +74,7 @@ function CompanyProfileCard() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [industry, setIndustry] = useState("");
+  const [industryCustom, setIndustryCustom] = useState(false);
   const [website, setWebsite] = useState("");
   const [fundingStage, setFundingStage] = useState<FundingStage>("pre_seed");
 
@@ -61,6 +83,7 @@ function CompanyProfileCard() {
     setName(activeStartup.name);
     setDescription(activeStartup.description ?? "");
     setIndustry(activeStartup.industry ?? "");
+    setIndustryCustom(activeStartup.industry ? !INDUSTRIES.includes(activeStartup.industry) : false);
     setWebsite(activeStartup.website ?? "");
     setFundingStage(activeStartup.fundingStage);
   }, [activeStartup]);
@@ -146,14 +169,62 @@ function CompanyProfileCard() {
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="startup-industry">Industry</Label>
-            <Input
-              id="startup-industry"
-              value={industry}
-              maxLength={LIMITS.industry}
-              disabled={!canEdit}
-              placeholder="Fintech"
-              onChange={(e) => setIndustry(e.target.value)}
-            />
+            {canEdit ? (
+              <>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      id="startup-industry"
+                      type="button"
+                      variant="outline"
+                      className="h-9 w-full justify-between px-3 font-normal"
+                    >
+                      <span className="truncate">
+                        {industryCustom ? "Other" : industry || "Select industry"}
+                      </span>
+                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    className="max-h-72 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto"
+                  >
+                    {INDUSTRIES.map((option) => (
+                      <DropdownMenuItem
+                        key={option}
+                        onSelect={() => {
+                          setIndustry(option);
+                          setIndustryCustom(false);
+                        }}
+                      >
+                        {option}
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        setIndustryCustom(true);
+                        setIndustry((prev) => (INDUSTRIES.includes(prev) ? "" : prev));
+                      }}
+                    >
+                      Other…
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                {industryCustom && (
+                  <Input
+                    id="startup-industry-custom"
+                    value={industry}
+                    maxLength={LIMITS.industry}
+                    placeholder="Describe your industry"
+                    autoFocus
+                    onChange={(e) => setIndustry(e.target.value)}
+                  />
+                )}
+              </>
+            ) : (
+              <Input id="startup-industry" value={industry} disabled />
+            )}
           </div>
 
           <div className="space-y-2">

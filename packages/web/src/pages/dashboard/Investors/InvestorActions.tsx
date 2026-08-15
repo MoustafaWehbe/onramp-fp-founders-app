@@ -24,6 +24,9 @@ type InvestorActionsProps = {
   onEdit?: (investor: InvestorRow) => void;
   onDelete?: (investor: InvestorRow) => void;
   onViewHistory?: (investor: InvestorRow) => void;
+  onEmail?: (investor: InvestorRow) => void;
+  /** Whether the founder's Google account is connected — sending needs it. */
+  googleConnected?: boolean;
   moving?: boolean;
 };
 
@@ -33,6 +36,8 @@ export function InvestorActions({
   onEdit,
   onDelete,
   onViewHistory,
+  onEmail,
+  googleConnected = false,
   moving = false,
 }: InvestorActionsProps) {
   const { can } = usePermissions();
@@ -57,11 +62,12 @@ export function InvestorActions({
         <DropdownMenuItem onSelect={() => onViewHistory?.(investor)}>
           <History className="mr-2 h-4 w-4" /> View history
         </DropdownMenuItem>
-        {investor.email && (
-          <DropdownMenuItem asChild>
-            <a href={`mailto:${investor.email}`}>
-              <Mail className="mr-2 h-4 w-4" /> Send email
-            </a>
+        {onEmail && (
+          <DropdownMenuItem
+            disabled={!investor.email || !googleConnected}
+            onSelect={() => onEmail(investor)}
+          >
+            <Mail className="mr-2 h-4 w-4" /> Send email
           </DropdownMenuItem>
         )}
         {investor.linkedinUrl && (

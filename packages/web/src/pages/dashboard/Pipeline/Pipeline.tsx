@@ -30,6 +30,7 @@ import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
 import { cn } from "../../../lib/utils";
 import { listInteractionLogs } from "../../../lib/interaction-log-api";
 import { scheduleMeeting } from "../../../lib/calendar-api";
+import { sendInvestorEmail } from "../../../lib/gmail-api";
 import {
   DEFAULT_PROBABILITY_BY_STAGE,
   STAGES,
@@ -60,6 +61,7 @@ import {
   qk,
 } from "../../../lib/query-keys";
 import { listMembers } from "../../../lib/team-api";
+import { ComposeEmailDialog, type ComposeFormValues } from "../Investors/ComposeEmailDialog";
 import { ScheduleMeetingDialog, type ScheduleFormValues } from "../Investors/ScheduleMeetingDialog";
 import { AddDealDialog, type AddDealValues } from "./AddDealDialog";
 import { BulkActionsBar } from "./BulkActionsBar";
@@ -109,6 +111,21 @@ function pipelineErrorMessage(err: unknown, fallback: string): string {
       return "That round is closed, so it can't take new deals.";
     default:
       return apiErrorMessage(err, fallback, FORBIDDEN_HINT);
+  }
+}
+
+function sendEmailErrorMessage(err: unknown): string {
+  switch (apiErrorCode(err)) {
+    case "INVESTOR_EMAIL_MISSING":
+      return "This investor has no email on file.";
+    case "GOOGLE_NOT_CONNECTED":
+      return "Connect your Google account in Settings to send email.";
+    case "GOOGLE_NEEDS_REAUTH":
+      return "Your Google connection needs to be reconnected — see Settings.";
+    case "GMAIL_SEND_FAILED":
+      return "Google rejected the send. Please try again.";
+    default:
+      return apiErrorMessage(err, "Could not send the email", FORBIDDEN_HINT);
   }
 }
 
@@ -182,6 +199,8 @@ export function Pipeline() {
   });
   // Scheduling straight from the focus list, without opening the deal first.
   const [quickScheduleDeal, setQuickScheduleDeal] = useState<PipelineEntry | null>(null);
+  // Same idea for email — send straight from the focus row.
+  const [quickEmailDeal, setQuickEmailDeal] = useState<PipelineEntry | null>(null);
   // Same idea for the next step: a card or focus row can set one without the
   // detour through the deal sheet.
   const [quickTaskDealId, setQuickTaskDealId] = useState<string | null>(null);
@@ -579,6 +598,22 @@ export function Pipeline() {
     onError: (err) => toast.error(scheduleMeetingErrorMessage(err)),
   });
 
+  const quickEmailMutation = useMutation({
+    mutationFn: (values: ComposeFormValues) =>
+      sendInvestorEmail(startupId, quickEmailDeal!.investorId, {
+        pipelineId: quickEmailDeal!.id,
+        ...values,
+      }),
+    onSuccess: (result) => {
+      toast.success(
+        result.logCreated ? "Email sent and logged" : "Email sent — it'll appear in the timeline shortly",
+      );
+      setQuickEmailDeal(null);
+      invalidateLogs();
+    },
+    onError: (err) => toast.error(sendEmailErrorMessage(err)),
+  });
+
   /** Used by the card's "Move to stage" menu — always lands at the bottom of the target column. */
   const moveDeal = useCallback(
     (pipelineId: string, stage: PipelineStageId) => {
@@ -828,6 +863,7 @@ export function Pipeline() {
           googleConnected={googleStatus.data?.connected === true}
           onOpen={(deal) => setOpenDealId(deal.id)}
           onSchedule={setQuickScheduleDeal}
+          onEmail={setQuickEmailDeal}
           onAddTask={(deal) => setQuickTaskDealId(deal.id)}
         />
       )}
@@ -1042,6 +1078,15 @@ export function Pipeline() {
         investorEmail={quickScheduleDeal?.investor.email ?? ""}
         isSubmitting={quickScheduleMutation.isPending}
         onSubmit={(values) => quickScheduleMutation.mutate(values)}
+      />
+
+      <ComposeEmailDialog
+        open={quickEmailDeal !== null}
+        onOpenChange={(open) => !open && setQuickEmailDeal(null)}
+        investorName={quickEmailDeal?.investor.fullName ?? ""}
+        investorEmail={quickEmailDeal?.investor.email ?? ""}
+        isSubmitting={quickEmailMutation.isPending}
+        onSubmit={(values) => quickEmailMutation.mutate(values)}
       />
 
       <PassReasonDialog

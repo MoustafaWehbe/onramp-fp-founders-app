@@ -15,6 +15,7 @@ type FocusListProps = {
   googleConnected: boolean;
   onOpen: (deal: PipelineFocusEntry) => void;
   onSchedule: (deal: PipelineFocusEntry) => void;
+  onEmail: (deal: PipelineFocusEntry) => void;
   /** Sets the next step straight from the row — most of this queue is here for want of one. */
   onAddTask: (deal: PipelineFocusEntry) => void;
 };
@@ -35,6 +36,7 @@ export function FocusList({
   googleConnected,
   onOpen,
   onSchedule,
+  onEmail,
   onAddTask,
 }: FocusListProps) {
   const [leadsOnly, setLeadsOnly] = useState(false);
@@ -149,13 +151,23 @@ export function FocusList({
             </div>
 
             <div className="flex shrink-0 items-center gap-1.5">
-              {investor.email && (
-                <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-                  <a href={`mailto:${investor.email}`} aria-label={`Email ${investor.fullName}`}>
-                    <Mail className="h-4 w-4" />
-                  </a>
-                </Button>
-              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                disabled={!investor.email || !googleConnected}
+                title={
+                  !investor.email
+                    ? "This investor has no email on file"
+                    : !googleConnected
+                      ? "Connect your Google account in Settings to send email"
+                      : undefined
+                }
+                aria-label={`Email ${investor.fullName}`}
+                onClick={() => onEmail(deal)}
+              >
+                <Mail className="h-4 w-4" />
+              </Button>
               {canCreate && (
                 <>
                   <Button
