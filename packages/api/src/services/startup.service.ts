@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
+import { storageService } from "./storage.service";
 import type { CreateStartupInput, UpdateStartupInput } from "../validators/startup.schemas";
 import type { CreateRoleInput, UpdateRoleInput } from "../validators/role.schemas";
 import { ROLE_DEFINITIONS, ROLE_TEMPLATES } from "../config/permissions";
@@ -352,6 +353,7 @@ export class StartupService {
             lastName: true,
             email: true,
             avatarUrl: true,
+            avatarStorageKey: true,
           },
         },
       },
@@ -374,7 +376,7 @@ export class StartupService {
             firstName: m.user.firstName,
             lastName: m.user.lastName,
             email: m.user.email,
-            avatarUrl: m.user.avatarUrl,
+            avatarUrl: storageService.resolveAvatarUrl(m.user.avatarStorageKey, m.user.avatarUrl),
           },
         };
       }

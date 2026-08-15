@@ -209,6 +209,30 @@ export interface paths {
         patch: operations["updateMe"];
         trace?: never;
     };
+    "/users/me/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upload or replace the current user's profile photo
+         * @description Raw image bytes, not JSON or multipart — the client resizes to 512px and encodes as WebP (falling back to PNG on browsers whose canvas cannot encode WebP) before sending. Server-mediated to a storage bucket rather than a signed direct-upload URL, since avatars are small and non-sensitive, unlike documents. Replaces and deletes any previous photo.
+         */
+        put: operations["uploadAvatar"];
+        post?: never;
+        /**
+         * Remove the current user's profile photo
+         * @description Clears both a self-uploaded photo and any external one (e.g. Google's picture claim); the user falls back to initials.
+         */
+        delete: operations["removeAvatar"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/startups": {
         parameters: {
             query?: never;
@@ -1804,6 +1828,7 @@ export interface components {
             email?: string;
             /**
              * Format: uri
+             * @description A served URL a self-uploaded photo (see PUT /users/me/avatar) or an external one (currently only Google's picture claim). Never a data URL; resolve which source wins server-side.
              * @example https://cdn.example.com/avatars/123.png
              */
             avatarUrl?: string | null;
@@ -1828,11 +1853,6 @@ export interface components {
         UpdateUserBody: {
             firstName?: string;
             lastName?: string;
-            /**
-             * Format: uri
-             * @description An http(s) image URL or compact JPEG, PNG, or WebP data URL; null removes the photo.
-             */
-            avatarUrl?: string | null;
         };
         ChangePasswordBody: {
             /** @example Password1 */
@@ -3564,6 +3584,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    uploadAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "image/webp": string;
+                "image/png": string;
+            };
+        };
+        responses: {
+            /** @description Avatar updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["User"];
+                    };
+                };
+            };
+            /** @description Unsupported image type or file too large */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    removeAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Avatar removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["User"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

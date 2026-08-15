@@ -18,6 +18,7 @@ model User {
   email               String    @unique
   passwordHash        String?   @map("password_hash")
   avatarUrl           String?   @map("avatar_url")
+  avatarStorageKey    String?   @map("avatar_storage_key")
   authProvider        String    @default("local") @map("auth_provider")
   googleId            String?   @unique @map("google_id")
   emailVerifiedAt     DateTime? @map("email_verified_at")

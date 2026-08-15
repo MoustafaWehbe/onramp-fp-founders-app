@@ -38,6 +38,33 @@ export function startCronJobs(): void {
     }
   });
 
+  // Document uploads are two-phase: createUploadSession makes the Document +
+  // DocumentVersion row before the browser has sent a single byte, and only
+  // confirm() moves it out of pending_upload. If the tab closes, the network
+  // drops, or the user just gives up mid-upload, nothing else ever revisits
+  // that row it would otherwise show as "Uploading…" forever. An hour is far
+  // longer than any real upload on this size cap should take.
+  cron.schedule("*/30 * * * *", async () => {
+    try {
+      const staleCutoff = new Date(Date.now() - 60 * 60 * 1000);
+      const { count: versionCount } = await prisma.documentVersion.deleteMany({
+        where: { processingStatus: "pending_upload", createdAt: { lt: staleCutoff } },
+      });
+      // A Document whose only version never finished uploading is left with
+      // none once the row above is gone; nothing else will ever reference it.
+      const { count: documentCount } = await prisma.document.deleteMany({
+        where: { createdAt: { lt: staleCutoff }, versions: { none: {} } },
+      });
+      if (versionCount > 0 || documentCount > 0) {
+        console.info(
+          `[cron] Cleaned up ${versionCount} stale pending upload(s) and ${documentCount} orphaned document(s)`,
+        );
+      }
+    } catch (err) {
+      console.error("[cron] Failed to clean up stale document uploads:", err);
+    }
+  });
+
   // Every 30 minutes rather than once a day like the reminders above a
   // meeting is only useful on an investor's timeline soon after it happens,
   // not the next morning. Skipped entirely when the integration isn't

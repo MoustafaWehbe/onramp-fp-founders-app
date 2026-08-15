@@ -63,6 +63,14 @@ function guessDocumentType(filename: string): DocumentType {
   return "other";
 }
 
+const UPLOAD_ACCEPT =
+  ".pdf,.docx,.xlsx,.pptx,.txt,application/pdf,text/plain," +
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document," +
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet," +
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+
+const UNSUPPORTED_TYPE_MESSAGE = "Unsupported file type. Allowed: PDF, DOCX, XLSX, PPTX, TXT";
+
 function guessMimeType(file: File): string {
   if (file.type) return file.type;
   const lower = file.name.toLowerCase();
@@ -72,6 +80,9 @@ function guessMimeType(file: File): string {
   }
   if (lower.endsWith(".xlsx")) {
     return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  }
+  if (lower.endsWith(".pptx")) {
+    return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
   }
   if (lower.endsWith(".txt")) return "text/plain";
   return "application/octet-stream";
@@ -115,7 +126,7 @@ export function Documents() {
     mutationFn: async (file: File) => {
       const mimeType = guessMimeType(file);
       if (mimeType === "application/octet-stream") {
-        throw new Error("Unsupported file type. Allowed: PDF, DOCX, XLSX, TXT");
+        throw new Error(UNSUPPORTED_TYPE_MESSAGE);
       }
       const session = await createDocumentUploadSession(startupId, {
         title: file.name.replace(/\.[^.]+$/, "") || file.name,
@@ -124,22 +135,33 @@ export function Documents() {
         mimeType,
         fileSize: file.size,
       });
-      await uploadToSignedUrl(session.upload.uploadUrl, file, session.upload.headers);
-      await confirmDocumentVersion(startupId, session.document.id, session.upload.versionId);
+      try {
+        await uploadToSignedUrl(session.upload.uploadUrl, file, session.upload.headers);
+        await confirmDocumentVersion(startupId, session.document.id, session.upload.versionId);
+      } catch (error) {
+        // The document row was already created for this upload session. If the
+        // bytes never made it to storage or confirm failed, remove it rather than
+        // leaving a phantom "Uploading…" card that can never finish.
+        await deleteDocument(startupId, session.document.id).catch(() => {});
+        throw error;
+      }
       return session.document;
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["documents", startupId] });
       toast.success("Document uploaded — processing started");
     },
-    onError: (error) => toast.error(apiErrorMessage(error, "Upload failed")),
+    onError: (error) => {
+      void queryClient.invalidateQueries({ queryKey: ["documents", startupId] });
+      toast.error(apiErrorMessage(error, "Upload failed"));
+    },
   });
 
   const versionMutation = useMutation({
     mutationFn: async ({ documentId, file }: { documentId: string; file: File }) => {
       const mimeType = guessMimeType(file);
       if (mimeType === "application/octet-stream") {
-        throw new Error("Unsupported file type. Allowed: PDF, DOCX, XLSX, TXT");
+        throw new Error(UNSUPPORTED_TYPE_MESSAGE);
       }
       const session = await createVersionUploadSession(startupId, documentId, {
         originalFilename: file.name,
@@ -221,7 +243,7 @@ export function Documents() {
               ref={fileInputRef}
               type="file"
               className="hidden"
-              accept=".pdf,.docx,.xlsx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              accept={UPLOAD_ACCEPT}
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 event.target.value = "";
@@ -232,7 +254,7 @@ export function Documents() {
               ref={versionInputRef}
               type="file"
               className="hidden"
-              accept=".pdf,.docx,.xlsx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              accept={UPLOAD_ACCEPT}
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 const documentId = versionTargetId;
@@ -297,7 +319,7 @@ export function Documents() {
           <EmptyState
             icon={FileText}
             title="No documents yet"
-            description="Upload a PDF, DOCX, XLSX, or TXT file to start your data room."
+            description="Upload a PDF, DOCX, XLSX, PPTX, or TXT file to start your data room."
             action={
               canUpload ? (
                 <Button onClick={() => fileInputRef.current?.click()}>

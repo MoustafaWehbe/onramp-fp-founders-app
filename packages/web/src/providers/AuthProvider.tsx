@@ -39,12 +39,13 @@ interface AuthContextValue {
   resetPassword: (token: string, newPassword: string) => Promise<void>;
   googleAuth: (idToken: string) => Promise<void>;
   updateProfile: (input: UpdateProfileInput) => Promise<void>;
+  uploadAvatar: (blob: Blob) => Promise<void>;
+  removeAvatar: () => Promise<void>;
 }
 
 export interface UpdateProfileInput {
   firstName?: string;
   lastName?: string;
-  avatarUrl?: string | null;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -221,6 +222,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.data);
   }, []);
 
+  const uploadAvatar = useCallback(async (blob: Blob): Promise<void> => {
+    const { data } = await apiClient.put<{ data: AuthUser }>("/users/me/avatar", blob, {
+      headers: { "Content-Type": blob.type || "image/webp" },
+    });
+    setUser(data.data);
+  }, []);
+
+  const removeAvatar = useCallback(async (): Promise<void> => {
+    const { data } = await apiClient.delete<{ data: AuthUser }>("/users/me/avatar");
+    setUser(data.data);
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -235,6 +248,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         resetPassword,
         googleAuth,
         updateProfile,
+        uploadAvatar,
+        removeAvatar,
       }}
     >
       {children}

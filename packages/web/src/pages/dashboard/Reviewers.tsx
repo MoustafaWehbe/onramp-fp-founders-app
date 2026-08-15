@@ -256,7 +256,7 @@ export function Reviewers() {
               <div className="mt-2 max-h-48 space-y-2 overflow-y-auto rounded-md border border-border p-3">
                 {readyVersions.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No ready documents yet. Upload a TXT (or configure LlamaParse for PDF/DOCX/XLSX) first.
+                    No ready documents yet. Upload a document from the Documents page first — it needs to finish processing before it can be shared.
                   </p>
                 ) : (
                   readyVersions.map((item) => {

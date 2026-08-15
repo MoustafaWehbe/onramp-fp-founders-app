@@ -43,6 +43,25 @@ export type PaginationMeta = {
   totalPages: number;
 };
 
+export async function getDocument(startupId: string, documentId: string) {
+  const { data } = await apiClient.get<{ data: VaultDocument & { versions: DocumentVersion[] } }>(
+    `/startups/${startupId}/documents/${documentId}`,
+  );
+  return data.data;
+}
+
+export async function updateDocument(
+  startupId: string,
+  documentId: string,
+  body: { title?: string; documentType?: DocumentType },
+) {
+  const { data } = await apiClient.patch<{ data: VaultDocument }>(
+    `/startups/${startupId}/documents/${documentId}`,
+    body,
+  );
+  return data.data;
+}
+
 export async function listDocuments(
   startupId: string,
   params?: { page?: number; limit?: number; search?: string; documentType?: string },

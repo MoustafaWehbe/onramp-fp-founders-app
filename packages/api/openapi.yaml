@@ -286,6 +286,10 @@ components:
           format: uri
           nullable: true
           example: https://cdn.example.com/avatars/123.png
+          description: >
+            A served URL a self-uploaded photo (see PUT /users/me/avatar) or
+            an external one (currently only Google's picture claim). Never a
+            data URL; resolve which source wins server-side.
         emailVerifiedAt:
           type: string
           format: date-time
@@ -319,12 +323,6 @@ components:
           type: string
           minLength: 1
           maxLength: 100
-        avatarUrl:
-          type: string
-          format: uri
-          nullable: true
-          maxLength: 750000
-          description: An http(s) image URL or compact JPEG, PNG, or WebP data URL; null removes the photo.
 
     ChangePasswordBody:
       type: object
@@ -2921,6 +2919,73 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /users/me/avatar:
+    put:
+      tags: [Users]
+      summary: Upload or replace the current user's profile photo
+      description: >
+        Raw image bytes, not JSON or multipart — the client resizes to 512px
+        and encodes as WebP (falling back to PNG on browsers whose canvas
+        cannot encode WebP) before sending. Server-mediated to a storage
+        bucket rather than a signed direct-upload URL, since avatars are
+        small and non-sensitive, unlike documents. Replaces and deletes any
+        previous photo.
+      operationId: uploadAvatar
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          image/webp:
+            schema: { type: string, format: binary }
+          image/png:
+            schema: { type: string, format: binary }
+      responses:
+        "200":
+          description: Avatar updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/User"
+        "400":
+          description: Unsupported image type or file too large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [Users]
+      summary: Remove the current user's profile photo
+      description: Clears both a self-uploaded photo and any external one (e.g. Google's picture claim); the user falls back to initials.
+      operationId: removeAvatar
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Avatar removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ════════════════════════════════════════════════════════════════
   #  STARTUPS

@@ -8,4 +8,7 @@ const router = Router();
 
 router.patch("/me", authenticate, validate(updateUserSchema), userController.updateMe);
 
+// PUT is registered directly in app.ts (raw body, ahead of express.json()).
+router.delete("/me/avatar", authenticate, userController.removeAvatar);
+
 export { router as userRouter };

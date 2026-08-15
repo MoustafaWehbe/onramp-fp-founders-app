@@ -3,6 +3,7 @@ import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
 import { realtimeBus } from "../events/realtime-bus";
 import { notificationService } from "./notification.service";
+import { storageService } from "./storage.service";
 import {
   MENTION_TARGET_TYPES,
   parseMentions,
@@ -40,7 +41,10 @@ const CONVERSATION_SELECT = {
       lastReadSeq: true,
       notifyLevel: true,
       member: {
-        select: { id: true, user: { select: { firstName: true, lastName: true, avatarUrl: true } } },
+        select: {
+          id: true,
+          user: { select: { firstName: true, lastName: true, avatarUrl: true, avatarStorageKey: true } },
+        },
       },
     },
   },
@@ -62,7 +66,9 @@ const MESSAGE_SELECT = {
   sender: {
     select: {
       id: true,
-      user: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
+      user: {
+        select: { id: true, firstName: true, lastName: true, avatarUrl: true, avatarStorageKey: true },
+      },
     },
   },
   reactions: { select: { emoji: true, memberId: true } },
@@ -98,7 +104,9 @@ function counterpartOf(row: ConversationRow, callerMemberId: string) {
     memberId: other.memberId,
     firstName: other.member.user?.firstName ?? null,
     lastName: other.member.user?.lastName ?? null,
-    avatarUrl: other.member.user?.avatarUrl ?? null,
+    avatarUrl: other.member.user
+      ? storageService.resolveAvatarUrl(other.member.user.avatarStorageKey, other.member.user.avatarUrl)
+      : null,
   };
 }
 
@@ -136,7 +144,9 @@ function serializeMessage(row: MessageRow, callerMemberId: string) {
           id: row.sender.id,
           firstName: row.sender.user?.firstName ?? null,
           lastName: row.sender.user?.lastName ?? null,
-          avatarUrl: row.sender.user?.avatarUrl ?? null,
+          avatarUrl: row.sender.user
+            ? storageService.resolveAvatarUrl(row.sender.user.avatarStorageKey, row.sender.user.avatarUrl)
+            : null,
         }
       : null,
     body: row.body,
@@ -909,14 +919,19 @@ export class ChatService {
       case "member": {
         const rows = await prisma.startupMember.findMany({
           where: { startupId, id: { in: ids } },
-          select: { id: true, user: { select: { firstName: true, lastName: true, avatarUrl: true } } },
+          select: {
+            id: true,
+            user: { select: { firstName: true, lastName: true, avatarUrl: true, avatarStorageKey: true } },
+          },
         });
         return rows.map((r) => ({
           type,
           id: r.id,
           title: `${r.user?.firstName ?? ""} ${r.user?.lastName ?? ""}`.trim() || "Teammate",
           subtitle: null,
-          avatarUrl: r.user?.avatarUrl ?? null,
+          avatarUrl: r.user
+            ? storageService.resolveAvatarUrl(r.user.avatarStorageKey, r.user.avatarUrl)
+            : null,
         }));
       }
       case "investor": {

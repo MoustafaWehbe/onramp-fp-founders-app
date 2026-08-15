@@ -13,6 +13,7 @@ import { sendOTP, sendPasswordReset } from "./email.service";
 import { prisma } from "../db/prisma";
 import { createError, type AppError } from "../utils/errors";
 import { inviteService } from "./invite.service";
+import { storageService } from "./storage.service";
 import { getAppUrl } from "../config/env";
 
 const USER_SELECT = {
@@ -21,7 +22,14 @@ const USER_SELECT = {
   firstName: true,
   lastName: true,
   avatarUrl: true,
+  avatarStorageKey: true,
 } as const;
+
+/** A self-uploaded photo (avatarStorageKey) always wins over an external URL
+ * (avatarUrl, e.g. Google's picture claim) — same rule as user.service.ts. */
+function resolvedAvatarUrl(user: { avatarUrl: string | null; avatarStorageKey: string | null }): string | null {
+  return storageService.resolveAvatarUrl(user.avatarStorageKey, user.avatarUrl);
+}
 
 interface RegisterInitiateInput {
   first_name: string;
@@ -216,7 +224,7 @@ export class AuthService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        avatarUrl: user.avatarUrl,
+        avatarUrl: resolvedAvatarUrl(user),
       },
       accessToken,
       refreshToken: rawRefresh,
@@ -396,7 +404,14 @@ export class AuthService {
     }
 
     let isNewUser = false;
-    type AuthUser = { id: string; email: string; firstName: string; lastName: string };
+    type AuthUser = {
+      id: string;
+      email: string;
+      firstName: string;
+      lastName: string;
+      avatarUrl: string | null;
+      avatarStorageKey: string | null;
+    };
     let user: AuthUser | null = await prisma.user.findUnique({
       where: { googleId: payload.sub },
       select: USER_SELECT,
@@ -478,7 +493,13 @@ export class AuthService {
       },
     });
 
-    return { user, accessToken, refreshToken: rawRefresh, isNewUser };
+    const { avatarStorageKey, ...restUser } = user;
+    return {
+      user: { ...restUser, avatarUrl: resolvedAvatarUrl(user) },
+      accessToken,
+      refreshToken: rawRefresh,
+      isNewUser,
+    };
   }
 
   async logout(familyId: string) {
@@ -497,13 +518,15 @@ export class AuthService {
         firstName: true,
         lastName: true,
         avatarUrl: true,
+        avatarStorageKey: true,
         emailVerifiedAt: true,
         createdAt: true,
         lastActiveStartupId: true,
       },
     });
     if (!user) throw createError("User not found", 404);
-    return user;
+    const { avatarStorageKey, ...rest } = user;
+    return { ...rest, avatarUrl: resolvedAvatarUrl(user) };
   }
 }
 
