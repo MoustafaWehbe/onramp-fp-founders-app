@@ -130,6 +130,50 @@ interface ContactSeed {
   logs?: LogSeed[];
 }
 
+// The UI stores controlled option ids. Keeping the seed fixtures readable
+// while normalizing at this boundary makes every seeded contact editable from
+// the select controls without silently retaining a legacy free-text value.
+const SECTOR_FOCUS_IDS: Record<string, string> = {
+  "B2B SaaS": "b2b_saas",
+  "Enterprise software": "b2b_saas",
+  "Sales tech": "b2b_saas",
+  "Developer tools": "developer_tools",
+  Marketplaces: "marketplaces",
+  "SaaS, AI": "ai_ml",
+  Diversified: "other",
+  Fintech: "fintech",
+  Infrastructure: "developer_tools",
+  Climate: "climate",
+  "Fintech, SaaS": "fintech",
+  "AI / Infrastructure": "ai_ml",
+};
+
+const STAGE_PREFERENCE_IDS: Record<string, string> = {
+  pre_seed: "pre_seed",
+  seed: "seed",
+  series_a: "series_a",
+  series_b: "series_b",
+  growth: "growth",
+  any_stage: "any_stage",
+};
+
+const SOURCE_IDS: Record<string, string> = {
+  outbound: "cold_outreach",
+  conference: "event",
+  linkedin: "cold_outreach",
+  warm_intro: "warm_intro",
+  program: "accelerator",
+  event: "event",
+  referral: "referral",
+};
+
+function controlledSeedValue(value: string | undefined, options: Record<string, string>, field: string) {
+  if (value === undefined) return null;
+  const normalized = options[value];
+  if (!normalized) throw new Error(`Unknown ${field} seed value: ${value}`);
+  return normalized;
+}
+
 interface TaskSeed {
   contactKey: string;
   round: string;
@@ -1319,10 +1363,14 @@ async function seedWorkspace(
         email: seed.email ?? null,
         ventureFirm: seed.ventureFirm ?? null,
         investorType: seed.investorType,
-        sectorFocus: seed.sectorFocus ?? null,
-        investmentStagePreference: seed.investmentStagePreference ?? null,
+        sectorFocus: controlledSeedValue(seed.sectorFocus, SECTOR_FOCUS_IDS, "sector focus"),
+        investmentStagePreference: controlledSeedValue(
+          seed.investmentStagePreference,
+          STAGE_PREFERENCE_IDS,
+          "stage preference",
+        ),
         linkedinUrl: seed.linkedinUrl ?? null,
-        source: seed.source ?? null,
+        source: controlledSeedValue(seed.source, SOURCE_IDS, "source"),
       },
     });
     contactsByKey.set(seed.key, contact);
