@@ -1,4 +1,5 @@
 import {
+  Archive,
   Ban,
   Check,
   LogIn,
@@ -26,6 +27,7 @@ const ACTION_META: Record<string, ActionMeta> = {
   update: { verb: "updated", icon: Pencil, tone: "info" },
   delete: { verb: "deleted", icon: Trash2, tone: "danger" },
   revoke: { verb: "revoked", icon: Ban, tone: "warning" },
+  archive: { verb: "archived", icon: Archive, tone: "warning" },
   login: { verb: "logged in", icon: LogIn, tone: "success" },
   logout: { verb: "logged out", icon: LogOut, tone: "neutral" },
   accept: { verb: "accepted", icon: Check, tone: "success" },

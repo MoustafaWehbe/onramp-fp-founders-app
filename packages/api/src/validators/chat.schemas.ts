@@ -60,6 +60,10 @@ export const toggleReactionSchema = z.object({
   emoji: z.string().trim().min(1, "emoji is required").max(16, "emoji must be at most 16 characters"),
 });
 
+export const archiveConversationSchema = z.object({
+  archived: z.boolean(),
+});
+
 export const notifyLevelSchema = z.object({
   level: z.enum(["all", "mentions", "none"], {
     errorMap: () => ({ message: "level must be one of: all, mentions, none" }),
@@ -128,4 +132,5 @@ export type MentionsBacklinkQuery = z.infer<typeof mentionsBacklinkQuerySchema>;
 export type RepliesQuery = z.infer<typeof repliesQuerySchema>;
 export type ToggleReactionInput = z.infer<typeof toggleReactionSchema>;
 export type NotifyLevelInput = z.infer<typeof notifyLevelSchema>;
+export type ArchiveConversationInput = z.infer<typeof archiveConversationSchema>;
 export type StartDirectMessageInput = z.infer<typeof startDirectMessageSchema>;

@@ -1,17 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bell, BellOff, Hash, MessageSquare, User } from "lucide-react";
+import { Archive, ArrowLeft, Bell, BellOff, Hash, MessageSquare, User } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "../../../components/ui/avatar";
 import { Button } from "../../../components/ui/button";
+import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
 import { EmptyState } from "../../../components/shared/EmptyState";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { getInitials } from "../../../lib/utils";
 import { apiErrorMessage } from "../../../lib/api-error";
 import { qk } from "../../../lib/query-keys";
+import { usePermissions } from "../../../hooks/usePermissions";
+import { useWorkspace } from "../../../hooks/useWorkspace";
 import {
+  deleteMessage,
   listMessages,
   markConversationRead,
+  setConversationArchived,
   setNotifyLevel,
   toggleReaction,
   type Conversation,
@@ -49,8 +54,14 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [threadMessageId, setThreadMessageId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Message | null>(null);
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
   const typingNames = useTypingUsers(conversation.id);
   const displayName = conversationDisplayName(conversation);
+  const { can } = usePermissions();
+  const { activeStartup } = useWorkspace();
+  const currentMemberId = activeStartup?.member.id ?? null;
+  const canModerate = can("chat", "manage");
 
   const messagesQuery = useQuery({
     queryKey: qk.messages(startupId, conversation.id),
@@ -96,7 +107,27 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
     onError: (err) => toast.error(apiErrorMessage(err, "Could not update notifications")),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (messageId: string) => deleteMessage(startupId, messageId),
+    onSuccess: () => {
+      setDeleteTarget(null);
+      void queryClient.invalidateQueries({ queryKey: qk.messages(startupId, conversation.id) });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not delete that message")),
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: () => setConversationArchived(startupId, conversation.id, true),
+    onSuccess: () => {
+      setArchiveConfirmOpen(false);
+      toast.success(`#${conversation.name} archived`);
+      void queryClient.invalidateQueries({ queryKey: qk.conversations(startupId) });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not archive that channel")),
+  });
+
   const muted = conversation.notifyLevel === "none";
+  const canArchive = canModerate && conversation.type === "channel";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -142,6 +173,18 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
         >
           {muted ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
         </Button>
+        {canArchive && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+            aria-label="Archive this channel"
+            onClick={() => setArchiveConfirmOpen(true)}
+          >
+            <Archive className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       <div ref={scrollRef} className="scrollbar-slim min-h-0 flex-1 overflow-y-auto px-4 py-4">
@@ -182,6 +225,7 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
                 resolved={resolved}
                 onReact={canSend ? (emoji) => reactMutation.mutate({ messageId: message.id, emoji }) : undefined}
                 onOpenThread={canSend ? () => setThreadMessageId(message.id) : undefined}
+                onDelete={message.senderId === currentMemberId ? () => setDeleteTarget(message) : undefined}
               />
             ))}
           </div>
@@ -216,8 +260,32 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
         conversationId={conversation.id}
         conversationName={displayName}
         canSend={canSend}
+        currentMemberId={currentMemberId}
         messageId={threadMessageId}
         onClose={() => setThreadMessageId(null)}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete this message?"
+        description="This can't be undone. The message will be removed for everyone in this conversation."
+        confirmLabel="Delete message"
+        pendingLabel="Deleting…"
+        isPending={deleteMutation.isPending}
+        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+      />
+
+      <ConfirmDialog
+        open={archiveConfirmOpen}
+        onOpenChange={setArchiveConfirmOpen}
+        title={`Archive #${conversation.name}?`}
+        description="Members will no longer see this channel in their channel list. This can be undone later."
+        confirmLabel="Archive channel"
+        pendingLabel="Archiving…"
+        variant="default"
+        isPending={archiveMutation.isPending}
+        onConfirm={() => archiveMutation.mutate()}
       />
     </div>
   );

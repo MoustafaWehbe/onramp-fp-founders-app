@@ -128,7 +128,7 @@ describe("PATCH /api/v1/startups/:startupId", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.startup.name).toBe("New Name");
-    expect(mockService.updateStartup).toHaveBeenCalledWith(STARTUP_ID, { name: "New Name" });
+    expect(mockService.updateStartup).toHaveBeenCalledWith(STARTUP_ID, { name: "New Name" }, USER_ID);
   });
 
   it("accepts funding_stage and normalizes to fundingStage", async () => {
@@ -140,7 +140,7 @@ describe("PATCH /api/v1/startups/:startupId", () => {
       .send({ funding_stage: "seed" });
 
     expect(res.status).toBe(200);
-    expect(mockService.updateStartup).toHaveBeenCalledWith(STARTUP_ID, { fundingStage: "seed" });
+    expect(mockService.updateStartup).toHaveBeenCalledWith(STARTUP_ID, { fundingStage: "seed" }, USER_ID);
   });
 
   it("returns 400 when body is empty", async () => {

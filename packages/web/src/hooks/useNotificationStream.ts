@@ -16,6 +16,7 @@ type CreatedEvent = {
 
 type ChatMessageCreatedEvent = { conversationId: string; parentMessageId: string | null };
 type ChatMessageReactedEvent = { conversationId: string; messageId: string };
+type ChatMessageDeletedEvent = { conversationId: string; messageId: string; parentMessageId: string | null };
 type ChatTypingEvent = { conversationId: string; memberId: string; memberName: string };
 
 /**
@@ -107,6 +108,23 @@ export function useNotificationStream() {
         // thread from here, so invalidate every open thread query rather
         // than tracking a messageId -> parentId map just for this.
         void queryClient.invalidateQueries({ queryKey: ["chat-replies", startupId] });
+      } catch {
+        // Same fallback as above nothing more specific to recover with.
+      }
+    });
+
+    source.addEventListener("chat.message.deleted", (event) => {
+      const startupId = activeStartupIdRef.current;
+      if (!startupId) return;
+
+      try {
+        const { conversationId, parentMessageId } = JSON.parse(
+          (event as MessageEvent).data,
+        ) as ChatMessageDeletedEvent;
+        void queryClient.invalidateQueries({ queryKey: qk.messages(startupId, conversationId) });
+        if (parentMessageId) {
+          void queryClient.invalidateQueries({ queryKey: qk.replies(startupId, parentMessageId) });
+        }
       } catch {
         // Same fallback as above nothing more specific to recover with.
       }

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -7,10 +7,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../../../components/ui/dialog";
+import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { apiErrorMessage } from "../../../lib/api-error";
 import { qk } from "../../../lib/query-keys";
-import { listReplies, toggleReaction } from "../../../lib/chat-api";
+import { deleteMessage, listReplies, toggleReaction, type Message } from "../../../lib/chat-api";
 import { useResolvedMentions } from "../../../hooks/useResolvedMentions";
 import { MessageItem } from "../../../components/mentions/MessageItem";
 import { Composer } from "./Composer";
@@ -20,6 +21,8 @@ type ThreadDialogProps = {
   conversationId: string;
   conversationName: string;
   canSend: boolean;
+  /** The caller's own StartupMember id — a reply's onDelete is offered only when it's theirs. */
+  currentMemberId: string | null;
   /** Null closes the dialog same "controlled by the parent's selection" pattern as Chat's own selectedId. */
   messageId: string | null;
   onClose: () => void;
@@ -30,10 +33,12 @@ export function ThreadDialog({
   conversationId,
   conversationName,
   canSend,
+  currentMemberId,
   messageId,
   onClose,
 }: ThreadDialogProps) {
   const queryClient = useQueryClient();
+  const [deleteTarget, setDeleteTarget] = useState<Message | null>(null);
 
   const threadQuery = useQuery({
     queryKey: qk.replies(startupId, messageId),
@@ -53,11 +58,25 @@ export function ThreadDialog({
     onError: (err) => toast.error(apiErrorMessage(err, "Could not react to that message")),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteMessage(startupId, id),
+    onSuccess: () => {
+      setDeleteTarget(null);
+      void queryClient.invalidateQueries({ queryKey: qk.replies(startupId, messageId) });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not delete that message")),
+  });
+
+  function canDelete(message: Message): boolean {
+    return message.senderId === currentMemberId;
+  }
+
   function invalidateAfterSend() {
     void queryClient.invalidateQueries({ queryKey: qk.replies(startupId, messageId) });
   }
 
   return (
+    <>
     <Dialog open={messageId !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-h-[85vh] max-w-lg flex-col gap-0 p-0">
         <DialogHeader className="border-b border-border/60 px-5 py-4">
@@ -89,6 +108,7 @@ export function ThreadDialog({
                 onReact={
                   canSend ? (emoji) => reactMutation.mutate({ id: threadQuery.data!.parent.id, emoji }) : undefined
                 }
+                onDelete={canDelete(threadQuery.data.parent) ? () => setDeleteTarget(threadQuery.data!.parent) : undefined}
               />
 
               <div className="border-t border-border/60 pt-4 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
@@ -103,6 +123,7 @@ export function ThreadDialog({
                   message={reply}
                   resolved={resolved}
                   onReact={canSend ? (emoji) => reactMutation.mutate({ id: reply.id, emoji }) : undefined}
+                  onDelete={canDelete(reply) ? () => setDeleteTarget(reply) : undefined}
                 />
               ))}
             </>
@@ -121,5 +142,17 @@ export function ThreadDialog({
         )}
       </DialogContent>
     </Dialog>
+
+    <ConfirmDialog
+      open={deleteTarget !== null}
+      onOpenChange={(open) => !open && setDeleteTarget(null)}
+      title="Delete this message?"
+      description="This can't be undone. The message will be removed for everyone in this conversation."
+      confirmLabel="Delete message"
+      pendingLabel="Deleting…"
+      isPending={deleteMutation.isPending}
+      onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+    />
+    </>
   );
 }

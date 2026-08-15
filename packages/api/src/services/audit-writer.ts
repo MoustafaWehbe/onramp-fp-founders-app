@@ -13,6 +13,7 @@ export const AUDIT_ACTIONS = {
   UPDATE: "update",
   DELETE: "delete",
   REVOKE: "revoke",
+  ARCHIVE: "archive",
   LOGIN: "login",
   LOGOUT: "logout",
   ACCEPT: "accept",

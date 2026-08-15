@@ -1130,6 +1130,29 @@ export interface paths {
         patch: operations["setNotifyLevel"];
         trace?: never;
     };
+    "/startups/{startupId}/chat/conversations/{conversationId}/archived": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Archive or unarchive a channel
+         * @description Channels are workspace-wide, so this is a moderation action gated by chat:manage, not something every member can do to a room they share. DMs cannot be archived (400 CANNOT_ARCHIVE_DM) there is no shared room to moderate, only two people's own conversation.
+         */
+        patch: operations["setConversationArchived"];
+        trace?: never;
+    };
     "/startups/{startupId}/chat/conversations/{conversationId}/typing": {
         parameters: {
             query?: never;
@@ -1171,6 +1194,29 @@ export interface paths {
          */
         post: operations["toggleReaction"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/chat/messages/{messageId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a message (soft-delete / tombstone)
+         * @description Never a hard delete deletedAt is set and the row survives for the audit trail, but the response and every other client's view have the body, reactions, and attachments blanked. Self-serve only: retracts the caller's own message. There is no moderator override.
+         */
+        delete: operations["deleteMessage"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2668,6 +2714,9 @@ export interface components {
         NotifyLevelBody: {
             /** @enum {string} */
             level: "all" | "mentions" | "none";
+        };
+        ArchiveConversationBody: {
+            archived: boolean;
         };
         /**
          * @description What a `@[Label](type:id)` reference token inside a message body points at. "deal" is a Pipeline entry investor + round together.
@@ -6975,6 +7024,85 @@ export interface operations {
             };
         };
     };
+    setConversationArchived: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveConversationBody"];
+            };
+        };
+        responses: {
+            /** @description The conversation's new archived state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: {
+                            /** Format: uuid */
+                            id?: string;
+                            /** Format: date-time */
+                            archivedAt?: string | null;
+                        };
+                    };
+                };
+            };
+            /** @description CANNOT_ARCHIVE_DM */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing chat:manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CONVERSATION_NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
     notifyTyping: {
         parameters: {
             query?: never;
@@ -7088,6 +7216,67 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The now-tombstoned message */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Message"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, missing chat:create, or the message belongs to someone else */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description MESSAGE_NOT_FOUND or CONVERSATION_NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description MESSAGE_ALREADY_DELETED */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

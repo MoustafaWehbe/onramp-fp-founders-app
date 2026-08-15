@@ -1688,6 +1688,13 @@ components:
           type: string
           enum: [all, mentions, none]
 
+    ArchiveConversationBody:
+      type: object
+      required: [archived]
+      properties:
+        archived:
+          type: boolean
+
     MentionTargetType:
       type: string
       enum: [member, investor, deal, task, round, document]
@@ -5998,6 +6005,86 @@ paths:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
 
+  /startups/{startupId}/chat/conversations/{conversationId}/archived:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: conversationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: [Chat]
+      summary: Archive or unarchive a channel
+      description: >-
+        Channels are workspace-wide, so this is a moderation action gated by
+        chat:manage, not something every member can do to a room they share.
+        DMs cannot be archived (400 CANNOT_ARCHIVE_DM) there is no shared
+        room to moderate, only two people's own conversation.
+      operationId: setConversationArchived
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveConversationBody"
+      responses:
+        "200":
+          description: The conversation's new archived state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      archivedAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+        "400":
+          description: CANNOT_ARCHIVE_DM
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing chat:manage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: CONVERSATION_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
   /startups/{startupId}/chat/conversations/{conversationId}/typing:
     parameters:
       - name: startupId
@@ -6113,6 +6200,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /startups/{startupId}/chat/messages/{messageId}:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: messageId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Chat]
+      summary: Delete a message (soft-delete / tombstone)
+      description: >-
+        Never a hard delete deletedAt is set and the row survives for the
+        audit trail, but the response and every other client's view have the
+        body, reactions, and attachments blanked. Self-serve only: retracts
+        the caller's own message. There is no moderator override.
+      operationId: deleteMessage
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: The now-tombstoned message
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Message"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, missing chat:create, or the message belongs to someone else
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: MESSAGE_NOT_FOUND or CONVERSATION_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: MESSAGE_ALREADY_DELETED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /startups/{startupId}/chat/mentionables:
     parameters:

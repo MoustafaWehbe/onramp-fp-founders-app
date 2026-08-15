@@ -34,6 +34,13 @@ export type ChatEvent =
     }
   | { type: "chat.conversation.changed"; conversationId: string }
   | { type: "chat.message.reacted"; conversationId: string; messageId: string }
+  | {
+      type: "chat.message.deleted";
+      conversationId: string;
+      messageId: string;
+      /** Set when the deleted message was a thread reply, so the client also refreshes the open thread panel. */
+      parentMessageId: string | null;
+    }
   | { type: "chat.typing"; conversationId: string; memberId: string; memberName: string };
 
 export type RealtimeEvent = NotificationEvent | ChatEvent;

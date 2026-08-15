@@ -4,6 +4,7 @@ import { createError } from "../utils/errors";
 import { realtimeBus } from "../events/realtime-bus";
 import { notificationService } from "./notification.service";
 import { storageService } from "./storage.service";
+import { AUDIT_ACTIONS, recordAuditEvent } from "./audit-writer";
 import {
   MENTION_TARGET_TYPES,
   parseMentions,
@@ -149,18 +150,23 @@ function serializeMessage(row: MessageRow, callerMemberId: string) {
             : null,
         }
       : null,
-    body: row.body,
+    // A tombstoned message keeps its row (and its reply count, so a thread
+    // isn't orphaned) but stops serving content once deletedAt is set — the
+    // DB retains it for the audit trail, clients should not.
+    body: row.deletedAt ? "" : row.body,
     parentMessageId: row.parentMessageId,
     replyCount: row.replyCount,
     editedAt: row.editedAt,
     deletedAt: row.deletedAt,
     createdAt: row.createdAt,
-    reactions: summarizeReactions(row.reactions, callerMemberId),
-    attachments: row.attachments.map((a) => ({
-      documentId: a.document.id,
-      title: a.document.title,
-      documentType: a.document.documentType,
-    })),
+    reactions: row.deletedAt ? [] : summarizeReactions(row.reactions, callerMemberId),
+    attachments: row.deletedAt
+      ? []
+      : row.attachments.map((a) => ({
+          documentId: a.document.id,
+          title: a.document.title,
+          documentType: a.document.documentType,
+        })),
   };
 }
 
@@ -1108,6 +1114,57 @@ export class ChatService {
     return { data: { messageId, reactions } };
   }
 
+  /**
+   * Soft-delete (tombstone): deletedAt is set, the row itself never goes
+   * away, and serializeMessage blanks the body/reactions/attachments so a
+   * deleted message stops being served to other clients even though the DB
+   * keeps it. Self-serve only — you can retract your own message, never
+   * someone else's, regardless of role.
+   */
+  async deleteMessage(startupId: string, messageId: string, memberId: string, userId: string) {
+    const message = await prisma.message.findFirst({
+      where: { startupId, id: messageId },
+      select: { id: true, conversationId: true, senderId: true, deletedAt: true, parentMessageId: true },
+    });
+    if (!message) throw createError("Message not found", 404, "MESSAGE_NOT_FOUND");
+    if (message.deletedAt) {
+      throw createError("This message was already deleted", 409, "MESSAGE_ALREADY_DELETED");
+    }
+
+    await this.verifyMembership(startupId, message.conversationId, memberId);
+
+    if (message.senderId !== memberId) {
+      throw createError("You can only delete your own messages", 403, "FORBIDDEN");
+    }
+
+    const updated = await prisma.message.update({
+      where: { id: messageId },
+      data: { deletedAt: new Date() },
+      select: MESSAGE_SELECT,
+    });
+
+    await recordAuditEvent({
+      startupId,
+      userId,
+      action: AUDIT_ACTIONS.DELETE,
+      entityType: "message",
+      entityId: messageId,
+      changes: { conversationId: message.conversationId },
+    });
+
+    const recipientUserIds = await this.memberUserIds(message.conversationId, memberId);
+    for (const recipientUserId of recipientUserIds) {
+      realtimeBus.publish(recipientUserId, {
+        type: "chat.message.deleted",
+        conversationId: message.conversationId,
+        messageId,
+        parentMessageId: message.parentMessageId,
+      });
+    }
+
+    return { data: serializeMessage(updated, memberId) };
+  }
+
   /** Advances the caller's read pointer to the latest top-level message clears the unread badge. */
   async markRead(startupId: string, conversationId: string, memberId: string) {
     await this.verifyMembership(startupId, conversationId, memberId);
@@ -1152,6 +1209,56 @@ export class ChatService {
     });
 
     return { data: { notifyLevel: level } };
+  }
+
+  /**
+   * Channels are workspace-wide (every active member is added at creation —
+   * see createConversation), so archiving one is a moderation call on a
+   * shared room, not something every member can do to it hence gated by
+   * chat:manage at the route rather than mere membership. DMs can't be
+   * archived: there is no shared room to moderate, only two people's own.
+   */
+  async setConversationArchived(
+    startupId: string,
+    conversationId: string,
+    archived: boolean,
+    actorMemberId: string,
+    actorUserId: string,
+  ) {
+    const conversation = await prisma.conversation.findUnique({
+      where: { startupId_id: { startupId, id: conversationId } },
+      select: { id: true, type: true, name: true, archivedAt: true },
+    });
+    if (!conversation) throw createError("Conversation not found", 404, "CONVERSATION_NOT_FOUND");
+    if (conversation.type !== "channel") {
+      throw createError("Only channels can be archived", 400, "CANNOT_ARCHIVE_DM");
+    }
+
+    if (archived === (conversation.archivedAt !== null)) {
+      return { data: { id: conversationId, archivedAt: conversation.archivedAt } };
+    }
+
+    const nextArchivedAt = archived ? new Date() : null;
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { archivedAt: nextArchivedAt },
+    });
+
+    await recordAuditEvent({
+      startupId,
+      userId: actorUserId,
+      action: archived ? AUDIT_ACTIONS.ARCHIVE : AUDIT_ACTIONS.UPDATE,
+      entityType: "conversation",
+      entityId: conversationId,
+      changes: { name: conversation.name, archived },
+    });
+
+    const recipientUserIds = await this.memberUserIds(conversationId, actorMemberId);
+    for (const recipientUserId of recipientUserIds) {
+      realtimeBus.publish(recipientUserId, { type: "chat.conversation.changed", conversationId });
+    }
+
+    return { data: { id: conversationId, archivedAt: nextArchivedAt } };
   }
 
   /**

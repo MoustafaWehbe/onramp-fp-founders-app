@@ -163,6 +163,27 @@ export async function toggleReaction(startupId: string, messageId: string, emoji
   return data.data;
 }
 
+/**
+ * Soft-delete (tombstone) never a hard delete, but the response and every
+ * other client's view have body/reactions/attachments blanked. Self-serve
+ * only: retracts the caller's own message. No moderator override.
+ */
+export async function deleteMessage(startupId: string, messageId: string) {
+  const { data } = await apiClient.delete<{ data: Message }>(
+    `/startups/${startupId}/chat/messages/${messageId}`,
+  );
+  return data.data;
+}
+
+/** Channels only chat:manage moderation action; rejects DMs (400 CANNOT_ARCHIVE_DM). */
+export async function setConversationArchived(startupId: string, conversationId: string, archived: boolean) {
+  const { data } = await apiClient.patch<{ data: { id: string; archivedAt: string | null } }>(
+    `/startups/${startupId}/chat/conversations/${conversationId}/archived`,
+    { archived },
+  );
+  return data.data;
+}
+
 /** Advances the caller's read pointer to the latest message clears the unread badge. */
 export async function markConversationRead(startupId: string, conversationId: string) {
   const { data } = await apiClient.post<{ data: { lastReadSeq: string | null } }>(
