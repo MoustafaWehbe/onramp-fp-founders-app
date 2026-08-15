@@ -189,6 +189,11 @@ export function InteractionTimeline({
           currentPipelineId !== null &&
           log.pipelineId !== null &&
           log.pipelineId !== currentPipelineId;
+        // Notes go through the same edit dialog as every other type, which
+        // exposes a type/date form that makes no sense for a note — simpler
+        // to not offer editing at all than a form the wrong shape for what
+        // it edits. Deleting and re-adding is the fix for a typo.
+        const canEditThis = canEdit && log.type !== "note";
 
         return (
           <li
@@ -236,7 +241,7 @@ export function InteractionTimeline({
                 </div>
               </div>
 
-              {(canEdit || canDelete) && (
+              {(canEditThis || canDelete) && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -249,7 +254,7 @@ export function InteractionTimeline({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="min-w-40">
-                    {canEdit && (
+                    {canEditThis && (
                       <DropdownMenuItem onSelect={() => onEdit(log)}>Edit</DropdownMenuItem>
                     )}
                     {canDelete && (

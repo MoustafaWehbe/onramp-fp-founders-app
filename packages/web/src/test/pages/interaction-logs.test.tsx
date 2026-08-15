@@ -240,6 +240,21 @@ describe("InvestorDetailDialog interaction history", () => {
     );
   });
 
+  it("offers only Delete for a note, never Edit — the edit dialog's type/date form doesn't fit a note", async () => {
+    listLogsForInvestor.mockResolvedValue({
+      data: [log({ id: "log-note", type: "note", subject: null, description: "Prefers async updates." })],
+      meta: { page: 1, limit: 50, total: 1, totalPages: 1 },
+    });
+    const user = userEvent.setup();
+    renderDetail();
+    await showActivity(user);
+    await screen.findByText("Prefers async updates.");
+
+    await user.click(screen.getByRole("button", { name: /Actions for Note/ }));
+    expect(screen.queryByRole("menuitem", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+  });
+
   it("confirms before removing an entry", async () => {
     deleteInteractionLog.mockResolvedValue({ message: "removed" });
     const user = userEvent.setup();
