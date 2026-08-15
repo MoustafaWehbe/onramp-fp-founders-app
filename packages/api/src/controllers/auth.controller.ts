@@ -71,9 +71,14 @@ export const authController = {
   refresh: asyncHandler(async (req, res) => {
     const token = (req.cookies?.refreshToken ?? req.body?.refreshToken) as string | undefined;
     if (!token) throw createError("Missing refresh token", 401);
-    const tokens = await authService.refresh(token);
-    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
-    res.json({ data: { message: "Token refreshed" } });
+    try {
+      const tokens = await authService.refresh(token);
+      setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+      res.json({ data: { message: "Token refreshed" } });
+    } catch (err) {
+      clearAuthCookies(res);
+      throw err;
+    }
   }),
 
   logout: asyncHandler(async (req, res) => {

@@ -1,10 +1,24 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowRight, Bell, PlugZap, Settings2, ShieldCheck, UserRound } from "lucide-react";
+import { ArrowRight, Bell, Building2, ChevronDown, PlugZap, Settings2, ShieldCheck, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../../components/ui/dropdown-menu";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import { Textarea } from "../../components/ui/textarea";
+import { usePermissions } from "../../hooks/usePermissions";
+import { useActiveStartupId, useWorkspace, MY_STARTUPS_KEY } from "../../hooks/useWorkspace";
+import { apiErrorMessage } from "../../lib/api-error";
+import { updateStartup, type FundingStage } from "../../lib/startup-api";
 import { ConnectedAccountsCard } from "./ConnectedAccountsCard";
 
 const CONNECT_ERROR_MESSAGES: Record<string, string> = {
@@ -15,6 +29,183 @@ const CONNECT_ERROR_MESSAGES: Record<string, string> = {
   NO_ID_TOKEN: "Google didn't confirm an account identity. Please try again.",
   NO_GOOGLE_EMAIL: "Google didn't share an account email. Please try again.",
 };
+
+/** Matches the funding_stage enum in packages/api/src/validators/startup.schemas.ts. */
+const FUNDING_STAGES: { id: FundingStage; label: string }[] = [
+  { id: "pre_seed", label: "Pre-seed" },
+  { id: "seed", label: "Seed" },
+  { id: "series_a", label: "Series A" },
+  { id: "series_b", label: "Series B" },
+  { id: "series_c", label: "Series C" },
+];
+
+// Mirrors the server-side zod rules so the first failure is inline rather than
+// a toast after a round trip.
+const LIMITS = { name: 100, description: 500, industry: 100 };
+
+function CompanyProfileCard() {
+  const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const startupId = useActiveStartupId();
+  const { activeStartup } = useWorkspace();
+  const canEdit = can("startup", "update");
+
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [industry, setIndustry] = useState("");
+  const [website, setWebsite] = useState("");
+  const [fundingStage, setFundingStage] = useState<FundingStage>("pre_seed");
+
+  useEffect(() => {
+    if (!activeStartup) return;
+    setName(activeStartup.name);
+    setDescription(activeStartup.description ?? "");
+    setIndustry(activeStartup.industry ?? "");
+    setWebsite(activeStartup.website ?? "");
+    setFundingStage(activeStartup.fundingStage);
+  }, [activeStartup]);
+
+  if (!activeStartup) return null;
+
+  const isDirty =
+    name.trim() !== activeStartup.name ||
+    description.trim() !== (activeStartup.description ?? "") ||
+    industry.trim() !== (activeStartup.industry ?? "") ||
+    website.trim() !== (activeStartup.website ?? "") ||
+    fundingStage !== activeStartup.fundingStage;
+
+  const websiteLooksValid = website.trim() === "" || /^https?:\/\/\S+\.\S+/i.test(website.trim());
+  const selectedStage = FUNDING_STAGES.find((s) => s.id === fundingStage)!;
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      updateStartup(startupId, {
+        name: name.trim(),
+        description: description.trim(),
+        industry: industry.trim(),
+        website: website.trim(),
+        funding_stage: fundingStage,
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: MY_STARTUPS_KEY });
+      toast.success("Company profile updated");
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not update the company profile")),
+  });
+
+  const canSubmit =
+    canEdit &&
+    isDirty &&
+    !saveMutation.isPending &&
+    name.trim() !== "" &&
+    industry.trim() !== "" &&
+    websiteLooksValid;
+
+  return (
+    <Card className="border-border/70">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Building2 className="h-5 w-5 text-primary" /> Company profile
+        </CardTitle>
+        <CardDescription>
+          {canEdit
+            ? "What your team and investors see when they look up this workspace."
+            : "Only the workspace owner can edit these details."}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="space-y-2">
+          <Label htmlFor="startup-name">Startup name</Label>
+          <Input
+            id="startup-name"
+            value={name}
+            maxLength={LIMITS.name}
+            disabled={!canEdit}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="startup-description">What are you building?</Label>
+          <Textarea
+            id="startup-description"
+            value={description}
+            maxLength={LIMITS.description}
+            rows={3}
+            disabled={!canEdit}
+            placeholder="One or two lines an investor would understand."
+            onChange={(e) => setDescription(e.target.value)}
+          />
+          {canEdit && (
+            <p className="text-right text-xs text-muted-foreground tabular-nums">
+              {description.length}/{LIMITS.description}
+            </p>
+          )}
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="startup-industry">Industry</Label>
+            <Input
+              id="startup-industry"
+              value={industry}
+              maxLength={LIMITS.industry}
+              disabled={!canEdit}
+              placeholder="Fintech"
+              onChange={(e) => setIndustry(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-sm font-medium">Funding stage</div>
+            {canEdit ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="outline" className="h-9 w-full justify-between px-3 font-normal">
+                    {selectedStage.label}
+                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
+                  {FUNDING_STAGES.map((stage) => (
+                    <DropdownMenuItem key={stage.id} onSelect={() => setFundingStage(stage.id)}>
+                      {stage.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Input value={selectedStage.label} disabled />
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="startup-website">Website</Label>
+          <Input
+            id="startup-website"
+            type="url"
+            value={website}
+            disabled={!canEdit}
+            placeholder="https://acme.com"
+            onChange={(e) => setWebsite(e.target.value)}
+          />
+          {canEdit && website.trim() !== "" && !websiteLooksValid && (
+            <p className="text-xs text-destructive">Include the full address, starting with http:// or https://</p>
+          )}
+        </div>
+
+        {canEdit && (
+          <div className="flex justify-end border-t border-border/60 pt-5">
+            <Button type="button" disabled={!canSubmit} onClick={() => saveMutation.mutate()}>
+              {saveMutation.isPending ? "Saving…" : "Save changes"}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -38,7 +229,7 @@ export function Settings() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title="Settings" description="Tune your account experience and connected services." />
+      <PageHeader title="Settings" description="Your account, your company profile, and the tools you've connected." />
 
       <section className="relative overflow-hidden rounded-2xl border border-border/70 bg-card p-6 sm:p-8">
         <div className="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-primary/15 blur-3xl" />
@@ -48,6 +239,8 @@ export function Settings() {
           <p className="mt-2 text-sm leading-6 text-muted-foreground">Keep your identity current, connect the tools you use, and stay in control of your account.</p>
         </div>
       </section>
+
+      <CompanyProfileCard />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Card className="group border-border/70 transition-colors hover:border-primary/30">

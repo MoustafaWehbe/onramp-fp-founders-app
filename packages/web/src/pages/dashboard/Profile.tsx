@@ -86,14 +86,6 @@ export function Profile() {
                 {getInitials(displayName)}
               </AvatarFallback>
             </Avatar>
-            <button
-              type="button"
-              aria-label="Choose profile photo"
-              className="absolute bottom-0 right-0 grid h-9 w-9 place-items-center rounded-full border-2 border-card bg-primary text-primary-foreground shadow-lg transition-colors hover:bg-primary/90"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Camera className="h-4 w-4" />
-            </button>
             <input
               ref={fileInputRef}
               type="file"
