@@ -3768,9 +3768,9 @@ paths:
       operationId: listInvestors
       description: >
         Returns the startup's private investor contacts. Each row is joined to
-        its pipeline entry (null when the contact has not been added to the
-        pipeline) and to the earliest upcoming follow-up date across that
-        contact's interaction logs, which is what the Investors screen renders.
+        a pipeline entry (null when the contact has not been added to the
+        pipeline). Supplying roundId joins only the entry in that fundraising
+        round, which is useful when choosing contacts to add to a board.
       security:
         - cookieAuth: []
       parameters:
@@ -3790,6 +3790,12 @@ paths:
           schema:
             $ref: "#/components/schemas/PipelineStage"
           description: Filter on the joined pipeline entry's stage
+        - name: roundId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Return the pipeline entry for this fundraising round only.
         - name: engagement
           in: query
           schema:

@@ -98,7 +98,7 @@ export class InvestorService {
   }
 
   async listInvestors(startupId: string, query: ListInvestorsQuery) {
-    const { page, limit, search, investorType, stage, engagement } = query;
+    const { page, limit, search, investorType, stage, engagement, roundId } = query;
 
     // Everything except the engagement split. The tab counts are taken against
     // this so they answer "how many match my search on the other tab", rather
@@ -106,7 +106,7 @@ export class InvestorService {
     const baseWhere: Prisma.StartupInvestorWhereInput = {
       startupId,
       ...(investorType && { investorType }),
-      ...(stage && { pipeline: { some: { stage } } }),
+      ...(stage && { pipeline: { some: { stage, ...(roundId && { roundId }) } } }),
       ...(search && {
         OR: [
           { fullName: { contains: search, mode: "insensitive" as const } },
@@ -139,7 +139,11 @@ export class InvestorService {
           ...CONTACT_SELECT,
           // At most one entry exists per contact — the schema enforces
           // @@unique([startupId, startupInvestorId]).
-          pipeline: { select: PIPELINE_SELECT, take: 1 },
+          pipeline: {
+            ...(roundId && { where: { roundId } }),
+            select: PIPELINE_SELECT,
+            take: 1,
+          },
         },
       }),
     ]);

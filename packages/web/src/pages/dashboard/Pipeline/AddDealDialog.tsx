@@ -36,6 +36,7 @@ type AddDealDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   startupId: string;
+  roundId: string;
   isSubmitting: boolean;
   onSubmit: (values: AddDealValues) => void;
 };
@@ -44,6 +45,7 @@ export function AddDealDialog({
   open,
   onOpenChange,
   startupId,
+  roundId,
   isSubmitting,
   onSubmit,
 }: AddDealDialogProps) {
@@ -61,10 +63,11 @@ export function AddDealDialog({
   }, [open]);
 
   const contactsQuery = useQuery({
-    queryKey: qk.investors(startupId, "for-pipeline"),
+    queryKey: qk.investors(startupId, `for-pipeline:${roundId}`),
     // Every unassigned contact has to be in this list for the picker to be
     // useful, so page through in small batches rather than asking for one big one.
-    queryFn: () => fetchAllPages((page, limit) => listInvestors(startupId, { page, limit })),
+    queryFn: () =>
+      fetchAllPages((page, limit) => listInvestors(startupId, { page, limit, roundId })),
     enabled: open,
   });
 

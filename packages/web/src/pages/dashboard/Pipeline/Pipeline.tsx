@@ -1067,6 +1067,7 @@ export function Pipeline() {
         open={addOpen}
         onOpenChange={setAddOpen}
         startupId={startupId}
+        roundId={activeRound?.id ?? ""}
         isSubmitting={createMutation.isPending}
         onSubmit={(values) => createMutation.mutate(values)}
       />

@@ -88,6 +88,7 @@ export const listInvestorsQuerySchema = z.object({
     .optional(),
   investorType: investorTypeEnum.optional(),
   stage: pipelineStageEnum.optional(),
+  roundId: z.string().uuid("roundId must be a valid UUID").optional(),
   // Splits the directory in two: contacts this startup has actually engaged
   // (they sit in the pipeline, or someone has logged an interaction with them)
   // versus ones that were added or imported but never approached.

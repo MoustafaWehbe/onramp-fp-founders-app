@@ -4,12 +4,33 @@ import type { PipelineStageId } from "./mock-data";
 export const INVESTOR_TYPES = ["vc", "angel", "family_office", "accelerator", "other"] as const;
 export type InvestorType = (typeof INVESTOR_TYPES)[number];
 
+export const SECTOR_FOCUS_OPTIONS = ["ai_ml", "b2b_saas", "biotech", "climate", "consumer", "developer_tools", "fintech", "healthcare", "marketplaces", "web3", "other"] as const;
+export type SectorFocus = (typeof SECTOR_FOCUS_OPTIONS)[number];
+
+export const STAGE_PREFERENCE_OPTIONS = ["pre_seed", "seed", "series_a", "series_b", "growth", "any_stage"] as const;
+export type StagePreference = (typeof STAGE_PREFERENCE_OPTIONS)[number];
+
+export const INVESTOR_SOURCE_OPTIONS = ["cold_outreach", "warm_intro", "referral", "event", "accelerator", "inbound", "research", "other"] as const;
+export type InvestorSource = (typeof INVESTOR_SOURCE_OPTIONS)[number];
+
 export const INVESTOR_TYPE_LABELS: Record<InvestorType, string> = {
   vc: "VC",
   angel: "Angel",
   family_office: "Family office",
   accelerator: "Accelerator",
   other: "Other",
+};
+
+export const SECTOR_FOCUS_LABELS: Record<SectorFocus, string> = {
+  ai_ml: "AI & ML", b2b_saas: "B2B SaaS", biotech: "Biotech", climate: "Climate", consumer: "Consumer", developer_tools: "Developer tools", fintech: "Fintech", healthcare: "Healthcare", marketplaces: "Marketplaces", web3: "Web3", other: "Other",
+};
+
+export const STAGE_PREFERENCE_LABELS: Record<StagePreference, string> = {
+  pre_seed: "Pre-seed", seed: "Seed", series_a: "Series A", series_b: "Series B+", growth: "Growth", any_stage: "Any stage",
+};
+
+export const INVESTOR_SOURCE_LABELS: Record<InvestorSource, string> = {
+  cold_outreach: "Cold outreach", warm_intro: "Warm intro", referral: "Referral", event: "Event", accelerator: "Accelerator", inbound: "Inbound", research: "Research", other: "Other",
 };
 
 /**
@@ -73,6 +94,8 @@ export type ListInvestorsParams = {
   investorType?: InvestorType;
   stage?: PipelineStageId;
   engagement?: Engagement;
+  /** Return this contact's deal for one specific round, when present. */
+  roundId?: string;
 };
 
 /** Optional text fields accept null to clear a stored value. */

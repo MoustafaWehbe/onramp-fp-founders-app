@@ -176,6 +176,16 @@ describe("listInvestorsQuerySchema", () => {
     const result = listInvestorsQuerySchema.safeParse({ stage: "meeting_scheduled" });
     expect(result.success).toBe(true);
   });
+
+  it("accepts a fundraising round for round-specific pipeline membership", () => {
+    const result = listInvestorsQuerySchema.safeParse({ roundId: UUID });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.roundId).toBe(UUID);
+  });
+
+  it("rejects an invalid fundraising round id", () => {
+    expect(listInvestorsQuerySchema.safeParse({ roundId: "not-a-uuid" }).success).toBe(false);
+  });
 });
 
 describe("investorIdParamSchema", () => {

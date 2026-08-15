@@ -17,9 +17,16 @@ import {
 } from "../../../components/ui/dropdown-menu";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
+import { Select } from "../../../components/ui/select";
 import {
+  INVESTOR_SOURCE_LABELS,
+  INVESTOR_SOURCE_OPTIONS,
   INVESTOR_TYPES,
   INVESTOR_TYPE_LABELS,
+  SECTOR_FOCUS_LABELS,
+  SECTOR_FOCUS_OPTIONS,
+  STAGE_PREFERENCE_LABELS,
+  STAGE_PREFERENCE_OPTIONS,
   type InvestorContact,
   type InvestorInput,
   type InvestorType,
@@ -226,34 +233,43 @@ export function InvestorFormDialog({
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="investor-sector">Sector focus</Label>
-                  <Input
+                  <Select
                     id="investor-sector"
                     value={form.sectorFocus}
-                    onChange={(e) => set("sectorFocus", e.target.value)}
-                    maxLength={200}
-                    placeholder="Fintech, SaaS"
+                    onValueChange={(value) => set("sectorFocus", value)}
+                    placeholder="Not set"
+                    options={[
+                      { value: "", label: "Not set" },
+                      ...SECTOR_FOCUS_OPTIONS.map((value) => ({ value, label: SECTOR_FOCUS_LABELS[value] })),
+                    ]}
                   />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="investor-stage-pref">Stage preference</Label>
-                  <Input
+                  <Select
                     id="investor-stage-pref"
                     value={form.investmentStagePreference}
-                    onChange={(e) => set("investmentStagePreference", e.target.value)}
-                    maxLength={200}
-                    placeholder="Seed to Series A"
+                    onValueChange={(value) => set("investmentStagePreference", value)}
+                    placeholder="Not set"
+                    options={[
+                      { value: "", label: "Not set" },
+                      ...STAGE_PREFERENCE_OPTIONS.map((value) => ({ value, label: STAGE_PREFERENCE_LABELS[value] })),
+                    ]}
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="investor-source">Source</Label>
-                <Input
+                <Select
                   id="investor-source"
                   value={form.source}
-                  onChange={(e) => set("source", e.target.value)}
-                  maxLength={100}
+                  onValueChange={(value) => set("source", value)}
+                  options={[
+                    { value: "", label: "Not set" },
+                    ...INVESTOR_SOURCE_OPTIONS.map((value) => ({ value, label: INVESTOR_SOURCE_LABELS[value] })),
+                  ]}
                   placeholder="Warm intro, conference…"
                 />
               </div>
