@@ -1,9 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useAuth } from "./useAuth";
+import { useAppStore } from "../lib/app-store";
 import { NOTIFICATIONS_KEY } from "./useNotifications";
 import { MY_INVITES_KEY } from "./useMyInvites";
+import { qk } from "../lib/query-keys";
 
 const STREAM_URL = "/api/v1/notifications/stream";
 
@@ -11,8 +13,16 @@ type CreatedEvent = {
   notification: { id: string; type: string; title: string; body: string | null };
 };
 
+type ChatMessageCreatedEvent = { conversationId: string };
+
 /**
- * Keeps the notification feed live over server-sent events.
+ * Keeps the notification feed *and* team chat live over one shared
+ * server-sent events connection.
+ *
+ * Despite the endpoint's name, the server multiplexes every realtime event
+ * for the signed-in user onto this one stream — see the comment on
+ * notificationController.stream — so chat listens here too rather than
+ * opening a second EventSource.
  *
  * The stream is a signal, not a data source: every event just invalidates the
  * queries and lets them refetch. Trying to splice pushed payloads into the
@@ -25,6 +35,14 @@ export function useNotificationStream() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const userId = user?.id ?? null;
+
+  // Chat is startup-scoped, so the active workspace decides which
+  // conversations query a chat event should invalidate. Read through a ref
+  // rather than a hook dependency — switching workspaces must not tear down
+  // and reopen the one live connection the whole app shares.
+  const activeStartupId = useAppStore((s) => s.preferredStartupId);
+  const activeStartupIdRef = useRef(activeStartupId);
+  activeStartupIdRef.current = activeStartupId;
 
   useEffect(() => {
     if (!userId) return;
@@ -51,6 +69,28 @@ export function useNotificationStream() {
     });
 
     source.addEventListener("notifications.changed", refresh);
+
+    source.addEventListener("chat.message.created", (event) => {
+      const startupId = activeStartupIdRef.current;
+      if (!startupId) return;
+
+      try {
+        const { conversationId } = JSON.parse(
+          (event as MessageEvent).data,
+        ) as ChatMessageCreatedEvent;
+        void queryClient.invalidateQueries({ queryKey: qk.conversations(startupId) });
+        void queryClient.invalidateQueries({
+          queryKey: qk.messages(startupId, conversationId),
+        });
+      } catch {
+        // Same fallback as above — nothing more specific to recover with.
+      }
+    });
+
+    source.addEventListener("chat.conversation.changed", () => {
+      const startupId = activeStartupIdRef.current;
+      if (startupId) void queryClient.invalidateQueries({ queryKey: qk.conversations(startupId) });
+    });
 
     // EventSource reconnects on its own. The one case it cannot fix is an
     // expired access token — the reconnect 401s — but any ordinary request

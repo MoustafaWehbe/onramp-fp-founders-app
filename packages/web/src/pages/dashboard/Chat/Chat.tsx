@@ -1,0 +1,101 @@
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { PageHeader } from "../../../components/layout/PageHeader";
+import { apiErrorMessage } from "../../../lib/api-error";
+import { useActiveStartupId } from "../../../hooks/useWorkspace";
+import { usePermissions } from "../../../hooks/usePermissions";
+import { qk } from "../../../lib/query-keys";
+import { cn } from "../../../lib/utils";
+import { createConversation, listConversations, type CreateConversationInput } from "../../../lib/chat-api";
+import { ConversationList } from "./ConversationList";
+import { MessageThread } from "./MessageThread";
+import { NewChannelDialog } from "./NewChannelDialog";
+import { EmptyState } from "../../../components/shared/EmptyState";
+import { MessageSquare } from "lucide-react";
+
+export function Chat() {
+  const startupId = useActiveStartupId();
+  const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canCreate = can("chat", "create");
+
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+
+  const conversationsQuery = useQuery({
+    queryKey: qk.conversations(startupId),
+    queryFn: () => listConversations(startupId),
+  });
+
+  const conversations = conversationsQuery.data ?? [];
+
+  // Land on the most recently active channel by default, and follow along if
+  // the one that was selected gets archived out from under the list.
+  useEffect(() => {
+    if (conversations.length === 0) {
+      setSelectedId(null);
+      return;
+    }
+    if (!selectedId || !conversations.some((c) => c.id === selectedId)) {
+      setSelectedId(conversations[0].id);
+    }
+  }, [conversations, selectedId]);
+
+  const createMutation = useMutation({
+    mutationFn: (input: CreateConversationInput) => createConversation(startupId, input),
+    onSuccess: (conversation) => {
+      setCreateOpen(false);
+      setSelectedId(conversation.id);
+      toast.success(`#${conversation.name} created`);
+      void queryClient.invalidateQueries({ queryKey: qk.conversations(startupId) });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not create that channel")),
+  });
+
+  const selected = conversations.find((c) => c.id === selectedId) ?? null;
+
+  return (
+    <div className="flex h-[calc(100dvh-11.5rem)] min-h-[26rem] flex-col gap-4 sm:h-[calc(100dvh-12.5rem)]">
+      <PageHeader title="Chat" description="Talk with your team, right next to the deals you're working." />
+
+      <div className="card-elevated flex min-h-0 flex-1 overflow-hidden">
+        <ConversationList
+          conversations={conversations}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          isLoading={conversationsQuery.isLoading}
+          canCreate={canCreate}
+          onCreate={() => setCreateOpen(true)}
+          className={cn(
+            "w-full shrink-0 border-r border-border/60 md:w-64",
+            selected ? "hidden md:flex" : "flex",
+          )}
+        />
+
+        {selected ? (
+          <MessageThread
+            startupId={startupId}
+            conversation={selected}
+            canSend={canCreate}
+            onBack={() => setSelectedId(null)}
+          />
+        ) : (
+          !conversationsQuery.isLoading &&
+          conversations.length > 0 && (
+            <div className="hidden flex-1 items-center justify-center md:flex">
+              <EmptyState icon={MessageSquare} title="Select a channel" compact />
+            </div>
+          )
+        )}
+      </div>
+
+      <NewChannelDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        isSubmitting={createMutation.isPending}
+        onSubmit={(input) => createMutation.mutate(input)}
+      />
+    </div>
+  );
+}

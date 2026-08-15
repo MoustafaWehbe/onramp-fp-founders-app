@@ -678,6 +678,7 @@ describe("InviteService.removeMember", () => {
         // FKs cannot SET NULL alone without nulling startupId too.
         pipeline: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         task: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        message: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       };
       return cb(tx);
     });
@@ -704,6 +705,7 @@ describe("InviteService.removeMember", () => {
         // FKs cannot SET NULL alone without nulling startupId too.
         pipeline: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         task: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        message: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       };
       return cb(tx);
     });
@@ -754,6 +756,7 @@ describe("InviteService.removeMember", () => {
         },
         pipeline: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         task: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        message: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       };
       return cb(tx);
     });
@@ -770,6 +773,7 @@ describe("InviteService.removeMember", () => {
   it("un-owns the member's deals and unassigns their tasks before deleting them", async () => {
     const pipelineUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
     const taskUpdateMany = jest.fn().mockResolvedValue({ count: 2 });
+    const messageUpdateMany = jest.fn().mockResolvedValue({ count: 3 });
     const memberDelete = jest.fn().mockResolvedValue({});
     const order: string[] = [];
 
@@ -800,6 +804,12 @@ describe("InviteService.removeMember", () => {
             return taskUpdateMany(...args);
           },
         },
+        message: {
+          updateMany: (...args: unknown[]) => {
+            order.push("message");
+            return messageUpdateMany(...args);
+          },
+        },
       };
       return cb(tx);
     });
@@ -814,8 +824,12 @@ describe("InviteService.removeMember", () => {
       where: { startupId: STARTUP_ID, assigneeId: MEMBER_ID },
       data: { assigneeId: null },
     });
-    // Both hand-backs must land before the row goes, or the FK rejects it.
-    expect(order).toEqual(["pipeline", "task", "delete"]);
+    expect(messageUpdateMany).toHaveBeenCalledWith({
+      where: { startupId: STARTUP_ID, senderId: MEMBER_ID },
+      data: { senderId: null },
+    });
+    // Every hand-back must land before the row goes, or the FK rejects it.
+    expect(order).toEqual(["pipeline", "task", "message", "delete"]);
   });
 
   it("rejects member from another startup", async () => {

@@ -32,6 +32,11 @@ export const PERMISSIONS = [
   // AI
   { resource: "ai_reports", action: "read", description: "View AI analyses and chat" },
   { resource: "ai_reports", action: "create", description: "Trigger AI analysis and start chats" },
+
+  // Team chat
+  { resource: "chat", action: "read", description: "View conversations" },
+  { resource: "chat", action: "create", description: "Post messages and create channels" },
+  { resource: "chat", action: "manage", description: "Archive channels, remove any message" },
 ] as const;
 
 export const ROLE_TEMPLATES = {
@@ -48,6 +53,8 @@ export const ROLE_TEMPLATES = {
     "financial:read",
     "ai_reports:read",
     "ai_reports:create",
+    "chat:read",
+    "chat:create",
   ],
   viewer: [
     "startup:read",
@@ -56,6 +63,8 @@ export const ROLE_TEMPLATES = {
     "documents:read",
     "financial:read",
     "ai_reports:read",
+    "chat:read",
+    "chat:create",
   ],
 } as const;
 

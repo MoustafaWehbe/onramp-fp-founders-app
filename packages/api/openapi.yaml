@@ -34,6 +34,11 @@ tags:
     description: Logged interactions with investors
   - name: Tasks
     description: Actionable next steps on a pipeline deal
+  - name: Chat
+    description: >-
+      Team chat channels within a startup. Phase 1: named channels only,
+      every active member added on creation — see the schema comment above
+      the Conversation model in schema.prisma.
   - name: Fundraising Rounds
     description: Fundraising round management
   - name: Commitments
@@ -1452,6 +1457,125 @@ components:
           type: string
           format: uuid
           nullable: true
+
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        startupId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Unique within the startup.
+        topic:
+          type: string
+          nullable: true
+        lastMessageAt:
+          type: string
+          format: date-time
+          nullable: true
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdBy:
+          type: string
+          format: uuid
+          description: A User id.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateConversationBody:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 60
+        topic:
+          type: string
+          maxLength: 200
+
+    MessageSender:
+      type: object
+      nullable: true
+      description: Null when the sender's StartupMember row has since been removed.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: A StartupMember id.
+        firstName:
+          type: string
+          nullable: true
+        lastName:
+          type: string
+          nullable: true
+        avatarUrl:
+          type: string
+          nullable: true
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        startupId:
+          type: string
+          format: uuid
+        conversationId:
+          type: string
+          format: uuid
+        seq:
+          type: string
+          description: >-
+            A decimal string, not a number — BigInt has no JSON
+            representation. Orders the room and is the cursor `before` reads.
+          example: "42"
+        senderId:
+          type: string
+          format: uuid
+          nullable: true
+        sender:
+          $ref: "#/components/schemas/MessageSender"
+        body:
+          type: string
+        editedAt:
+          type: string
+          format: date-time
+          nullable: true
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    SendMessageBody:
+      type: object
+      required: [body, clientNonce]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        clientNonce:
+          type: string
+          format: uuid
+          description: >-
+            Client-generated once per send attempt and reused on retry, so a
+            retried POST resolves to the original message instead of
+            duplicating it.
 
     CreateInteractionLogBody:
       type: object
@@ -5030,6 +5154,208 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  # ════════════════════════════════════════════════════════════════
+  #  CHAT
+  # ════════════════════════════════════════════════════════════════
+  /startups/{startupId}/chat/conversations:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Chat]
+      summary: Create a channel
+      description: >
+        Every active member of the startup is added at creation time — there
+        is no invite-to-channel UI yet, so Phase 1 channels are workspace-wide.
+      operationId: createConversation
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConversationBody"
+      responses:
+        "201":
+          description: Channel created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Conversation"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing chat:create
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: CONVERSATION_NAME_TAKEN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+    get:
+      tags: [Chat]
+      summary: List the caller's channels
+      description: Channels the caller is a member of, most recently active first.
+      operationId: listConversations
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: List of channels
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Conversation"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing chat:read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /startups/{startupId}/chat/conversations/{conversationId}/messages:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: conversationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Chat]
+      summary: List messages in a channel
+      description: >
+        Cursor pagination on `seq` — pass the oldest message's `seq` on the
+        current page as `before` to load the page above it. Returned
+        oldest-first.
+      operationId: listMessages
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: before
+          in: query
+          schema:
+            type: string
+            pattern: "^\\d+$"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Message"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing chat:read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: CONVERSATION_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags: [Chat]
+      summary: Send a message
+      operationId: sendMessage
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageBody"
+      responses:
+        "201":
+          description: >-
+            Message sent, or the original message when clientNonce matches an
+            existing send.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Message"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing chat:create
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: CONVERSATION_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
 
   # ════════════════════════════════════════════════════════════════
   #  FUNDRAISING ROUNDS (Financial)

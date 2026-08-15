@@ -13,6 +13,7 @@ import { Dashboard } from "../pages/dashboard/Dashboard";
 import { Notifications } from "../pages/dashboard/Notifications/Notifications";
 import { Pipeline } from "../pages/dashboard/Pipeline/Pipeline";
 import { Investors } from "../pages/dashboard/Investors/Investors";
+import { Chat } from "../pages/dashboard/Chat/Chat";
 import { Fundraising } from "../pages/dashboard/Fundraising/Fundraising";
 import { Documents } from "../pages/dashboard/Documents/Documents";
 import { AiInsights } from "../pages/dashboard/AiInsights/AiInsights";
@@ -60,6 +61,7 @@ export function AppRoutes() {
           <Route element={<RequireWorkspace />}>
             <Route path="/pipeline" element={<Pipeline />} />
             <Route path="/investors" element={<Investors />} />
+            <Route path="/chat" element={<Chat />} />
             <Route path="/fundraising" element={<Fundraising />} />
             <Route path="/documents" element={<Documents />} />
             <Route path="/ai-insights" element={<AiInsights />} />

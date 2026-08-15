@@ -9,6 +9,7 @@ import {
   FileText,
   LayoutDashboard,
   LogOut,
+  MessageCircle,
   MessageSquare,
   Plus,
   ScrollText,
@@ -47,6 +48,7 @@ const navGroups = [
       { to: "/investors", label: "Investors", icon: Users },
       { to: "/pipeline", label: "Pipeline", icon: Briefcase },
       { to: "/fundraising", label: "Rounds", icon: Wallet },
+      { to: "/chat", label: "Chat", icon: MessageCircle },
     ],
   },
   {

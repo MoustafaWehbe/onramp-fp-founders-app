@@ -83,6 +83,11 @@ export const qk = {
 
   /** One workspace-wide fetch the board derives its last-touch signals from. */
   logsForBoard: (startupId: string) => ["interaction-logs", startupId, "board"] as const,
+
+  conversations: (startupId: string) => ["chat-conversations", startupId] as const,
+
+  messages: (startupId: string, conversationId: string | null | undefined) =>
+    ["chat-messages", startupId, conversationId ?? null] as const,
 };
 
 /** Prefixes — anything scoped to a startup, regardless of round or deal. */

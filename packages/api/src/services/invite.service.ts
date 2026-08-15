@@ -434,6 +434,12 @@ export class InviteService {
         where: { startupId, assigneeId: memberId },
         data: { assigneeId: null },
       });
+      // Their chat history stays — only the attribution is cleared, the same
+      // way an unassigned task keeps its title.
+      await tx.message.updateMany({
+        where: { startupId, senderId: memberId },
+        data: { senderId: null },
+      });
 
       await tx.startupMember.delete({ where: { id: memberId } });
     });

@@ -1,6 +1,13 @@
 
-export type Resource = "startup" | "team" | "pipeline" | "documents" | "financial" | "ai_reports";
-export type Action = "read" | "create" | "update" | "delete" | "share";
+export type Resource =
+  | "startup"
+  | "team"
+  | "pipeline"
+  | "documents"
+  | "financial"
+  | "ai_reports"
+  | "chat";
+export type Action = "read" | "create" | "update" | "delete" | "share" | "manage";
 
 const ALL_PERMISSIONS = [
   "startup:read",
@@ -25,6 +32,9 @@ const ALL_PERMISSIONS = [
   "financial:delete",
   "ai_reports:read",
   "ai_reports:create",
+  "chat:read",
+  "chat:create",
+  "chat:manage",
 ] as const;
 
 export const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
@@ -41,6 +51,8 @@ export const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "financial:read",
     "ai_reports:read",
     "ai_reports:create",
+    "chat:read",
+    "chat:create",
   ],
   viewer: [
     "startup:read",
@@ -49,6 +61,8 @@ export const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "documents:read",
     "financial:read",
     "ai_reports:read",
+    "chat:read",
+    "chat:create",
   ],
 };
 

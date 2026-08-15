@@ -25,25 +25,26 @@ model User {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  lastActiveStartup    Startup?             @relation("LastActiveStartup", fields: [lastActiveStartupId], references: [id])
-  createdStartups      Startup[]            @relation("CreatedStartups")
-  memberships          StartupMember[]      @relation("MemberUser")
-  sentInvites          StartupMember[]      @relation("InvitedBy")
-  refreshTokens        RefreshToken[]
-  passwordResets       PasswordReset[]
-  reviewerInvitations  ReviewerInvitation[]
-  interactionLogs      InteractionLog[]
-  createdDocuments     Document[]
-  uploadedVersions     DocumentVersion[]
-  aiChatSessions       AiChatSession[]
-  auditLogs            AuditLog[]
-  notifications        Notification[]
-  pipelineStageEvents  PipelineStageEvent[]
-  tasks                Task[]
-  authoredInvestorNotes StartupInvestor[]   @relation("InvestorNotesAuthor")
-  editedInvestorNotes   StartupInvestor[]   @relation("InvestorNotesEditor")
+  lastActiveStartup      Startup?                @relation("LastActiveStartup", fields: [lastActiveStartupId], references: [id])
+  createdStartups        Startup[]               @relation("CreatedStartups")
+  memberships            StartupMember[]         @relation("MemberUser")
+  sentInvites            StartupMember[]         @relation("InvitedBy")
+  refreshTokens          RefreshToken[]
+  passwordResets         PasswordReset[]
+  reviewerInvitations    ReviewerInvitation[]
+  interactionLogs        InteractionLog[]
+  createdDocuments       Document[]
+  uploadedVersions       DocumentVersion[]
+  aiChatSessions         AiChatSession[]
+  auditLogs              AuditLog[]
+  notifications          Notification[]
+  pipelineStageEvents    PipelineStageEvent[]
+  tasks                  Task[]
+  authoredInvestorNotes  StartupInvestor[]       @relation("InvestorNotesAuthor")
+  editedInvestorNotes    StartupInvestor[]       @relation("InvestorNotesEditor")
   commitmentStatusEvents CommitmentStatusEvent[]
-  googleConnection      GoogleConnection?
+  googleConnection       GoogleConnection?
+  conversationsCreated   Conversation[]
 
   @@map("users")
 }
@@ -74,7 +75,7 @@ model GoogleConnection {
   calendarSyncEnabled Boolean @default(true) @map("calendar_sync_enabled")
 
   // Calendar's incremental sync cursor. Null forces a full resync.
-  calendarSyncToken String? @map("calendar_sync_token")
+  calendarSyncToken String?   @map("calendar_sync_token")
   lastSyncedAt      DateTime? @map("last_synced_at")
   lastError         String?   @map("last_error")
 
@@ -97,24 +98,27 @@ model Startup {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  creator             User                 @relation("CreatedStartups", fields: [createdBy], references: [id])
-  lastActiveUsers     User[]               @relation("LastActiveStartup")
-  members             StartupMember[]
-  roles               Role[]
-  startupInvestors    StartupInvestor[]
-  pipeline            Pipeline[]
-  fundraisingRounds   FundraisingRound[]
-  commitments         Commitment[]
+  creator                User                    @relation("CreatedStartups", fields: [createdBy], references: [id])
+  lastActiveUsers        User[]                  @relation("LastActiveStartup")
+  members                StartupMember[]
+  roles                  Role[]
+  startupInvestors       StartupInvestor[]
+  pipeline               Pipeline[]
+  fundraisingRounds      FundraisingRound[]
+  commitments            Commitment[]
   commitmentStatusEvents CommitmentStatusEvent[]
-  documents           Document[]
-  aiAnalyses          AiAnalysis[]
-  aiChatSessions      AiChatSession[]
-  reviewerInvitations ReviewerInvitation[]
-  reviewerComments    ReviewerComment[]
-  auditLogs           AuditLog[]
-  notifications       Notification[]
-  pipelineStageEvents PipelineStageEvent[]
-  tasks               Task[]
+  documents              Document[]
+  aiAnalyses             AiAnalysis[]
+  aiChatSessions         AiChatSession[]
+  reviewerInvitations    ReviewerInvitation[]
+  reviewerComments       ReviewerComment[]
+  auditLogs              AuditLog[]
+  notifications          Notification[]
+  pipelineStageEvents    PipelineStageEvent[]
+  tasks                  Task[]
+  conversations          Conversation[]
+  conversationMembers    ConversationMember[]
+  messages               Message[]
 
   @@map("startups")
 }
@@ -139,6 +143,9 @@ model StartupMember {
 
   ownedDeals    Pipeline[] @relation("PipelineOwner")
   assignedTasks Task[]     @relation("TaskAssignee")
+
+  conversationMemberships ConversationMember[]
+  messagesSent            Message[]            @relation("MessageSender")
 
   @@unique([startupId, userId])
   @@unique([startupId, invitedEmail])
@@ -307,23 +314,23 @@ model ReviewerComment {
 // ─── CRM ──────────────────────────────────────────────────────────────────────
 
 model StartupInvestor {
-  id                        String   @id @default(uuid())
-  startupId                 String   @map("startup_id")
-  fullName                  String   @map("full_name")
+  id                        String    @id @default(uuid())
+  startupId                 String    @map("startup_id")
+  fullName                  String    @map("full_name")
   email                     String?
-  ventureFirm               String?  @map("venture_firm")
-  investorType              String?  @map("investor_type")
-  sectorFocus               String?  @map("sector_focus")
-  investmentStagePreference String?  @map("investment_stage_preference")
-  linkedinUrl               String?  @map("linkedin_url")
+  ventureFirm               String?   @map("venture_firm")
+  investorType              String?   @map("investor_type")
+  sectorFocus               String?   @map("sector_focus")
+  investmentStagePreference String?   @map("investment_stage_preference")
+  linkedinUrl               String?   @map("linkedin_url")
   notes                     String?
   notesCreatedAt            DateTime? @map("notes_created_at")
   notesCreatedBy            String?   @map("notes_created_by")
   notesUpdatedAt            DateTime? @map("notes_updated_at")
   notesUpdatedBy            String?   @map("notes_updated_by")
   source                    String?
-  createdAt                 DateTime @default(now()) @map("created_at")
-  updatedAt                 DateTime @updatedAt @map("updated_at")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
 
   startup             Startup              @relation(fields: [startupId], references: [id], onDelete: Cascade)
   notesAuthor         User?                @relation("InvestorNotesAuthor", fields: [notesCreatedBy], references: [id], onDelete: SetNull)
@@ -355,12 +362,12 @@ model Pipeline {
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 
-  startup         Startup         @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  round           FundraisingRound @relation("PipelineRound", fields: [roundId, startupId], references: [id, startupId], onDelete: Restrict)
-  startupInvestor StartupInvestor @relation("PipelineInvestor", fields: [startupInvestorId, startupId], references: [id, startupId], onDelete: Cascade)
-  owner           StartupMember?  @relation("PipelineOwner", fields: [ownerId, startupId], references: [id, startupId], onDelete: NoAction)
+  startup         Startup              @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  round           FundraisingRound     @relation("PipelineRound", fields: [roundId, startupId], references: [id, startupId], onDelete: Restrict)
+  startupInvestor StartupInvestor      @relation("PipelineInvestor", fields: [startupInvestorId, startupId], references: [id, startupId], onDelete: Cascade)
+  owner           StartupMember?       @relation("PipelineOwner", fields: [ownerId, startupId], references: [id, startupId], onDelete: NoAction)
   interactionLogs InteractionLog[]
-  commitments     Commitment[]    @relation("CommitmentPipeline")
+  commitments     Commitment[]         @relation("CommitmentPipeline")
   stageEvents     PipelineStageEvent[]
   tasks           Task[]
 
@@ -384,10 +391,10 @@ model PipelineStageEvent {
   changedBy  String?  @map("changed_by")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  startup  Startup  @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  startup  Startup          @relation(fields: [startupId], references: [id], onDelete: Cascade)
   round    FundraisingRound @relation("PipelineStageEventRound", fields: [roundId, startupId], references: [id, startupId], onDelete: Restrict)
-  pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  actor    User?    @relation(fields: [changedBy], references: [id], onDelete: SetNull)
+  pipeline Pipeline         @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  actor    User?            @relation(fields: [changedBy], references: [id], onDelete: SetNull)
 
   @@index([startupId, createdAt])
   @@index([startupId, roundId, createdAt])
@@ -410,10 +417,10 @@ model Task {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  startup  Startup       @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  pipeline Pipeline      @relation(fields: [pipelineId, startupId], references: [id, startupId], onDelete: Restrict)
+  startup  Startup        @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  pipeline Pipeline       @relation(fields: [pipelineId, startupId], references: [id, startupId], onDelete: Restrict)
   assignee StartupMember? @relation("TaskAssignee", fields: [assigneeId, startupId], references: [id, startupId], onDelete: NoAction)
-  creator  User          @relation(fields: [createdBy], references: [id])
+  creator  User           @relation(fields: [createdBy], references: [id])
 
   @@index([startupId, pipelineId, status])
   @@index([startupId, status, dueDate])
@@ -421,23 +428,23 @@ model Task {
 }
 
 model InteractionLog {
-  id                String    @id @default(uuid())
-  startupInvestorId String    @map("startup_investor_id")
-  pipelineId        String?   @map("pipeline_id")
-  createdBy         String    @map("created_by")
-  type              String
-  subject           String?
-  description       String?
-  interactionDate   DateTime? @map("interaction_date")
-  nextFollowupDate  DateTime? @map("next_followup_date")
+  id                  String    @id @default(uuid())
+  startupInvestorId   String    @map("startup_investor_id")
+  pipelineId          String?   @map("pipeline_id")
+  createdBy           String    @map("created_by")
+  type                String
+  subject             String?
+  description         String?
+  interactionDate     DateTime? @map("interaction_date")
+  nextFollowupDate    DateTime? @map("next_followup_date")
   followupCompletedAt DateTime? @map("followup_completed_at")
-  source     String  @default("manual")
-  externalId String? @map("external_id")
-  gmailThreadId  String? @map("gmail_thread_id")
-  emailMessageId String? @map("email_message_id")
-  editedByUser Boolean @default(false) @map("edited_by_user")
+  source              String    @default("manual")
+  externalId          String?   @map("external_id")
+  gmailThreadId       String?   @map("gmail_thread_id")
+  emailMessageId      String?   @map("email_message_id")
+  editedByUser        Boolean   @default(false) @map("edited_by_user")
 
-  createdAt         DateTime  @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
   startupInvestor StartupInvestor @relation(fields: [startupInvestorId], references: [id], onDelete: Cascade)
   pipeline        Pipeline?       @relation(fields: [pipelineId, startupInvestorId], references: [id, startupInvestorId])
@@ -450,23 +457,23 @@ model InteractionLog {
 // ─── FINANCIAL ────────────────────────────────────────────────────────────────
 
 model FundraisingRound {
-  id                      String   @id @default(uuid())
-  startupId               String   @map("startup_id")
-  roundName               String   @map("round_name")
-  targetAmount            Decimal? @map("target_amount")
-  minimumTicketSize       Decimal? @map("minimum_ticket_size")
-  equityOfferedPercentage Decimal? @map("equity_offered_percentage")
-  currency                String   @default("USD")
-  status                  String   @default("active")
+  id                      String    @id @default(uuid())
+  startupId               String    @map("startup_id")
+  roundName               String    @map("round_name")
+  targetAmount            Decimal?  @map("target_amount")
+  minimumTicketSize       Decimal?  @map("minimum_ticket_size")
+  equityOfferedPercentage Decimal?  @map("equity_offered_percentage")
+  currency                String    @default("USD")
+  status                  String    @default("active")
   firstCloseDate          DateTime? @map("first_close_date")
   targetCloseDate         DateTime? @map("target_close_date")
-  createdAt               DateTime @default(now()) @map("created_at")
-  updatedAt               DateTime @updatedAt @map("updated_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
 
-  startup     Startup      @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  pipeline    Pipeline[]   @relation("PipelineRound")
+  startup             Startup              @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  pipeline            Pipeline[]           @relation("PipelineRound")
   pipelineStageEvents PipelineStageEvent[] @relation("PipelineStageEventRound")
-  commitments Commitment[] @relation("CommitmentRound")
+  commitments         Commitment[]         @relation("CommitmentRound")
 
   @@unique([startupId, id])
   @@map("fundraising_rounds")
@@ -484,10 +491,10 @@ model Commitment {
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  startup         Startup          @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  startupInvestor StartupInvestor  @relation("CommitmentInvestor", fields: [startupInvestorId, startupId], references: [id, startupId], onDelete: Cascade)
-  pipeline        Pipeline         @relation("CommitmentPipeline", fields: [pipelineId, startupInvestorId, roundId], references: [id, startupInvestorId, roundId])
-  round           FundraisingRound @relation("CommitmentRound", fields: [roundId, startupId], references: [id, startupId])
+  startup         Startup                 @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  startupInvestor StartupInvestor         @relation("CommitmentInvestor", fields: [startupInvestorId, startupId], references: [id, startupId], onDelete: Cascade)
+  pipeline        Pipeline                @relation("CommitmentPipeline", fields: [pipelineId, startupInvestorId, roundId], references: [id, startupInvestorId, roundId])
+  round           FundraisingRound        @relation("CommitmentRound", fields: [roundId, startupId], references: [id, startupId])
   statusEvents    CommitmentStatusEvent[]
 
   @@index([startupId, roundId, status])
@@ -566,7 +573,7 @@ model DocumentChunk {
   sectionLabel      String?                      @map("section_label")
   createdAt         DateTime                     @default(now()) @map("created_at")
 
-  documentVersion  DocumentVersion  @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+  documentVersion  DocumentVersion   @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
   reviewerComments ReviewerComment[]
 
   @@unique([documentVersionId, chunkIndex])
@@ -643,10 +650,10 @@ model AiChatSession {
   analysisId String?  @map("analysis_id")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  startup  Startup        @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  user     User           @relation(fields: [userId], references: [id])
-  document Document?      @relation("AiChatSessionDocument", fields: [documentId, startupId], references: [id, startupId])
-  analysis AiAnalysis?    @relation("AiChatSessionAnalysis", fields: [analysisId, startupId], references: [id, startupId])
+  startup  Startup         @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  user     User            @relation(fields: [userId], references: [id])
+  document Document?       @relation("AiChatSessionDocument", fields: [documentId, startupId], references: [id, startupId])
+  analysis AiAnalysis?     @relation("AiChatSessionAnalysis", fields: [analysisId, startupId], references: [id, startupId])
   messages AiChatMessage[]
 
   @@map("ai_chat_sessions")
@@ -662,6 +669,79 @@ model AiChatMessage {
   session AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@map("ai_chat_messages")
+}
+
+// ─── TEAM CHAT ────────────────────────────────────────────────────────────────
+// Phase 1: named channels only. Every active member is added on creation —
+// there is no invite-to-channel UI yet, so membership is workspace-wide by
+// default. DMs, entity-scoped threads (@-references into a deal/task/round)
+// and per-channel read state are deliberately not modeled yet; adding them
+// later is additive (new nullable columns / a new membership row shape), not
+// a rewrite of what's here.
+
+model Conversation {
+  id            String    @id @default(uuid())
+  startupId     String    @map("startup_id")
+  name          String
+  topic         String?
+  lastMessageAt DateTime? @map("last_message_at")
+  archivedAt    DateTime? @map("archived_at")
+  createdBy     String    @map("created_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  startup  Startup              @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  creator  User                 @relation(fields: [createdBy], references: [id])
+  members  ConversationMember[]
+  messages Message[]
+
+  @@unique([startupId, id])
+  @@unique([startupId, name])
+  @@index([startupId, lastMessageAt])
+  @@map("conversations")
+}
+
+model ConversationMember {
+  id             String   @id @default(uuid())
+  startupId      String   @map("startup_id")
+  conversationId String   @map("conversation_id")
+  memberId       String   @map("member_id")
+  joinedAt       DateTime @default(now()) @map("joined_at")
+
+  conversation Conversation  @relation(fields: [conversationId, startupId], references: [id, startupId], onDelete: Cascade)
+  // Cascade here (unlike Pipeline.owner / Task.assignee) is safe: this row is
+  // pure membership, not content — losing it when the member is removed loses
+  // nothing worth keeping.
+  member       StartupMember @relation(fields: [memberId, startupId], references: [id, startupId], onDelete: Cascade)
+  startup      Startup       @relation(fields: [startupId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, memberId])
+  @@index([memberId, startupId])
+  @@map("conversation_members")
+}
+
+model Message {
+  id             String  @id @default(uuid())
+  startupId      String  @map("startup_id")
+  conversationId String  @map("conversation_id")
+  seq            BigInt  @default(autoincrement())
+  senderId       String? @map("sender_id")
+
+  body String
+
+  clientNonce String    @map("client_nonce")
+  editedAt    DateTime? @map("edited_at")
+  deletedAt   DateTime? @map("deleted_at") // tombstone, never a hard delete
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  startup      Startup        @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  conversation Conversation   @relation(fields: [conversationId, startupId], references: [id, startupId], onDelete: Cascade)
+  sender       StartupMember? @relation("MessageSender", fields: [senderId, startupId], references: [id, startupId], onDelete: NoAction)
+
+  @@unique([startupId, id])
+  @@unique([conversationId, clientNonce])
+  @@index([conversationId, seq])
+  @@map("messages")
 }
 
 // ─── PLATFORM ─────────────────────────────────────────────────────────────────

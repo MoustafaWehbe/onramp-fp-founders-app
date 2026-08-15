@@ -1595,7 +1595,11 @@ async function main() {
   }
 
   // 2. Permissions — global, shared by every workspace's roles.
-  await prisma.permission.createMany({ data: [...PERMISSIONS] });
+  // skipDuplicates: a migration can also seed permission rows ahead of a
+  // fresh `prisma migrate reset` (see 20260815150001_chat_permissions), so
+  // this must tolerate rows that already exist rather than crash on the
+  // (resource, action) unique constraint.
+  await prisma.permission.createMany({ data: [...PERMISSIONS], skipDuplicates: true });
   const allPermissions = await prisma.permission.findMany();
   const permByKey = Object.fromEntries(allPermissions.map((p) => [`${p.resource}:${p.action}`, p]));
 
