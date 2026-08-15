@@ -458,13 +458,6 @@ export function DealDetailDialog({
               </SheetHeader>
 
               <div className="flex flex-wrap items-center gap-2 border-b border-border/70 px-5 py-3 sm:px-7">
-                {investor.email && (
-                  <Button variant="outline" size="sm" asChild>
-                    <a href={`mailto:${investor.email}`}>
-                      <Mail className="h-3.5 w-3.5" /> Email
-                    </a>
-                  </Button>
-                )}
                 {canCreate && (
                   <Button
                     variant="outline"
