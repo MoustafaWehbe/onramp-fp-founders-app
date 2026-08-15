@@ -11,6 +11,7 @@ import { errorHandler } from "./src/utils/errors";
 import { getTrustProxy } from "./src/config/env";
 import { rateLimiter } from "./src/middleware/rate-limiter";
 import { router } from "./src/routes";
+import { documentController } from "./src/controllers/document.controller";
 
 const app = express();
 
@@ -28,6 +29,13 @@ app.use(
 
 // Cookie parsing
 app.use(cookieParser());
+
+// Local document uploads are raw bytes — must be registered before express.json().
+app.put(
+  "/api/v1/documents/local-upload/:token",
+  express.raw({ type: () => true, limit: "21mb" }),
+  documentController.localUpload,
+);
 
 // Body parsing
 app.use(express.json({ limit: "1mb" }));

@@ -200,16 +200,23 @@ model RolePermission {
 // ─── REVIEWER SYSTEM ──────────────────────────────────────────────────────────
 
 model ReviewerInvitation {
-  id                String   @id @default(uuid())
-  startupId         String   @map("startup_id")
-  startupInvestorId String?  @map("startup_investor_id")
-  reviewerName      String?  @map("reviewer_name")
-  email             String
-  tokenHash         String   @unique @map("token_hash")
-  status            String   @default("pending")
-  expiresAt         DateTime @map("expires_at")
-  createdBy         String   @map("created_by")
-  createdAt         DateTime @default(now()) @map("created_at")
+  id                String    @id @default(uuid())
+  startupId         String    @map("startup_id")
+  startupInvestorId String?   @map("startup_investor_id")
+  reviewerName      String?   @map("reviewer_name")
+  emailNormalized   String    @map("email_normalized")
+  tokenHash         String    @unique @map("token_hash")
+  /// pending | opened | in_review | completed | revoked
+  status            String    @default("pending")
+  allowDownload     Boolean   @default(false) @map("allow_download")
+  personalMessage   String?   @map("personal_message")
+  expiresAt         DateTime  @map("expires_at")
+  completedAt       DateTime? @map("completed_at")
+  revokedAt         DateTime? @map("revoked_at")
+  lastActivityAt    DateTime? @map("last_activity_at")
+  createdBy         String    @map("created_by")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   startup         Startup                      @relation(fields: [startupId], references: [id], onDelete: Cascade)
   startupInvestor StartupInvestor?             @relation(fields: [startupInvestorId], references: [id])
@@ -217,34 +224,49 @@ model ReviewerInvitation {
   documents       ReviewerInvitationDocument[]
   sessions        ReviewerSession[]
 
+  @@index([startupId, status])
+  @@index([startupId, emailNormalized])
+  @@index([startupId, expiresAt])
+  @@unique([startupId, id])
   @@map("reviewer_invitations")
 }
 
 model ReviewerInvitationDocument {
-  id           String @id @default(uuid())
-  invitationId String @map("invitation_id")
-  documentId   String @map("document_id")
+  id                String   @id @default(uuid())
+  invitationId      String   @map("invitation_id")
+  documentId        String   @map("document_id")
+  documentVersionId String   @map("document_version_id")
+  displayOrder      Int      @default(0) @map("display_order")
+  addedAt           DateTime @default(now()) @map("added_at")
+  addedBy           String   @map("added_by")
 
-  invitation ReviewerInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
-  document   Document           @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  invitation      ReviewerInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  document        Document           @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentVersion DocumentVersion    @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
 
-  @@unique([invitationId, documentId])
+  @@unique([invitationId, documentVersionId])
   @@map("reviewer_invitation_documents")
 }
 
 model ReviewerSession {
   id                    String    @id @default(uuid())
   invitationId          String    @map("invitation_id")
+  /// Opaque session cookie token hash (set after OTP verification).
+  sessionTokenHash      String?   @unique @map("session_token_hash")
   verificationCodeHash  String?   @map("verification_code_hash")
   verificationExpiresAt DateTime? @map("verification_expires_at")
   verifiedAt            DateTime? @map("verified_at")
   accessedAt            DateTime? @map("accessed_at")
+  expiresAt             DateTime? @map("expires_at")
+  revokedAt             DateTime? @map("revoked_at")
   ipAddress             String?   @map("ip_address")
   userAgent             String?   @map("user_agent")
+  createdAt             DateTime  @default(now()) @map("created_at")
 
   invitation ReviewerInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
   comments   ReviewerComment[]
 
+  @@index([invitationId])
   @@map("reviewer_sessions")
 }
 
@@ -486,22 +508,33 @@ model Document {
 }
 
 model DocumentVersion {
-  id            String   @id @default(uuid())
-  documentId    String   @map("document_id")
-  versionNumber Int      @map("version_number")
-  isCurrent     Boolean  @default(false) @map("is_current")
-  fileUrl       String   @map("file_url")
-  fileSize      Int?     @map("file_size")
-  summary       String?
-  uploadedBy    String   @map("uploaded_by")
-  createdAt     DateTime @default(now()) @map("created_at")
+  id               String   @id @default(uuid())
+  documentId       String   @map("document_id")
+  versionNumber    Int      @map("version_number")
+  isCurrent        Boolean  @default(false) @map("is_current")
+  /// Legacy public-style URL; prefer storageKey + signed URLs.
+  fileUrl          String?  @map("file_url")
+  storageProvider  String   @default("local") @map("storage_provider")
+  storageKey       String   @map("storage_key")
+  mimeType         String   @map("mime_type")
+  originalFilename String   @map("original_filename")
+  checksumSha256   String?  @map("checksum_sha256")
+  fileSize         Int?     @map("file_size")
+  /// pending_upload | processing | ready | failed
+  processingStatus String   @default("pending_upload") @map("processing_status")
+  processingError  String?  @map("processing_error")
+  summary          String?
+  uploadedBy       String   @map("uploaded_by")
+  createdAt        DateTime @default(now()) @map("created_at")
 
   document   Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
   uploader   User            @relation(fields: [uploadedBy], references: [id])
   chunks     DocumentChunk[]
   aiAnalyses AiAnalysis[]
+  reviewerInvitationDocuments ReviewerInvitationDocument[]
 
   @@unique([documentId, versionNumber])
+  @@unique([documentId, id])
   @@map("document_versions")
 }
 
@@ -514,6 +547,8 @@ model DocumentChunk {
   tokenCount        Int?                         @map("token_count")
   pageNumber        Int?                         @map("page_number")
   sectionLabel      String?                      @map("section_label")
+  charStart         Int?                         @map("char_start")
+  charEnd           Int?                         @map("char_end")
   createdAt         DateTime                     @default(now()) @map("created_at")
 
   documentVersion  DocumentVersion  @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)

@@ -1,0 +1,387 @@
+import { randomUUID } from "crypto";
+import { Prisma } from "@prisma/client";
+import { prisma } from "../db/prisma";
+import { createError } from "../utils/errors";
+import { documentProcessingQueue } from "../jobs/queue";
+import { storageService } from "./storage.service";
+import { recordAuditEvent } from "./audit-writer";
+import type {
+  CreateUploadSessionInput,
+  CreateVersionUploadInput,
+  ListDocumentsQuery,
+  UpdateDocumentInput,
+} from "../validators/document.schemas";
+
+function serializeVersion(version: {
+  id: string;
+  documentId: string;
+  versionNumber: number;
+  isCurrent: boolean;
+  fileSize: number | null;
+  mimeType: string;
+  originalFilename: string;
+  processingStatus: string;
+  processingError: string | null;
+  summary: string | null;
+  uploadedBy: string;
+  createdAt: Date;
+  storageProvider: string;
+  storageKey: string;
+}) {
+  return {
+    id: version.id,
+    documentId: version.documentId,
+    versionNumber: version.versionNumber,
+    isCurrent: version.isCurrent,
+    fileSize: version.fileSize,
+    mimeType: version.mimeType,
+    originalFilename: version.originalFilename,
+    processingStatus: version.processingStatus,
+    processingError: version.processingError,
+    summary: version.summary,
+    uploadedBy: version.uploadedBy,
+    createdAt: version.createdAt,
+    storageProvider: version.storageProvider,
+    // Never return permanent storage URLs — clients request signed access.
+    hasFile: Boolean(version.storageKey),
+  };
+}
+
+function serializeDocument(
+  doc: {
+    id: string;
+    startupId: string;
+    title: string;
+    documentType: string;
+    createdBy: string;
+    createdAt: Date;
+    updatedAt: Date;
+  },
+  currentVersion: ReturnType<typeof serializeVersion> | null,
+  aiScore: number | null = null,
+) {
+  return {
+    ...doc,
+    currentVersion,
+    aiScore,
+  };
+}
+
+export class DocumentService {
+  async listDocuments(startupId: string, query: ListDocumentsQuery) {
+    const { page, limit, search, documentType } = query;
+    const where: Prisma.DocumentWhereInput = {
+      startupId,
+      ...(documentType ? { documentType } : {}),
+      ...(search
+        ? { title: { contains: search, mode: "insensitive" } }
+        : {}),
+    };
+
+    const [total, rows] = await Promise.all([
+      prisma.document.count({ where }),
+      prisma.document.findMany({
+        where,
+        orderBy: { updatedAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          versions: {
+            where: { isCurrent: true },
+            take: 1,
+          },
+          aiChatSessions: false,
+        },
+      }),
+    ]);
+
+    const versionIds = rows
+      .map((row) => row.versions[0]?.id)
+      .filter((id): id is string => Boolean(id));
+
+    const analyses = versionIds.length
+      ? await prisma.aiAnalysis.findMany({
+          where: { startupId, documentVersionId: { in: versionIds } },
+          select: { documentVersionId: true, overallScore: true },
+          orderBy: { createdAt: "desc" },
+        })
+      : [];
+    const scoreByVersion = new Map<string, number>();
+    for (const row of analyses) {
+      if (row.overallScore != null && !scoreByVersion.has(row.documentVersionId)) {
+        scoreByVersion.set(row.documentVersionId, row.overallScore);
+      }
+    }
+
+    return {
+      data: rows.map((row) => {
+        const current = row.versions[0] ? serializeVersion(row.versions[0]) : null;
+        return serializeDocument(
+          row,
+          current,
+          current ? scoreByVersion.get(current.id) ?? null : null,
+        );
+      }),
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 },
+    };
+  }
+
+  async getDocument(startupId: string, documentId: string) {
+    const doc = await prisma.document.findUnique({
+      where: { startupId_id: { startupId, id: documentId } },
+      include: {
+        versions: { orderBy: { versionNumber: "desc" } },
+      },
+    });
+    if (!doc) throw createError("Document not found", 404, "DOCUMENT_NOT_FOUND");
+    const current = doc.versions.find((v) => v.isCurrent) ?? doc.versions[0] ?? null;
+    return {
+      ...serializeDocument(doc, current ? serializeVersion(current) : null),
+      versions: doc.versions.map(serializeVersion),
+    };
+  }
+
+  async createUploadSession(startupId: string, userId: string, input: CreateUploadSessionInput) {
+    storageService.assertUploadConstraints(input.mimeType, input.fileSize);
+
+    const documentId = randomUUID();
+    const versionId = randomUUID();
+    const signed = await storageService.createSignedUpload({
+      startupId,
+      documentId,
+      versionId,
+      originalFilename: input.originalFilename,
+      mimeType: input.mimeType,
+      fileSize: input.fileSize,
+    });
+
+    const doc = await prisma.$transaction(async (tx) => {
+      const created = await tx.document.create({
+        data: {
+          id: documentId,
+          startupId,
+          title: input.title,
+          documentType: input.documentType,
+          createdBy: userId,
+        },
+      });
+      const version = await tx.documentVersion.create({
+        data: {
+          id: versionId,
+          documentId,
+          versionNumber: 1,
+          isCurrent: true,
+          storageProvider: signed.provider,
+          storageKey: signed.storageKey,
+          mimeType: input.mimeType,
+          originalFilename: input.originalFilename,
+          fileSize: input.fileSize,
+          summary: input.summary ?? null,
+          processingStatus: "pending_upload",
+          uploadedBy: userId,
+        },
+      });
+      return { created, version };
+    });
+
+    await recordAuditEvent({
+      startupId,
+      userId,
+      action: "create",
+      entityType: "document",
+      entityId: documentId,
+      changes: {
+        title: input.title,
+        documentType: input.documentType,
+        versionId,
+        originalFilename: input.originalFilename,
+      },
+    });
+
+    return {
+      document: serializeDocument(doc.created, serializeVersion(doc.version)),
+      upload: {
+        uploadUrl: signed.uploadUrl,
+        headers: signed.headers ?? {},
+        provider: signed.provider,
+        versionId,
+      },
+    };
+  }
+
+  async createVersionUploadSession(
+    startupId: string,
+    documentId: string,
+    userId: string,
+    input: CreateVersionUploadInput,
+  ) {
+    storageService.assertUploadConstraints(input.mimeType, input.fileSize);
+    const doc = await prisma.document.findUnique({
+      where: { startupId_id: { startupId, id: documentId } },
+      include: { versions: { orderBy: { versionNumber: "desc" }, take: 1 } },
+    });
+    if (!doc) throw createError("Document not found", 404, "DOCUMENT_NOT_FOUND");
+
+    const versionId = randomUUID();
+    const nextNumber = (doc.versions[0]?.versionNumber ?? 0) + 1;
+    const signed = await storageService.createSignedUpload({
+      startupId,
+      documentId,
+      versionId,
+      originalFilename: input.originalFilename,
+      mimeType: input.mimeType,
+      fileSize: input.fileSize,
+    });
+
+    const version = await prisma.documentVersion.create({
+      data: {
+        id: versionId,
+        documentId,
+        versionNumber: nextNumber,
+        isCurrent: false,
+        storageProvider: signed.provider,
+        storageKey: signed.storageKey,
+        mimeType: input.mimeType,
+        originalFilename: input.originalFilename,
+        fileSize: input.fileSize,
+        summary: input.summary ?? null,
+        processingStatus: "pending_upload",
+        uploadedBy: userId,
+      },
+    });
+
+    await recordAuditEvent({
+      startupId,
+      userId,
+      action: "create",
+      entityType: "document_version",
+      entityId: versionId,
+      changes: {
+        documentId,
+        versionNumber: nextNumber,
+        originalFilename: input.originalFilename,
+      },
+    });
+
+    return {
+      version: serializeVersion(version),
+      upload: {
+        uploadUrl: signed.uploadUrl,
+        headers: signed.headers ?? {},
+        provider: signed.provider,
+        versionId,
+      },
+    };
+  }
+
+  async confirmVersion(startupId: string, documentId: string, versionId: string) {
+    const doc = await prisma.document.findUnique({
+      where: { startupId_id: { startupId, id: documentId } },
+      select: { id: true },
+    });
+    if (!doc) throw createError("Document not found", 404, "DOCUMENT_NOT_FOUND");
+
+    const version = await prisma.documentVersion.findFirst({
+      where: { id: versionId, documentId },
+    });
+    if (!version) throw createError("Document version not found", 404, "VERSION_NOT_FOUND");
+    if (version.processingStatus !== "pending_upload") {
+      return serializeVersion(version);
+    }
+
+    const meta = await storageService.getObjectMeta(version.storageKey, version.storageProvider);
+    if (!meta.size) {
+      throw createError("Uploaded object is empty or missing", 400, "OBJECT_NOT_FOUND");
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.documentVersion.updateMany({
+        where: { documentId, isCurrent: true },
+        data: { isCurrent: false },
+      });
+      return tx.documentVersion.update({
+        where: { id: versionId },
+        data: {
+          isCurrent: true,
+          fileSize: meta.size,
+          processingStatus: "processing",
+          processingError: null,
+        },
+      });
+    });
+
+    await documentProcessingQueue.add("process-version", {
+      startupId,
+      documentId,
+      versionId,
+    });
+
+    return serializeVersion(updated);
+  }
+
+  async updateDocument(startupId: string, documentId: string, input: UpdateDocumentInput) {
+    const existing = await prisma.document.findUnique({
+      where: { startupId_id: { startupId, id: documentId } },
+      select: { id: true },
+    });
+    if (!existing) throw createError("Document not found", 404, "DOCUMENT_NOT_FOUND");
+
+    const doc = await prisma.document.update({
+      where: { id: documentId },
+      data: input,
+      include: { versions: { where: { isCurrent: true }, take: 1 } },
+    });
+    return serializeDocument(doc, doc.versions[0] ? serializeVersion(doc.versions[0]) : null);
+  }
+
+  async deleteDocument(startupId: string, documentId: string, userId?: string) {
+    const existing = await prisma.document.findUnique({
+      where: { startupId_id: { startupId, id: documentId } },
+      select: { id: true, title: true },
+    });
+    if (!existing) throw createError("Document not found", 404, "DOCUMENT_NOT_FOUND");
+    await prisma.document.delete({ where: { id: documentId } });
+    if (userId) {
+      await recordAuditEvent({
+        startupId,
+        userId,
+        action: "delete",
+        entityType: "document",
+        entityId: documentId,
+        changes: { title: existing.title },
+      });
+    }
+  }
+
+  async getSignedReadUrl(startupId: string, documentId: string, versionId?: string) {
+    const doc = await prisma.document.findUnique({
+      where: { startupId_id: { startupId, id: documentId } },
+      include: {
+        versions: versionId
+          ? { where: { id: versionId }, take: 1 }
+          : { where: { isCurrent: true }, take: 1 },
+      },
+    });
+    if (!doc) throw createError("Document not found", 404, "DOCUMENT_NOT_FOUND");
+    const version = doc.versions[0];
+    if (!version) throw createError("Document version not found", 404, "VERSION_NOT_FOUND");
+    if (version.processingStatus === "pending_upload") {
+      throw createError("File upload is not complete yet", 409, "UPLOAD_INCOMPLETE");
+    }
+    const url = await storageService.createSignedReadUrl(
+      version.storageKey,
+      version.storageProvider,
+      300,
+      { mimeType: version.mimeType, originalFilename: version.originalFilename },
+    );
+    return {
+      url,
+      expiresInSeconds: 300,
+      mimeType: version.mimeType,
+      originalFilename: version.originalFilename,
+      versionId: version.id,
+    };
+  }
+}
+
+export const documentService = new DocumentService();

@@ -1111,109 +1111,128 @@ export interface paths {
         patch: operations["updateCommitment"];
         trace?: never;
     };
-    "/documents": {
+    "/startups/{startupId}/documents": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                startupId: string;
+            };
             cookie?: never;
         };
-        /** List documents for the current startup */
+        /** List documents for a startup */
         get: operations["listDocuments"];
         put?: never;
-        /**
-         * Create a new document
-         * @description Creates the document record only. Upload the first file via POST /documents/{documentId}/versions.
-         */
-        post: operations["createDocument"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/documents/{documentId}": {
+    "/startups/{startupId}/documents/upload-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create document and signed upload session */
+        post: operations["createDocumentUploadSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/documents/{documentId}": {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                startupId: string;
                 documentId: string;
             };
             cookie?: never;
         };
-        /** Get a document by ID */
+        /** Get a document */
         get: operations["getDocument"];
         put?: never;
         post?: never;
-        /** Delete a document and all of its versions */
+        /** Delete a document */
         delete: operations["deleteDocument"];
         options?: never;
         head?: never;
-        /** Update a document's title or type */
+        /** Update a document */
         patch: operations["updateDocument"];
         trace?: never;
     };
-    "/documents/{documentId}/versions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                documentId: string;
-            };
-            cookie?: never;
-        };
-        /** List all versions of a document */
-        get: operations["listDocumentVersions"];
-        put?: never;
-        /**
-         * Upload a new version of a document
-         * @description Creates a new version and sets it as the document's current version (`isCurrent = true`). `fileUrl` should point to the already-uploaded file in object storage.
-         */
-        post: operations["createDocumentVersion"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/documents/{documentId}/versions/{versionId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                documentId: string;
-                versionId: string;
-            };
-            cookie?: never;
-        };
-        /** Get a specific document version */
-        get: operations["getDocumentVersion"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete a specific document version
-         * @description Cannot delete the version currently marked with `isCurrent = true` unless it is the document's only version (in which case the document is also deleted).
-         */
-        delete: operations["deleteDocumentVersion"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/reviewer-invitations": {
+    "/startups/{startupId}/documents/{documentId}/versions/upload-sessions": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List reviewer invitations issued by the current startup */
+        get?: never;
+        put?: never;
+        /** Create signed upload session for a new version */
+        post: operations["createDocumentVersionUploadSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/documents/{documentId}/versions/{versionId}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm uploaded version and enqueue processing */
+        post: operations["confirmDocumentVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/documents/{documentId}/file-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Get short-lived signed file URL */
+        post: operations["getDocumentFileAccess"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/reviewer-invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        /** List reviewer invitations */
         get: operations["listReviewerInvitations"];
         put?: never;
-        /**
-         * Create a reviewer invitation
-         * @description Sends an email containing a link with the invitation token plus a separate 6-digit OTP. Optionally linked to an existing `investorId` from the CRM so engagement (views, comments) shows on their timeline.
-         */
+        /** Create reviewer invitation */
         post: operations["createReviewerInvitation"];
         delete?: never;
         options?: never;
@@ -1221,41 +1240,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/reviewer-invitations/{invitationId}": {
+    "/startups/{startupId}/reviewer-invitations/{invitationId}/revoke": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                invitationId: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        /** Get a reviewer invitation by ID */
-        get: operations["getReviewerInvitation"];
+        get?: never;
         put?: never;
-        post?: never;
-        /** Permanently delete a reviewer invitation */
-        delete: operations["deleteReviewerInvitation"];
+        /** Revoke invitation */
+        post: operations["revokeReviewerInvitation"];
+        delete?: never;
         options?: never;
         head?: never;
-        /** Update a reviewer invitation's scope, expiry, or revoke it */
-        patch: operations["updateReviewerInvitation"];
+        patch?: never;
         trace?: never;
     };
-    "/reviewer-invitations/{invitationId}/comments": {
+    "/startups/{startupId}/audit-logs": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                invitationId: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        /**
-         * List comments left under a specific reviewer invitation
-         * @description Owner-side view of feedback left by an external reviewer.
-         */
-        get: operations["listReviewerInvitationComments"];
+        /** List audit logs */
+        get: operations["listAuditLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/audit-logs/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export audit logs as CSV */
+        get: operations["exportAuditLogs"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1273,10 +1300,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Start access with an invitation token (triggers OTP email)
-         * @description Validates the token and, if valid and not expired/revoked, emails a fresh 6-digit OTP (10-minute TTL) to the invitation's address. Does NOT grant access by itself — call POST /reviewer-portal/verify next.
-         */
+        /** Request OTP for invitation token */
         post: operations["reviewerPortalAccess"];
         delete?: never;
         options?: never;
@@ -1293,10 +1317,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Verify the OTP and establish a reviewer session
-         * @description On success, sets an HttpOnly `reviewerSessionToken` cookie. All further Reviewer Portal calls require this cookie instead of the token/code.
-         */
+        /** Verify OTP and set reviewer session cookie */
         post: operations["reviewerPortalVerify"];
         delete?: never;
         options?: never;
@@ -1304,15 +1325,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/reviewer-portal/me": {
+    "/reviewer-portal/workspace": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get the current reviewer session, startup, and accessible documents */
-        get: operations["getReviewerPortalSession"];
+        /** Get invitation workspace */
+        get: operations["reviewerPortalWorkspace"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1321,19 +1342,17 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/reviewer-portal/documents/{documentId}": {
+    "/reviewer-portal/documents/{documentId}/file-access": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                documentId: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        /** Get a document (with its current version) the reviewer is scoped to */
-        get: operations["getReviewerPortalDocument"];
+        get?: never;
         put?: never;
-        post?: never;
+        /** Signed file access for pinned document */
+        post: operations["reviewerPortalFileAccess"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1347,30 +1366,46 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List reviewer comments */
+        get: operations["reviewerPortalListComments"];
         put?: never;
-        /** Leave a comment as the authenticated reviewer */
-        post: operations["createReviewerPortalComment"];
+        /** Create reviewer comment */
+        post: operations["reviewerPortalCreateComment"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/reviewer-portal/comments/{commentId}": {
+    "/reviewer-portal/complete": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                commentId: string;
-            };
+            path?: never;
             cookie?: never;
         };
         get?: never;
         put?: never;
-        post?: never;
-        /** Delete a comment the reviewer authored */
-        delete: operations["deleteReviewerPortalComment"];
+        /** Mark invitation completed */
+        post: operations["reviewerPortalComplete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviewer-portal/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke reviewer session */
+        post: operations["reviewerPortalLogout"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2448,6 +2483,17 @@ export interface components {
             createdAt?: string;
             /** Format: date-time */
             updatedAt?: string;
+            currentVersion?: components["schemas"]["DocumentVersion"] | null;
+            aiScore?: number | null;
+        };
+        CreateDocumentUploadSessionBody: {
+            title: string;
+            documentType: components["schemas"]["DocumentType"];
+            originalFilename: string;
+            /** @enum {string} */
+            mimeType: "application/pdf" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document" | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" | "text/plain";
+            fileSize: number;
+            summary?: string;
         };
         CreateDocumentBody: {
             title: string;
@@ -2465,19 +2511,30 @@ export interface components {
             /** @example 3 */
             versionNumber?: number;
             isCurrent?: boolean;
-            /** Format: uri */
-            fileUrl?: string;
             /**
              * @description File size in bytes
              * @example 2485760
              */
-            fileSize?: number;
+            fileSize?: number | null;
+            mimeType?: string;
+            originalFilename?: string;
+            /** @enum {string} */
+            processingStatus?: "pending_upload" | "processing" | "ready" | "failed";
+            processingError?: string | null;
             /** @description Description of what changed in this version */
             summary?: string | null;
             /** Format: uuid */
             uploadedBy?: string;
             /** Format: date-time */
             createdAt?: string;
+            hasFile?: boolean;
+        };
+        CreateDocumentVersionUploadBody: {
+            originalFilename: string;
+            /** @enum {string} */
+            mimeType: "application/pdf" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document" | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" | "text/plain";
+            fileSize: number;
+            summary?: string;
         };
         CreateDocumentVersionBody: {
             /** Format: uri */
@@ -2489,43 +2546,41 @@ export interface components {
          * @example pending
          * @enum {string}
          */
-        ReviewerInvitationStatus: "pending" | "accessed" | "expired" | "revoked";
+        ReviewerInvitationStatus: "pending" | "opened" | "in_review" | "completed" | "expired" | "revoked";
         ReviewerInvitation: {
             /** Format: uuid */
             id?: string;
             /** Format: uuid */
             startupId?: string;
-            /**
-             * Format: uuid
-             * @description Set when the reviewer is a known investor from the CRM
-             */
-            investorId?: string | null;
+            reviewerName?: string | null;
             /** Format: email */
             email?: string;
             status?: components["schemas"]["ReviewerInvitationStatus"];
-            /** @description Documents this invitation grants access to */
-            documentIds?: string[];
+            allowDownload?: boolean;
+            personalMessage?: string | null;
             /** Format: date-time */
             expiresAt?: string;
-            /** Format: uuid */
-            createdBy?: string;
+            /** Format: date-time */
+            completedAt?: string | null;
+            /** Format: date-time */
+            revokedAt?: string | null;
+            /** Format: date-time */
+            lastActivityAt?: string | null;
+            documentCount?: number;
             /** Format: date-time */
             createdAt?: string;
         };
         CreateReviewerInvitationBody: {
             /** Format: email */
             email: string;
-            /**
-             * Format: uuid
-             * @description Optional — link to an existing CRM investor record
-             */
-            investorId?: string;
-            documentIds: string[];
-            /**
-             * Format: date-time
-             * @description Defaults to 14 days from creation if omitted
-             */
-            expiresAt?: string;
+            reviewerName?: string;
+            /** Format: uuid */
+            startupInvestorId?: string;
+            allowDownload?: boolean;
+            personalMessage?: string;
+            /** @default 14 */
+            expiresInDays: number;
+            documentVersionIds: string[];
         };
         UpdateReviewerInvitationBody: {
             documentIds?: string[];
@@ -6483,10 +6538,13 @@ export interface operations {
                 page?: components["parameters"]["PageParam"];
                 /** @description Number of items per page */
                 limit?: components["parameters"]["LimitParam"];
+                search?: string;
                 documentType?: components["schemas"]["DocumentType"];
             };
             header?: never;
-            path?: never;
+            path: {
+                startupId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -6496,65 +6554,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        data?: components["schemas"]["Document"][];
-                        meta?: components["schemas"]["PaginationMeta"];
-                    };
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
+                content?: never;
             };
         };
     };
-    createDocument: {
+    createDocumentUploadSession: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                startupId: string;
+            };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateDocumentBody"];
+                "application/json": components["schemas"]["CreateDocumentUploadSessionBody"];
             };
         };
         responses: {
-            /** @description Document created */
+            /** @description Upload session created */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        data?: components["schemas"]["Document"];
-                    };
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
-                };
+                content?: never;
             };
         };
     };
@@ -6563,40 +6587,19 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                startupId: string;
                 documentId: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Document details, including its current version */
+            /** @description Document details */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        data?: components["schemas"]["Document"];
-                    };
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Document not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
+                content?: never;
             };
         };
     };
@@ -6605,47 +6608,19 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                startupId: string;
                 documentId: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Document deleted */
-            200: {
+            /** @description Deleted */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Document not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Document is referenced by an active reviewer invitation and cannot be deleted */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
+                content?: never;
             };
         };
     };
@@ -6654,6 +6629,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                startupId: string;
                 documentId: string;
             };
             cookie?: never;
@@ -6664,154 +6640,46 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Document updated */
+            /** @description Updated */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        data?: components["schemas"]["Document"];
-                    };
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Document not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
-                };
+                content?: never;
             };
         };
     };
-    listDocumentVersions: {
-        parameters: {
-            query?: {
-                /** @description Page number (1-indexed) */
-                page?: components["parameters"]["PageParam"];
-                /** @description Number of items per page */
-                limit?: components["parameters"]["LimitParam"];
-            };
-            header?: never;
-            path: {
-                documentId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description List of document versions, newest first */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data?: components["schemas"]["DocumentVersion"][];
-                        meta?: components["schemas"]["PaginationMeta"];
-                    };
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Document not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    createDocumentVersion: {
+    createDocumentVersionUploadSession: {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                startupId: string;
                 documentId: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateDocumentVersionBody"];
+                "application/json": components["schemas"]["CreateDocumentVersionUploadBody"];
             };
         };
         responses: {
-            /** @description Document version created */
+            /** @description Version upload session created */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        data?: components["schemas"]["DocumentVersion"];
-                    };
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Document not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
-                };
+                content?: never;
             };
         };
     };
-    getDocumentVersion: {
+    confirmDocumentVersion: {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                startupId: string;
                 documentId: string;
                 versionId: string;
             };
@@ -6819,122 +6687,55 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Document version details */
+            /** @description Confirmed */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        data?: components["schemas"]["DocumentVersion"];
-                    };
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Document or version not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
+                content?: never;
             };
         };
     };
-    deleteDocumentVersion: {
+    getDocumentFileAccess: {
         parameters: {
-            query?: never;
+            query?: {
+                versionId?: string;
+            };
             header?: never;
             path: {
+                startupId: string;
                 documentId: string;
-                versionId: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Document version deleted */
+            /** @description Signed access */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Document or version not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Cannot delete the current version while other versions exist */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
+                content?: never;
             };
         };
     };
     listReviewerInvitations: {
         parameters: {
-            query?: {
-                /** @description Page number (1-indexed) */
-                page?: components["parameters"]["PageParam"];
-                /** @description Number of items per page */
-                limit?: components["parameters"]["LimitParam"];
-                status?: components["schemas"]["ReviewerInvitationStatus"];
-            };
+            query?: never;
             header?: never;
-            path?: never;
+            path: {
+                startupId: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description List of reviewer invitations */
+            /** @description List */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        data?: components["schemas"]["ReviewerInvitation"][];
-                        meta?: components["schemas"]["PaginationMeta"];
-                    };
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
+                content?: never;
             };
         };
     };
@@ -6942,7 +6743,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                startupId: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -6951,254 +6754,84 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Reviewer invitation created */
+            /** @description Created */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        data?: components["schemas"]["ReviewerInvitation"];
-                    };
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Insufficient permissions */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description One or more documentIds (or investorId) not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
-                };
+                content?: never;
             };
         };
     };
-    getReviewerInvitation: {
+    revokeReviewerInvitation: {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                startupId: string;
                 invitationId: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Reviewer invitation details */
-            200: {
+            /** @description Revoked */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        data?: components["schemas"]["ReviewerInvitation"];
-                    };
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Reviewer invitation not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
+                content?: never;
             };
         };
     };
-    deleteReviewerInvitation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                invitationId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Reviewer invitation deleted */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Insufficient permissions */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Reviewer invitation not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    updateReviewerInvitation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                invitationId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateReviewerInvitationBody"];
-            };
-        };
-        responses: {
-            /** @description Reviewer invitation updated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data?: components["schemas"]["ReviewerInvitation"];
-                    };
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Insufficient permissions */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Reviewer invitation not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
-                };
-            };
-        };
-    };
-    listReviewerInvitationComments: {
+    listAuditLogs: {
         parameters: {
             query?: {
                 /** @description Page number (1-indexed) */
                 page?: components["parameters"]["PageParam"];
                 /** @description Number of items per page */
                 limit?: components["parameters"]["LimitParam"];
+                search?: string;
+                entityType?: string;
             };
             header?: never;
             path: {
-                invitationId: string;
+                startupId: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description List of reviewer comments */
+            /** @description List */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    exportAuditLogs: {
+        parameters: {
+            query?: {
+                search?: string;
+                entityType?: string;
+            };
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data?: components["schemas"]["ReviewerComment"][];
-                        meta?: components["schemas"]["PaginationMeta"];
-                    };
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Reviewer invitation not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
+                    "text/csv": string;
                 };
             };
         };
@@ -7212,36 +6845,18 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ReviewerPortalAccessBody"];
+                "application/json": {
+                    token: string;
+                };
             };
         };
         responses: {
-            /** @description OTP sent to the invitation email */
+            /** @description OTP sent */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
-                };
-            };
-            /** @description Token invalid, expired, or revoked */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
-                };
+                content?: never;
             };
         };
     };
@@ -7254,43 +6869,23 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ReviewerPortalVerifyBody"];
+                "application/json": {
+                    token: string;
+                    otp: string;
+                };
             };
         };
         responses: {
-            /** @description Verified — reviewer session established */
+            /** @description Session created */
             200: {
                 headers: {
-                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        data?: components["schemas"]["ReviewerPortalSession"];
-                    };
-                };
-            };
-            /** @description Code incorrect, expired, or token invalid */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
-                };
+                content?: never;
             };
         };
     };
-    getReviewerPortalSession: {
+    reviewerPortalWorkspace: {
         parameters: {
             query?: never;
             header?: never;
@@ -7299,31 +6894,20 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Current reviewer session details */
+            /** @description Workspace */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        data?: components["schemas"]["ReviewerPortalSession"];
-                    };
-                };
-            };
-            /** @description No active reviewer session */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
+                content?: never;
             };
         };
     };
-    getReviewerPortalDocument: {
+    reviewerPortalFileAccess: {
         parameters: {
-            query?: never;
+            query?: {
+                disposition?: "preview" | "download";
+            };
             header?: never;
             path: {
                 documentId: string;
@@ -7332,145 +6916,84 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Document details */
+            /** @description Access */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        data?: components["schemas"]["Document"];
-                    };
-                };
-            };
-            /** @description No active reviewer session */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description This invitation does not grant access to this document */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Document not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
+                content?: never;
             };
         };
     };
-    createReviewerPortalComment: {
+    reviewerPortalListComments: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateReviewerCommentBody"];
-            };
-        };
-        responses: {
-            /** @description Comment created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data?: components["schemas"]["ReviewerComment"];
-                    };
-                };
-            };
-            /** @description No active reviewer session */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Target is outside this invitation's document scope */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
-                };
-            };
-        };
-    };
-    deleteReviewerPortalComment: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                commentId: string;
-            };
-            cookie?: never;
-        };
         requestBody?: never;
         responses: {
-            /** @description Comment deleted */
+            /** @description Comments */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
-                };
+                content?: never;
             };
-            /** @description No active reviewer session */
-            401: {
+        };
+    };
+    reviewerPortalCreateComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
+                content?: never;
             };
-            /** @description Cannot delete a comment authored by another reviewer */
-            403: {
+        };
+    };
+    reviewerPortalComplete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Completed */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
+                content?: never;
             };
-            /** @description Comment not found */
-            404: {
+        };
+    };
+    reviewerPortalLogout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Logged out */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
+                content?: never;
             };
         };
     };

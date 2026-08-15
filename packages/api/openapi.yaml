@@ -1840,6 +1840,41 @@ components:
         updatedAt:
           type: string
           format: date-time
+        currentVersion:
+          allOf:
+            - $ref: "#/components/schemas/DocumentVersion"
+          nullable: true
+        aiScore:
+          type: integer
+          nullable: true
+
+    CreateDocumentUploadSessionBody:
+      type: object
+      required: [title, documentType, originalFilename, mimeType, fileSize]
+      properties:
+        title:
+          type: string
+          minLength: 2
+          maxLength: 200
+        documentType:
+          $ref: "#/components/schemas/DocumentType"
+        originalFilename:
+          type: string
+          maxLength: 255
+        mimeType:
+          type: string
+          enum:
+            - application/pdf
+            - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+            - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+            - text/plain
+        fileSize:
+          type: integer
+          minimum: 1
+          maximum: 20971520
+        summary:
+          type: string
+          maxLength: 500
 
     CreateDocumentBody:
       type: object
@@ -1876,13 +1911,21 @@ components:
           example: 3
         isCurrent:
           type: boolean
-        fileUrl:
-          type: string
-          format: uri
         fileSize:
           type: integer
           description: File size in bytes
           example: 2485760
+          nullable: true
+        mimeType:
+          type: string
+        originalFilename:
+          type: string
+        processingStatus:
+          type: string
+          enum: [pending_upload, processing, ready, failed]
+        processingError:
+          type: string
+          nullable: true
         summary:
           type: string
           nullable: true
@@ -1893,6 +1936,30 @@ components:
         createdAt:
           type: string
           format: date-time
+        hasFile:
+          type: boolean
+
+    CreateDocumentVersionUploadBody:
+      type: object
+      required: [originalFilename, mimeType, fileSize]
+      properties:
+        originalFilename:
+          type: string
+          maxLength: 255
+        mimeType:
+          type: string
+          enum:
+            - application/pdf
+            - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+            - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+            - text/plain
+        fileSize:
+          type: integer
+          minimum: 1
+          maximum: 20971520
+        summary:
+          type: string
+          maxLength: 500
 
     CreateDocumentVersionBody:
       type: object
@@ -1910,7 +1977,7 @@ components:
     # ── Reviewer ──────────────────────────────────────────────────────
     ReviewerInvitationStatus:
       type: string
-      enum: [pending, accessed, expired, revoked]
+      enum: [pending, opened, in_review, completed, expired, revoked]
       example: pending
 
     ReviewerInvitation:
@@ -1922,53 +1989,68 @@ components:
         startupId:
           type: string
           format: uuid
-        investorId:
+        reviewerName:
           type: string
-          format: uuid
           nullable: true
-          description: Set when the reviewer is a known investor from the CRM
         email:
           type: string
           format: email
         status:
           $ref: "#/components/schemas/ReviewerInvitationStatus"
-        documentIds:
-          type: array
-          items:
-            type: string
-            format: uuid
-          description: Documents this invitation grants access to
+        allowDownload:
+          type: boolean
+        personalMessage:
+          type: string
+          nullable: true
         expiresAt:
           type: string
           format: date-time
-        createdBy:
+        completedAt:
           type: string
-          format: uuid
+          format: date-time
+          nullable: true
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastActivityAt:
+          type: string
+          format: date-time
+          nullable: true
+        documentCount:
+          type: integer
         createdAt:
           type: string
           format: date-time
 
     CreateReviewerInvitationBody:
       type: object
-      required: [email, documentIds]
+      required: [email, documentVersionIds]
       properties:
         email:
           type: string
           format: email
-        investorId:
+        reviewerName:
+          type: string
+        startupInvestorId:
           type: string
           format: uuid
-          description: Optional — link to an existing CRM investor record
-        documentIds:
+        allowDownload:
+          type: boolean
+        personalMessage:
+          type: string
+        expiresInDays:
+          type: integer
+          minimum: 1
+          maximum: 90
+          default: 14
+        documentVersionIds:
           type: array
+          minItems: 1
+          maxItems: 20
           items:
             type: string
             format: uuid
-          minItems: 1
-        expiresAt:
-          type: string
-          format: date-time
-          description: Defaults to 14 days from creation if omitted
 
     UpdateReviewerInvitationBody:
       type: object
@@ -5549,16 +5631,27 @@ paths:
   # ════════════════════════════════════════════════════════════════
   #  DOCUMENTS (Document Vault)
   # ════════════════════════════════════════════════════════════════
-  /documents:
+  /startups/{startupId}/documents:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
     get:
       tags: [Documents]
-      summary: List documents for the current startup
+      summary: List documents for a startup
       operationId: listDocuments
       security:
         - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/PageParam"
         - $ref: "#/components/parameters/LimitParam"
+        - name: search
+          in: query
+          schema:
+            type: string
         - name: documentType
           in: query
           schema:
@@ -5566,61 +5659,39 @@ paths:
       responses:
         "200":
           description: List of documents
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Document"
-                  meta:
-                    $ref: "#/components/schemas/PaginationMeta"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+
+  /startups/{startupId}/documents/upload-sessions:
     post:
       tags: [Documents]
-      summary: Create a new document
-      operationId: createDocument
-      description: Creates the document record only. Upload the first file via POST /documents/{documentId}/versions.
+      summary: Create document and signed upload session
+      operationId: createDocumentUploadSession
       security:
         - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateDocumentBody"
+              $ref: "#/components/schemas/CreateDocumentUploadSessionBody"
       responses:
         "201":
-          description: Document created
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/Document"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+          description: Upload session created
 
-  /documents/{documentId}:
+  /startups/{startupId}/documents/{documentId}:
     parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
       - name: documentId
         in: path
         required: true
@@ -5629,35 +5700,16 @@ paths:
           format: uuid
     get:
       tags: [Documents]
-      summary: Get a document by ID
+      summary: Get a document
       operationId: getDocument
       security:
         - cookieAuth: []
       responses:
         "200":
-          description: Document details, including its current version
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/Document"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Document not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          description: Document details
     patch:
       tags: [Documents]
-      summary: Update a document's title or type
+      summary: Update a document
       operationId: updateDocument
       security:
         - cookieAuth: []
@@ -5669,276 +5721,127 @@ paths:
               $ref: "#/components/schemas/UpdateDocumentBody"
       responses:
         "200":
-          description: Document updated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/Document"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Document not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+          description: Updated
     delete:
       tags: [Documents]
-      summary: Delete a document and all of its versions
+      summary: Delete a document
       operationId: deleteDocument
       security:
         - cookieAuth: []
       responses:
-        "200":
-          description: Document deleted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MessageResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Document not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "409":
-          description: Document is referenced by an active reviewer invitation and cannot be deleted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+        "204":
+          description: Deleted
 
-  # ════════════════════════════════════════════════════════════════
-  #  DOCUMENT VERSIONS
-  # ════════════════════════════════════════════════════════════════
-  /documents/{documentId}/versions:
-    parameters:
-      - name: documentId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-    get:
+  /startups/{startupId}/documents/{documentId}/versions/upload-sessions:
+    post:
       tags: [Document Versions]
-      summary: List all versions of a document
-      operationId: listDocumentVersions
+      summary: Create signed upload session for a new version
+      operationId: createDocumentVersionUploadSession
       security:
         - cookieAuth: []
       parameters:
-        - $ref: "#/components/parameters/PageParam"
-        - $ref: "#/components/parameters/LimitParam"
-      responses:
-        "200":
-          description: List of document versions, newest first
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/DocumentVersion"
-                  meta:
-                    $ref: "#/components/schemas/PaginationMeta"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Document not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-    post:
-      tags: [Document Versions]
-      summary: Upload a new version of a document
-      operationId: createDocumentVersion
-      description: >
-        Creates a new version and sets it as the document's current version (`isCurrent = true`).
-        `fileUrl` should point to the already-uploaded file in object storage.
-      security:
-        - cookieAuth: []
+        - name: startupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateDocumentVersionBody"
+              $ref: "#/components/schemas/CreateDocumentVersionUploadBody"
       responses:
         "201":
-          description: Document version created
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/DocumentVersion"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Document not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+          description: Version upload session created
 
-  /documents/{documentId}/versions/{versionId}:
-    parameters:
-      - name: documentId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      - name: versionId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-    get:
+  /startups/{startupId}/documents/{documentId}/versions/{versionId}/confirm:
+    post:
       tags: [Document Versions]
-      summary: Get a specific document version
-      operationId: getDocumentVersion
-      security:
-        - cookieAuth: []
-      responses:
-        "200":
-          description: Document version details
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/DocumentVersion"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Document or version not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-    delete:
-      tags: [Document Versions]
-      summary: Delete a specific document version
-      operationId: deleteDocumentVersion
-      description: >
-        Cannot delete the version currently marked with `isCurrent = true` unless it
-        is the document's only version (in which case the document is also deleted).
-      security:
-        - cookieAuth: []
-      responses:
-        "200":
-          description: Document version deleted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MessageResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Document or version not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "409":
-          description: Cannot delete the current version while other versions exist
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  # ════════════════════════════════════════════════════════════════
-  #  REVIEWER INVITATIONS (owner-side management)
-  # ════════════════════════════════════════════════════════════════
-  /reviewer-invitations:
-    get:
-      tags: [Reviewer Invitations]
-      summary: List reviewer invitations issued by the current startup
-      operationId: listReviewerInvitations
+      summary: Confirm uploaded version and enqueue processing
+      operationId: confirmDocumentVersion
       security:
         - cookieAuth: []
       parameters:
-        - $ref: "#/components/parameters/PageParam"
-        - $ref: "#/components/parameters/LimitParam"
-        - name: status
-          in: query
+        - name: startupId
+          in: path
+          required: true
           schema:
-            $ref: "#/components/schemas/ReviewerInvitationStatus"
+            type: string
+            format: uuid
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
       responses:
         "200":
-          description: List of reviewer invitations
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/ReviewerInvitation"
-                  meta:
-                    $ref: "#/components/schemas/PaginationMeta"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          description: Confirmed
+
+  /startups/{startupId}/documents/{documentId}/file-access:
+    post:
+      tags: [Documents]
+      summary: Get short-lived signed file URL
+      operationId: getDocumentFileAccess
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: versionId
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Signed access
+
+  /startups/{startupId}/reviewer-invitations:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Reviewer Invitations]
+      summary: List reviewer invitations
+      operationId: listReviewerInvitations
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: List
     post:
       tags: [Reviewer Invitations]
-      summary: Create a reviewer invitation
+      summary: Create reviewer invitation
       operationId: createReviewerInvitation
-      description: >
-        Sends an email containing a link with the invitation token plus a
-        separate 6-digit OTP. Optionally linked to an existing `investorId`
-        from the CRM so engagement (views, comments) shows on their timeline.
       security:
         - cookieAuth: []
       requestBody:
@@ -5949,423 +5852,202 @@ paths:
               $ref: "#/components/schemas/CreateReviewerInvitationBody"
       responses:
         "201":
-          description: Reviewer invitation created
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/ReviewerInvitation"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: Insufficient permissions
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: One or more documentIds (or investorId) not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+          description: Created
 
-  /reviewer-invitations/{invitationId}:
-    parameters:
-      - name: invitationId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-    get:
+  /startups/{startupId}/reviewer-invitations/{invitationId}/revoke:
+    post:
       tags: [Reviewer Invitations]
-      summary: Get a reviewer invitation by ID
-      operationId: getReviewerInvitation
-      security:
-        - cookieAuth: []
-      responses:
-        "200":
-          description: Reviewer invitation details
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/ReviewerInvitation"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Reviewer invitation not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-    patch:
-      tags: [Reviewer Invitations]
-      summary: Update a reviewer invitation's scope, expiry, or revoke it
-      operationId: updateReviewerInvitation
-      security:
-        - cookieAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateReviewerInvitationBody"
-      responses:
-        "200":
-          description: Reviewer invitation updated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/ReviewerInvitation"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: Insufficient permissions
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Reviewer invitation not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
-    delete:
-      tags: [Reviewer Invitations]
-      summary: Permanently delete a reviewer invitation
-      operationId: deleteReviewerInvitation
-      security:
-        - cookieAuth: []
-      responses:
-        "200":
-          description: Reviewer invitation deleted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MessageResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: Insufficient permissions
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Reviewer invitation not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /reviewer-invitations/{invitationId}/comments:
-    parameters:
-      - name: invitationId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-    get:
-      tags: [Reviewer Comments]
-      summary: List comments left under a specific reviewer invitation
-      operationId: listReviewerInvitationComments
-      description: Owner-side view of feedback left by an external reviewer.
+      summary: Revoke invitation
+      operationId: revokeReviewerInvitation
       security:
         - cookieAuth: []
       parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: invitationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Revoked
+
+  /startups/{startupId}/audit-logs:
+    get:
+      tags: [Audit]
+      summary: List audit logs
+      operationId: listAuditLogs
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
         - $ref: "#/components/parameters/PageParam"
         - $ref: "#/components/parameters/LimitParam"
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: entityType
+          in: query
+          schema:
+            type: string
       responses:
         "200":
-          description: List of reviewer comments
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/ReviewerComment"
-                  meta:
-                    $ref: "#/components/schemas/PaginationMeta"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Reviewer invitation not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          description: List
 
-  # ════════════════════════════════════════════════════════════════
-  #  REVIEWER PORTAL (public — token + OTP, no cookieAuth)
-  # ════════════════════════════════════════════════════════════════
+  /startups/{startupId}/audit-logs/export:
+    get:
+      tags: [Audit]
+      summary: Export audit logs as CSV
+      operationId: exportAuditLogs
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: entityType
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+
   /reviewer-portal/access:
     post:
       tags: [Reviewer Portal]
-      summary: Start access with an invitation token (triggers OTP email)
+      summary: Request OTP for invitation token
       operationId: reviewerPortalAccess
-      description: >
-        Validates the token and, if valid and not expired/revoked, emails a
-        fresh 6-digit OTP (10-minute TTL) to the invitation's address. Does
-        NOT grant access by itself — call POST /reviewer-portal/verify next.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ReviewerPortalAccessBody"
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
       responses:
         "200":
-          description: OTP sent to the invitation email
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MessageResponse"
-        "400":
-          description: Token invalid, expired, or revoked
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+          description: OTP sent
 
   /reviewer-portal/verify:
     post:
       tags: [Reviewer Portal]
-      summary: Verify the OTP and establish a reviewer session
+      summary: Verify OTP and set reviewer session cookie
       operationId: reviewerPortalVerify
-      description: >
-        On success, sets an HttpOnly `reviewerSessionToken` cookie. All further
-        Reviewer Portal calls require this cookie instead of the token/code.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ReviewerPortalVerifyBody"
+              type: object
+              required: [token, otp]
+              properties:
+                token:
+                  type: string
+                otp:
+                  type: string
       responses:
         "200":
-          description: Verified — reviewer session established
-          headers:
-            Set-Cookie:
-              schema:
-                type: string
-                example: reviewerSessionToken=...; HttpOnly; Path=/api/reviewer-portal
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/ReviewerPortalSession"
-        "400":
-          description: Code incorrect, expired, or token invalid
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+          description: Session created
 
-  /reviewer-portal/me:
+  /reviewer-portal/workspace:
     get:
       tags: [Reviewer Portal]
-      summary: Get the current reviewer session, startup, and accessible documents
-      operationId: getReviewerPortalSession
+      summary: Get invitation workspace
+      operationId: reviewerPortalWorkspace
       security:
         - reviewerSessionAuth: []
       responses:
         "200":
-          description: Current reviewer session details
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/ReviewerPortalSession"
-        "401":
-          description: No active reviewer session
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          description: Workspace
 
-  /reviewer-portal/documents/{documentId}:
-    parameters:
-      - name: documentId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-    get:
+  /reviewer-portal/documents/{documentId}/file-access:
+    post:
       tags: [Reviewer Portal]
-      summary: Get a document (with its current version) the reviewer is scoped to
-      operationId: getReviewerPortalDocument
+      summary: Signed file access for pinned document
+      operationId: reviewerPortalFileAccess
       security:
         - reviewerSessionAuth: []
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: disposition
+          in: query
+          schema:
+            type: string
+            enum: [preview, download]
       responses:
         "200":
-          description: Document details
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/Document"
-        "401":
-          description: No active reviewer session
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: This invitation does not grant access to this document
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Document not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          description: Access
 
   /reviewer-portal/comments:
-    post:
-      tags: [Reviewer Comments]
-      summary: Leave a comment as the authenticated reviewer
-      operationId: createReviewerPortalComment
-      security:
-        - reviewerSessionAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateReviewerCommentBody"
-      responses:
-        "201":
-          description: Comment created
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/ReviewerComment"
-        "401":
-          description: No active reviewer session
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: Target is outside this invitation's document scope
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
-
-  /reviewer-portal/comments/{commentId}:
-    parameters:
-      - name: commentId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-    delete:
-      tags: [Reviewer Comments]
-      summary: Delete a comment the reviewer authored
-      operationId: deleteReviewerPortalComment
+    get:
+      tags: [Reviewer Portal]
+      summary: List reviewer comments
+      operationId: reviewerPortalListComments
       security:
         - reviewerSessionAuth: []
       responses:
         "200":
-          description: Comment deleted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MessageResponse"
-        "401":
-          description: No active reviewer session
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: Cannot delete a comment authored by another reviewer
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Comment not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          description: Comments
+    post:
+      tags: [Reviewer Portal]
+      summary: Create reviewer comment
+      operationId: reviewerPortalCreateComment
+      security:
+        - reviewerSessionAuth: []
+      responses:
+        "201":
+          description: Created
+
+  /reviewer-portal/complete:
+    post:
+      tags: [Reviewer Portal]
+      summary: Mark invitation completed
+      operationId: reviewerPortalComplete
+      security:
+        - reviewerSessionAuth: []
+      responses:
+        "204":
+          description: Completed
+
+  /reviewer-portal/logout:
+    post:
+      tags: [Reviewer Portal]
+      summary: Revoke reviewer session
+      operationId: reviewerPortalLogout
+      security:
+        - reviewerSessionAuth: []
+      responses:
+        "204":
+          description: Logged out

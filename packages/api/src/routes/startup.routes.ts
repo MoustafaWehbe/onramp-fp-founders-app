@@ -19,6 +19,9 @@ import { pipelineRouter } from "./pipeline.routes";
 import { interactionLogRouter } from "./interaction-log.routes";
 import { fundraisingRouter } from "./fundraising.routes";
 import { taskRouter } from "./task.routes";
+import { auditRouter } from "./audit.routes";
+import { documentRouter } from "./document.routes";
+import { reviewerInvitationRouter } from "./reviewer-invitation.routes";
 
 const router = Router();
 
@@ -33,6 +36,15 @@ router.use("/:startupId/interaction-logs", interactionLogRouter);
 
 // /api/v1/startups/:startupId/tasks — declares its own middleware chain
 router.use("/:startupId/tasks", taskRouter);
+
+// /api/v1/startups/:startupId/audit-logs — workspace activity trail
+router.use("/:startupId/audit-logs", auditRouter);
+
+// /api/v1/startups/:startupId/documents
+router.use("/:startupId/documents", documentRouter);
+
+// /api/v1/startups/:startupId/reviewer-invitations
+router.use("/:startupId/reviewer-invitations", reviewerInvitationRouter);
 
 // Financial resources are startup-scoped just like the CRM resources.
 router.use("/:startupId", fundraisingRouter);

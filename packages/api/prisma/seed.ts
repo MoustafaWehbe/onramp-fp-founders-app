@@ -1,5 +1,7 @@
 import "dotenv/config";
 
+import { promises as fs } from "fs";
+import path from "path";
 import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/utils/auth";
 import { PERMISSIONS, ROLE_TEMPLATES } from "../src/config/permissions";
@@ -34,6 +36,9 @@ const G = {
   LOG: 12,
   NOTIFICATION: 13,
   AUDIT: 14,
+  DOCUMENT: 15,
+  DOCUMENT_VERSION: 16,
+  DOCUMENT_CHUNK: 17,
 } as const;
 
 const uid = (group: number, n: number): string =>
@@ -232,7 +237,7 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     email: "nadia.rahman@example.com",
     investorType: "angel",
     sectorFocus: "Sales tech",
-    investmentStagePreference: "seed",
+      investmentStagePreference: "seed",
     source: "linkedin",
     // A deal with no owner and no next step — the "needs attention" reminder job
     // is meant to pick exactly this up.
@@ -251,13 +256,13 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
   // ── Contacted ──────────────────────────────────────────────────────────────
   {
     key: "marcus",
-    fullName: "Marcus Webb",
-    email: "marcus.webb@indexventures.example.com",
-    ventureFirm: "Index Ventures",
-    investorType: "vc",
-    sectorFocus: "Developer tools",
-    investmentStagePreference: "seed",
-    source: "warm_intro",
+      fullName: "Marcus Webb",
+      email: "marcus.webb@indexventures.example.com",
+      ventureFirm: "Index Ventures",
+      investorType: "vc",
+      sectorFocus: "Developer tools",
+      investmentStagePreference: "seed",
+      source: "warm_intro",
     notes: "Wants to meet the full founding team before going further.",
     notesAuthorKey: "muhamad",
     notesEditorKey: "raymond",
@@ -296,7 +301,7 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     key: "tom",
     fullName: "Tom Reilly",
     email: "tom.reilly@example.com",
-    investorType: "angel",
+      investorType: "angel",
     sectorFocus: "Marketplaces",
     source: "linkedin",
     deals: [
@@ -357,13 +362,13 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
   // ── Meeting scheduled ──────────────────────────────────────────────────────
   {
     key: "james",
-    fullName: "James O'Brien",
-    email: "james.obrien@accel.example.com",
-    ventureFirm: "Accel",
-    investorType: "vc",
-    sectorFocus: "B2B SaaS",
-    investmentStagePreference: "series_a",
-    source: "outbound",
+      fullName: "James O'Brien",
+      email: "james.obrien@accel.example.com",
+      ventureFirm: "Accel",
+      investorType: "vc",
+      sectorFocus: "B2B SaaS",
+      investmentStagePreference: "series_a",
+      source: "outbound",
     notes: "Asked for cohort retention split by segment ahead of the partner meeting.",
     notesAuthorKey: "raymond",
     notesAgeDays: 3,
@@ -456,7 +461,7 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     fullName: "Peter Lindqvist",
     email: "peter@creandum.example.com",
     ventureFirm: "Creandum",
-    investorType: "vc",
+      investorType: "vc",
     investmentStagePreference: "seed",
     source: "warm_intro",
     deals: [
@@ -546,12 +551,12 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
   },
   {
     key: "dmitri",
-    fullName: "Dmitri Volkov",
-    email: "dmitri@volkovfamily.example.com",
-    ventureFirm: "Volkov Family Office",
-    investorType: "family_office",
-    sectorFocus: "Diversified",
-    source: "referral",
+      fullName: "Dmitri Volkov",
+      email: "dmitri@volkovfamily.example.com",
+      ventureFirm: "Volkov Family Office",
+      investorType: "family_office",
+      sectorFocus: "Diversified",
+      source: "referral",
     deals: [
       {
         round: "seed",
@@ -674,7 +679,7 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     email: "priya.anand@example.com",
     investorType: "angel",
     sectorFocus: "Fintech, SaaS",
-    investmentStagePreference: "pre_seed",
+      investmentStagePreference: "pre_seed",
     source: "referral",
     notes: "Former operator, wrote the first pre-seed cheque and doubled down on the seed.",
     notesAuthorKey: "muhamad",
@@ -694,9 +699,9 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
             { status: "hard_circled", daysAgo: 374 },
             { status: "wired", daysAgo: 368 },
           ],
-        },
       },
-      {
+    },
+    {
         round: "seed",
         stage: "committed",
         sourcedDaysAgo: 90,
@@ -737,10 +742,10 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     fullName: "Daniel Okafor",
     email: "d.okafor@northwind.example.com",
     ventureFirm: "Northwind Capital",
-    investorType: "vc",
+      investorType: "vc",
     sectorFocus: "B2B SaaS",
-    investmentStagePreference: "seed",
-    source: "outbound",
+      investmentStagePreference: "seed",
+      source: "outbound",
     deals: [
       {
         round: "seed",
@@ -803,11 +808,11 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
   // ── Passed ─────────────────────────────────────────────────────────────────
   {
     key: "victor",
-    fullName: "Victor Alvarez",
-    email: "victor.alvarez@bessemer.example.com",
-    ventureFirm: "Bessemer",
-    investorType: "vc",
-    source: "outbound",
+      fullName: "Victor Alvarez",
+      email: "victor.alvarez@bessemer.example.com",
+      ventureFirm: "Bessemer",
+      investorType: "vc",
+      source: "outbound",
     notes: "Passed — too early for the current fund. Revisit at Series A.",
     notesAuthorKey: "muhamad",
     notesAgeDays: 22,
@@ -896,9 +901,9 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     // No email and no deal — both nullable paths the Investors list has to
     // render (the per-startup email uniqueness only applies to non-null values).
     key: "yuki",
-    fullName: "Yuki Tanaka",
-    investorType: "other",
-    source: "event",
+      fullName: "Yuki Tanaka",
+      investorType: "other",
+      source: "event",
     notes: "Met briefly at a meetup — no contact details yet.",
     notesAuthorKey: "lopna",
     notesAgeDays: 11,
@@ -1260,13 +1265,13 @@ async function seedWorkspace(
     const member = await prisma.startupMember.create({
       data: {
         id: nextId(G.MEMBER),
-        startupId: startup.id,
+      startupId: startup.id,
         userId: usersByKey.get(seed.userKey)!.id,
         roleId: roles[seed.role].id,
-        status: "active",
+      status: "active",
         joinedAt: days(-120),
-      },
-    });
+    },
+  });
     membersByKey.set(seed.userKey, member);
   }
 
@@ -1275,7 +1280,7 @@ async function seedWorkspace(
     const round = await prisma.fundraisingRound.create({
       data: {
         id: nextId(G.ROUND),
-        startupId: startup.id,
+      startupId: startup.id,
         roundName: seed.roundName,
         targetAmount: seed.targetAmount,
         minimumTicketSize: seed.minimumTicketSize ?? null,
@@ -1284,8 +1289,8 @@ async function seedWorkspace(
         status: seed.status,
         firstCloseDate: seed.firstCloseInDays === undefined ? null : days(seed.firstCloseInDays),
         targetCloseDate: seed.targetCloseInDays === undefined ? null : days(seed.targetCloseInDays),
-      },
-    });
+    },
+  });
     roundsByKey.set(seed.key, round);
   }
 
@@ -1321,8 +1326,8 @@ async function seedWorkspace(
         // Only an edited note carries an update stamp — an untouched one would
         // otherwise render as "edited" the moment it was written.
         notesUpdatedAt: editor ? days(-Math.max(0, notesAge - 1)) : null,
-      },
-    });
+    },
+  });
     contactsByKey.set(seed.key, contact);
 
     for (const deal of seed.deals ?? []) {
@@ -1335,7 +1340,7 @@ async function seedWorkspace(
       const entry = await prisma.pipeline.create({
         data: {
           id: nextId(G.PIPELINE),
-          startupId: startup.id,
+      startupId: startup.id,
           roundId: round.id,
           startupInvestorId: contact.id,
           stage: deal.stage,
@@ -1348,8 +1353,8 @@ async function seedWorkspace(
           ownerId: deal.ownerKey ? (membersByKey.get(deal.ownerKey)?.id ?? null) : null,
           stageChangedAt: days(-deal.stageChangedDaysAgo),
           createdAt: days(-deal.sourcedDaysAgo),
-        },
-      });
+    },
+  });
       dealsByKey.set(`${seed.key}:${deal.round}`, entry);
       dealCount += 1;
 
@@ -1360,7 +1365,7 @@ async function seedWorkspace(
         await prisma.pipelineStageEvent.create({
           data: {
             id: nextId(G.STAGE_EVENT),
-            startupId: startup.id,
+      startupId: startup.id,
             pipelineId: entry.id,
             fromStage: i === 0 ? null : path[i - 1],
             toStage: stage,
@@ -1369,8 +1374,8 @@ async function seedWorkspace(
               ? (usersByKey.get(deal.ownerKey)?.id ?? null)
               : usersByKey.get(spec.creatorKey)!.id,
             createdAt: dates[i],
-          },
-        });
+    },
+  });
       }
 
       if (!deal.commitment) continue;
@@ -1381,7 +1386,7 @@ async function seedWorkspace(
       const commitment = await prisma.commitment.create({
         data: {
           id: nextId(G.COMMITMENT),
-          startupId: startup.id,
+      startupId: startup.id,
           startupInvestorId: contact.id,
           pipelineId: entry.id,
           roundId: round.id,
@@ -1390,8 +1395,8 @@ async function seedWorkspace(
           expectedCloseDate:
             expectedCloseInDays === undefined ? null : days(expectedCloseInDays),
           createdAt: days(-history[0].daysAgo),
-        },
-      });
+    },
+  });
       commitmentCount += 1;
 
       // Status history — without these the funding chart can only plot the day
@@ -1400,14 +1405,14 @@ async function seedWorkspace(
         await prisma.commitmentStatusEvent.create({
           data: {
             id: nextId(G.STATUS_EVENT),
-            startupId: startup.id,
+      startupId: startup.id,
             commitmentId: commitment.id,
             fromStatus: i === 0 ? null : history[i - 1].status,
             toStatus: step.status,
             changedBy: usersByKey.get(deal.ownerKey ?? spec.creatorKey)!.id,
             createdAt: days(-step.daysAgo),
-          },
-        });
+    },
+  });
       }
     }
 
@@ -1447,7 +1452,7 @@ async function seedWorkspace(
     await prisma.task.create({
       data: {
         id: nextId(G.TASK),
-        startupId: startup.id,
+      startupId: startup.id,
         pipelineId: entry.id,
         title: seed.title,
         description: seed.description ?? null,
@@ -1722,8 +1727,8 @@ async function main() {
         startupId: northbeam.startup.id,
         userId: muhamad.id,
         ...notification,
-      },
-    });
+    },
+  });
   }
 
   // 7. Audit trail.
@@ -1777,6 +1782,95 @@ async function main() {
     });
   }
 
+  // 8. Ready data-room documents (TXT so parse works without LlamaParse).
+  const DOCUMENTS = [
+    {
+      title: "Northbeam Seed Pitch Overview",
+      documentType: "pitch_deck",
+      filename: "northbeam-seed-pitch.txt",
+      content: `# Northbeam Seed Pitch
+
+## Problem
+B2B revenue teams drown in fragmented attribution data.
+
+## Solution
+Northbeam unifies pipeline signal so founders and AEs prioritize the right accounts.
+
+## Traction
+- $1.2M ARR
+- 42 customers
+- Net revenue retention 118%
+
+## The Ask
+Raising a $4M seed to expand GTM and deepen product coverage.
+`,
+    },
+    {
+      title: "Cap Table Summary",
+      documentType: "cap_table",
+      filename: "northbeam-cap-table.txt",
+      content: `# Cap Table Summary
+
+| Holder | Ownership |
+| --- | --- |
+| Founders | 62% |
+| Employees (option pool) | 15% |
+| Pre-Seed investors | 18% |
+| Advisors | 5% |
+
+Notes: figures are illustrative seed data for local demos.
+`,
+    },
+  ] as const;
+
+  let documentCount = 0;
+  for (const docSeed of DOCUMENTS) {
+    documentCount += 1;
+    const documentId = uid(G.DOCUMENT, documentCount);
+    const versionId = uid(G.DOCUMENT_VERSION, documentCount);
+    const storageKey = `startups/${northbeam.startup.id}/documents/${documentId}/${versionId}/${docSeed.filename}`;
+    const fullPath = path.resolve(process.cwd(), ".uploads", storageKey);
+    await fs.mkdir(path.dirname(fullPath), { recursive: true });
+    const buffer = Buffer.from(docSeed.content, "utf8");
+    await fs.writeFile(fullPath, buffer);
+
+    await prisma.document.create({
+      data: {
+        id: documentId,
+        startupId: northbeam.startup.id,
+        title: docSeed.title,
+        documentType: docSeed.documentType,
+        createdBy: muhamad.id,
+        versions: {
+          create: {
+            id: versionId,
+            versionNumber: 1,
+            isCurrent: true,
+            storageProvider: "local",
+            storageKey,
+            mimeType: "text/plain",
+            originalFilename: docSeed.filename,
+            fileSize: buffer.length,
+            processingStatus: "ready",
+            summary: "Seeded demo document",
+            uploadedBy: muhamad.id,
+            chunks: {
+              create: {
+                id: uid(G.DOCUMENT_CHUNK, documentCount),
+                chunkIndex: 0,
+                content: docSeed.content.trim(),
+                tokenCount: Math.ceil(docSeed.content.length / 4),
+                sectionLabel: "Overview",
+                charStart: 0,
+                charEnd: docSeed.content.trim().length,
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
   const totalContacts = NORTHBEAM_CONTACTS.length + DRIFT_CONTACTS.length;
 
   console.info("─── Seed complete ───────────────────────────────────────");
@@ -1802,6 +1896,7 @@ async function main() {
   );
   console.info(`  Notifications: ${NOTIFICATIONS.length} (5 unread)`);
   console.info(`  Audit logs:    ${AUDITS.length} entries`);
+  console.info(`  Documents:     ${documentCount} ready TXT files in data room`);
   console.info("─────────────────────────────────────────────────────────");
 }
 

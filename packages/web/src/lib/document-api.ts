@@ -1,0 +1,143 @@
+import { apiClient } from "./api-client";
+
+export type DocumentType =
+  | "pitch_deck"
+  | "financial_model"
+  | "cap_table"
+  | "term_sheet"
+  | "data_room"
+  | "other";
+
+export type DocumentVersion = {
+  id: string;
+  documentId: string;
+  versionNumber: number;
+  isCurrent: boolean;
+  fileSize: number | null;
+  mimeType: string;
+  originalFilename: string;
+  processingStatus: "pending_upload" | "processing" | "ready" | "failed" | string;
+  processingError: string | null;
+  summary: string | null;
+  uploadedBy: string;
+  createdAt: string;
+  hasFile: boolean;
+};
+
+export type VaultDocument = {
+  id: string;
+  startupId: string;
+  title: string;
+  documentType: DocumentType | string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  currentVersion: DocumentVersion | null;
+  aiScore: number | null;
+};
+
+export type PaginationMeta = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
+export async function listDocuments(
+  startupId: string,
+  params?: { page?: number; limit?: number; search?: string; documentType?: string },
+) {
+  const { data } = await apiClient.get<{ data: VaultDocument[]; meta: PaginationMeta }>(
+    `/startups/${startupId}/documents`,
+    { params },
+  );
+  return data;
+}
+
+export async function createDocumentUploadSession(
+  startupId: string,
+  body: {
+    title: string;
+    documentType: DocumentType;
+    originalFilename: string;
+    mimeType: string;
+    fileSize: number;
+    summary?: string;
+  },
+) {
+  const { data } = await apiClient.post<{
+    data: {
+      document: VaultDocument;
+      upload: { uploadUrl: string; headers: Record<string, string>; versionId: string };
+    };
+  }>(`/startups/${startupId}/documents/upload-sessions`, body);
+  return data.data;
+}
+
+export async function createVersionUploadSession(
+  startupId: string,
+  documentId: string,
+  body: {
+    originalFilename: string;
+    mimeType: string;
+    fileSize: number;
+    summary?: string;
+  },
+) {
+  const { data } = await apiClient.post<{
+    data: {
+      version: DocumentVersion;
+      upload: { uploadUrl: string; headers: Record<string, string>; versionId: string };
+    };
+  }>(`/startups/${startupId}/documents/${documentId}/versions/upload-sessions`, body);
+  return data.data;
+}
+
+export async function confirmDocumentVersion(
+  startupId: string,
+  documentId: string,
+  versionId: string,
+) {
+  const { data } = await apiClient.post<{ data: DocumentVersion }>(
+    `/startups/${startupId}/documents/${documentId}/versions/${versionId}/confirm`,
+  );
+  return data.data;
+}
+
+export async function getDocumentFileAccess(startupId: string, documentId: string, versionId?: string) {
+  const { data } = await apiClient.post<{
+    data: {
+      url: string;
+      expiresInSeconds: number;
+      mimeType: string;
+      originalFilename: string;
+      versionId: string;
+    };
+  }>(`/startups/${startupId}/documents/${documentId}/file-access`, undefined, {
+    params: versionId ? { versionId } : undefined,
+  });
+  return data.data;
+}
+
+export async function deleteDocument(startupId: string, documentId: string) {
+  await apiClient.delete(`/startups/${startupId}/documents/${documentId}`);
+}
+
+/** Upload bytes to the signed/local URL returned by createDocumentUploadSession. */
+export async function uploadToSignedUrl(
+  uploadUrl: string,
+  file: File,
+  headers: Record<string, string>,
+) {
+  const response = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": file.type || headers["Content-Type"] || "application/octet-stream",
+      ...headers,
+    },
+    body: file,
+  });
+  if (!response.ok) {
+    throw new Error(`Upload failed (${response.status})`);
+  }
+}

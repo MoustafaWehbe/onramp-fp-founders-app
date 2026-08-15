@@ -4,6 +4,7 @@ import { Worker, type Processor } from "bullmq";
 import { getRedis } from "../queue";
 import { emailJob } from "./email.worker";
 import { embeddingsJob } from "./embeddings.worker";
+import { documentProcessingJob } from "./document-processing.worker";
 
 interface WorkerDef {
   name: string;
@@ -11,7 +12,7 @@ interface WorkerDef {
   process: Processor;
 }
 
-const JOBS: WorkerDef[] = [emailJob, embeddingsJob];
+const JOBS: WorkerDef[] = [emailJob, embeddingsJob, documentProcessingJob];
 
 export function startWorkers(): Worker[] {
   const conn = getRedis();

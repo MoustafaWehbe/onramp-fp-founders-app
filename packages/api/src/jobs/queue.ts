@@ -2,6 +2,10 @@ import { Queue } from "bullmq";
 import { emailJob } from "./workers/email.worker";
 import type { EmailJobData } from "../types";
 import { embeddingsJob, type EmbeddingsJobData } from "./workers/embeddings.worker";
+import {
+  documentProcessingJob,
+  type DocumentProcessingJobData,
+} from "./workers/document-processing.worker";
 
 // The Redis singleton now lives in db/redis so non-job callers (the rate
 // limiters) can share it without importing the workers. Re-exported here
@@ -27,3 +31,6 @@ function makeQueue<T>(name: string): Queue<T> {
 
 export const emailQueue = makeQueue<EmailJobData>(emailJob.name);
 export const embeddingsQueue = makeQueue<EmbeddingsJobData>(embeddingsJob.name);
+export const documentProcessingQueue = makeQueue<DocumentProcessingJobData>(
+  documentProcessingJob.name,
+);

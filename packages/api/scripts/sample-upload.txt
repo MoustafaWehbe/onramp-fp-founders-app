@@ -1,0 +1,12 @@
+# Pipeline smoke-test upload
+
+This file was created to verify the Documents upload → confirm → parse → chunk pipeline.
+
+## Checklist
+- Upload from the Data room page
+- Status moves from Processing… to ready
+- Preview opens the text in a new tab
+- Download saves this file
+
+Company: Northbeam (demo)
+Created: 2026-08-15
