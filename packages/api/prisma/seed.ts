@@ -126,10 +126,6 @@ interface ContactSeed {
   investmentStagePreference?: string;
   linkedinUrl?: string;
   source?: string;
-  notes?: string;
-  notesAuthorKey?: string;
-  notesEditorKey?: string;
-  notesAgeDays?: number;
   deals?: DealSeed[];
   logs?: LogSeed[];
 }
@@ -258,10 +254,6 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     sectorFocus: "Developer tools",
     investmentStagePreference: "seed",
     source: "warm_intro",
-    notes: "Wants to meet the full founding team before going further.",
-    notesAuthorKey: "muhamad",
-    notesEditorKey: "raymond",
-    notesAgeDays: 6,
     deals: [
       {
         round: "seed",
@@ -289,6 +281,13 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
         description: "30 minutes. Liked the wedge, pushed hard on net revenue retention.",
         daysAgo: 20,
         authorKey: "muhamad",
+      },
+      {
+        type: "note",
+        subject: "Note on next steps",
+        description: "Wants to meet the full founding team before going further.",
+        daysAgo: 5,
+        authorKey: "raymond",
       },
     ],
   },
@@ -364,9 +363,6 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     sectorFocus: "B2B SaaS",
     investmentStagePreference: "series_a",
     source: "outbound",
-    notes: "Asked for cohort retention split by segment ahead of the partner meeting.",
-    notesAuthorKey: "raymond",
-    notesAgeDays: 3,
     deals: [
       {
         round: "seed",
@@ -400,6 +396,13 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
         subject: "Sent metrics appendix",
         description: "Shared the cohort breakdown he asked for.",
         daysAgo: 4,
+        authorKey: "raymond",
+      },
+      {
+        type: "note",
+        subject: "Note ahead of partner meeting",
+        description: "Asked for cohort retention split by segment ahead of the partner meeting.",
+        daysAgo: 3,
         authorKey: "raymond",
       },
     ],
@@ -496,10 +499,6 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     investmentStagePreference: "seed",
     linkedinUrl: "https://linkedin.com/in/sarahchen",
     source: "event",
-    notes: "Prospective lead. Legal is reviewing the data room; wants a 15% option pool.",
-    notesAuthorKey: "muhamad",
-    notesEditorKey: "muhamad",
-    notesAgeDays: 2,
     deals: [
       {
         round: "seed",
@@ -540,6 +539,13 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
         subject: "Diligence kickoff",
         description: "Walked through the data room structure. Legal starts Monday.",
         daysAgo: 9,
+        authorKey: "muhamad",
+      },
+      {
+        type: "note",
+        subject: "Note on data room review",
+        description: "Prospective lead. Legal is reviewing the data room; wants a 15% option pool.",
+        daysAgo: 1,
         authorKey: "muhamad",
       },
     ],
@@ -676,9 +682,6 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     sectorFocus: "Fintech, SaaS",
     investmentStagePreference: "pre_seed",
     source: "referral",
-    notes: "Former operator, wrote the first pre-seed cheque and doubled down on the seed.",
-    notesAuthorKey: "muhamad",
-    notesAgeDays: 30,
     deals: [
       {
         round: "pre_seed",
@@ -728,6 +731,13 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
         type: "other",
         subject: "SAFE countersigned",
         daysAgo: 27,
+        authorKey: "muhamad",
+      },
+      {
+        type: "note",
+        subject: "Background note",
+        description: "Former operator, wrote the first pre-seed cheque and doubled down on the seed.",
+        daysAgo: 30,
         authorKey: "muhamad",
       },
     ],
@@ -808,9 +818,6 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     ventureFirm: "Bessemer",
     investorType: "vc",
     source: "outbound",
-    notes: "Passed — too early for the current fund. Revisit at Series A.",
-    notesAuthorKey: "muhamad",
-    notesAgeDays: 22,
     deals: [
       {
         round: "seed",
@@ -899,9 +906,15 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     fullName: "Yuki Tanaka",
     investorType: "other",
     source: "event",
-    notes: "Met briefly at a meetup — no contact details yet.",
-    notesAuthorKey: "lopna",
-    notesAgeDays: 11,
+    logs: [
+      {
+        type: "note",
+        subject: "How we met",
+        description: "Met briefly at a meetup — no contact details yet.",
+        daysAgo: 11,
+        authorKey: "lopna",
+      },
+    ],
   },
 ];
 
@@ -1298,10 +1311,6 @@ async function seedWorkspace(
   let logCount = 0;
 
   for (const seed of spec.contacts) {
-    const author = seed.notesAuthorKey ? usersByKey.get(seed.notesAuthorKey) : undefined;
-    const editor = seed.notesEditorKey ? usersByKey.get(seed.notesEditorKey) : undefined;
-    const notesAge = seed.notesAgeDays ?? 0;
-
     const contact = await prisma.startupInvestor.create({
       data: {
         id: nextId(G.INVESTOR),
@@ -1314,13 +1323,6 @@ async function seedWorkspace(
         investmentStagePreference: seed.investmentStagePreference ?? null,
         linkedinUrl: seed.linkedinUrl ?? null,
         source: seed.source ?? null,
-        notes: seed.notes ?? null,
-        notesCreatedBy: author?.id ?? null,
-        notesCreatedAt: seed.notes ? days(-notesAge) : null,
-        notesUpdatedBy: editor?.id ?? null,
-        // Only an edited note carries an update stamp — an untouched one would
-        // otherwise render as "edited" the moment it was written.
-        notesUpdatedAt: editor ? days(-Math.max(0, notesAge - 1)) : null,
       },
     });
     contactsByKey.set(seed.key, contact);

@@ -32,11 +32,11 @@ import { invalidateInteractionData, qk } from "../../../lib/query-keys";
 import { listMembers } from "../../../lib/team-api";
 import { cn, getInitials } from "../../../lib/utils";
 import { TaskList } from "../Pipeline/TaskList";
+import { AddNoteDialog } from "./AddNoteDialog";
 import { ComposeEmailDialog, type ComposeFormValues } from "./ComposeEmailDialog";
 import { InteractionTimeline } from "./InteractionTimeline";
 import { LogInteractionDialog, type LogFormValues } from "./LogInteractionDialog";
 import { ScheduleMeetingDialog, type ScheduleFormValues } from "./ScheduleMeetingDialog";
-import { NoteByline } from "./NoteByline";
 import { StageBadge } from "./StageBadge";
 import type { InvestorRow } from "./investor-types";
 
@@ -112,6 +112,7 @@ export function InvestorDetailDialog({
   const [pendingDelete, setPendingDelete] = useState<InteractionLog | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [addNoteOpen, setAddNoteOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "activity">("overview");
 
   const googleStatus = useGoogleConnectionStatus();
@@ -227,6 +228,23 @@ export function InvestorDetailDialog({
       invalidate();
     },
     onError: (err) => toast.error(scheduleMeetingErrorMessage(err)),
+  });
+
+  const addNoteMutation = useMutation({
+    mutationFn: (description: string) =>
+      createInteractionLog(startupId, {
+        investorId: investorId!,
+        pipelineId: pipelineId ?? undefined,
+        type: "note",
+        interactionDate: new Date().toISOString(),
+        description,
+      }),
+    onSuccess: () => {
+      toast.success("Note added");
+      setAddNoteOpen(false);
+      invalidate();
+    },
+    onError: (err) => toast.error(logErrorMessage(err, "Could not add the note")),
   });
 
   const canSendEmail = Boolean(investor?.email) && googleStatus.data?.connected === true;
@@ -362,7 +380,6 @@ export function InvestorDetailDialog({
                 ))}
               </dl>
 
-              <section className="rounded-xl border border-border/70 bg-surface/40 p-4"><div className="flex items-center gap-2"><div className="grid h-8 w-8 place-items-center rounded-lg bg-muted text-muted-foreground"><StickyNote className="h-4 w-4" /></div><div><h3 className="text-sm font-semibold">Investor notes</h3><p className="text-xs text-muted-foreground">Shared relationship context for your team.</p></div></div><p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{investor.contact.notes || "No notes have been added for this investor."}</p>{investor.contact.notes && <NoteByline contact={investor.contact} authorNames={authorNames} />}</section>
               </>}
 
               {/* Only a contact already on the board has a deal to attach tasks to. */}
@@ -371,6 +388,11 @@ export function InvestorDetailDialog({
               {activeTab === "activity" && <>
               <div className="flex items-center justify-between gap-2">
                 <div><h3 className="font-display text-base font-semibold">Activity</h3><p className="mt-1 text-xs text-muted-foreground">Interactions and pipeline changes, newest first.</p></div>
+                {canCreate && (
+                  <Button size="sm" variant="outline" onClick={() => setAddNoteOpen(true)}>
+                    <StickyNote className="h-3.5 w-3.5" /> Add note
+                  </Button>
+                )}
               </div>
 
               <div className={cn("max-h-[40vh] overflow-y-auto pr-1", "scrollbar-slim")}>
@@ -438,6 +460,14 @@ export function InvestorDetailDialog({
         investorEmail={investor?.email ?? ""}
         isSubmitting={scheduleMutation.isPending}
         onSubmit={(values) => scheduleMutation.mutate(values)}
+      />
+
+      <AddNoteDialog
+        open={addNoteOpen}
+        onOpenChange={setAddNoteOpen}
+        investorName={investor?.name ?? ""}
+        isSubmitting={addNoteMutation.isPending}
+        onSubmit={(description) => addNoteMutation.mutate(description)}
       />
     </>
   );

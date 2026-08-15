@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, CalendarPlus, ChevronDown, Crown, History, LayoutDashboard, Linkedin, ListChecks, Mail, Pencil, Plus, Save, Sparkles, StickyNote, Trash2 } from "lucide-react";
+import { ArrowRight, CalendarPlus, ChevronDown, Crown, History, LayoutDashboard, Linkedin, ListChecks, Mail, Sparkles, StickyNote, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
 import { Button } from "../../../components/ui/button";
@@ -15,7 +15,6 @@ import {
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import { Select } from "../../../components/ui/select";
-import { Textarea } from "../../../components/ui/textarea";
 import {
   Sheet,
   SheetContent,
@@ -36,7 +35,7 @@ import {
 } from "../../../lib/interaction-log-api";
 import { sendInvestorEmail } from "../../../lib/gmail-api";
 import { scheduleMeeting } from "../../../lib/calendar-api";
-import { INVESTOR_TYPE_LABELS, updateInvestor, type InvestorType } from "../../../lib/investor-api";
+import { INVESTOR_TYPE_LABELS, type InvestorType } from "../../../lib/investor-api";
 import { DEFAULT_PROBABILITY_BY_STAGE, STAGES, type PipelineStageId } from "../../../lib/mock-data";
 import { fetchAllPages } from "../../../lib/pagination";
 import {
@@ -47,7 +46,6 @@ import {
   type PipelineEntry,
 } from "../../../lib/pipeline-api";
 import {
-  invalidateDealData,
   invalidateFinancialData,
   invalidateInteractionData,
   invalidateStageData,
@@ -61,11 +59,11 @@ import {
 } from "../../../lib/fundraising-api";
 import { PRIORITIES, PRIORITY_LABELS, type Priority } from "../../../lib/task-api";
 import { cn, formatCompactMoney, getInitials } from "../../../lib/utils";
+import { AddNoteDialog } from "../Investors/AddNoteDialog";
 import { ComposeEmailDialog, type ComposeFormValues } from "../Investors/ComposeEmailDialog";
 import { InteractionTimeline } from "../Investors/InteractionTimeline";
 import { LogInteractionDialog, type LogFormValues } from "../Investors/LogInteractionDialog";
 import { ScheduleMeetingDialog, type ScheduleFormValues } from "../Investors/ScheduleMeetingDialog";
-import { NoteByline } from "../Investors/NoteByline";
 import {
   formatDateTime,
   formatDaysAgo,
@@ -174,6 +172,7 @@ export function DealDetailDialog({
   const [pendingLogDelete, setPendingLogDelete] = useState<InteractionLog | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [addNoteOpen, setAddNoteOpen] = useState(false);
 
   const googleStatus = useGoogleConnectionStatus();
   const [amount, setAmount] = useState("");
@@ -182,9 +181,6 @@ export function DealDetailDialog({
   const [passReasonOpen, setPassReasonOpen] = useState(false);
   const [commitOpen, setCommitOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "activity">("overview");
-  const [noteDraft, setNoteDraft] = useState("");
-  const [noteEditing, setNoteEditing] = useState(false);
-  const [noteDeleteOpen, setNoteDeleteOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   // Naming the round's lead is a commitment the whole team reads, so it is
   // confirmed in both directions rather than toggled by a stray click.
@@ -200,9 +196,6 @@ export function DealDetailDialog({
     setAmount(deal.expectedAmount == null ? "" : String(deal.expectedAmount));
     setProbability(deal.probabilityPercentage == null ? "" : String(deal.probabilityPercentage));
     setInvestorFitScore(deal.investorFitScore == null ? "" : String(deal.investorFitScore));
-    setNoteDraft(deal.investor.notes ?? "");
-    setNoteEditing(false);
-    setNoteDeleteOpen(false);
     setLeadConfirmOpen(false);
     setDetailsOpen(false);
   }, [deal]);
@@ -253,17 +246,6 @@ export function DealDetailDialog({
       updatePipelineEntry(startupId, deal!.id, patch),
     onSuccess: () => invalidate(),
     onError: (err) => toast.error(logErrorMessage(err, "Could not update the deal")),
-  });
-
-  const noteMutation = useMutation({
-    mutationFn: (notes: string | null) => updateInvestor(startupId, investorId!, { notes }),
-    onSuccess: (_investor, notes) => {
-      setNoteDraft(notes ?? "");
-      setNoteEditing(false);
-      toast.success(notes ? "Investor note saved" : "Investor note removed");
-      invalidateDealData(queryClient, startupId);
-    },
-    onError: (err) => toast.error(logErrorMessage(err, "Could not update the investor note")),
   });
 
   const saveLogMutation = useMutation({
@@ -330,6 +312,23 @@ export function DealDetailDialog({
       invalidate();
     },
     onError: (err) => toast.error(scheduleMeetingErrorMessage(err)),
+  });
+
+  const addNoteMutation = useMutation({
+    mutationFn: (description: string) =>
+      createInteractionLog(startupId, {
+        investorId: investorId!,
+        pipelineId: deal!.id,
+        type: "note",
+        interactionDate: new Date().toISOString(),
+        description,
+      }),
+    onSuccess: () => {
+      toast.success("Note added");
+      setAddNoteOpen(false);
+      invalidate();
+    },
+    onError: (err) => toast.error(logErrorMessage(err, "Could not add the note")),
   });
 
   const canSendEmail = Boolean(deal?.investor.email) && googleStatus.data?.connected === true;
@@ -768,51 +767,6 @@ export function DealDetailDialog({
               </dl>
               </>}
 
-              <section aria-label="Investor notes" className="rounded-xl border border-border/70 bg-surface/40 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <div className="grid h-8 w-8 place-items-center rounded-lg bg-muted text-muted-foreground"><StickyNote className="h-4 w-4" /></div>
-                    <div>
-                      <h3 className="text-sm font-semibold">Investor notes</h3>
-                      <p className="text-xs text-muted-foreground">Shared contact context, visible anywhere this investor appears.</p>
-                    </div>
-                  </div>
-                  {canUpdate && !noteEditing && (
-                    <Button type="button" size="sm" variant="ghost" onClick={() => setNoteEditing(true)}>
-                      {investor.notes ? <Pencil className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                      {investor.notes ? "Edit" : "Add note"}
-                    </Button>
-                  )}
-                </div>
-
-                {noteEditing ? (
-                  <div className="mt-4 space-y-3">
-                    <Textarea
-                      value={noteDraft}
-                      onChange={(event) => setNoteDraft(event.target.value)}
-                      placeholder="Add context from conversations, preferences, or relationship history…"
-                      maxLength={2000}
-                      className="min-h-28 resize-y bg-card"
-                      autoFocus
-                    />
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-[11px] text-muted-foreground">{noteDraft.length}/2000</span>
-                      <div className="flex gap-2">
-                        <Button type="button" size="sm" variant="ghost" onClick={() => { setNoteDraft(investor.notes ?? ""); setNoteEditing(false); }}>Cancel</Button>
-                        <Button type="button" size="sm" disabled={noteMutation.isPending} onClick={() => noteMutation.mutate(noteDraft.trim() || null)}><Save className="h-3.5 w-3.5" />{noteMutation.isPending ? "Saving…" : "Save note"}</Button>
-                      </div>
-                    </div>
-                  </div>
-                ) : investor.notes ? (
-                  <div className="mt-4">
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{investor.notes}</p>
-                    <NoteByline contact={investor} authorNames={authorNames} />
-                    {canUpdate && <Button type="button" size="sm" variant="ghost" className="mt-3 h-8 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={noteMutation.isPending} onClick={() => setNoteDeleteOpen(true)}><Trash2 className="h-3.5 w-3.5" /> Remove note</Button>}
-                  </div>
-                ) : (
-                  <p className="mt-4 text-sm text-muted-foreground">No notes have been added for this investor.</p>
-                )}
-              </section>
               </>}
 
               {activeTab === "tasks" && (
@@ -824,9 +778,16 @@ export function DealDetailDialog({
               )}
 
               {activeTab === "activity" && <div>
-                <div className="mb-5">
-                  <h3 className="font-display text-base font-semibold">Activity</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">Interactions and stage changes, newest first.</p>
+                <div className="mb-5 flex items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-display text-base font-semibold">Activity</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Interactions and stage changes, newest first.</p>
+                  </div>
+                  {canCreate && (
+                    <Button size="sm" variant="outline" onClick={() => setAddNoteOpen(true)}>
+                      <StickyNote className="h-3.5 w-3.5" /> Add note
+                    </Button>
+                  )}
                 </div>
                 {/* The sheet itself scrolls now that it's full-height, so the
                     timeline no longer needs its own bounded scroll area. */}
@@ -900,6 +861,14 @@ export function DealDetailDialog({
         onSubmit={(values) => scheduleMutation.mutate(values)}
       />
 
+      <AddNoteDialog
+        open={addNoteOpen}
+        onOpenChange={setAddNoteOpen}
+        investorName={investor?.fullName ?? ""}
+        isSubmitting={addNoteMutation.isPending}
+        onSubmit={(description) => addNoteMutation.mutate(description)}
+      />
+
       <Dialog
         open={pendingLogDelete !== null}
         onOpenChange={(open) => !open && setPendingLogDelete(null)}
@@ -960,16 +929,6 @@ export function DealDetailDialog({
         }
       />
 
-      <ConfirmDialog
-        open={noteDeleteOpen}
-        onOpenChange={setNoteDeleteOpen}
-        title="Remove this investor note?"
-        description="The note is deleted for everyone who can see this contact, along with who wrote it. Logged interactions are not affected."
-        confirmLabel="Remove note"
-        pendingLabel="Removing…"
-        isPending={noteMutation.isPending}
-        onConfirm={() => noteMutation.mutate(null, { onSuccess: () => setNoteDeleteOpen(false) })}
-      />
 
       <PassReasonDialog
         open={passReasonOpen}
