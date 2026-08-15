@@ -24,10 +24,12 @@ import { usePermissions } from "../../../hooks/usePermissions";
 import { useAuth } from "../../../hooks/useAuth";
 import { useMediaQuery } from "../../../hooks/useMediaQuery";
 import { useActiveStartupId } from "../../../hooks/useWorkspace";
+import { useGoogleConnectionStatus } from "../../../hooks/useGoogleConnection";
 import { useAppStore } from "../../../lib/app-store";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
 import { cn } from "../../../lib/utils";
-import { createInteractionLog, listInteractionLogs } from "../../../lib/interaction-log-api";
+import { listInteractionLogs } from "../../../lib/interaction-log-api";
+import { scheduleMeeting } from "../../../lib/calendar-api";
 import {
   DEFAULT_PROBABILITY_BY_STAGE,
   STAGES,
@@ -58,7 +60,7 @@ import {
   qk,
 } from "../../../lib/query-keys";
 import { listMembers } from "../../../lib/team-api";
-import { LogInteractionDialog, type LogFormValues } from "../Investors/LogInteractionDialog";
+import { ScheduleMeetingDialog, type ScheduleFormValues } from "../Investors/ScheduleMeetingDialog";
 import { AddDealDialog, type AddDealValues } from "./AddDealDialog";
 import { BulkActionsBar } from "./BulkActionsBar";
 import { TaskDialog } from "./TaskDialog";
@@ -110,6 +112,22 @@ function pipelineErrorMessage(err: unknown, fallback: string): string {
   }
 }
 
+function scheduleMeetingErrorMessage(err: unknown): string {
+  switch (apiErrorCode(err)) {
+    case "INVESTOR_EMAIL_MISSING":
+      return "This investor has no email on file.";
+    case "GOOGLE_NOT_CONNECTED":
+      return "Connect your Google account in Settings to schedule meetings.";
+    case "GOOGLE_NEEDS_REAUTH":
+    case "GOOGLE_INSUFFICIENT_SCOPE":
+      return "Your Google connection needs to be reconnected — see Settings.";
+    case "CALENDAR_EVENT_FAILED":
+      return "Google rejected the request. Please try again.";
+    default:
+      return apiErrorMessage(err, "Could not schedule the meeting", FORBIDDEN_HINT);
+  }
+}
+
 /**
  * closestCorners (or closestCenter alone) recomputes a distance to every
  * droppable on each pointer move, so hovering near the boundary between two
@@ -128,6 +146,7 @@ export function Pipeline() {
   const startupId = useActiveStartupId();
   const { user } = useAuth();
   const { can } = usePermissions();
+  const googleStatus = useGoogleConnectionStatus();
   const queryClient = useQueryClient();
   const preferredRoundId = useAppStore((s) => s.activeRoundIds[startupId]);
   const setActiveRoundId = useAppStore((s) => s.setActiveRoundId);
@@ -150,8 +169,8 @@ export function Pipeline() {
     const requested = new URLSearchParams(window.location.search).get("view");
     return requested === "focus" || requested === "tasks" || requested === "analytics" ? requested : "board";
   });
-  // Logging straight from the focus list, without opening the deal first.
-  const [quickLogDeal, setQuickLogDeal] = useState<PipelineEntry | null>(null);
+  // Scheduling straight from the focus list, without opening the deal first.
+  const [quickScheduleDeal, setQuickScheduleDeal] = useState<PipelineEntry | null>(null);
   // Same idea for the next step: a card or focus row can set one without the
   // detour through the deal sheet.
   const [quickTaskDealId, setQuickTaskDealId] = useState<string | null>(null);
@@ -525,21 +544,28 @@ export function Pipeline() {
     onError: (err) => toast.error(pipelineErrorMessage(err, "Could not remove the deal")),
   });
 
-  const quickLogMutation = useMutation({
-    mutationFn: (values: LogFormValues) =>
-      createInteractionLog(startupId, {
-        investorId: quickLogDeal!.investorId,
-        pipelineId: quickLogDeal!.id,
-        ...values,
+  const quickScheduleMutation = useMutation({
+    mutationFn: (values: ScheduleFormValues) =>
+      scheduleMeeting(startupId, quickScheduleDeal!.investorId, {
+        pipelineId: quickScheduleDeal!.id,
+        type: values.type,
+        startDateTime: values.startDateTime,
+        durationMinutes: values.durationMinutes,
+        subject: values.subject ?? undefined,
+        description: values.description ?? undefined,
       }),
-    onSuccess: () => {
+    onSuccess: (result) => {
       // The API closes whatever follow-ups this interaction satisfied, so the
       // row usually leaves the focus list on its own.
-      toast.success("Interaction logged");
-      setQuickLogDeal(null);
+      toast.success(
+        result.logCreated
+          ? "Meeting scheduled and logged"
+          : "Meeting scheduled — it'll appear in the timeline shortly",
+      );
+      setQuickScheduleDeal(null);
       invalidateLogs();
     },
-    onError: (err) => toast.error(pipelineErrorMessage(err, "Could not save the interaction")),
+    onError: (err) => toast.error(scheduleMeetingErrorMessage(err)),
   });
 
   /** Used by the card's "Move to stage" menu — always lands at the bottom of the target column. */
@@ -788,8 +814,9 @@ export function Pipeline() {
           items={focusItems}
           currency={currency}
           canCreate={canCreate}
+          googleConnected={googleStatus.data?.connected === true}
           onOpen={(deal) => setOpenDealId(deal.id)}
-          onLog={setQuickLogDeal}
+          onSchedule={setQuickScheduleDeal}
           onAddTask={(deal) => setQuickTaskDealId(deal.id)}
         />
       )}
@@ -1001,12 +1028,13 @@ export function Pipeline() {
         }
       />
 
-      <LogInteractionDialog
-        open={quickLogDeal !== null}
-        onOpenChange={(open) => !open && setQuickLogDeal(null)}
-        investorName={quickLogDeal?.investor.fullName ?? ""}
-        isSubmitting={quickLogMutation.isPending}
-        onSubmit={(values) => quickLogMutation.mutate(values)}
+      <ScheduleMeetingDialog
+        open={quickScheduleDeal !== null}
+        onOpenChange={(open) => !open && setQuickScheduleDeal(null)}
+        investorName={quickScheduleDeal?.investor.fullName ?? ""}
+        investorEmail={quickScheduleDeal?.investor.email ?? ""}
+        isSubmitting={quickScheduleMutation.isPending}
+        onSubmit={(values) => quickScheduleMutation.mutate(values)}
       />
 
       <PassReasonDialog

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { authenticate } from "../middleware/auth";
 import { requireMember, requirePermission } from "../middleware/rbac";
-import { emailSendRateLimiter } from "../middleware/rate-limiter";
+import { emailSendRateLimiter, scheduleMeetingRateLimiter } from "../middleware/rate-limiter";
 import { validate } from "../utils/validate";
 import { startupIdParamSchema } from "../validators/startup.schemas";
 import {
@@ -12,9 +12,11 @@ import {
 } from "../validators/investor.schemas";
 import { listInteractionLogQuerySchema } from "../validators/interaction-log.schemas";
 import { sendInvestorEmailSchema } from "../validators/gmail.schemas";
+import { scheduleMeetingSchema } from "../validators/calendar-event.schemas";
 import { investorController } from "../controllers/investor.controller";
 import { interactionLogController } from "../controllers/interaction-log.controller";
 import { gmailController } from "../controllers/gmail.controller";
+import { calendarEventController } from "../controllers/calendar-event.controller";
 
 // Mounted at /api/v1/startups/:startupId/investors — mergeParams keeps
 // :startupId visible to the RBAC middleware and the controllers.
@@ -94,6 +96,18 @@ router.post(
   emailSendRateLimiter,
   validate(sendInvestorEmailSchema),
   gmailController.sendEmail,
+);
+
+// POST /api/v1/startups/:startupId/investors/:investorId/schedule-meeting — pipeline:create
+router.post(
+  "/:investorId/schedule-meeting",
+  authenticate,
+  validate(investorIdParamSchema, "params"),
+  requireMember,
+  requirePermission("pipeline", "create"),
+  scheduleMeetingRateLimiter,
+  validate(scheduleMeetingSchema),
+  calendarEventController.scheduleMeeting,
 );
 
 export { router as investorRouter };

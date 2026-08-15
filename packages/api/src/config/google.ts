@@ -10,11 +10,16 @@ import { getGoogleRedirectUri } from "./env";
  * (app-verification required, but not the restricted-scope CASA tier). See
  * plan.md — deliberately staying off restricted scopes is what keeps this
  * integration reachable without an annual third-party security assessment.
+ *
+ * calendar.events (not .readonly): scheduling writes events, so the grant
+ * needs write access too — still the same sensitive tier as the read-only
+ * scope it replaces. A connection made under the old readonly-only grant
+ * will 403 on a write until the founder reconnects through Settings.
  */
 export const GOOGLE_OAUTH_SCOPES = [
   "openid",
   "email",
-  "https://www.googleapis.com/auth/calendar.events.readonly",
+  "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/gmail.send",
 ] as const;
 

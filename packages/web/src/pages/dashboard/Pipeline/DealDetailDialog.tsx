@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, ChevronDown, Crown, History, LayoutDashboard, Linkedin, ListChecks, Mail, Pencil, Plus, Save, Sparkles, StickyNote, Trash2 } from "lucide-react";
+import { ArrowRight, CalendarPlus, ChevronDown, Crown, History, LayoutDashboard, Linkedin, ListChecks, Mail, Pencil, Plus, Save, Sparkles, StickyNote, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
 import { Button } from "../../../components/ui/button";
@@ -35,6 +35,7 @@ import {
   type InteractionLog,
 } from "../../../lib/interaction-log-api";
 import { sendInvestorEmail } from "../../../lib/gmail-api";
+import { scheduleMeeting } from "../../../lib/calendar-api";
 import { INVESTOR_TYPE_LABELS, updateInvestor, type InvestorType } from "../../../lib/investor-api";
 import { DEFAULT_PROBABILITY_BY_STAGE, STAGES, type PipelineStageId } from "../../../lib/mock-data";
 import { fetchAllPages } from "../../../lib/pagination";
@@ -63,6 +64,7 @@ import { cn, formatCompactMoney, getInitials } from "../../../lib/utils";
 import { ComposeEmailDialog, type ComposeFormValues } from "../Investors/ComposeEmailDialog";
 import { InteractionTimeline } from "../Investors/InteractionTimeline";
 import { LogInteractionDialog, type LogFormValues } from "../Investors/LogInteractionDialog";
+import { ScheduleMeetingDialog, type ScheduleFormValues } from "../Investors/ScheduleMeetingDialog";
 import { NoteByline } from "../Investors/NoteByline";
 import {
   formatDateTime,
@@ -132,6 +134,24 @@ function sendEmailErrorMessage(err: unknown): string {
   }
 }
 
+function scheduleMeetingErrorMessage(err: unknown): string {
+  switch (apiErrorCode(err)) {
+    case "INVESTOR_EMAIL_MISSING":
+      return "This investor has no email on file.";
+    case "PIPELINE_MISMATCH":
+      return "That pipeline entry belongs to a different contact.";
+    case "GOOGLE_NOT_CONNECTED":
+      return "Connect your Google account in Settings to schedule meetings.";
+    case "GOOGLE_NEEDS_REAUTH":
+    case "GOOGLE_INSUFFICIENT_SCOPE":
+      return "Your Google connection needs to be reconnected — see Settings.";
+    case "CALENDAR_EVENT_FAILED":
+      return "Google rejected the request. Please try again.";
+    default:
+      return apiErrorMessage(err, "Could not schedule the meeting");
+  }
+}
+
 export function DealDetailDialog({
   startupId,
   deal,
@@ -153,6 +173,7 @@ export function DealDetailDialog({
   const [editingLog, setEditingLog] = useState<InteractionLog | null>(null);
   const [pendingLogDelete, setPendingLogDelete] = useState<InteractionLog | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   const googleStatus = useGoogleConnectionStatus();
   const [amount, setAmount] = useState("");
@@ -289,11 +310,40 @@ export function DealDetailDialog({
     onError: (err) => toast.error(sendEmailErrorMessage(err)),
   });
 
+  const scheduleMutation = useMutation({
+    mutationFn: (values: ScheduleFormValues) =>
+      scheduleMeeting(startupId, investorId!, {
+        pipelineId: deal!.id,
+        type: values.type,
+        startDateTime: values.startDateTime,
+        durationMinutes: values.durationMinutes,
+        subject: values.subject ?? undefined,
+        description: values.description ?? undefined,
+      }),
+    onSuccess: (result) => {
+      toast.success(
+        result.logCreated
+          ? "Meeting scheduled and logged"
+          : "Meeting scheduled — it'll appear in the timeline shortly",
+      );
+      setScheduleOpen(false);
+      invalidate();
+    },
+    onError: (err) => toast.error(scheduleMeetingErrorMessage(err)),
+  });
+
   const canSendEmail = Boolean(deal?.investor.email) && googleStatus.data?.connected === true;
   const composeDisabledReason = !deal?.investor.email
     ? "This investor has no email on file"
     : googleStatus.data?.connected !== true
       ? "Connect your Google account in Settings to send email"
+      : undefined;
+
+  const canSchedule = Boolean(deal?.investor.email) && googleStatus.data?.connected === true;
+  const scheduleDisabledReason = !deal?.investor.email
+    ? "This investor has no email on file"
+    : googleStatus.data?.connected !== true
+      ? "Connect your Google account in Settings to schedule meetings"
       : undefined;
 
   const commitAmount = () => {
@@ -427,13 +477,13 @@ export function DealDetailDialog({
 
   const recommendation = (() => {
     if (!deal) return null;
-    if (deal.stage === "passed") return { title: "Decide whether to reopen this relationship", detail: "This deal is closed and will not appear in the active pipeline.", label: "Review stage", action: () => moveToStage("sourced") };
-    if (focusReason === "overdue") return { title: "Complete or reschedule the overdue next step", detail: "This investor is at risk of going cold while an assigned task is overdue.", label: "Review tasks", action: () => setActiveTab("tasks") };
-    if (focusReason === "today") return { title: "Follow up today", detail: "A next step is due today. Close it out or set the next commitment.", label: "Review tasks", action: () => setActiveTab("tasks") };
-    if (focusReason === "missing") return { title: "Add a clear next step", detail: "This deal has no open task, owner action, or scheduled follow-up.", label: "Add next step", action: () => setActiveTab("tasks") };
-    if (focusReason === "quiet") return { title: "Restart the conversation", detail: "There has been no recent interaction with this investor.", label: "Log follow-up", action: () => { setEditingLog(null); setLogOpen(true); } };
-    if (deal.stage === "sourced") return { title: "Make the first approach", detail: "Move this investor from research into an active conversation.", label: "Log outreach", action: () => { setEditingLog(null); setLogOpen(true); } };
-    return { title: "Keep the momentum visible", detail: "Log the latest conversation and make sure a next step is assigned.", label: "Log interaction", action: () => { setEditingLog(null); setLogOpen(true); } };
+    if (deal.stage === "passed") return { title: "Decide whether to reopen this relationship", detail: "This deal is closed and will not appear in the active pipeline.", label: "Review stage", action: () => moveToStage("sourced"), needsGoogle: false };
+    if (focusReason === "overdue") return { title: "Complete or reschedule the overdue next step", detail: "This investor is at risk of going cold while an assigned task is overdue.", label: "Review tasks", action: () => setActiveTab("tasks"), needsGoogle: false };
+    if (focusReason === "today") return { title: "Follow up today", detail: "A next step is due today. Close it out or set the next commitment.", label: "Review tasks", action: () => setActiveTab("tasks"), needsGoogle: false };
+    if (focusReason === "missing") return { title: "Add a clear next step", detail: "This deal has no open task, owner action, or scheduled follow-up.", label: "Add next step", action: () => setActiveTab("tasks"), needsGoogle: false };
+    if (focusReason === "quiet") return { title: "Restart the conversation", detail: "There has been no recent interaction with this investor.", label: "Schedule follow-up", action: () => setScheduleOpen(true), needsGoogle: true };
+    if (deal.stage === "sourced") return { title: "Make the first approach", detail: "Move this investor from research into an active conversation.", label: "Schedule outreach", action: () => setScheduleOpen(true), needsGoogle: true };
+    return { title: "Keep the momentum visible", detail: "Schedule the next conversation and make sure a next step is assigned.", label: "Schedule call", action: () => setScheduleOpen(true), needsGoogle: true };
   })();
 
   return (
@@ -479,13 +529,12 @@ export function DealDetailDialog({
                 {canCreate && (
                   <Button
                     size="sm"
-                    onClick={() => {
-                      setEditingLog(null);
-                      setLogOpen(true);
-                    }}
+                    disabled={!canSchedule}
+                    title={scheduleDisabledReason}
+                    onClick={() => setScheduleOpen(true)}
                   >
-                    <Plus className="h-4 w-4" />
-                    Log interaction
+                    <CalendarPlus className="h-4 w-4" />
+                    Schedule
                   </Button>
                 )}
               </div>
@@ -520,7 +569,7 @@ export function DealDetailDialog({
                   <div className="relative flex flex-wrap items-center gap-3">
                     <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary"><Sparkles className="h-5 w-5" /></div>
                     <div className="min-w-48 flex-1"><p className="font-mono text-[10px] uppercase tracking-widest text-primary">Recommended next action</p><h3 className="mt-1 text-sm font-semibold">{recommendation.title}</h3><p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{recommendation.detail}</p></div>
-                    {canUpdate && <Button type="button" size="sm" onClick={recommendation.action}>{recommendation.label}<ArrowRight className="h-3.5 w-3.5" /></Button>}
+                    {canUpdate && <Button type="button" size="sm" disabled={recommendation.needsGoogle && !canSchedule} title={recommendation.needsGoogle ? scheduleDisabledReason : undefined} onClick={recommendation.action}>{recommendation.label}<ArrowRight className="h-3.5 w-3.5" /></Button>}
                   </div>
                 </section>
               )}
@@ -840,6 +889,15 @@ export function DealDetailDialog({
         investorEmail={investor?.email ?? ""}
         isSubmitting={sendEmailMutation.isPending}
         onSubmit={(values) => sendEmailMutation.mutate(values)}
+      />
+
+      <ScheduleMeetingDialog
+        open={scheduleOpen}
+        onOpenChange={setScheduleOpen}
+        investorName={investor?.fullName ?? ""}
+        investorEmail={investor?.email ?? ""}
+        isSubmitting={scheduleMutation.isPending}
+        onSubmit={(values) => scheduleMutation.mutate(values)}
       />
 
       <Dialog

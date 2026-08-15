@@ -42,6 +42,17 @@ vi.mock("../../lib/interaction-log-api", async (importOriginal) => ({
   deleteInteractionLog: vi.fn(),
 }));
 
+const scheduleMeeting = vi.fn();
+vi.mock("../../lib/calendar-api", () => ({
+  scheduleMeeting: (...a: unknown[]) => scheduleMeeting(...a),
+}));
+
+// The compose/schedule buttons are gated on a connected Google account —
+// this suite isn't testing that gate, so it's stubbed connected throughout.
+vi.mock("../../hooks/useGoogleConnection", () => ({
+  useGoogleConnectionStatus: () => ({ data: { connected: true, configured: true } }),
+}));
+
 const listTasks = vi.fn();
 const createTask = vi.fn();
 const updateTask = vi.fn();
@@ -817,21 +828,30 @@ describe("Pipeline board", () => {
     expect(within(dialog).getByText("1 mo")).toBeInTheDocument();
   });
 
-  it("logs an interaction straight from the focus list against the deal", async () => {
+  it("schedules a meeting straight from the focus list against the deal", async () => {
     getPipelineFocus.mockResolvedValue([
       focusEntry({ reason: "overdue", nextTaskDueDate: daysFromNow(-4) }),
     ]);
-    createInteractionLog.mockResolvedValue(log({ id: "log-2" }));
+    scheduleMeeting.mockResolvedValue({
+      eventId: "event-1",
+      htmlLink: "https://calendar.google.com/event-1",
+      logCreated: true,
+    });
     const user = userEvent.setup();
     renderPipeline();
 
     await user.click(await screen.findByRole("tab", { name: /Focus/ }));
-    await user.click(await screen.findByRole("button", { name: "Log" }));
-    await user.click(await screen.findByRole("button", { name: "Log interaction" }));
+    await user.click(await screen.findByRole("button", { name: "Schedule" }));
+    await user.click(await screen.findByRole("button", { name: "When" }));
+    await user.click(await screen.findByRole("button", { name: new Date().toDateString() }));
+    await user.keyboard("{Escape}");
+    await user.click(await screen.findByRole("button", { name: "Schedule & invite" }));
 
-    await waitFor(() => expect(createInteractionLog).toHaveBeenCalled());
-    const [, input] = createInteractionLog.mock.calls[0];
-    expect(input).toMatchObject({ investorId: "inv-1", pipelineId: "deal-1" });
+    await waitFor(() => expect(scheduleMeeting).toHaveBeenCalled());
+    const [startupId, investorId, input] = scheduleMeeting.mock.calls[0];
+    expect(startupId).toBe("startup-1");
+    expect(investorId).toBe("inv-1");
+    expect(input).toMatchObject({ pipelineId: "deal-1" });
   });
 
   it("tells you when nothing needs chasing", async () => {

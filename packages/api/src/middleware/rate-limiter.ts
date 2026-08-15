@@ -81,3 +81,20 @@ export const emailSendRateLimiter = rateLimit({
     error: "Too many emails sent — please wait before sending more.",
   },
 });
+
+/**
+ * Scheduling a meeting sends the investor a calendar invite email, same
+ * mailbox-flooding surface as emailSendRateLimiter — same cap, same per-user
+ * keying, its own budget.
+ */
+export const scheduleMeetingRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1_000, // 1 hour
+  max: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  store: makeStore("schedule-meeting"),
+  keyGenerator: (req) => req.user?.userId ?? req.ip ?? "unknown",
+  message: {
+    error: "Too many meetings scheduled — please wait before scheduling more.",
+  },
+});
