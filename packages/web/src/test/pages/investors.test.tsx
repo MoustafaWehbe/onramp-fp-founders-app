@@ -28,6 +28,9 @@ vi.mock("../../lib/fundraising-api", async (importOriginal) => ({
   listFundraisingRounds: vi.fn().mockResolvedValue({ data: [], meta: {} }),
 }));
 vi.mock("../../hooks/useWorkspace", () => ({ useActiveStartupId: () => "startup-1" }));
+vi.mock("../../hooks/useGoogleConnection", () => ({
+  useGoogleConnectionStatus: () => ({ data: { connected: true, configured: true } }),
+}));
 
 let role = "owner";
 vi.mock("../../hooks/usePermissions", async (importOriginal) => {
@@ -127,7 +130,7 @@ describe("Investors", () => {
   it("labels both tabs from the counts in one response", async () => {
     renderInvestors();
 
-    // Wait for the response, not just the request — the badges start at 0.
+    // Wait for the response, not just the request the badges start at 0.
     await screen.findAllByText("Ada Lovelace");
     const tabs = screen.getAllByRole("tab");
     expect(within(tabs[0]).getByText("2")).toBeInTheDocument();
@@ -293,8 +296,9 @@ describe("Investors", () => {
     renderInvestors();
 
     await screen.findAllByText("Ada Lovelace");
-    await user.click(screen.getAllByLabelText("Select Ada Lovelace")[0]);
-    await user.click(screen.getAllByLabelText("Select Grace Hopper")[0]);
+    await user.click(screen.getByRole("button", { name: "Select" }));
+    await user.click(screen.getAllByText("Ada Lovelace")[0]);
+    await user.click(screen.getAllByText("Grace Hopper")[0]);
     await user.click(screen.getByRole("button", { name: /Add to pipeline/ }));
 
     await waitFor(() => expect(createPipelineEntry).toHaveBeenCalledTimes(2));
@@ -322,15 +326,16 @@ describe("Investors", () => {
     renderInvestors();
 
     await screen.findAllByText("Ada Lovelace");
-    await user.click(screen.getAllByLabelText("Select Ada Lovelace")[0]);
-    await user.click(screen.getAllByLabelText("Select Grace Hopper")[0]);
+    await user.click(screen.getByRole("button", { name: "Select" }));
+    await user.click(screen.getAllByText("Ada Lovelace")[0]);
+    await user.click(screen.getAllByText("Grace Hopper")[0]);
     await user.click(screen.getByRole("button", { name: /Add to pipeline/ }));
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("1 added, 1 could not be added")),
     );
-    expect(screen.getAllByLabelText("Select Ada Lovelace")[0]).not.toBeChecked();
-    expect(screen.getAllByLabelText("Select Grace Hopper")[0]).toBeChecked();
+    expect(screen.getAllByText("Ada Lovelace")[0].closest("tr")).toHaveAttribute("aria-selected", "false");
+    expect(screen.getAllByText("Grace Hopper")[0].closest("tr")).toHaveAttribute("aria-selected", "true");
   });
 
   it("gives a viewer no way to add, edit or delete", async () => {

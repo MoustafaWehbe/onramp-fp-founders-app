@@ -275,7 +275,7 @@ describe("InvestorService.listInvestors", () => {
     (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([
       { id: CONTACT_ID, fullName: "Ada", pipeline: [] },
     ]);
-    // Three grouped queries now share this mock — the follow-up one asks for
+    // Three grouped queries now share this mock the follow-up one asks for
     // _min, the two last-touch ones for _max.
     (mockPrisma.interactionLog.groupBy as jest.Mock).mockImplementation((args) =>
       Promise.resolve(
@@ -366,7 +366,7 @@ describe("InvestorService.listInvestors", () => {
     await service.listInvestors(STARTUP_ID, DEFAULT_QUERY as never);
 
     // One for the follow-up date, two for last contact (dated vs. undated
-    // logs) — constant regardless of how many contacts are on the page.
+    // logs) constant regardless of how many contacts are on the page.
     expect(mockPrisma.interactionLog.groupBy).toHaveBeenCalledTimes(3);
     expect(mockPrisma.interactionLog.groupBy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -505,7 +505,7 @@ describe("InvestorService.updateInvestor", () => {
   });
 
   // Note authorship is derived from the authenticated caller, never trusted
-  // from the body — the same rule completedAt follows on tasks.
+  // from the body the same rule completedAt follows on tasks.
   describe("note authorship", () => {
     const USER_ID = "00000000-0000-0000-0000-000000000009";
     const EDITOR_ID = "00000000-0000-0000-0000-00000000000a";
@@ -652,7 +652,7 @@ describe("InvestorService.deleteInvestor", () => {
       message: "This contact has interaction logs and cannot be deleted",
     });
 
-    // The FK cascades — without the guard this delete would have destroyed the
+    // The FK cascades without the guard this delete would have destroyed the
     // logged history instead of failing.
     expect(mockPrisma.startupInvestor.delete).not.toHaveBeenCalled();
   });

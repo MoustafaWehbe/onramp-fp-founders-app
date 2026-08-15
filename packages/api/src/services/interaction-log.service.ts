@@ -9,7 +9,7 @@ import type {
 
 /**
  * nextFollowupDate / followupCompletedAt are read-only history. Tasks
- * superseded follow-ups, so nothing writes these any more — the columns and
+ * superseded follow-ups, so nothing writes these any more the columns and
  * the rows already in them are kept so past logs still show what was planned
  * at the time, and both stay in the response for that reason.
  */
@@ -24,6 +24,8 @@ const LOG_SELECT = {
   interactionDate: true,
   nextFollowupDate: true,
   followupCompletedAt: true,
+  source: true,
+  externalId: true,
   createdAt: true,
 } as const;
 
@@ -38,6 +40,8 @@ type LogRow = {
   interactionDate: Date | null;
   nextFollowupDate: Date | null;
   followupCompletedAt: Date | null;
+  source: string;
+  externalId: string | null;
   createdAt: Date;
 };
 
@@ -53,6 +57,8 @@ function serializeLog(row: LogRow) {
     interactionDate: row.interactionDate,
     nextFollowupDate: row.nextFollowupDate,
     followupCompletedAt: row.followupCompletedAt,
+    source: row.source,
+    externalId: row.externalId,
     createdAt: row.createdAt,
   };
 }
@@ -117,7 +123,7 @@ export class InteractionLogService {
       return { data: serializeLog(log) };
     } catch (err) {
       // The composite FK ( [pipelineId, startupInvestorId] ) enforces pipeline-contact
-      // consistency at the DB level — translate a violation into a clean 422.
+      // consistency at the DB level translate a violation into a clean 422.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
         throw createError(
           "Pipeline entry does not belong to this investor contact",
@@ -130,11 +136,12 @@ export class InteractionLogService {
   }
 
   async listLogs(startupId: string, query: ListInteractionLogQuery) {
-    const { page, limit } = query;
+    const { page, limit, source } = query;
 
-    // InteractionLog has no startupId — scope through the startup's contacts.
+    // InteractionLog has no startupId scope through the startup's contacts.
     const where: Prisma.InteractionLogWhereInput = {
       startupInvestor: { startupId },
+      ...(source && { source }),
     };
 
     const [total, rows] = await Promise.all([
@@ -207,6 +214,9 @@ export class InteractionLogService {
           ...(input.interactionDate !== undefined && { interactionDate: input.interactionDate }),
           ...(input.subject !== undefined && { subject: input.subject }),
           ...(input.description !== undefined && { description: input.description }),
+          // A human just touched this row through the normal edit path from
+          // here on, sync must never overwrite or retract it on its own.
+          editedByUser: true,
         },
         select: LOG_SELECT,
       });

@@ -125,7 +125,7 @@ beforeEach(() => {
     commitment("d", 40_000, "withdrawn"),
   ];
   // A status tile filters through a real request, so the mock has to answer
-  // that request the way the API would — only the matching rows.
+  // that request the way the API would only the matching rows.
   listCommitments.mockImplementation((..._args: unknown[]) => {
     const status = _args[2] as Commitment["status"] | undefined;
     const data = status ? allCommitments.filter((c) => c.status === status) : allCommitments;
@@ -147,7 +147,7 @@ describe("Fundraising round totals", () => {
     renderPage();
 
     // The metric titles render before the commitments query resolves, so wait
-    // on a value — otherwise the tiles are asserted while still showing zero.
+    // on a value otherwise the tiles are asserted while still showing zero.
     const totals = within(await screen.findByRole("region", { name: "Round totals" }));
     const wiredValue = await totals.findByText("$120,000");
     expect(within(wiredValue.parentElement!).getByText("Wired")).toBeInTheDocument();
@@ -174,7 +174,7 @@ describe("Fundraising round totals", () => {
 
     renderPage();
 
-    // 1.15M against a 1M target — a decision to make, not a silent overflow.
+    // 1.15M against a 1M target a decision to make, not a silent overflow.
     const value = await within(await screen.findByRole("region", { name: "Round totals" })).findByText("$150,000");
     expect(within(value.parentElement!).getByText("Oversubscribed")).toBeInTheDocument();
   });

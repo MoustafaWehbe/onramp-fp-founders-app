@@ -10,7 +10,7 @@ import {
 } from "../../../components/ui/dialog";
 import { Textarea } from "../../../components/ui/textarea";
 
-/** Convenience chips only — the field itself stays free text. */
+/** Convenience chips only the field itself stays free text. */
 const SUGGESTIONS = ["Not a fit", "Timing", "No response", "Went with another investor"];
 
 type PassReasonDialogProps = {
@@ -23,7 +23,7 @@ type PassReasonDialogProps = {
 
 /**
  * The server refuses a move to "passed" without a reason, so every path that
- * can make that move has to collect one first — the deal sheet's button, the
+ * can make that move has to collect one first the deal sheet's button, the
  * card's stage menu, and a drag into the Passed column all share this.
  */
 export function PassReasonDialog({
@@ -46,7 +46,7 @@ export function PassReasonDialog({
         <DialogHeader>
           <DialogTitle>Why did {investorName} pass?</DialogTitle>
           <DialogDescription>
-            This is kept on the deal's history — reopening later doesn't erase it.
+            This is kept on the deal's history reopening later doesn't erase it.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-wrap gap-1.5">

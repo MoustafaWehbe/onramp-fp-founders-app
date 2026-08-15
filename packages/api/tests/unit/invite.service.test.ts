@@ -56,6 +56,7 @@ describe("InviteService.inviteMember", () => {
     (mockPrisma.role.findUnique as jest.Mock).mockResolvedValue({
       id: ROLE_ID,
       startupId: STARTUP_ID,
+      name: "viewer",
     });
     (mockPrisma.startupMember.findFirst as jest.Mock).mockResolvedValue(null);
     (mockPrisma.startupMember.create as jest.Mock).mockResolvedValue({
@@ -103,6 +104,7 @@ describe("InviteService.inviteMember", () => {
     (mockPrisma.role.findUnique as jest.Mock).mockResolvedValue({
       id: ROLE_ID,
       startupId: STARTUP_ID,
+      name: "viewer",
     });
     (mockPrisma.startupMember.findFirst as jest.Mock).mockResolvedValue(null);
     (mockPrisma.startupMember.create as jest.Mock).mockResolvedValue({});
@@ -141,6 +143,7 @@ describe("InviteService.inviteMember", () => {
     (mockPrisma.role.findUnique as jest.Mock).mockResolvedValue({
       id: ROLE_ID,
       startupId: STARTUP_ID,
+      name: "viewer",
     });
     (mockPrisma.startupMember.findFirst as jest.Mock).mockResolvedValue({
       id: MEMBER_ID,
@@ -156,6 +159,7 @@ describe("InviteService.inviteMember", () => {
     (mockPrisma.role.findUnique as jest.Mock).mockResolvedValue({
       id: ROLE_ID,
       startupId: STARTUP_ID,
+      name: "viewer",
     });
     (mockPrisma.startupMember.findFirst as jest.Mock).mockResolvedValue({
       id: MEMBER_ID,
@@ -171,6 +175,7 @@ describe("InviteService.inviteMember", () => {
     (mockPrisma.role.findUnique as jest.Mock).mockResolvedValue({
       id: ROLE_ID,
       startupId: STARTUP_ID,
+      name: "viewer",
     });
     (mockPrisma.startupMember.findFirst as jest.Mock).mockResolvedValue(null);
     (mockPrisma.startupMember.create as jest.Mock).mockResolvedValue({});
@@ -224,6 +229,44 @@ describe("InviteService.inviteMember", () => {
     await expect(
       service.inviteMember({ email: "new@example.com", roleId: ROLE_ID }, STARTUP_ID, INVITER_ID, ACTOR_ID),
     ).rejects.toMatchObject({ statusCode: 403, code: "OWNER_ONLY" });
+  });
+
+  it("allows a collaborator to invite a viewer", async () => {
+    (mockPrisma.role.findUnique as jest.Mock).mockResolvedValue({
+      id: ROLE_ID,
+      startupId: STARTUP_ID,
+      name: "viewer",
+    });
+    (mockPrisma.startupMember.findFirst as jest.Mock).mockResolvedValue(null);
+    (mockPrisma.startupMember.findUnique as jest.Mock).mockResolvedValue({
+      id: ACTOR_ID,
+      startupId: STARTUP_ID,
+      status: "active",
+      role: { name: "collaborator" },
+    });
+    (mockPrisma.startupMember.create as jest.Mock).mockResolvedValue({});
+
+    await expect(
+      service.inviteMember({ email: "new@example.com", roleId: ROLE_ID }, STARTUP_ID, INVITER_ID, ACTOR_ID),
+    ).resolves.toHaveProperty("rawToken");
+  });
+
+  it("rejects a collaborator inviting into a non-viewer role", async () => {
+    (mockPrisma.role.findUnique as jest.Mock).mockResolvedValue({
+      id: ROLE_ID,
+      startupId: STARTUP_ID,
+      name: "collaborator",
+    });
+    (mockPrisma.startupMember.findUnique as jest.Mock).mockResolvedValue({
+      id: ACTOR_ID,
+      startupId: STARTUP_ID,
+      status: "active",
+      role: { name: "collaborator" },
+    });
+
+    await expect(
+      service.inviteMember({ email: "new@example.com", roleId: ROLE_ID }, STARTUP_ID, INVITER_ID, ACTOR_ID),
+    ).rejects.toMatchObject({ statusCode: 403, code: "INVITE_ROLE_FORBIDDEN" });
   });
 });
 
@@ -674,10 +717,11 @@ describe("InviteService.removeMember", () => {
           }),
           delete: jest.fn().mockResolvedValue({}),
         },
-        // Removing a member hands back what they held first — the composite
+        // Removing a member hands back what they held first the composite
         // FKs cannot SET NULL alone without nulling startupId too.
         pipeline: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         task: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        message: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       };
       return cb(tx);
     });
@@ -700,10 +744,11 @@ describe("InviteService.removeMember", () => {
           }),
           delete: jest.fn().mockResolvedValue({}),
         },
-        // Removing a member hands back what they held first — the composite
+        // Removing a member hands back what they held first the composite
         // FKs cannot SET NULL alone without nulling startupId too.
         pipeline: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         task: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        message: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       };
       return cb(tx);
     });
@@ -754,6 +799,7 @@ describe("InviteService.removeMember", () => {
         },
         pipeline: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         task: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        message: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       };
       return cb(tx);
     });
@@ -770,6 +816,7 @@ describe("InviteService.removeMember", () => {
   it("un-owns the member's deals and unassigns their tasks before deleting them", async () => {
     const pipelineUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
     const taskUpdateMany = jest.fn().mockResolvedValue({ count: 2 });
+    const messageUpdateMany = jest.fn().mockResolvedValue({ count: 3 });
     const memberDelete = jest.fn().mockResolvedValue({});
     const order: string[] = [];
 
@@ -800,6 +847,12 @@ describe("InviteService.removeMember", () => {
             return taskUpdateMany(...args);
           },
         },
+        message: {
+          updateMany: (...args: unknown[]) => {
+            order.push("message");
+            return messageUpdateMany(...args);
+          },
+        },
       };
       return cb(tx);
     });
@@ -814,8 +867,12 @@ describe("InviteService.removeMember", () => {
       where: { startupId: STARTUP_ID, assigneeId: MEMBER_ID },
       data: { assigneeId: null },
     });
-    // Both hand-backs must land before the row goes, or the FK rejects it.
-    expect(order).toEqual(["pipeline", "task", "delete"]);
+    expect(messageUpdateMany).toHaveBeenCalledWith({
+      where: { startupId: STARTUP_ID, senderId: MEMBER_ID },
+      data: { senderId: null },
+    });
+    // Every hand-back must land before the row goes, or the FK rejects it.
+    expect(order).toEqual(["pipeline", "task", "message", "delete"]);
   });
 
   it("rejects member from another startup", async () => {
@@ -875,8 +932,8 @@ describe("InviteService.claimPendingInvites", () => {
       joinedAt: expect.any(Date),
       inviteExpiresAt: null,
     });
-    // The hash is kept so the emailed link still resolves — to "you're in"
-    // rather than "invalid invitation" — now that registration has claimed it.
+    // The hash is kept so the emailed link still resolves to "you're in"
+    // rather than "invalid invitation" now that registration has claimed it.
     expect(claim.data.inviteTokenHash).toBeUndefined();
   });
 

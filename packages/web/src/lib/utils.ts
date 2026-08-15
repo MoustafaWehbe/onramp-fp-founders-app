@@ -16,7 +16,7 @@ export function getInitials(name: string, max = 2): string {
 }
 
 /**
- * Full currency formatting — $1,500,000, €250,000 — never assuming USD.
+ * Full currency formatting $1,500,000, €250,000 never assuming USD.
  * Every amount on the board belongs to a round, and a round can be raised in
  * any three-letter currency; the caller must always pass the round's own.
  */
@@ -28,7 +28,7 @@ export function formatMoney(amount: number, currency: string): string {
   }).format(amount);
 }
 
-/** Compact currency — $850, $250K, $2.5M — in the given currency, never assumed USD. */
+/** Compact currency $850, $250K, $2.5M in the given currency, never assumed USD. */
 export function formatCompactMoney(amount: number, currency: string): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",

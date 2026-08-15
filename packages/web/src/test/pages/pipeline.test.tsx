@@ -42,6 +42,17 @@ vi.mock("../../lib/interaction-log-api", async (importOriginal) => ({
   deleteInteractionLog: vi.fn(),
 }));
 
+const scheduleMeeting = vi.fn();
+vi.mock("../../lib/calendar-api", () => ({
+  scheduleMeeting: (...a: unknown[]) => scheduleMeeting(...a),
+}));
+
+// The compose/schedule buttons are gated on a connected Google account —
+// this suite isn't testing that gate, so it's stubbed connected throughout.
+vi.mock("../../hooks/useGoogleConnection", () => ({
+  useGoogleConnectionStatus: () => ({ data: { connected: true, configured: true } }),
+}));
+
 const listTasks = vi.fn();
 const createTask = vi.fn();
 const updateTask = vi.fn();
@@ -59,7 +70,7 @@ const getPipelineAnalytics = vi.fn();
 
 const listFundraisingRounds = vi.fn();
 vi.mock("../../lib/fundraising-api", async (importOriginal) => ({
-  // Keep the real status vocabularies and labels — the round picker and the
+  // Keep the real status vocabularies and labels the round picker and the
   // commit prompt render from them.
   ...(await importOriginal<typeof import("../../lib/fundraising-api")>()),
   listFundraisingRounds: (...a: unknown[]) => listFundraisingRounds(...a),
@@ -159,6 +170,8 @@ function log(overrides: Partial<InteractionLog> = {}): InteractionLog {
     interactionDate: daysFromNow(-2),
     nextFollowupDate: null,
     followupCompletedAt: null,
+    source: "manual",
+    externalId: null,
     createdAt: daysFromNow(-2),
     ...overrides,
   };
@@ -470,7 +483,7 @@ describe("Pipeline board", () => {
 
   // The board moves cards via dnd-kit (pointer-based drag, real
   // getBoundingClientRect measurement for collision detection), which jsdom
-  // can't meaningfully simulate — there's no layout engine behind it. The
+  // can't meaningfully simulate there's no layout engine behind it. The
   // reordering/column math itself is covered directly, without any DOM, in
   // src/test/pages/board-columns.test.ts. Here we only exercise the
   // non-drag path to the same mutation: the card's own "move to stage" menu.
@@ -559,7 +572,7 @@ describe("Pipeline board", () => {
 
       // The status picker is the shared Radix listbox, not a native <select>.
       await user.click(within(prompt).getByRole("combobox", { name: /Status/ }));
-      // Hard-circled means the docs are signed — the point at which the money
+      // Hard-circled means the docs are signed the point at which the money
       // is allowed to count toward the round's target.
       await user.click(await screen.findByRole("option", { name: "Hard-circled" }));
 
@@ -639,7 +652,7 @@ describe("Pipeline board", () => {
     );
   });
 
-  // A deal in a round that later closes was previously stranded — the only
+  // A deal in a round that later closes was previously stranded the only
   // way out was delete-and-recreate, which destroys its stage history.
   describe("carrying a deal into another round", () => {
     beforeEach(() => {
@@ -815,21 +828,30 @@ describe("Pipeline board", () => {
     expect(within(dialog).getByText("1 mo")).toBeInTheDocument();
   });
 
-  it("logs an interaction straight from the focus list against the deal", async () => {
+  it("schedules a meeting straight from the focus list against the deal", async () => {
     getPipelineFocus.mockResolvedValue([
       focusEntry({ reason: "overdue", nextTaskDueDate: daysFromNow(-4) }),
     ]);
-    createInteractionLog.mockResolvedValue(log({ id: "log-2" }));
+    scheduleMeeting.mockResolvedValue({
+      eventId: "event-1",
+      htmlLink: "https://calendar.google.com/event-1",
+      logCreated: true,
+    });
     const user = userEvent.setup();
     renderPipeline();
 
     await user.click(await screen.findByRole("tab", { name: /Focus/ }));
-    await user.click(await screen.findByRole("button", { name: "Log" }));
-    await user.click(await screen.findByRole("button", { name: "Log interaction" }));
+    await user.click(await screen.findByRole("button", { name: "Schedule" }));
+    await user.click(await screen.findByRole("button", { name: "When" }));
+    await user.click(await screen.findByRole("button", { name: new Date().toDateString() }));
+    await user.keyboard("{Escape}");
+    await user.click(await screen.findByRole("button", { name: "Schedule & invite" }));
 
-    await waitFor(() => expect(createInteractionLog).toHaveBeenCalled());
-    const [, input] = createInteractionLog.mock.calls[0];
-    expect(input).toMatchObject({ investorId: "inv-1", pipelineId: "deal-1" });
+    await waitFor(() => expect(scheduleMeeting).toHaveBeenCalled());
+    const [startupId, investorId, input] = scheduleMeeting.mock.calls[0];
+    expect(startupId).toBe("startup-1");
+    expect(investorId).toBe("inv-1");
+    expect(input).toMatchObject({ pipelineId: "deal-1" });
   });
 
   it("tells you when nothing needs chasing", async () => {
@@ -887,7 +909,7 @@ describe("Pipeline board", () => {
       });
     });
 
-    // The queue asks for the round's tasks whole — open and completed — because
+    // The queue asks for the round's tasks whole open and completed because
     // the Completed view reads the same cache entry as the others; filtering by
     // status server-side would give whichever view loaded second the wrong rows.
     it("asks the server for the round's tasks rather than paging per deal", async () => {
@@ -917,7 +939,7 @@ describe("Pipeline board", () => {
       await user.click(screen.getByRole("tab", { name: /Tasks/ }));
 
       // Defaults to the signed-in user's member row, matched through their
-      // user id — tasks carry a StartupMember id, not a user id.
+      // user id tasks carry a StartupMember id, not a user id.
       expect(await screen.findByText("Send the updated deck")).toBeInTheDocument();
       expect(screen.queryByText("Grace's intro email")).not.toBeInTheDocument();
       expect(screen.getByText("Overdue 2d")).toBeInTheDocument();
@@ -1092,7 +1114,7 @@ describe("Pipeline board", () => {
     ).toBeInTheDocument();
   });
 
-  // A funnel bar is otherwise just a number on a chart — clicking it should
+  // A funnel bar is otherwise just a number on a chart clicking it should
   // open the actual list of investors sitting at that stage.
   it("opens the filtered investor list when a funnel stage is clicked", async () => {
     getPipelineAnalytics.mockResolvedValue({
@@ -1130,7 +1152,7 @@ describe("Pipeline board", () => {
 
   // Touch drag-reordering between narrow columns is fiddly on a phone, so
   // below the board's compact breakpoint it drops pointer/keyboard drag
-  // entirely in favor of a single-stage tap list — see MobilePipelineBoard.
+  // entirely in favor of a single-stage tap list see MobilePipelineBoard.
   describe("on a small screen", () => {
     const originalMatchMedia = window.matchMedia;
     let restoreViewport: (() => void) | null = null;
@@ -1160,7 +1182,7 @@ describe("Pipeline board", () => {
       mockViewport(true);
       listPipelineEntries.mockResolvedValue({
         data: [
-          // The mobile board opens on the first visible stage — Sourced —
+          // The mobile board opens on the first visible stage Sourced —
           // so this deal has to actually be there for the default tab to
           // show anything.
           entry({ id: "d1", investorId: "i1", stage: "sourced" }),

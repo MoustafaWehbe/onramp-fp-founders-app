@@ -19,8 +19,19 @@ vi.mock("../../lib/interaction-log-api", async (importOriginal) => ({
   deleteInteractionLog: (...a: unknown[]) => deleteInteractionLog(...a),
 }));
 
+const scheduleMeeting = vi.fn();
+vi.mock("../../lib/calendar-api", () => ({
+  scheduleMeeting: (...a: unknown[]) => scheduleMeeting(...a),
+}));
+
 const listMembers = vi.fn();
 vi.mock("../../lib/team-api", () => ({ listMembers: () => listMembers() }));
+
+// The compose/schedule buttons are gated on a connected Google account —
+// this suite isn't testing that gate, so it's stubbed connected throughout.
+vi.mock("../../hooks/useGoogleConnection", () => ({
+  useGoogleConnectionStatus: () => ({ data: { connected: true, configured: true } }),
+}));
 
 let role = "owner";
 vi.mock("../../hooks/usePermissions", async () => {
@@ -71,6 +82,8 @@ function log(overrides: Partial<InteractionLog> = {}): InteractionLog {
     interactionDate: "2026-08-01T14:00:00.000Z",
     nextFollowupDate: null,
     followupCompletedAt: null,
+    source: "manual",
+    externalId: null,
     createdAt: "2026-08-01T14:05:00.000Z",
     ...overrides,
   };
@@ -176,25 +189,32 @@ describe("InvestorDetailDialog interaction history", () => {
     expect(screen.getByText("Not contacted")).toBeInTheDocument();
   });
 
-  it("logs an interaction with an ISO datetime", async () => {
-    createInteractionLog.mockResolvedValue(log({ id: "log-2" }));
+  it("schedules a meeting with an ISO datetime and invites the investor", async () => {
+    scheduleMeeting.mockResolvedValue({
+      eventId: "event-1",
+      htmlLink: "https://calendar.google.com/event-1",
+      logCreated: true,
+    });
     const user = userEvent.setup();
     renderDetail();
     await showActivity(user);
     await screen.findByText("Intro call");
 
-    await user.click(screen.getByRole("button", { name: /log interaction/i }));
+    await user.click(screen.getByRole("button", { name: /^schedule$/i }));
+    await user.click(screen.getByRole("button", { name: "When" }));
+    await user.click(screen.getByRole("button", { name: new Date().toDateString() }));
+    await user.keyboard("{Escape}");
     await user.type(screen.getByLabelText("Subject"), "Follow-up");
-    await user.click(screen.getByRole("button", { name: "Log interaction" }));
+    await user.click(screen.getByRole("button", { name: "Schedule & invite" }));
 
-    await waitFor(() => expect(createInteractionLog).toHaveBeenCalled());
-    const [, input] = createInteractionLog.mock.calls[0];
-    expect(input.investorId).toBe("inv-1");
+    await waitFor(() => expect(scheduleMeeting).toHaveBeenCalled());
+    const [startupId, investorId, input] = scheduleMeeting.mock.calls[0];
+    expect(startupId).toBe("startup-1");
+    expect(investorId).toBe("inv-1");
     expect(input.subject).toBe("Follow-up");
     // The form works in local time; the API is sent UTC.
-    expect(input.interactionDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-    // The follow-up date field was removed from this form — Task superseded it.
-    expect(input.nextFollowupDate).toBeUndefined();
+    expect(input.startDateTime).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(input.durationMinutes).toBe(30);
   });
 
   it("edits an existing entry through the same dialog", async () => {
@@ -220,6 +240,21 @@ describe("InvestorDetailDialog interaction history", () => {
     );
   });
 
+  it("offers only Delete for a note, never Edit the edit dialog's type/date form doesn't fit a note", async () => {
+    listLogsForInvestor.mockResolvedValue({
+      data: [log({ id: "log-note", type: "note", subject: null, description: "Prefers async updates." })],
+      meta: { page: 1, limit: 50, total: 1, totalPages: 1 },
+    });
+    const user = userEvent.setup();
+    renderDetail();
+    await showActivity(user);
+    await screen.findByText("Prefers async updates.");
+
+    await user.click(screen.getByRole("button", { name: /Actions for Note/ }));
+    expect(screen.queryByRole("menuitem", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+  });
+
   it("confirms before removing an entry", async () => {
     deleteInteractionLog.mockResolvedValue({ message: "removed" });
     const user = userEvent.setup();
@@ -238,7 +273,7 @@ describe("InvestorDetailDialog interaction history", () => {
   });
 
   it("explains a pipeline mismatch instead of the raw error", async () => {
-    createInteractionLog.mockRejectedValue(
+    scheduleMeeting.mockRejectedValue(
       apiError(422, "PIPELINE_MISMATCH", "Pipeline entry does not belong to this contact"),
     );
     const user = userEvent.setup();
@@ -246,8 +281,11 @@ describe("InvestorDetailDialog interaction history", () => {
     await showActivity(user);
     await screen.findByText("Intro call");
 
-    await user.click(screen.getByRole("button", { name: /log interaction/i }));
-    await user.click(screen.getByRole("button", { name: "Log interaction" }));
+    await user.click(screen.getByRole("button", { name: /^schedule$/i }));
+    await user.click(screen.getByRole("button", { name: "When" }));
+    await user.click(screen.getByRole("button", { name: new Date().toDateString() }));
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "Schedule & invite" }));
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
@@ -262,7 +300,7 @@ describe("InvestorDetailDialog interaction history", () => {
     await showActivity();
     await screen.findByText("Intro call");
 
-    expect(screen.queryByRole("button", { name: /log interaction/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^schedule$/i })).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /Actions for Intro call/ }),
     ).not.toBeInTheDocument();

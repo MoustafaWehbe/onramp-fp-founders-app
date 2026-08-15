@@ -40,13 +40,13 @@ const TOUCH_ICONS: Record<InteractionType, LucideIcon> = {
 
 type DealCardBodyProps = {
   deal: PipelineEntry;
-  /** The round's own currency — a deal's amount is never assumed to be USD. */
+  /** The round's own currency a deal's amount is never assumed to be USD. */
   currency: string;
   signals: DealSignals;
   /** Why this deal is in Focus, server-computed; null when it doesn't qualify. */
   focusReason: FocusReason | null;
   /**
-   * Who owns this deal, already resolved to a display name — a primitive so
+   * Who owns this deal, already resolved to a display name a primitive so
    * the memo below still short-circuits on an unchanged card.
    */
   ownerName: string | null;
@@ -56,7 +56,7 @@ type DealCardBodyProps = {
   /**
    * Every callback takes the deal id rather than being pre-bound per card, so
    * a parent list can hand every card the exact same function reference
-   * instead of a fresh closure each render — that's what lets DealCard's
+   * instead of a fresh closure each render that's what lets DealCard's
    * memo actually skip re-rendering cards a drag never touched.
    */
   onOpen: (dealId: string) => void;
@@ -66,8 +66,8 @@ type DealCardBodyProps = {
   onToggleSelected?: (dealId: string) => void;
   /**
    * True only for the floating copy that follows the cursor while dragging.
-   * That copy is purely presentational — its menu and checkbox can never be
-   * clicked — so it skips mounting the interactive dropdown (a Radix portal)
+   * That copy is purely presentational its menu and checkbox can never be
+   * clicked so it skips mounting the interactive dropdown (a Radix portal)
    * and always shows the plain avatar, trading nothing visible for less
    * dragged-frame render weight.
    */
@@ -75,9 +75,9 @@ type DealCardBodyProps = {
 };
 
 /**
- * Everything a deal card shows — shared between the live sortable card, the
+ * Everything a deal card shows shared between the live sortable card, the
  * floating drag copy, and the mobile list row (none of which is the card
- * being dragged in place, which renders a bare placeholder instead — see
+ * being dragged in place, which renders a bare placeholder instead see
  * DealCard below).
  */
 export function DealCardBody({
@@ -103,7 +103,7 @@ export function DealCardBody({
       <div className="flex items-center gap-2">
         {/* Same slot whether selection mode is on or not, so entering it never
             reflows the board. In selection mode the avatar itself becomes the
-            selected indicator — a filled circle with a check — rather than a
+            selected indicator a filled circle with a check rather than a
             separate checkbox target; the whole card is already the hit area. */}
         <div
           className={cn(
@@ -122,7 +122,7 @@ export function DealCardBody({
 
         {/* The whole card is this button's hit area (its ::after stretches to
             the card's edges). Outside selection mode it opens the deal;
-            inside selection mode, a click toggles this card instead — no
+            inside selection mode, a click toggles this card instead no
             separate checkbox to aim for. */}
         <button
           type="button"
@@ -266,7 +266,7 @@ export function DealCardBody({
 type DealCardProps = DealCardBodyProps;
 
 /**
- * The card as it sits in a column — draggable via dnd-kit, wherever you want
+ * The card as it sits in a column draggable via dnd-kit, wherever you want
  * to drop it. Memoized: onDragOver fires on every pointer move and updates
  * the board's column state, which would otherwise re-render every card in
  * every column on every frame rather than just the ones whose position
@@ -301,7 +301,7 @@ export const DealCard = memo(function DealCard(props: DealCardProps) {
         isDragging
           ? // The card being dragged stays in the DOM (dnd-kit needs its layout
             // to keep measuring), but shows only a dashed outline in the slot
-            // it's about to fill — the drop position, not just a blank gap —
+            // it's about to fill the drop position, not just a blank gap —
             // while the DragOverlay copy follows the cursor instead.
             "border-2 border-dashed border-primary/40 bg-primary/[0.04] shadow-none"
           : focusReason && "border-l-2 border-l-warning",
@@ -313,7 +313,7 @@ export const DealCard = memo(function DealCard(props: DealCardProps) {
   );
 });
 
-/** The floating copy that follows the cursor while dragging — no sortable
+/** The floating copy that follows the cursor while dragging no sortable
  *  bindings of its own, just the same visuals lifted off the board. */
 export function DealCardOverlay(props: DealCardProps) {
   return (

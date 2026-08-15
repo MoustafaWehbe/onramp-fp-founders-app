@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // api-client.ts calls `axios.create(...)` to build the instance and the bare
-// `axios.post(...)` for the refresh call itself — both need to be mocked.
+// `axios.post(...)` for the refresh call itself both need to be mocked.
 const axiosPost = vi.fn();
 const instanceCall = vi.fn();
 let onRejected: (error: unknown) => Promise<unknown>;

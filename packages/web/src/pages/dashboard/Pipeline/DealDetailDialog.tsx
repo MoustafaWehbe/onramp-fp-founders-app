@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, ChevronDown, Crown, History, LayoutDashboard, Linkedin, ListChecks, Mail, Pencil, Plus, Save, Sparkles, StickyNote, Trash2 } from "lucide-react";
+import { ArrowRight, CalendarPlus, ChevronDown, Crown, History, LayoutDashboard, Linkedin, ListChecks, Mail, MessageSquare, Sparkles, StickyNote, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
 import { Button } from "../../../components/ui/button";
@@ -15,7 +15,6 @@ import {
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import { Select } from "../../../components/ui/select";
-import { Textarea } from "../../../components/ui/textarea";
 import {
   Sheet,
   SheetContent,
@@ -25,6 +24,7 @@ import {
   SheetTitle,
 } from "../../../components/ui/sheet";
 import { usePermissions } from "../../../hooks/usePermissions";
+import { useGoogleConnectionStatus } from "../../../hooks/useGoogleConnection";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
 import {
   createInteractionLog,
@@ -33,7 +33,9 @@ import {
   updateInteractionLog,
   type InteractionLog,
 } from "../../../lib/interaction-log-api";
-import { INVESTOR_TYPE_LABELS, updateInvestor, type InvestorType } from "../../../lib/investor-api";
+import { sendInvestorEmail } from "../../../lib/gmail-api";
+import { scheduleMeeting } from "../../../lib/calendar-api";
+import { INVESTOR_TYPE_LABELS, type InvestorType } from "../../../lib/investor-api";
 import { DEFAULT_PROBABILITY_BY_STAGE, STAGES, type PipelineStageId } from "../../../lib/mock-data";
 import { fetchAllPages } from "../../../lib/pagination";
 import {
@@ -44,13 +46,13 @@ import {
   type PipelineEntry,
 } from "../../../lib/pipeline-api";
 import {
-  invalidateDealData,
   invalidateFinancialData,
   invalidateInteractionData,
   invalidateStageData,
   qk,
 } from "../../../lib/query-keys";
 import { listMembers } from "../../../lib/team-api";
+import { DiscussionTab } from "./DiscussionTab";
 import {
   OPEN_ROUND_STATUSES,
   ROUND_STATUS_LABELS,
@@ -58,9 +60,11 @@ import {
 } from "../../../lib/fundraising-api";
 import { PRIORITIES, PRIORITY_LABELS, type Priority } from "../../../lib/task-api";
 import { cn, formatCompactMoney, getInitials } from "../../../lib/utils";
+import { AddNoteDialog } from "../Investors/AddNoteDialog";
+import { ComposeEmailDialog, type ComposeFormValues } from "../Investors/ComposeEmailDialog";
 import { InteractionTimeline } from "../Investors/InteractionTimeline";
 import { LogInteractionDialog, type LogFormValues } from "../Investors/LogInteractionDialog";
-import { NoteByline } from "../Investors/NoteByline";
+import { ScheduleMeetingDialog, type ScheduleFormValues } from "../Investors/ScheduleMeetingDialog";
 import {
   formatDateTime,
   formatDaysAgo,
@@ -85,6 +89,8 @@ type DealDetailDialogProps = {
   rounds: FundraisingRound[];
   /** Investors already leading this round, excluding this one. */
   otherLeadNames: string[];
+  /** Set when opened via a deep link (e.g. a chat unfurl card or notification) that wants a specific tab up front, instead of the usual "overview" default. */
+  initialTab?: "overview" | "tasks" | "discussion" | "activity";
   onOpenChange: (open: boolean) => void;
   onRemove: (deal: PipelineEntry) => void;
 };
@@ -94,7 +100,7 @@ function logErrorMessage(err: unknown, fallback: string): string {
     case "PIPELINE_MISMATCH":
       return "That pipeline entry belongs to a different contact.";
     case "LOG_NOT_FOUND":
-      return "That entry no longer exists — a teammate may have removed it.";
+      return "That entry no longer exists a teammate may have removed it.";
     case "PIPELINE_NOT_FOUND":
       return "This deal is no longer on the board.";
     case "HAS_DEPENDENTS":
@@ -114,6 +120,39 @@ function logErrorMessage(err: unknown, fallback: string): string {
   }
 }
 
+function sendEmailErrorMessage(err: unknown): string {
+  switch (apiErrorCode(err)) {
+    case "INVESTOR_EMAIL_MISSING":
+      return "This investor has no email on file.";
+    case "GOOGLE_NOT_CONNECTED":
+      return "Connect your Google account in Settings to send email.";
+    case "GOOGLE_NEEDS_REAUTH":
+      return "Your Google connection needs to be reconnected see Settings.";
+    case "GMAIL_SEND_FAILED":
+      return "Google rejected the send. Please try again.";
+    default:
+      return apiErrorMessage(err, "Could not send the email");
+  }
+}
+
+function scheduleMeetingErrorMessage(err: unknown): string {
+  switch (apiErrorCode(err)) {
+    case "INVESTOR_EMAIL_MISSING":
+      return "This investor has no email on file.";
+    case "PIPELINE_MISMATCH":
+      return "That pipeline entry belongs to a different contact.";
+    case "GOOGLE_NOT_CONNECTED":
+      return "Connect your Google account in Settings to schedule meetings.";
+    case "GOOGLE_NEEDS_REAUTH":
+    case "GOOGLE_INSUFFICIENT_SCOPE":
+      return "Your Google connection needs to be reconnected see Settings.";
+    case "CALENDAR_EVENT_FAILED":
+      return "Google rejected the request. Please try again.";
+    default:
+      return apiErrorMessage(err, "Could not schedule the meeting");
+  }
+}
+
 export function DealDetailDialog({
   startupId,
   deal,
@@ -122,6 +161,7 @@ export function DealDetailDialog({
   roundName,
   rounds,
   otherLeadNames,
+  initialTab,
   onOpenChange,
   onRemove,
 }: DealDetailDialogProps) {
@@ -134,15 +174,17 @@ export function DealDetailDialog({
   const [logOpen, setLogOpen] = useState(false);
   const [editingLog, setEditingLog] = useState<InteractionLog | null>(null);
   const [pendingLogDelete, setPendingLogDelete] = useState<InteractionLog | null>(null);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [addNoteOpen, setAddNoteOpen] = useState(false);
+
+  const googleStatus = useGoogleConnectionStatus();
   const [amount, setAmount] = useState("");
   const [probability, setProbability] = useState("");
   const [investorFitScore, setInvestorFitScore] = useState("");
   const [passReasonOpen, setPassReasonOpen] = useState(false);
   const [commitOpen, setCommitOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "activity">("overview");
-  const [noteDraft, setNoteDraft] = useState("");
-  const [noteEditing, setNoteEditing] = useState(false);
-  const [noteDeleteOpen, setNoteDeleteOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "discussion" | "activity">("overview");
   const [detailsOpen, setDetailsOpen] = useState(false);
   // Naming the round's lead is a commitment the whole team reads, so it is
   // confirmed in both directions rather than toggled by a stray click.
@@ -154,13 +196,10 @@ export function DealDetailDialog({
   // draft never leaks onto the next investor.
   useEffect(() => {
     if (!deal) return;
-    setActiveTab("overview");
+    setActiveTab(initialTab ?? "overview");
     setAmount(deal.expectedAmount == null ? "" : String(deal.expectedAmount));
     setProbability(deal.probabilityPercentage == null ? "" : String(deal.probabilityPercentage));
     setInvestorFitScore(deal.investorFitScore == null ? "" : String(deal.investorFitScore));
-    setNoteDraft(deal.investor.notes ?? "");
-    setNoteEditing(false);
-    setNoteDeleteOpen(false);
     setLeadConfirmOpen(false);
     setDetailsOpen(false);
   }, [deal]);
@@ -174,7 +213,7 @@ export function DealDetailDialog({
     enabled: investorId !== null,
   });
 
-  // Who added this deal and who's moved its stage since — shown alongside
+  // Who added this deal and who's moved its stage since shown alongside
   // the logged interactions so "what happened" always answers "who did it".
   const stageEventsQuery = useQuery({
     queryKey: qk.stageEvents(startupId, deal?.id),
@@ -213,17 +252,6 @@ export function DealDetailDialog({
     onError: (err) => toast.error(logErrorMessage(err, "Could not update the deal")),
   });
 
-  const noteMutation = useMutation({
-    mutationFn: (notes: string | null) => updateInvestor(startupId, investorId!, { notes }),
-    onSuccess: (_investor, notes) => {
-      setNoteDraft(notes ?? "");
-      setNoteEditing(false);
-      toast.success(notes ? "Investor note saved" : "Investor note removed");
-      invalidateDealData(queryClient, startupId);
-    },
-    onError: (err) => toast.error(logErrorMessage(err, "Could not update the investor note")),
-  });
-
   const saveLogMutation = useMutation({
     mutationFn: (values: LogFormValues) =>
       editingLog
@@ -252,6 +280,74 @@ export function DealDetailDialog({
     },
     onError: (err) => toast.error(logErrorMessage(err, "Could not remove the interaction")),
   });
+
+  const sendEmailMutation = useMutation({
+    mutationFn: (values: ComposeFormValues) =>
+      sendInvestorEmail(startupId, investorId!, { pipelineId: deal!.id, ...values }),
+    onSuccess: (result) => {
+      toast.success(
+        result.logCreated
+          ? "Email sent and logged"
+          : "Email sent it'll appear in the timeline shortly",
+      );
+      setComposeOpen(false);
+      invalidate();
+    },
+    onError: (err) => toast.error(sendEmailErrorMessage(err)),
+  });
+
+  const scheduleMutation = useMutation({
+    mutationFn: (values: ScheduleFormValues) =>
+      scheduleMeeting(startupId, investorId!, {
+        pipelineId: deal!.id,
+        type: values.type,
+        startDateTime: values.startDateTime,
+        durationMinutes: values.durationMinutes,
+        subject: values.subject ?? undefined,
+        description: values.description ?? undefined,
+      }),
+    onSuccess: (result) => {
+      toast.success(
+        result.logCreated
+          ? "Meeting scheduled and logged"
+          : "Meeting scheduled it'll appear in the timeline shortly",
+      );
+      setScheduleOpen(false);
+      invalidate();
+    },
+    onError: (err) => toast.error(scheduleMeetingErrorMessage(err)),
+  });
+
+  const addNoteMutation = useMutation({
+    mutationFn: (description: string) =>
+      createInteractionLog(startupId, {
+        investorId: investorId!,
+        pipelineId: deal!.id,
+        type: "note",
+        interactionDate: new Date().toISOString(),
+        description,
+      }),
+    onSuccess: () => {
+      toast.success("Note added");
+      setAddNoteOpen(false);
+      invalidate();
+    },
+    onError: (err) => toast.error(logErrorMessage(err, "Could not add the note")),
+  });
+
+  const canSendEmail = Boolean(deal?.investor.email) && googleStatus.data?.connected === true;
+  const composeDisabledReason = !deal?.investor.email
+    ? "This investor has no email on file"
+    : googleStatus.data?.connected !== true
+      ? "Connect your Google account in Settings to send email"
+      : undefined;
+
+  const canSchedule = Boolean(deal?.investor.email) && googleStatus.data?.connected === true;
+  const scheduleDisabledReason = !deal?.investor.email
+    ? "This investor has no email on file"
+    : googleStatus.data?.connected !== true
+      ? "Connect your Google account in Settings to schedule meetings"
+      : undefined;
 
   const commitAmount = () => {
     if (!deal || !canUpdate) return;
@@ -301,7 +397,7 @@ export function DealDetailDialog({
       return;
     }
     // Committing writes money against the round, so it collects the amount
-    // first — same holding pattern as passing.
+    // first same holding pattern as passing.
     if (stage === "committed") {
       setCommitOpen(true);
       return;
@@ -353,7 +449,7 @@ export function DealDetailDialog({
   const currentIndex = deal ? PROGRESSION.findIndex((stage) => stage.id === deal.stage) : -1;
   const investor = deal?.investor;
   // Looked up from the deal's own round rather than assumed from whichever
-  // round the board happens to be viewing — a deal only shows the wrong
+  // round the board happens to be viewing a deal only shows the wrong
   // currency if it were guessed instead of resolved this way.
   const currency = rounds.find((round) => round.id === deal?.roundId)?.currency ?? "USD";
 
@@ -384,13 +480,13 @@ export function DealDetailDialog({
 
   const recommendation = (() => {
     if (!deal) return null;
-    if (deal.stage === "passed") return { title: "Decide whether to reopen this relationship", detail: "This deal is closed and will not appear in the active pipeline.", label: "Review stage", action: () => moveToStage("sourced") };
-    if (focusReason === "overdue") return { title: "Complete or reschedule the overdue next step", detail: "This investor is at risk of going cold while an assigned task is overdue.", label: "Review tasks", action: () => setActiveTab("tasks") };
-    if (focusReason === "today") return { title: "Follow up today", detail: "A next step is due today. Close it out or set the next commitment.", label: "Review tasks", action: () => setActiveTab("tasks") };
-    if (focusReason === "missing") return { title: "Add a clear next step", detail: "This deal has no open task, owner action, or scheduled follow-up.", label: "Add next step", action: () => setActiveTab("tasks") };
-    if (focusReason === "quiet") return { title: "Restart the conversation", detail: "There has been no recent interaction with this investor.", label: "Log follow-up", action: () => { setEditingLog(null); setLogOpen(true); } };
-    if (deal.stage === "sourced") return { title: "Make the first approach", detail: "Move this investor from research into an active conversation.", label: "Log outreach", action: () => { setEditingLog(null); setLogOpen(true); } };
-    return { title: "Keep the momentum visible", detail: "Log the latest conversation and make sure a next step is assigned.", label: "Log interaction", action: () => { setEditingLog(null); setLogOpen(true); } };
+    if (deal.stage === "passed") return { title: "Decide whether to reopen this relationship", detail: "This deal is closed and will not appear in the active pipeline.", label: "Review stage", action: () => moveToStage("sourced"), needsGoogle: false };
+    if (focusReason === "overdue") return { title: "Complete or reschedule the overdue next step", detail: "This investor is at risk of going cold while an assigned task is overdue.", label: "Review tasks", action: () => setActiveTab("tasks"), needsGoogle: false };
+    if (focusReason === "today") return { title: "Follow up today", detail: "A next step is due today. Close it out or set the next commitment.", label: "Review tasks", action: () => setActiveTab("tasks"), needsGoogle: false };
+    if (focusReason === "missing") return { title: "Add a clear next step", detail: "This deal has no open task, owner action, or scheduled follow-up.", label: "Add next step", action: () => setActiveTab("tasks"), needsGoogle: false };
+    if (focusReason === "quiet") return { title: "Restart the conversation", detail: "There has been no recent interaction with this investor.", label: "Schedule follow-up", action: () => setScheduleOpen(true), needsGoogle: true };
+    if (deal.stage === "sourced") return { title: "Make the first approach", detail: "Move this investor from research into an active conversation.", label: "Schedule outreach", action: () => setScheduleOpen(true), needsGoogle: true };
+    return { title: "Keep the momentum visible", detail: "Schedule the next conversation and make sure a next step is assigned.", label: "Schedule call", action: () => setScheduleOpen(true), needsGoogle: true };
   })();
 
   return (
@@ -415,11 +511,15 @@ export function DealDetailDialog({
               </SheetHeader>
 
               <div className="flex flex-wrap items-center gap-2 border-b border-border/70 px-5 py-3 sm:px-7">
-                {investor.email && (
-                  <Button variant="outline" size="sm" asChild>
-                    <a href={`mailto:${investor.email}`}>
-                      <Mail className="h-3.5 w-3.5" /> Email
-                    </a>
+                {canCreate && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!canSendEmail}
+                    title={composeDisabledReason}
+                    onClick={() => setComposeOpen(true)}
+                  >
+                    <Mail className="h-3.5 w-3.5" /> Send email
                   </Button>
                 )}
                 {investor.linkedinUrl && (
@@ -432,13 +532,12 @@ export function DealDetailDialog({
                 {canCreate && (
                   <Button
                     size="sm"
-                    onClick={() => {
-                      setEditingLog(null);
-                      setLogOpen(true);
-                    }}
+                    disabled={!canSchedule}
+                    title={scheduleDisabledReason}
+                    onClick={() => setScheduleOpen(true)}
                   >
-                    <Plus className="h-4 w-4" />
-                    Log interaction
+                    <CalendarPlus className="h-4 w-4" />
+                    Schedule
                   </Button>
                 )}
               </div>
@@ -447,6 +546,7 @@ export function DealDetailDialog({
                 {([
                   { id: "overview", label: "Overview", icon: LayoutDashboard },
                   { id: "tasks", label: "Tasks", icon: ListChecks },
+                  { id: "discussion", label: "Discussion", icon: MessageSquare },
                   { id: "activity", label: "Activity", icon: History },
                 ] as const).map(({ id, label, icon: Icon }) => (
                   <button
@@ -473,7 +573,7 @@ export function DealDetailDialog({
                   <div className="relative flex flex-wrap items-center gap-3">
                     <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary"><Sparkles className="h-5 w-5" /></div>
                     <div className="min-w-48 flex-1"><p className="font-mono text-[10px] uppercase tracking-widest text-primary">Recommended next action</p><h3 className="mt-1 text-sm font-semibold">{recommendation.title}</h3><p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{recommendation.detail}</p></div>
-                    {canUpdate && <Button type="button" size="sm" onClick={recommendation.action}>{recommendation.label}<ArrowRight className="h-3.5 w-3.5" /></Button>}
+                    {canUpdate && <Button type="button" size="sm" disabled={recommendation.needsGoogle && !canSchedule} title={recommendation.needsGoogle ? scheduleDisabledReason : undefined} onClick={recommendation.action}>{recommendation.label}<ArrowRight className="h-3.5 w-3.5" /></Button>}
                   </div>
                 </section>
               )}
@@ -631,7 +731,7 @@ export function DealDetailDialog({
                 <div className="space-y-1.5"><span className="text-sm font-medium">Weighted value</span><div className="flex h-9 items-center rounded-md border border-border/70 bg-card px-3 font-mono text-sm tabular-nums text-muted-foreground">{weighted == null ? "—" : formatCompactMoney(Math.round(weighted), currency)}</div></div>
               </section>
               {/* A deal in a round that later closes would otherwise be
-                  stranded — the only way out was delete-and-recreate, which
+                  stranded the only way out was delete-and-recreate, which
                   throws away its stage history. */}
               {roundOptions.length > 1 && (
                 <section aria-label="Fundraising round" className="space-y-1.5">
@@ -672,51 +772,6 @@ export function DealDetailDialog({
               </dl>
               </>}
 
-              <section aria-label="Investor notes" className="rounded-xl border border-border/70 bg-surface/40 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <div className="grid h-8 w-8 place-items-center rounded-lg bg-muted text-muted-foreground"><StickyNote className="h-4 w-4" /></div>
-                    <div>
-                      <h3 className="text-sm font-semibold">Investor notes</h3>
-                      <p className="text-xs text-muted-foreground">Shared contact context, visible anywhere this investor appears.</p>
-                    </div>
-                  </div>
-                  {canUpdate && !noteEditing && (
-                    <Button type="button" size="sm" variant="ghost" onClick={() => setNoteEditing(true)}>
-                      {investor.notes ? <Pencil className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                      {investor.notes ? "Edit" : "Add note"}
-                    </Button>
-                  )}
-                </div>
-
-                {noteEditing ? (
-                  <div className="mt-4 space-y-3">
-                    <Textarea
-                      value={noteDraft}
-                      onChange={(event) => setNoteDraft(event.target.value)}
-                      placeholder="Add context from conversations, preferences, or relationship history…"
-                      maxLength={2000}
-                      className="min-h-28 resize-y bg-card"
-                      autoFocus
-                    />
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-[11px] text-muted-foreground">{noteDraft.length}/2000</span>
-                      <div className="flex gap-2">
-                        <Button type="button" size="sm" variant="ghost" onClick={() => { setNoteDraft(investor.notes ?? ""); setNoteEditing(false); }}>Cancel</Button>
-                        <Button type="button" size="sm" disabled={noteMutation.isPending} onClick={() => noteMutation.mutate(noteDraft.trim() || null)}><Save className="h-3.5 w-3.5" />{noteMutation.isPending ? "Saving…" : "Save note"}</Button>
-                      </div>
-                    </div>
-                  </div>
-                ) : investor.notes ? (
-                  <div className="mt-4">
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{investor.notes}</p>
-                    <NoteByline contact={investor} authorNames={authorNames} />
-                    {canUpdate && <Button type="button" size="sm" variant="ghost" className="mt-3 h-8 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={noteMutation.isPending} onClick={() => setNoteDeleteOpen(true)}><Trash2 className="h-3.5 w-3.5" /> Remove note</Button>}
-                  </div>
-                ) : (
-                  <p className="mt-4 text-sm text-muted-foreground">No notes have been added for this investor.</p>
-                )}
-              </section>
               </>}
 
               {activeTab === "tasks" && (
@@ -727,10 +782,21 @@ export function DealDetailDialog({
                 />
               )}
 
+              {activeTab === "discussion" && (
+                <DiscussionTab startupId={startupId} pipelineId={deal.id} dealLabel={investor.fullName} />
+              )}
+
               {activeTab === "activity" && <div>
-                <div className="mb-5">
-                  <h3 className="font-display text-base font-semibold">Activity</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">Interactions and stage changes, newest first.</p>
+                <div className="mb-5 flex items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-display text-base font-semibold">Activity</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Interactions and stage changes, newest first.</p>
+                  </div>
+                  {canCreate && (
+                    <Button size="sm" variant="outline" onClick={() => setAddNoteOpen(true)}>
+                      <StickyNote className="h-3.5 w-3.5" /> Add note
+                    </Button>
+                  )}
                 </div>
                 {/* The sheet itself scrolls now that it's full-height, so the
                     timeline no longer needs its own bounded scroll area. */}
@@ -738,7 +804,7 @@ export function DealDetailDialog({
                   logs={logs}
                   stageEvents={stageEventsQuery.data ?? []}
                   authorNames={authorNames}
-                  // Logs are the investor's, not the deal's — this marks the
+                  // Logs are the investor's, not the deal's this marks the
                   // ones that actually belong to a different deal.
                   currentPipelineId={deal.id}
                   // Same guard as InvestorDetailDialog: a disabled query's
@@ -786,6 +852,32 @@ export function DealDetailDialog({
         onSubmit={(values) => saveLogMutation.mutate(values)}
       />
 
+      <ComposeEmailDialog
+        open={composeOpen}
+        onOpenChange={setComposeOpen}
+        investorName={investor?.fullName ?? ""}
+        investorEmail={investor?.email ?? ""}
+        isSubmitting={sendEmailMutation.isPending}
+        onSubmit={(values) => sendEmailMutation.mutate(values)}
+      />
+
+      <ScheduleMeetingDialog
+        open={scheduleOpen}
+        onOpenChange={setScheduleOpen}
+        investorName={investor?.fullName ?? ""}
+        investorEmail={investor?.email ?? ""}
+        isSubmitting={scheduleMutation.isPending}
+        onSubmit={(values) => scheduleMutation.mutate(values)}
+      />
+
+      <AddNoteDialog
+        open={addNoteOpen}
+        onOpenChange={setAddNoteOpen}
+        investorName={investor?.fullName ?? ""}
+        isSubmitting={addNoteMutation.isPending}
+        onSubmit={(description) => addNoteMutation.mutate(description)}
+      />
+
       <Dialog
         open={pendingLogDelete !== null}
         onOpenChange={(open) => !open && setPendingLogDelete(null)}
@@ -825,7 +917,7 @@ export function DealDetailDialog({
           deal?.isLead
             ? `${roundName} will show no lead from this investor. Nothing else about the deal changes, and you can set it back at any time.`
             : otherLeadNames.length > 0
-              ? `${otherLeadNames.join(", ")} ${otherLeadNames.length === 1 ? "is" : "are"} already marked as leading ${roundName}. Co-leads are allowed — both will be shown to the team.`
+              ? `${otherLeadNames.join(", ")} ${otherLeadNames.length === 1 ? "is" : "are"} already marked as leading ${roundName}. Co-leads are allowed both will be shown to the team.`
               : `The whole team will see this investor as the anchor for ${roundName}. It can be undone at any time.`
         }
         variant={deal?.isLead ? "destructive" : "default"}
@@ -846,16 +938,6 @@ export function DealDetailDialog({
         }
       />
 
-      <ConfirmDialog
-        open={noteDeleteOpen}
-        onOpenChange={setNoteDeleteOpen}
-        title="Remove this investor note?"
-        description="The note is deleted for everyone who can see this contact, along with who wrote it. Logged interactions are not affected."
-        confirmLabel="Remove note"
-        pendingLabel="Removing…"
-        isPending={noteMutation.isPending}
-        onConfirm={() => noteMutation.mutate(null, { onSuccess: () => setNoteDeleteOpen(false) })}
-      />
 
       <PassReasonDialog
         open={passReasonOpen}

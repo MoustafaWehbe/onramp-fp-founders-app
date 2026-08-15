@@ -5,7 +5,7 @@ import { useWorkspace } from "../hooks/useWorkspace";
 import { apiErrorMessage } from "../lib/api-error";
 
 /**
- * Guards every screen that cannot render without a startup id — without this
+ * Guards every screen that cannot render without a startup id without this
  * each panel fails on its own. The dashboard and notifications sit outside it
  * on purpose: someone who has skipped creating a startup still needs somewhere
  * to land, and somewhere to accept an invitation from.
@@ -22,7 +22,7 @@ export function RequireWorkspace() {
   }
 
   if (isError) {
-    // Distinct from "no workspace" — bouncing someone to the empty-state
+    // Distinct from "no workspace" bouncing someone to the empty-state
     // dashboard because the network hiccuped would invite a duplicate startup.
     return (
       <div className="flex min-h-screen items-center justify-center p-6">

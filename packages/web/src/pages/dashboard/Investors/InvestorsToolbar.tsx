@@ -1,4 +1,4 @@
-import { Check, Filter, ListPlus, Search, Trash2, X } from "lucide-react";
+import { Check, CheckSquare, Filter, ListPlus, Search, Trash2, X } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import {
   DropdownMenu,
@@ -101,6 +101,11 @@ type InvestorsToolbarProps = {
   onClearFilters: () => void;
   /** Stage only applies to contacts that are on the board. */
   showStageFilter?: boolean;
+  canSelect: boolean;
+  selectionActive: boolean;
+  onToggleSelection: () => void;
+  onSelectAllVisible: () => void;
+  visibleCount: number;
   selectedCount: number;
   onBulkDelete?: () => void;
   bulkDeleting?: boolean;
@@ -116,6 +121,11 @@ export function InvestorsToolbar({
   onFilterChange,
   onClearFilters,
   showStageFilter = true,
+  canSelect,
+  selectionActive,
+  onToggleSelection,
+  onSelectAllVisible,
+  visibleCount,
   selectedCount,
   onBulkDelete,
   bulkDeleting = false,
@@ -161,14 +171,35 @@ export function InvestorsToolbar({
         </Button>
       )}
 
-      {selectedCount > 0 && (
-        <div className="ml-auto flex items-center gap-2">
+      {canSelect && (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          aria-pressed={selectionActive}
+          onClick={onToggleSelection}
+          className={cn(
+            selectionActive
+              ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15"
+              : "text-muted-foreground",
+          )}
+        >
+          <CheckSquare className="h-3.5 w-3.5" />
+          {selectionActive ? "Selecting" : "Select"}
+        </Button>
+      )}
+
+      {selectionActive && (
+        <div className="ml-auto flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/[0.05] px-3 py-1.5">
           <span className="font-mono text-xs text-muted-foreground">{selectedCount} selected</span>
+          <Button type="button" variant="ghost" size="sm" disabled={visibleCount === 0} onClick={onSelectAllVisible}>
+            Select all
+          </Button>
           {onBulkAddToPipeline && (
             <Button
               variant="outline"
               size="sm"
-              disabled={bulkAddingToPipeline}
+              disabled={bulkAddingToPipeline || selectedCount === 0}
               onClick={onBulkAddToPipeline}
             >
               <ListPlus className="h-3.5 w-3.5" />
@@ -180,13 +211,16 @@ export function InvestorsToolbar({
               variant="outline"
               size="sm"
               className="text-destructive hover:text-destructive"
-              disabled={bulkDeleting}
+              disabled={bulkDeleting || selectedCount === 0}
               onClick={onBulkDelete}
             >
               <Trash2 className="h-3.5 w-3.5" />
               {bulkDeleting ? "Deleting…" : "Delete"}
             </Button>
           )}
+          <Button type="button" variant="ghost" size="sm" onClick={onToggleSelection} aria-label="Leave selection mode">
+            <X className="h-3.5 w-3.5" /> Done
+          </Button>
         </div>
       )}
     </div>

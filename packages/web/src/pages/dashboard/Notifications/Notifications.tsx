@@ -1,11 +1,12 @@
 import type { ComponentType } from "react";
-import { Link } from "react-router-dom";
-import { AlertTriangle, Bell, CheckCheck, ClipboardCheck, Clock, Crown, Shield, Sparkles, UserPlus, Users, Wallet } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { AlertTriangle, Bell, CheckCheck, ClipboardCheck, Clock, Crown, MessageSquare, Shield, Sparkles, UserPlus, Users, Wallet } from "lucide-react";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { Button } from "../../../components/ui/button";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { EmptyState } from "../../../components/shared/EmptyState";
-import { useNotifications } from "../../../hooks/useNotifications";
+import { useNotifications, type NotificationRow } from "../../../hooks/useNotifications";
+import { notificationHref } from "../../../lib/notification-routes";
 import { cn } from "../../../lib/utils";
 
 const iconMap: Record<string, ComponentType<{ className?: string }>> = {
@@ -21,11 +22,20 @@ const iconMap: Record<string, ComponentType<{ className?: string }>> = {
   task_assigned: ClipboardCheck,
   lead_stale: Crown,
   deal_no_next_step: AlertTriangle,
+  chat_mention: MessageSquare,
+  direct_message: MessageSquare,
 };
 
 export function Notifications() {
   const { items, unreadCount, isPending, isError, markRead, markAllRead, isMarkingAll } =
     useNotifications();
+  const navigate = useNavigate();
+
+  function handleRowClick(n: NotificationRow) {
+    if (!n.read) markRead(n.id);
+    const href = notificationHref(n);
+    if (href) navigate(href);
+  }
 
   return (
     <div className="space-y-6">
@@ -73,74 +83,67 @@ export function Notifications() {
           <ul className="divide-y divide-border/60">
             {items.map((n) => {
               const Icon = iconMap[n.type] ?? Bell;
-              const isInvite = n.type === "team_invite";
-              const isFollowupDue = n.type === "followup_due";
+              const href = notificationHref(n);
 
               return (
-                <li
-                  key={n.id}
-                  className={cn(
-                    "flex items-start gap-3 p-4 transition-colors hover:bg-surface-hover/50 sm:gap-4",
-                    !n.read && "bg-primary/[0.03]",
-                  )}
-                >
-                  <div
+                <li key={n.id}>
+                  <button
+                    type="button"
+                    onClick={() => handleRowClick(n)}
                     className={cn(
-                      "grid h-9 w-9 shrink-0 place-items-center rounded-md",
-                      isInvite || isFollowupDue
-                        ? "bg-primary/15 text-primary"
-                        : "bg-surface text-muted-foreground",
+                      "flex w-full items-start gap-3 p-4 text-left transition-colors hover:bg-surface-hover/50 sm:gap-4",
+                      !n.read && "bg-primary/[0.03]",
+                      href && "cursor-pointer",
                     )}
                   >
-                    <Icon className="h-4 w-4" />
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="min-w-0 truncate text-sm font-medium text-foreground">
-                        {n.title}
-                      </span>
-                      {!n.read && (
-                        <button
-                          type="button"
-                          onClick={() => markRead(n.id)}
-                          title="Mark as read"
-                          aria-label={`Mark "${n.title}" as read`}
-                          className="group grid h-4 w-4 shrink-0 place-items-center rounded-full focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        >
-                          <span className="h-1.5 w-1.5 rounded-full bg-primary transition-transform group-hover:scale-150" />
-                        </button>
+                    <div
+                      className={cn(
+                        "grid h-9 w-9 shrink-0 place-items-center rounded-md",
+                        n.read ? "bg-surface text-muted-foreground" : "bg-primary/15 text-primary",
                       )}
-                      <span className="ml-auto shrink-0 text-xs text-muted-foreground sm:hidden">
-                        {n.when}
-                      </span>
+                    >
+                      <Icon className="h-4 w-4" />
                     </div>
-                    {n.body && (
-                      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{n.body}</p>
-                    )}
-                    {isInvite && (
-                      // The invitation itself is accepted from the dashboard,
-                      // where the pending list lives.
-                      <Link
-                        to="/dashboard"
-                        className="mt-1.5 inline-block text-sm text-primary hover:underline"
-                      >
-                        Review invitation
-                      </Link>
-                    )}
-                    {isFollowupDue && (
-                      <Link
-                        to="/pipeline"
-                        className="mt-1.5 inline-block text-sm text-primary hover:underline"
-                      >
-                        Open pipeline
-                      </Link>
-                    )}
-                  </div>
 
-                  <div className="hidden shrink-0 text-xs text-muted-foreground sm:block">
-                    {n.when}
-                  </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="min-w-0 truncate text-sm font-medium text-foreground">
+                          {n.title}
+                        </span>
+                        {!n.read && (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              markRead(n.id);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter" && event.key !== " ") return;
+                              event.stopPropagation();
+                              event.preventDefault();
+                              markRead(n.id);
+                            }}
+                            title="Mark as read"
+                            aria-label={`Mark "${n.title}" as read`}
+                            className="group grid h-4 w-4 shrink-0 place-items-center rounded-full focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          >
+                            <span className="h-1.5 w-1.5 rounded-full bg-primary transition-transform group-hover:scale-150" />
+                          </span>
+                        )}
+                        <span className="ml-auto shrink-0 text-xs text-muted-foreground sm:hidden">
+                          {n.when}
+                        </span>
+                      </div>
+                      {n.body && (
+                        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{n.body}</p>
+                      )}
+                    </div>
+
+                    <div className="hidden shrink-0 text-xs text-muted-foreground sm:block">
+                      {n.when}
+                    </div>
+                  </button>
                 </li>
               );
             })}

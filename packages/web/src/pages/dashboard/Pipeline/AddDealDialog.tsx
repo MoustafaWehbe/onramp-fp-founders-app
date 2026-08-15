@@ -32,10 +32,13 @@ export type AddDealValues = {
   expectedAmount?: number;
 };
 
+const INITIAL_STAGES = STAGES.filter((stage) => stage.id !== "committed" && stage.id !== "passed");
+
 type AddDealDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   startupId: string;
+  roundId: string;
   isSubmitting: boolean;
   onSubmit: (values: AddDealValues) => void;
 };
@@ -44,6 +47,7 @@ export function AddDealDialog({
   open,
   onOpenChange,
   startupId,
+  roundId,
   isSubmitting,
   onSubmit,
 }: AddDealDialogProps) {
@@ -61,10 +65,11 @@ export function AddDealDialog({
   }, [open]);
 
   const contactsQuery = useQuery({
-    queryKey: qk.investors(startupId, "for-pipeline"),
+    queryKey: qk.investors(startupId, `for-pipeline:${roundId}`),
     // Every unassigned contact has to be in this list for the picker to be
     // useful, so page through in small batches rather than asking for one big one.
-    queryFn: () => fetchAllPages((page, limit) => listInvestors(startupId, { page, limit })),
+    queryFn: () =>
+      fetchAllPages((page, limit) => listInvestors(startupId, { page, limit, roundId })),
     enabled: open,
   });
 
@@ -84,7 +89,7 @@ export function AddDealDialog({
   }, [unassignedContacts, contactQuery]);
 
   const selectedContact = availableContacts.find((contact) => contact.id === investorId);
-  const selectedStage = STAGES.find((item) => item.id === stage) ?? STAGES[0];
+  const selectedStage = INITIAL_STAGES.find((item) => item.id === stage) ?? INITIAL_STAGES[0];
 
   const parsedAmount = amount.trim() === "" ? undefined : Number(amount);
   const amountInvalid = parsedAmount !== undefined && Number.isNaN(parsedAmount);
@@ -112,7 +117,7 @@ export function AddDealDialog({
                   <span className="min-w-0 truncate">
                     {selectedContact
                       ? `${selectedContact.fullName}${
-                          selectedContact.ventureFirm ? ` — ${selectedContact.ventureFirm}` : ""
+                          selectedContact.ventureFirm ? ` ${selectedContact.ventureFirm}` : ""
                         }`
                       : contactsQuery.isLoading
                         ? "Loading contacts…"
@@ -143,7 +148,7 @@ export function AddDealDialog({
                 <div className="scrollbar-slim max-h-56 overflow-y-auto">
                   {contactsQuery.isError && (
                     <DropdownMenuItem disabled>
-                      Failed to load contacts — check you are signed in
+                      Failed to load contacts check you are signed in
                     </DropdownMenuItem>
                   )}
                   {!contactsQuery.isLoading && !contactsQuery.isError && unassignedContacts.length === 0 && (
@@ -197,7 +202,7 @@ export function AddDealDialog({
                 align="start"
                 className="w-[var(--radix-dropdown-menu-trigger-width)]"
               >
-                {STAGES.map((item) => (
+                {INITIAL_STAGES.map((item) => (
                   <DropdownMenuItem key={item.id} onSelect={() => setStage(item.id)}>
                     <span className={cn("mr-2 h-2 w-2 rounded-full", item.dotClass)} />
                     {item.label}

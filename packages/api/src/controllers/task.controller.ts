@@ -40,7 +40,7 @@ export const taskController = {
     );
 
     // Completing or reopening a task clears whatever overdue/due-today
-    // notice is sitting on it — a fresh one fires later if it slips again.
+    // notice is sitting on it a fresh one fires later if it slips again.
     if (input.status !== undefined || input.dueDate !== undefined) {
       void notificationService.clearTaskNotifications([taskId]);
     }

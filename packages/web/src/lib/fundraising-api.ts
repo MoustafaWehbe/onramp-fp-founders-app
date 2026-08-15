@@ -36,13 +36,13 @@ export const COMMITMENT_STATUS_LABELS: Record<CommitmentStatus, string> = {
 
 /** Shown next to the choice, so the distinction is made at the point of entry. */
 export const COMMITMENT_STATUS_HINTS: Record<CommitmentStatus, string> = {
-  soft_circled: "Verbal only — not counted toward the target",
-  hard_circled: "Docs signed — counts toward the target",
-  wired: "Money received",
-  withdrawn: "Backed out",
+  soft_circled: "",
+  hard_circled: "",
+  wired: "",
+  withdrawn: "",
 };
 
-/** Signed or better — the money you may legitimately call raised. */
+/** Signed or better the money you may legitimately call raised. */
 export function isBankable(status: CommitmentStatus): boolean {
   return status === "hard_circled" || status === "wired";
 }
@@ -111,7 +111,7 @@ export type RoundMetrics = {
   bankableRaised: number;
   remainingGap: number;
   percentToTarget: number;
-  /** Live pipeline deals only — committed money is counted exactly via its commitment, not weighted. */
+  /** Live pipeline deals only committed money is counted exactly via its commitment, not weighted. */
   weightedPipeline: number;
   /** Days until targetCloseDate (or firstCloseDate); negative once past; null when neither is set. */
   daysToClose: number | null;
@@ -131,7 +131,7 @@ export type AtRiskCommitment = {
 /**
  * One real transition a commitment made from one confidence status to
  * another, oldest first. The first event on any commitment has
- * fromStatus null — that's the commitment being recorded, not a change.
+ * fromStatus null that's the commitment being recorded, not a change.
  * What a funding-over-time chart should be built from instead of
  * Commitment.createdAt, which only says when the row was typed in.
  */

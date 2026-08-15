@@ -11,6 +11,9 @@ const inviteMember = vi.fn();
 const changeMemberRole = vi.fn();
 const removeMember = vi.fn();
 const resendInvite = vi.fn();
+const createRole = vi.fn();
+const updateRole = vi.fn();
+const deleteRole = vi.fn();
 
 vi.mock("../../lib/team-api", () => ({
   listMembers: (...args: unknown[]) => listMembers(...args),
@@ -19,16 +22,28 @@ vi.mock("../../lib/team-api", () => ({
   changeMemberRole: (...args: unknown[]) => changeMemberRole(...args),
   removeMember: (...args: unknown[]) => removeMember(...args),
   resendInvite: (...args: unknown[]) => resendInvite(...args),
+  createRole: (...args: unknown[]) => createRole(...args),
+  updateRole: (...args: unknown[]) => updateRole(...args),
+  deleteRole: (...args: unknown[]) => deleteRole(...args),
 }));
 
-// Drives usePermissions, which is what gates every management action.
+// Drives usePermissions, which is what gates every management action. The
+// real hook reads member.permissions (live grants), not the role name so
+// the fixture derives them the same way the server would, from the same
+// per-role template used to cross-check the server in lib/permissions.test.ts.
 let workspaceRole = "owner";
-vi.mock("../../hooks/useWorkspace", () => ({
-  useActiveStartupId: () => "startup-1",
-  useWorkspace: () => ({
-    activeStartup: { id: "startup-1", member: { role: workspaceRole } },
-  }),
-}));
+vi.mock("../../hooks/useWorkspace", async () => {
+  const { ROLE_PERMISSIONS } = await import("../../lib/permissions");
+  return {
+    useActiveStartupId: () => "startup-1",
+    useWorkspace: () => ({
+      activeStartup: {
+        id: "startup-1",
+        member: { role: workspaceRole, permissions: [...(ROLE_PERMISSIONS[workspaceRole] ?? [])] },
+      },
+    }),
+  };
+});
 
 const toast = {
   success: vi.fn(),
@@ -58,9 +73,30 @@ const VIEWER: AuthUser = {
 };
 
 const ROLES = [
-  { id: "role-owner", name: "owner", description: "Full access", isSystemRole: true },
-  { id: "role-collab", name: "collaborator", description: "Can edit", isSystemRole: true },
-  { id: "role-viewer", name: "viewer", description: "Read-only", isSystemRole: true },
+  {
+    id: "role-owner",
+    name: "owner",
+    description: "Full access",
+    isSystemRole: true,
+    permissions: ["startup:read", "team:manage"],
+    memberCount: 1,
+  },
+  {
+    id: "role-collab",
+    name: "collaborator",
+    description: "Can edit",
+    isSystemRole: true,
+    permissions: ["startup:read", "team:create", "pipeline:read"],
+    memberCount: 0,
+  },
+  {
+    id: "role-viewer",
+    name: "viewer",
+    description: "Read-only",
+    isSystemRole: true,
+    permissions: ["startup:read", "pipeline:read"],
+    memberCount: 1,
+  },
 ];
 
 const MEMBERS = [
@@ -154,7 +190,8 @@ describe("Team", () => {
 
     await screen.findAllByText("Jane Doe");
     expect(screen.queryByRole("button", { name: /invite teammate/i })).not.toBeInTheDocument();
-    expect(screen.getByText("Only owners can change team membership.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /new role/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /edit permissions/i })).not.toBeInTheDocument();
 
     const user = await openActionsFor("Sam Patel");
     expect(screen.queryByText("Change role")).not.toBeInTheDocument();
@@ -299,5 +336,93 @@ describe("Team", () => {
     expect(
       await screen.findByText("You're not an active member of this workspace."),
     ).toBeInTheDocument();
+  });
+
+  it("restricts a collaborator to inviting only the viewer role", async () => {
+    workspaceRole = "collaborator";
+    const user = userEvent.setup();
+    renderTeam();
+
+    await screen.findAllByText("Jane Doe");
+    await user.click(screen.getByRole("button", { name: /invite teammate/i }));
+    await user.click(screen.getByRole("button", { name: /viewer/i }));
+
+    // Radix nests a DropdownMenu inside the invite Dialog each layer's own
+    // "hide the rest of the page" aria-hidden trick makes the open menu
+    // invisible to testing-library's accessibility-tree-aware role queries,
+    // even though it's genuinely open and interactive. Query the raw DOM node
+    // instead, then use `within` (plain DOM text matching, unaffected by
+    // aria-hidden) to check what it actually offers.
+    const menu = document.body.querySelector('[role="menu"]');
+    expect(menu).not.toBeNull();
+    const menuScope = within(menu as HTMLElement);
+    expect(menuScope.getByText("Viewer")).toBeInTheDocument();
+    expect(menuScope.queryByText("Collaborator")).not.toBeInTheDocument();
+    expect(menuScope.queryByText("Owner")).not.toBeInTheDocument();
+  });
+
+  it("lets an owner create a new role with selected permissions", async () => {
+    createRole.mockResolvedValue({
+      id: "role-new",
+      name: "recruiter",
+      description: "",
+      isSystemRole: false,
+      permissions: ["team:create"],
+      memberCount: 0,
+    });
+    const user = userEvent.setup();
+    renderTeam();
+
+    await screen.findAllByText("Jane Doe");
+    await user.click(screen.getByRole("button", { name: /new role/i }));
+    await user.type(screen.getByLabelText("Role name"), "recruiter");
+    await user.click(screen.getByLabelText("Invite"));
+    await user.click(screen.getByRole("button", { name: "Create role" }));
+
+    await waitFor(() =>
+      expect(createRole).toHaveBeenCalledWith("startup-1", {
+        name: "recruiter",
+        description: undefined,
+        permissions: ["team:create"],
+      }),
+    );
+    expect(toast.success).toHaveBeenCalledWith("recruiter role created");
+  });
+
+  it("lets an owner edit an existing role's permissions", async () => {
+    updateRole.mockResolvedValue({
+      id: "role-collab",
+      name: "collaborator",
+      description: "Can edit",
+      isSystemRole: true,
+      permissions: ["startup:read", "team:create", "pipeline:read", "pipeline:create"],
+      memberCount: 0,
+    });
+    const user = userEvent.setup();
+    renderTeam();
+
+    await screen.findAllByText("Jane Doe");
+    // Collaborator is the first non-owner role card, so its Edit permissions
+    // button is the first of the two rendered (collaborator, viewer).
+    await user.click(screen.getAllByRole("button", { name: /edit permissions/i })[0]);
+    await user.click(screen.getByLabelText("Add"));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() =>
+      expect(updateRole).toHaveBeenCalledWith("startup-1", "role-collab", {
+        description: "Can edit",
+        permissions: ["startup:read", "team:create", "pipeline:read", "pipeline:create"],
+      }),
+    );
+    expect(toast.success).toHaveBeenCalledWith("Collaborator permissions updated");
+  });
+
+  it("never offers to edit or delete the owner role", async () => {
+    renderTeam();
+    await screen.findAllByText("Jane Doe");
+
+    expect(screen.getByText("Full access can't be changed.")).toBeInTheDocument();
+    // Only the two non-owner roles (collaborator, viewer) get an edit button.
+    expect(screen.getAllByRole("button", { name: /edit permissions/i })).toHaveLength(2);
   });
 });

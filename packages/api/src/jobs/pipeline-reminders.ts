@@ -18,7 +18,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * Most recent contact per investor. interactionDate is what the founder says
  * happened; createdAt is when it was written down. Logs recorded before
  * interactionDate existed only have the latter, so both are taken and the
- * newer wins — the same rule the focus list uses.
+ * newer wins the same rule the focus list uses.
  */
 async function lastTouchByInvestor(investorIds: string[]): Promise<Map<string, number>> {
   if (investorIds.length === 0) return new Map();
@@ -53,7 +53,7 @@ async function lastTouchByInvestor(investorIds: string[]): Promise<Map<string, n
  * Who hears about a deal going quiet: whoever owns it, or the founder who
  * created the workspace when nobody does. An unowned deal drifting is exactly
  * the case worth surfacing, so it must not fall through for want of a
- * recipient — but only to someone who is still an active member.
+ * recipient but only to someone who is still an active member.
  */
 function recipientFor(
   deal: { startupId: string; owner: { userId: string | null } | null },
@@ -67,7 +67,7 @@ function recipientFor(
  * Reminds a team about the two ways a raise stalls silently: a lead investor
  * nobody has spoken to in a week, and a live deal carrying no next step at
  * all. Settled deals (committed/passed) and deals in a finished round are
- * never chased. Safe to run repeatedly — notifyLeadStale and
+ * never chased. Safe to run repeatedly notifyLeadStale and
  * notifyDealNoNextStep hold a per-deal cooldown, so a daily tick does not
  * repeat itself.
  */

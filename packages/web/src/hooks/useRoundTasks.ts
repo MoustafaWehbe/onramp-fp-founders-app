@@ -4,7 +4,7 @@ import { qk } from "../lib/query-keys";
 import { listTasks, type Task } from "../lib/task-api";
 
 /**
- * Every task on every deal in one round — open and completed alike.
+ * Every task on every deal in one round open and completed alike.
  *
  * Dashboard and the pipeline's task queue both read this, so it is defined
  * once: two callers asking the same key for different slices (one filtering

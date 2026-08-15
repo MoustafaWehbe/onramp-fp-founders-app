@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, Crown, ListPlus, Mail, Plus, Sparkles } from "lucide-react";
+import { AlertTriangle, CalendarPlus, CheckCircle2, Crown, ListPlus, Mail, Sparkles } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { StageBadge } from "../Investors/StageBadge";
 import type { PipelineFocusEntry } from "../../../lib/pipeline-api";
@@ -8,12 +8,15 @@ import { FOCUS_REASON_LABELS, FOCUS_REASON_TONES, formatDaysAgo } from "./deal-s
 
 type FocusListProps = {
   items: PipelineFocusEntry[];
-  /** The round's own currency — a deal's amount is never assumed to be USD. */
+  /** The round's own currency a deal's amount is never assumed to be USD. */
   currency: string;
   canCreate: boolean;
+  /** Whether the founder's Google account is connected scheduling needs it. */
+  googleConnected: boolean;
   onOpen: (deal: PipelineFocusEntry) => void;
-  onLog: (deal: PipelineFocusEntry) => void;
-  /** Sets the next step straight from the row — most of this queue is here for want of one. */
+  onSchedule: (deal: PipelineFocusEntry) => void;
+  onEmail: (deal: PipelineFocusEntry) => void;
+  /** Sets the next step straight from the row most of this queue is here for want of one. */
   onAddTask: (deal: PipelineFocusEntry) => void;
 };
 
@@ -26,7 +29,16 @@ function dueLabel(nextTaskDueDate: string | null, now = Date.now()): string | nu
   return `Due in ${days}d`;
 }
 
-export function FocusList({ items, currency, canCreate, onOpen, onLog, onAddTask }: FocusListProps) {
+export function FocusList({
+  items,
+  currency,
+  canCreate,
+  googleConnected,
+  onOpen,
+  onSchedule,
+  onEmail,
+  onAddTask,
+}: FocusListProps) {
   const [leadsOnly, setLeadsOnly] = useState(false);
   const leadCount = items.filter((deal) => deal.isLead).length;
   const visibleItems = leadsOnly ? items.filter((deal) => deal.isLead) : items;
@@ -139,18 +151,40 @@ export function FocusList({ items, currency, canCreate, onOpen, onLog, onAddTask
             </div>
 
             <div className="flex shrink-0 items-center gap-1.5">
-              {investor.email && (
-                <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-                  <a href={`mailto:${investor.email}`} aria-label={`Email ${investor.fullName}`}>
-                    <Mail className="h-4 w-4" />
-                  </a>
-                </Button>
-              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                disabled={!investor.email || !googleConnected}
+                title={
+                  !investor.email
+                    ? "This investor has no email on file"
+                    : !googleConnected
+                      ? "Connect your Google account in Settings to send email"
+                      : undefined
+                }
+                aria-label={`Email ${investor.fullName}`}
+                onClick={() => onEmail(deal)}
+              >
+                <Mail className="h-4 w-4" />
+              </Button>
               {canCreate && (
                 <>
-                  <Button size="sm" variant="outline" onClick={() => onLog(deal)}>
-                    <Plus className="h-4 w-4" />
-                    Log
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!investor.email || !googleConnected}
+                    title={
+                      !investor.email
+                        ? "This investor has no email on file"
+                        : !googleConnected
+                          ? "Connect your Google account in Settings to schedule meetings"
+                          : undefined
+                    }
+                    onClick={() => onSchedule(deal)}
+                  >
+                    <CalendarPlus className="h-4 w-4" />
+                    Schedule
                   </Button>
                   <Button size="sm" onClick={() => onAddTask(deal)}>
                     <ListPlus className="h-4 w-4" />

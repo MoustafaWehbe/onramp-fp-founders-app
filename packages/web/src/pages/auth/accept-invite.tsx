@@ -66,7 +66,7 @@ function Panel({
 }
 
 function AcceptInvite() {
-  // Read the token off the URL directly rather than via useSearchParams — the
+  // Read the token off the URL directly rather than via useSearchParams the
   // token is only ever consumed once, on mount, and this keeps it out of the
   // effect's dependency list.
   const token = new URLSearchParams(window.location.search).get("token") ?? "";
@@ -85,7 +85,7 @@ function AcceptInvite() {
   const loginHref = (email: string) =>
     `/auth/login?next=${encodeURIComponent(returnTo)}&email=${encodeURIComponent(email)}`;
   // Registration claims a matching pending invite on email verification, so it
-  // lands in the workspace on its own — there is nothing to come back for.
+  // lands in the workspace on its own there is nothing to come back for.
   const registerHref = (email: string) => `/auth/register?email=${encodeURIComponent(email)}`;
 
   useEffect(() => {
@@ -181,7 +181,7 @@ function AcceptInvite() {
               <strong className="font-medium text-foreground">{screen.invitedEmail}</strong>, but
               you're signed in as{" "}
               <strong className="font-medium text-foreground">{screen.signedInAs}</strong>. The
-              invitation is still waiting — sign in as the invited person to accept it.
+              invitation is still waiting sign in as the invited person to accept it.
             </>
           }
         >

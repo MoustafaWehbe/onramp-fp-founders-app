@@ -43,7 +43,7 @@ export type PipelineEntry = {
   sortOrder: number;
   /**
    * When the deal last moved stage. Distinct from updatedAt, which also moves
-   * when the amount or probability is edited — so only this can measure how
+   * when the amount or probability is edited so only this can measure how
    * long a deal has been sitting where it is.
    */
   stageChangedAt: string;
@@ -135,7 +135,7 @@ export async function updatePipelineEntry(
   startupId: string,
   pipelineId: string,
   body: {
-    /** Moves the deal into another open round; refused if it has commitments. */
+    /** Moves the deal into another open round; a simultaneous new commitment belongs to that destination round. */
     roundId?: string;
     stage?: PipelineStageId;
     expectedAmount?: number | null;
@@ -149,7 +149,7 @@ export async function updatePipelineEntry(
     reason?: string;
     /**
      * Required by the server when stage is being set to "committed" and the
-     * deal has no live commitment yet — the transition records the round's
+     * deal has no live commitment yet the transition records the round's
      * commitment so the board and the round page cannot disagree.
      */
     commitment?: CommitmentDraft;
@@ -164,7 +164,7 @@ export async function updatePipelineEntry(
 
 /**
  * Funnel, conversion and stage velocity, computed server-side from the deal's
- * stage history rather than from the current board — a deal now marked passed
+ * stage history rather than from the current board a deal now marked passed
  * still counts toward every stage it once reached.
  */
 export async function getPipelineAnalytics(startupId: string, roundId?: string) {
@@ -184,7 +184,9 @@ export async function deletePipelineEntry(startupId: string, pipelineId: string)
 
 export type PipelineStageEvent = {
   id: string;
-  /** Null for the first event — the deal being added to the pipeline. */
+  /** Fundraising round that owned this transition at the time. */
+  roundId: string;
+  /** Null for the first event the deal being added to the pipeline. */
   fromStage: PipelineStageId | null;
   toStage: PipelineStageId;
   /** Only present when toStage is "passed". */
@@ -221,7 +223,7 @@ export async function getPipelineFocus(startupId: string, roundId?: string) {
   return data.data;
 }
 
-/** Who added this deal and who moved it since — oldest first. */
+/** Who added this deal and who moved it since oldest first. */
 export async function listPipelineStageEvents(startupId: string, pipelineId: string) {
   const { data } = await apiClient.get<{ data: PipelineStageEvent[] }>(
     `/startups/${startupId}/pipeline/${pipelineId}/stage-events`,

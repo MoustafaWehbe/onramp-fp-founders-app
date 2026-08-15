@@ -39,6 +39,11 @@ const G = {
   DOCUMENT: 15,
   DOCUMENT_VERSION: 16,
   DOCUMENT_CHUNK: 17,
+  CONVERSATION: 18,
+  CONVERSATION_MEMBER: 19,
+  MESSAGE: 20,
+  MESSAGE_MENTION: 21,
+  MESSAGE_REACTION: 22,
 } as const;
 
 const uid = (group: number, n: number): string =>
@@ -49,6 +54,7 @@ const uid = (group: number, n: number): string =>
 const NOW = Date.now();
 const days = (n: number) => new Date(NOW + n * 86_400_000);
 const hours = (n: number) => new Date(NOW + n * 3_600_000);
+const minutes = (n: number) => new Date(NOW + n * 60_000);
 
 /**
  * "Due today" means later today, not this exact instant. The task queue sorts
@@ -61,7 +67,7 @@ const endOfToday = () => {
   return d;
 };
 
-/** Every stage a deal can sit in while still live — "passed" is the exit. */
+/** Every stage a deal can sit in while still live "passed" is the exit. */
 const FUNNEL: PipelineStage[] = PIPELINE_STAGES.filter((s) => s !== "passed");
 
 /** Shared by every seeded account, so any of them can be signed into quickly. */
@@ -95,9 +101,9 @@ interface DealSeed {
   /** Which of the startup's rounds this deal belongs to. */
   round: string;
   stage: PipelineStage;
-  /** Days ago the deal entered the funnel — the start of its stage history. */
+  /** Days ago the deal entered the funnel the start of its stage history. */
   sourcedDaysAgo: number;
-  /** Days ago it reached its current stage — the end of that history. */
+  /** Days ago it reached its current stage the end of that history. */
   stageChangedDaysAgo: number;
   expectedAmount?: number;
   probabilityPercentage?: number;
@@ -139,6 +145,50 @@ interface ContactSeed {
   logs?: LogSeed[];
 }
 
+// The UI stores controlled option ids. Keeping the seed fixtures readable
+// while normalizing at this boundary makes every seeded contact editable from
+// the select controls without silently retaining a legacy free-text value.
+const SECTOR_FOCUS_IDS: Record<string, string> = {
+  "B2B SaaS": "b2b_saas",
+  "Enterprise software": "b2b_saas",
+  "Sales tech": "b2b_saas",
+  "Developer tools": "developer_tools",
+  Marketplaces: "marketplaces",
+  "SaaS, AI": "ai_ml",
+  Diversified: "other",
+  Fintech: "fintech",
+  Infrastructure: "developer_tools",
+  Climate: "climate",
+  "Fintech, SaaS": "fintech",
+  "AI / Infrastructure": "ai_ml",
+};
+
+const STAGE_PREFERENCE_IDS: Record<string, string> = {
+  pre_seed: "pre_seed",
+  seed: "seed",
+  series_a: "series_a",
+  series_b: "series_b",
+  growth: "growth",
+  any_stage: "any_stage",
+};
+
+const SOURCE_IDS: Record<string, string> = {
+  outbound: "cold_outreach",
+  conference: "event",
+  linkedin: "cold_outreach",
+  warm_intro: "warm_intro",
+  program: "accelerator",
+  event: "event",
+  referral: "referral",
+};
+
+function controlledSeedValue(value: string | undefined, options: Record<string, string>, field: string) {
+  if (value === undefined) return null;
+  const normalized = options[value];
+  if (!normalized) throw new Error(`Unknown ${field} seed value: ${value}`);
+  return normalized;
+}
+
 interface TaskSeed {
   contactKey: string;
   round: string;
@@ -175,7 +225,7 @@ const USERS: UserSeed[] = [
   { key: "karim", firstName: "Karim", lastName: "Baz", email: "karim@driftlabs.io" },
 ];
 
-// ─── Northbeam — the primary demo workspace ───────────────────────────────────
+// ─── Northbeam the primary demo workspace ───────────────────────────────────
 
 const NORTHBEAM_MEMBERS: MemberSeed[] = [
   { userKey: "muhamad", role: "owner" },
@@ -239,7 +289,7 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     sectorFocus: "Sales tech",
       investmentStagePreference: "seed",
     source: "linkedin",
-    // A deal with no owner and no next step — the "needs attention" reminder job
+    // A deal with no owner and no next step the "needs attention" reminder job
     // is meant to pick exactly this up.
     deals: [
       {
@@ -256,13 +306,13 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
   // ── Contacted ──────────────────────────────────────────────────────────────
   {
     key: "marcus",
-      fullName: "Marcus Webb",
-      email: "marcus.webb@indexventures.example.com",
-      ventureFirm: "Index Ventures",
-      investorType: "vc",
-      sectorFocus: "Developer tools",
-      investmentStagePreference: "seed",
-      source: "warm_intro",
+    fullName: "Marcus Webb",
+    email: "marcus.webb@indexventures.example.com",
+    ventureFirm: "Index Ventures",
+    investorType: "vc",
+    sectorFocus: "Developer tools",
+    investmentStagePreference: "seed",
+    source: "warm_intro",
     notes: "Wants to meet the full founding team before going further.",
     notesAuthorKey: "muhamad",
     notesEditorKey: "raymond",
@@ -295,6 +345,13 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
         daysAgo: 20,
         authorKey: "muhamad",
       },
+      {
+        type: "note",
+        subject: "Note on next steps",
+        description: "Wants to meet the full founding team before going further.",
+        daysAgo: 5,
+        authorKey: "raymond",
+      },
     ],
   },
   {
@@ -305,7 +362,7 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     sectorFocus: "Marketplaces",
     source: "linkedin",
     deals: [
-      // Passed on the pre-seed, back in the funnel for the seed — the same
+      // Passed on the pre-seed, back in the funnel for the seed the same
       // contact legitimately appears in two rounds.
       {
         round: "pre_seed",
@@ -331,7 +388,7 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
       {
         type: "note",
         subject: "Passed on pre-seed",
-        description: "Timing, not conviction — asked to be kept warm for the seed.",
+        description: "Timing, not conviction asked to be kept warm for the seed.",
         daysAgo: 296,
         authorKey: "muhamad",
       },
@@ -362,13 +419,13 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
   // ── Meeting scheduled ──────────────────────────────────────────────────────
   {
     key: "james",
-      fullName: "James O'Brien",
-      email: "james.obrien@accel.example.com",
-      ventureFirm: "Accel",
-      investorType: "vc",
-      sectorFocus: "B2B SaaS",
-      investmentStagePreference: "series_a",
-      source: "outbound",
+    fullName: "James O'Brien",
+    email: "james.obrien@accel.example.com",
+    ventureFirm: "Accel",
+    investorType: "vc",
+    sectorFocus: "B2B SaaS",
+    investmentStagePreference: "series_a",
+    source: "outbound",
     notes: "Asked for cohort retention split by segment ahead of the partner meeting.",
     notesAuthorKey: "raymond",
     notesAgeDays: 3,
@@ -388,7 +445,7 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     logs: [
       {
         type: "email",
-        subject: "Cold outreach — Northbeam",
+        subject: "Cold outreach Northbeam",
         description: "Replied in two days, asked for deck and metrics.",
         daysAgo: 43,
         authorKey: "muhamad",
@@ -405,6 +462,13 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
         subject: "Sent metrics appendix",
         description: "Shared the cohort breakdown he asked for.",
         daysAgo: 4,
+        authorKey: "raymond",
+      },
+      {
+        type: "note",
+        subject: "Note ahead of partner meeting",
+        description: "Asked for cohort retention split by segment ahead of the partner meeting.",
+        daysAgo: 3,
         authorKey: "raymond",
       },
     ],
@@ -483,7 +547,7 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
         subject: "Screening call",
         daysAgo: 14,
         authorKey: "raymond",
-        // Legacy shape — a planned follow-up that was later satisfied.
+        // Legacy shape a planned follow-up that was later satisfied.
         followupInDays: -7,
         followupDoneDaysAgo: 5,
       },
@@ -501,10 +565,6 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     investmentStagePreference: "seed",
     linkedinUrl: "https://linkedin.com/in/sarahchen",
     source: "event",
-    notes: "Prospective lead. Legal is reviewing the data room; wants a 15% option pool.",
-    notesAuthorKey: "muhamad",
-    notesEditorKey: "muhamad",
-    notesAgeDays: 2,
     deals: [
       {
         round: "seed",
@@ -545,6 +605,13 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
         subject: "Diligence kickoff",
         description: "Walked through the data room structure. Legal starts Monday.",
         daysAgo: 9,
+        authorKey: "muhamad",
+      },
+      {
+        type: "note",
+        subject: "Note on data room review",
+        description: "Prospective lead. Legal is reviewing the data room; wants a 15% option pool.",
+        daysAgo: 1,
         authorKey: "muhamad",
       },
     ],
@@ -664,7 +731,7 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
         commitment: {
           amount: 600_000,
           history: [{ status: "soft_circled", daysAgo: 15 }],
-          // Deliberately in the past — an at-risk commitment the forecast panel
+          // Deliberately in the past an at-risk commitment the forecast panel
           // is supposed to flag rather than quietly count.
           expectedCloseInDays: -4,
         },
@@ -681,9 +748,6 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     sectorFocus: "Fintech, SaaS",
       investmentStagePreference: "pre_seed",
     source: "referral",
-    notes: "Former operator, wrote the first pre-seed cheque and doubled down on the seed.",
-    notesAuthorKey: "muhamad",
-    notesAgeDays: 30,
     deals: [
       {
         round: "pre_seed",
@@ -733,6 +797,13 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
         type: "other",
         subject: "SAFE countersigned",
         daysAgo: 27,
+        authorKey: "muhamad",
+      },
+      {
+        type: "note",
+        subject: "Background note",
+        description: "Former operator, wrote the first pre-seed cheque and doubled down on the seed.",
+        daysAgo: 30,
         authorKey: "muhamad",
       },
     ],
@@ -808,11 +879,11 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
   // ── Passed ─────────────────────────────────────────────────────────────────
   {
     key: "victor",
-      fullName: "Victor Alvarez",
-      email: "victor.alvarez@bessemer.example.com",
-      ventureFirm: "Bessemer",
-      investorType: "vc",
-      source: "outbound",
+    fullName: "Victor Alvarez",
+    email: "victor.alvarez@bessemer.example.com",
+    ventureFirm: "Bessemer",
+    investorType: "vc",
+    source: "outbound",
     notes: "Passed — too early for the current fund. Revisit at Series A.",
     notesAuthorKey: "muhamad",
     notesAgeDays: 22,
@@ -829,7 +900,7 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     logs: [
       {
         type: "email",
-        subject: "Pass — too early",
+        subject: "Pass too early",
         description: "Fund is deploying at Series A. Offered to intro two seed funds.",
         daysAgo: 22,
         authorKey: "muhamad",
@@ -846,7 +917,7 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     investmentStagePreference: "seed",
     source: "referral",
     deals: [
-      // Soft-circled, then pulled out during diligence — the withdrawn path the
+      // Soft-circled, then pulled out during diligence the withdrawn path the
       // funding chart must not count as raised.
       {
         round: "seed",
@@ -877,7 +948,7 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     ],
   },
 
-  // ── Not in any pipeline — the "Add to pipeline" roster ─────────────────────
+  // ── Not in any pipeline the "Add to pipeline" roster ─────────────────────
   {
     key: "ethan",
     fullName: "Ethan Brooks",
@@ -898,15 +969,24 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     source: "program",
   },
   {
-    // No email and no deal — both nullable paths the Investors list has to
+    // No email and no deal both nullable paths the Investors list has to
     // render (the per-startup email uniqueness only applies to non-null values).
     key: "yuki",
-      fullName: "Yuki Tanaka",
-      investorType: "other",
-      source: "event",
+    fullName: "Yuki Tanaka",
+    investorType: "other",
+    source: "event",
     notes: "Met briefly at a meetup — no contact details yet.",
     notesAuthorKey: "lopna",
     notesAgeDays: 11,
+    logs: [
+      {
+        type: "note",
+        subject: "How we met",
+        description: "Met briefly at a meetup no contact details yet.",
+        daysAgo: 11,
+        authorKey: "lopna",
+      },
+    ],
   },
 ];
 
@@ -925,7 +1005,7 @@ const NORTHBEAM_TASKS: TaskSeed[] = [
     contactKey: "owen",
     round: "seed",
     title: "Chase Lodestar on signature",
-    description: "Expected close has already slipped — confirm whether it is still live.",
+    description: "Expected close has already slipped confirm whether it is still live.",
     priority: "high",
     dueInDays: -1,
     assigneeKey: "muhamad",
@@ -987,7 +1067,7 @@ const NORTHBEAM_TASKS: TaskSeed[] = [
     creatorKey: "raymond",
   },
   {
-    // Unassigned and undated — the loosest task shape the queue has to render.
+    // Unassigned and undated the loosest task shape the queue has to render.
     contactKey: "clara",
     round: "seed",
     title: "Decide whether to keep Kima warm",
@@ -1026,7 +1106,7 @@ const NORTHBEAM_TASKS: TaskSeed[] = [
   },
 ];
 
-// ─── Drift Labs — a second workspace, non-USD, where the owner is a guest ─────
+// ─── Drift Labs a second workspace, non-USD, where the owner is a guest ─────
 
 const DRIFT_MEMBERS: MemberSeed[] = [
   { userKey: "karim", role: "owner" },
@@ -1295,7 +1375,7 @@ async function seedWorkspace(
   }
 
   const contactsByKey = new Map<string, { id: string; fullName: string; ventureFirm: string | null }>();
-  // Keyed "contactKey:roundKey" — a contact can hold one deal per round.
+  // Keyed "contactKey:roundKey" a contact can hold one deal per round.
   const dealsByKey = new Map<string, { id: string }>();
   const sortOrders: Record<string, number> = {};
   let dealCount = 0;
@@ -1315,10 +1395,14 @@ async function seedWorkspace(
         email: seed.email ?? null,
         ventureFirm: seed.ventureFirm ?? null,
         investorType: seed.investorType,
-        sectorFocus: seed.sectorFocus ?? null,
-        investmentStagePreference: seed.investmentStagePreference ?? null,
+        sectorFocus: controlledSeedValue(seed.sectorFocus, SECTOR_FOCUS_IDS, "sector focus"),
+        investmentStagePreference: controlledSeedValue(
+          seed.investmentStagePreference,
+          STAGE_PREFERENCE_IDS,
+          "stage preference",
+        ),
         linkedinUrl: seed.linkedinUrl ?? null,
-        source: seed.source ?? null,
+        source: controlledSeedValue(seed.source, SOURCE_IDS, "source"),
         notes: seed.notes ?? null,
         notesCreatedBy: author?.id ?? null,
         notesCreatedAt: seed.notes ? days(-notesAge) : null,
@@ -1326,8 +1410,8 @@ async function seedWorkspace(
         // Only an edited note carries an update stamp — an untouched one would
         // otherwise render as "edited" the moment it was written.
         notesUpdatedAt: editor ? days(-Math.max(0, notesAge - 1)) : null,
-    },
-  });
+      },
+    });
     contactsByKey.set(seed.key, contact);
 
     for (const deal of seed.deals ?? []) {
@@ -1358,14 +1442,15 @@ async function seedWorkspace(
       dealsByKey.set(`${seed.key}:${deal.round}`, entry);
       dealCount += 1;
 
-      // Stage history — what the conversion and velocity panels read.
+      // Stage history what the conversion and velocity panels read.
       const path = stagePath(deal);
       const dates = stageDates(deal, path.length);
       for (const [i, stage] of path.entries()) {
         await prisma.pipelineStageEvent.create({
           data: {
             id: nextId(G.STAGE_EVENT),
-      startupId: startup.id,
+            startupId: startup.id,
+            roundId: round.id,
             pipelineId: entry.id,
             fromStage: i === 0 ? null : path[i - 1],
             toStage: stage,
@@ -1399,7 +1484,7 @@ async function seedWorkspace(
   });
       commitmentCount += 1;
 
-      // Status history — without these the funding chart can only plot the day
+      // Status history without these the funding chart can only plot the day
       // each commitment was recorded, not when the money actually hardened.
       for (const [i, step] of history.entries()) {
         await prisma.commitmentStatusEvent.create({
@@ -1445,11 +1530,15 @@ async function seedWorkspace(
     }
   }
 
+  // Keyed by title titles are unique within a workspace's seed fixtures, and
+  // chat seeding below needs a real task id to build a "share a task" message.
+  const tasksByKey = new Map<string, { id: string; title: string }>();
+
   for (const seed of spec.tasks) {
     const entry = dealsByKey.get(`${seed.contactKey}:${seed.round}`);
     if (!entry) throw new Error(`Task "${seed.title}" has no deal for ${seed.contactKey}`);
 
-    await prisma.task.create({
+    const task = await prisma.task.create({
       data: {
         id: nextId(G.TASK),
       startupId: startup.id,
@@ -1469,17 +1558,256 @@ async function seedWorkspace(
         createdBy: usersByKey.get(seed.creatorKey)!.id,
       },
     });
+    tasksByKey.set(seed.title, task);
   }
 
   return {
     startup,
     roles,
     membersByKey,
+    tasksByKey,
     roundsByKey,
     contactsByKey,
     dealsByKey,
     counts: { dealCount, commitmentCount, logCount, taskCount: spec.tasks.length },
   };
+}
+
+// ─── Chat ─────────────────────────────────────────────────────────────────────
+
+type MentionTargetType = "member" | "investor" | "deal" | "task" | "round" | "document";
+
+/** Same token format the composer's MentionPicker and Share menu write see packages/api/src/utils/mentions.ts. */
+function mentionToken(type: MentionTargetType, id: string, label: string): string {
+  return `@[${label}](${type}:${id})`;
+}
+
+let seedNonceCounter = 0;
+const nextNonce = () => `seed-nonce-${++seedNonceCounter}`;
+
+/**
+ * Team chat for Northbeam only the workspace the demo opens on. Gives the
+ * Chat page real content to render: a multi-person channel with grouped
+ * consecutive messages, a reply thread, reactions, a teammate @mention, and
+ * one of each shareable entity (investor, deal, task, round) so every
+ * EntityUnfurl card variant shows up somewhere; plus a DM with an unread
+ * message so the sidebar badge and the new direct-message notification both
+ * have something real to point at.
+ */
+async function seedChat(
+  startup: { id: string },
+  membersByKey: Map<string, { id: string }>,
+  usersByKey: Map<string, { id: string; firstName: string; lastName: string }>,
+  contactsByKey: Map<string, { id: string; fullName: string; ventureFirm: string | null }>,
+  dealsByKey: Map<string, { id: string }>,
+  roundsByKey: Map<string, { id: string; currency: string }>,
+  tasksByKey: Map<string, { id: string; title: string }>,
+) {
+  const muhamad = membersByKey.get("muhamad")!;
+  const raymond = membersByKey.get("raymond")!;
+  const rana = membersByKey.get("rana")!;
+  const lopna = membersByKey.get("lopna")!;
+  const muhamadUserId = usersByKey.get("muhamad")!.id;
+
+  const aisha = contactsByKey.get("aisha")!;
+  const aishaSeedDeal = dealsByKey.get("aisha:seed")!;
+  const james = dealsByKey.get("james:seed")!;
+  const seedRound = roundsByKey.get("seed")!;
+  const lodestarTask = tasksByKey.get("Chase Lodestar on signature")!;
+
+  async function send(
+    conversationId: string,
+    senderMemberId: string,
+    body: string,
+    createdAt: Date,
+    parentMessageId?: string,
+  ) {
+    return prisma.message.create({
+      data: {
+        id: nextId(G.MESSAGE),
+        startupId: startup.id,
+        conversationId,
+        senderId: senderMemberId,
+        body,
+        clientNonce: nextNonce(),
+        parentMessageId: parentMessageId ?? null,
+        createdAt,
+      },
+    });
+  }
+
+  async function mention(conversationId: string, messageId: string, type: MentionTargetType, targetId: string) {
+    const column =
+      type === "member"
+        ? { mentionedMemberId: targetId }
+        : type === "investor"
+          ? { investorId: targetId }
+          : type === "deal"
+            ? { pipelineId: targetId }
+            : type === "task"
+              ? { taskId: targetId }
+              : type === "round"
+                ? { roundId: targetId }
+                : { documentId: targetId };
+
+    await prisma.messageMention.create({
+      data: {
+        id: nextId(G.MESSAGE_MENTION),
+        startupId: startup.id,
+        messageId,
+        conversationId,
+        targetType: type,
+        ...column,
+      },
+    });
+  }
+
+  async function react(messageId: string, memberId: string, emoji: string) {
+    await prisma.messageReaction.create({
+      data: { id: nextId(G.MESSAGE_REACTION), startupId: startup.id, messageId, memberId, emoji },
+    });
+  }
+
+  async function join(conversationId: string, memberIds: string[], readSeq: bigint | null, readAt: Date | null) {
+    for (const memberId of memberIds) {
+      await prisma.conversationMember.create({
+        data: {
+          id: nextId(G.CONVERSATION_MEMBER),
+          startupId: startup.id,
+          conversationId,
+          memberId,
+          joinedAt: days(-120),
+          lastReadSeq: readSeq,
+          lastReadAt: readAt,
+        },
+      });
+    }
+  }
+
+  // ── #general the whole team ──────────────────────────────────────────────
+  const general = await prisma.conversation.create({
+    data: {
+      id: nextId(G.CONVERSATION),
+      startupId: startup.id,
+      type: "channel",
+      name: "general",
+      topic: "Team-wide updates and quick questions.",
+      createdBy: muhamadUserId,
+      lastMessageAt: minutes(-5),
+    },
+  });
+
+  await send(general.id, muhamad.id, "Welcome to Northbeam's team chat 👋 This is #general deal talk lives in #fundraising.", minutes(-300));
+  await send(general.id, raymond.id, "Sounds good, I'll keep pipeline chatter over there then.", minutes(-295));
+
+  const g3 = await send(
+    general.id,
+    rana.id,
+    `Quick one ${mentionToken("member", muhamad.id, "Muhamad Houda")} did the term sheet redline go out to Aisha's team yet?`,
+    minutes(-200),
+  );
+  await mention(general.id, g3.id, "member", muhamad.id);
+
+  const g4 = await send(general.id, muhamad.id, "Not yet, doing it today.", minutes(-198));
+  await react(g4.id, raymond.id, "👍");
+
+  const g5 = await send(
+    general.id,
+    muhamad.id,
+    `please guys lets finish it ${mentionToken("task", lodestarTask.id, lodestarTask.title)}`,
+    minutes(-197),
+  );
+  await mention(general.id, g5.id, "task", lodestarTask.id);
+  await react(g5.id, raymond.id, "✅");
+  await react(g5.id, rana.id, "👀");
+
+  const g6 = await send(
+    general.id,
+    muhamad.id,
+    `we must focus on it ${mentionToken("investor", aisha.id, aisha.fullName)}`,
+    minutes(-196),
+  );
+  await mention(general.id, g6.id, "investor", aisha.id);
+
+  const g7 = await send(general.id, raymond.id, "On it moving the Lodestar signature check to today.", minutes(-150));
+  await react(g7.id, muhamad.id, "👍");
+
+  const g8 = await send(
+    general.id,
+    rana.id,
+    `Also, this one's stalled ${mentionToken("deal", aishaSeedDeal.id, aisha.fullName)} meeting is booked but there's no prep doc yet.`,
+    minutes(-100),
+  );
+  await mention(general.id, g8.id, "deal", aishaSeedDeal.id);
+
+  const g9 = await send(
+    general.id,
+    muhamad.id,
+    `Reminder the ${mentionToken("round", seedRound.id, "Seed")} round closes in about a month, let's keep the pace up.`,
+    minutes(-60),
+  );
+  await mention(general.id, g9.id, "round", seedRound.id);
+  await react(g9.id, raymond.id, "🚀");
+
+  const g10 = await send(general.id, muhamad.id, "Anyone free to jump on a call with Lodestar this week to push the signature?", minutes(-30));
+  await send(general.id, raymond.id, "I can do Thursday afternoon.", minutes(-28), g10.id);
+  const g10b = await send(general.id, rana.id, "I'll join too.", minutes(-25), g10.id);
+  await prisma.message.update({ where: { id: g10.id }, data: { replyCount: 2 } });
+
+  const g11 = await send(general.id, lopna.id, "Following along nice progress everyone!", minutes(-5));
+
+  await join(general.id, [raymond.id, rana.id, lopna.id], g11.seq, g11.createdAt);
+  // Muhamad was last active partway through the thread the last word (g11)
+  // lands as this workspace's one unread badge in #general.
+  await join(general.id, [muhamad.id], g10b.seq, g10b.createdAt);
+
+  // ── #fundraising a smaller working group ─────────────────────────────────
+  const fundraising = await prisma.conversation.create({
+    data: {
+      id: nextId(G.CONVERSATION),
+      startupId: startup.id,
+      type: "channel",
+      name: "fundraising",
+      topic: "Investor outreach, term sheets, closing logistics.",
+      createdBy: muhamadUserId,
+      lastMessageAt: minutes(-60),
+    },
+  });
+
+  await send(fundraising.id, muhamad.id, "Syncing here on deal-specific stuff so #general stays clean.", minutes(-180));
+  const f2 = await send(
+    fundraising.id,
+    raymond.id,
+    `${mentionToken("deal", james.id, "James O'Brien")} confirmed for a partner meeting today.`,
+    minutes(-120),
+  );
+  await mention(fundraising.id, f2.id, "deal", james.id);
+  const f3 = await send(fundraising.id, rana.id, "Nice, I'll prep the intro deck.", minutes(-60));
+
+  await join(fundraising.id, [muhamad.id, raymond.id, rana.id], f3.seq, f3.createdAt);
+
+  // ── Muhamad ↔ Raymond DM left with an unread message on purpose, to
+  //    demo the unread badge and the plain-DM notification together ────────
+  const dm = await prisma.conversation.create({
+    data: {
+      id: nextId(G.CONVERSATION),
+      startupId: startup.id,
+      type: "dm",
+      dmKey: [muhamad.id, raymond.id].sort().join(":"),
+      createdBy: usersByKey.get("raymond")!.id,
+      lastMessageAt: minutes(-8),
+    },
+  });
+
+  await send(dm.id, raymond.id, "Hey got a sec to review the pre-seed vs seed comparison deck before EOD?", hours(-3));
+  const dm2 = await send(dm.id, raymond.id, "No rush, just don't want it to slip.", minutes(-8));
+
+  // Raymond's own sends advance his own read pointer; Muhamad hasn't opened
+  // the DM yet, so both messages are still unread for him.
+  await join(dm.id, [raymond.id], dm2.seq, dm2.createdAt);
+  await join(dm.id, [muhamad.id], null, null);
+
+  return { general, fundraising, dm, mentionMessageId: g3.id, dmLastMessageId: dm2.id };
 }
 
 // ─── Seed ─────────────────────────────────────────────────────────────────────
@@ -1491,6 +1819,12 @@ async function main() {
   await prisma.$transaction(async (tx) => {
     await tx.aiChatMessage.deleteMany();
     await tx.aiChatSession.deleteMany();
+    // Team chat content has a Restrict sender relation to StartupMember, so
+    // remove the full child chain before removing workspace memberships.
+    await tx.messageMention.deleteMany();
+    await tx.message.deleteMany();
+    await tx.conversationMember.deleteMany();
+    await tx.conversation.deleteMany();
     await tx.personaQuestion.deleteMany();
     await tx.investorPersona.deleteMany();
     await tx.aiGapAnalysis.deleteMany();
@@ -1525,7 +1859,7 @@ async function main() {
     await tx.user.deleteMany();
   });
 
-  // 1. Users — one shared password so any account can be signed into quickly.
+  // 1. Users one shared password so any account can be signed into quickly.
   const passwordHash = await hashPassword(DEMO_PASSWORD);
   const usersByKey = new Map<string, { id: string; firstName: string; lastName: string }>();
 
@@ -1537,7 +1871,7 @@ async function main() {
         firstName: seed.firstName,
         lastName: seed.lastName,
         email: seed.email,
-        // A Google account has no password — the login route is expected to
+        // A Google account has no password the login route is expected to
         // answer GOOGLE_ACCOUNT rather than pretend the credentials are wrong.
         passwordHash: isGoogle ? null : passwordHash,
         authProvider: isGoogle ? "google" : "local",
@@ -1548,12 +1882,16 @@ async function main() {
     usersByKey.set(seed.key, user);
   }
 
-  // 2. Permissions — global, shared by every workspace's roles.
-  await prisma.permission.createMany({ data: [...PERMISSIONS] });
+  // 2. Permissions global, shared by every workspace's roles.
+  // skipDuplicates: a migration can also seed permission rows ahead of a
+  // fresh `prisma migrate reset` (see 20260815150001_chat_permissions), so
+  // this must tolerate rows that already exist rather than crash on the
+  // (resource, action) unique constraint.
+  await prisma.permission.createMany({ data: [...PERMISSIONS], skipDuplicates: true });
   const allPermissions = await prisma.permission.findMany();
   const permByKey = Object.fromEntries(allPermissions.map((p) => [`${p.resource}:${p.action}`, p]));
 
-  // 3. Northbeam — the workspace the demo opens on.
+  // 3. Northbeam the workspace the demo opens on.
   const northbeam = await seedWorkspace(
     {
       id: uid(G.STARTUP, 1),
@@ -1595,7 +1933,7 @@ async function main() {
     permByKey,
   );
 
-  // 4. Drift Labs — second workspace, EUR round, owner is only a collaborator.
+  // 4. Drift Labs second workspace, EUR round, owner is only a collaborator.
   const drift = await seedWorkspace(
     {
       id: uid(G.STARTUP, 2),
@@ -1633,7 +1971,18 @@ async function main() {
     data: { lastActiveStartupId: northbeam.startup.id },
   });
 
-  // 5. A pending invitation — the Team page's invited-but-not-joined state.
+  // 5. Team chat Northbeam only, the workspace the demo opens on.
+  const chat = await seedChat(
+    northbeam.startup,
+    northbeam.membersByKey,
+    usersByKey,
+    northbeam.contactsByKey,
+    northbeam.dealsByKey,
+    northbeam.roundsByKey,
+    northbeam.tasksByKey,
+  );
+
+  // 6. A pending invitation the Team page's invited-but-not-joined state.
   await prisma.startupMember.create({
     data: {
       id: nextId(G.MEMBER),
@@ -1647,7 +1996,7 @@ async function main() {
     },
   });
 
-  // 6. Notifications — one of every type the client knows how to render, with
+  // 7. Notifications one of every type the client knows how to render, with
   //    a mix of read and unread so the badge count is non-zero.
   const sarahDeal = northbeam.dealsByKey.get("sarah:seed")!;
   const owenDeal = northbeam.dealsByKey.get("owen:seed")!;
@@ -1713,10 +2062,28 @@ async function main() {
       type: "team_invite",
       title: "You were added to Drift Labs",
       body: "Karim Baz added you as a collaborator.",
-      entityType: "startup",
-      entityId: drift.startup.id,
+      entityType: "startup_member",
+      entityId: drift.membersByKey.get("muhamad")!.id,
       readAt: hours(-96),
       createdAt: hours(-120),
+    },
+    {
+      type: "chat_mention",
+      title: "Rana Nemer mentioned you in #general",
+      body: "Quick one @Muhamad Houda did the term sheet redline go out to Aisha's team yet?",
+      entityType: "conversation",
+      entityId: chat.general.id,
+      readAt: null,
+      createdAt: minutes(-200),
+    },
+    {
+      type: "direct_message",
+      title: "Raymond Rached sent you a message",
+      body: "No rush, just don't want it to slip.",
+      entityType: "conversation",
+      entityId: chat.dm.id,
+      readAt: null,
+      createdAt: minutes(-8),
     },
   ];
 
@@ -1731,7 +2098,7 @@ async function main() {
   });
   }
 
-  // 7. Audit trail.
+  // 8. Audit trail.
   const AUDITS = [
     {
       action: "create",
@@ -1894,7 +2261,8 @@ Notes: figures are illustrative seed data for local demos.
   console.info(
     `  Interactions:  ${northbeam.counts.logCount + drift.counts.logCount} logs across call/email/meeting/note/other`,
   );
-  console.info(`  Notifications: ${NOTIFICATIONS.length} (5 unread)`);
+  console.info(`  Chat:          #general + #fundraising, a DM with Raymond (unread), reactions + a reply thread`);
+  console.info(`  Notifications: ${NOTIFICATIONS.length} (7 unread)`);
   console.info(`  Audit logs:    ${AUDITS.length} entries`);
   console.info(`  Documents:     ${documentCount} ready TXT files in data room`);
   console.info("─────────────────────────────────────────────────────────");

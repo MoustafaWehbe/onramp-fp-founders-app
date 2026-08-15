@@ -36,7 +36,7 @@ export const STAGES: PipelineStage[] = [
     dotClass: "bg-warning",
   },
   {
-    // Distinct from "meeting" (amber) and "term sheet" (rose) below — these
+    // Distinct from "meeting" (amber) and "term sheet" (rose) below these
     // two used to both be plain "primary" orange and were nearly
     // indistinguishable as small dots next to meeting's amber.
     id: "due_diligence",

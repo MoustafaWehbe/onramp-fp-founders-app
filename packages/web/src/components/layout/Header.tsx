@@ -1,8 +1,9 @@
-import type { ComponentType } from "react";
-import { AlertTriangle, Bell, CheckCheck, ClipboardCheck, Clock, Crown, LogOut, Menu, Plus, Search, Shield, Sparkles, Users, Wallet } from "lucide-react";
-import { Link } from "react-router-dom";
+import { useState, type ComponentType } from "react";
+import { AlertTriangle, Bell, CheckCheck, ClipboardCheck, Clock, Crown, LogOut, Menu, MessageSquare, Plus, Search, Shield, Sparkles, Users, Wallet } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
-import { useNotifications } from "../../hooks/useNotifications";
+import { useNotifications, type NotificationRow } from "../../hooks/useNotifications";
+import { notificationHref } from "../../lib/notification-routes";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import {
@@ -76,14 +77,25 @@ const iconMap: Record<string, ComponentType<{ className?: string }>> = {
   task_assigned: ClipboardCheck,
   lead_stale: Crown,
   deal_no_next_step: AlertTriangle,
+  chat_mention: MessageSquare,
+  direct_message: MessageSquare,
 };
 
 function NotificationsMenu() {
   const { items, unreadCount, markRead, markAllRead } = useNotifications();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
   const recent = items.slice(0, 5);
 
+  function handleRowClick(n: NotificationRow) {
+    if (!n.read) markRead(n.id);
+    const href = notificationHref(n);
+    setOpen(false);
+    if (href) navigate(href);
+  }
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
@@ -125,14 +137,21 @@ function NotificationsMenu() {
               {recent.map((n) => {
                 const Icon = iconMap[n.type] ?? Bell;
                 return (
-                  <div
+                  <button
                     key={n.id}
+                    type="button"
+                    onClick={() => handleRowClick(n)}
                     className={cn(
-                      "flex items-start gap-2.5 px-3 py-2.5",
+                      "flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-surface-hover/60",
                       !n.read && "bg-primary/[0.03]",
                     )}
                   >
-                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-surface text-muted-foreground">
+                    <div
+                      className={cn(
+                        "grid h-8 w-8 shrink-0 place-items-center rounded-md",
+                        n.read ? "bg-surface text-muted-foreground" : "bg-primary/15 text-primary",
+                      )}
+                    >
                       <Icon className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -141,17 +160,27 @@ function NotificationsMenu() {
                       <div className="mt-1 text-[11px] text-muted-foreground">{n.when}</div>
                     </div>
                     {!n.read && (
-                      <button
-                        type="button"
-                        onClick={() => markRead(n.id)}
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          markRead(n.id);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter" && event.key !== " ") return;
+                          event.stopPropagation();
+                          event.preventDefault();
+                          markRead(n.id);
+                        }}
                         title="Mark as read"
                         aria-label={`Mark "${n.title}" as read`}
                         className="group mt-1.5 grid h-4 w-4 shrink-0 place-items-center rounded-full focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       >
                         <span className="h-1.5 w-1.5 rounded-full bg-primary transition-transform group-hover:scale-150" />
-                      </button>
+                      </span>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>

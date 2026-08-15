@@ -26,7 +26,7 @@ const SheetOverlay = React.forwardRef<
 ));
 SheetOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
-/** Docked to the right edge, full height — a panel rather than a centered dialog. */
+/** Docked to the right edge, full height a panel rather than a centered dialog. */
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>

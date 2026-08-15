@@ -21,8 +21,8 @@ type Workspace = {
 /**
  * Resolves which workspace the app is currently working in.
  *
- * The stored preference is only a hint — it can name a workspace the user has
- * been removed from, or one seeded by an older build — so it is always
+ * The stored preference is only a hint it can name a workspace the user has
+ * been removed from, or one seeded by an older build so it is always
  * validated against the list the server returns rather than trusted outright.
  */
 export function useWorkspace(): Workspace {
@@ -83,7 +83,7 @@ export function useActiveStartupId(): string {
 
   if (!activeStartupId) {
     throw new Error(
-      "useActiveStartupId was called outside a workspace-guarded route — wrap the route in <RequireWorkspace>",
+      "useActiveStartupId was called outside a workspace-guarded route wrap the route in <RequireWorkspace>",
     );
   }
 

@@ -3,12 +3,12 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Briefcase,
-  Building2,
   Check,
   ChevronDown,
   FileText,
   LayoutDashboard,
   LogOut,
+  MessageCircle,
   MessageSquare,
   Plus,
   ScrollText,
@@ -33,7 +33,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "../ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Button } from "../ui/button";
 
 const navGroups = [
@@ -47,6 +47,7 @@ const navGroups = [
       { to: "/investors", label: "Investors", icon: Users },
       { to: "/pipeline", label: "Pipeline", icon: Briefcase },
       { to: "/fundraising", label: "Rounds", icon: Wallet },
+      { to: "/chat", label: "Chat", icon: MessageCircle },
     ],
   },
   {
@@ -67,7 +68,6 @@ const navGroups = [
     label: "Workspace",
     items: [
       { to: "/team", label: "Team & Roles", icon: UserCog },
-      { to: "/startup", label: "Startup", icon: Building2 },
       { to: "/audit", label: "Audit Log", icon: ScrollText },
       { to: "/settings", label: "Settings", icon: Settings },
     ],
@@ -170,6 +170,7 @@ function UserMenu({ onNavigate }: { onNavigate?: () => void }) {
       <DropdownMenuTrigger asChild>
         <button className="group flex w-full items-center gap-2.5 rounded-xl border border-border/70 bg-card/95 px-3 py-2.5 text-left shadow-[0_1px_0_0_rgba(255,255,255,0.03)_inset,0_8px_20px_-14px_rgba(0,0,0,0.7)] transition-colors duration-200 hover:border-primary/40 hover:bg-surface-hover focus:outline-none focus:ring-1 focus:ring-ring data-[state=open]:border-primary/40 data-[state=open]:bg-surface-hover">
           <Avatar className="h-9 w-9 shrink-0 ring-1 ring-primary/15">
+            <AvatarImage src={user?.avatarUrl ?? undefined} alt={displayName} className="object-cover" />
             <AvatarFallback className="bg-primary/15 font-display text-xs font-semibold text-primary">
               {initials}
             </AvatarFallback>
@@ -191,8 +192,8 @@ function UserMenu({ onNavigate }: { onNavigate?: () => void }) {
       >
         <DropdownMenuLabel>Account</DropdownMenuLabel>
         <DropdownMenuItem asChild>
-          {/* Closes the mobile drawer too — otherwise it stays open over Settings. */}
-          <NavLink to="/settings" onClick={onNavigate}>
+          {/* Closes the mobile drawer too otherwise it stays open over Settings. */}
+          <NavLink to="/profile" onClick={onNavigate}>
             <User className="mr-2 h-4 w-4" /> Profile
           </NavLink>
         </DropdownMenuItem>
@@ -232,7 +233,7 @@ function StartupSwitcher({ onNavigate }: { onNavigate?: () => void }) {
     if (startupId === activeStartup?.id) return;
     setActiveStartupId(startupId);
     // Every cached list is keyed by startup id, so the new workspace's queries
-    // simply miss the cache — but drop the old ones so a switch back is fresh.
+    // simply miss the cache but drop the old ones so a switch back is fresh.
     void queryClient.invalidateQueries();
     onNavigate?.();
     navigate("/dashboard");

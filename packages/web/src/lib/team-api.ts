@@ -5,6 +5,8 @@ export type StartupRole = {
   name: string;
   description: string | null;
   isSystemRole: boolean;
+  permissions: string[];
+  memberCount: number;
 };
 
 export type MemberUser = {
@@ -52,9 +54,36 @@ export async function listRoles(startupId: string) {
   return data.data.roles;
 }
 
+export async function createRole(
+  startupId: string,
+  input: { name: string; description?: string; permissions: string[] },
+) {
+  const { data } = await apiClient.post<{ data: { role: StartupRole } }>(
+    `/startups/${startupId}/roles`,
+    input,
+  );
+  return data.data.role;
+}
+
+export async function updateRole(
+  startupId: string,
+  roleId: string,
+  input: { description?: string; permissions?: string[] },
+) {
+  const { data } = await apiClient.patch<{ data: { role: StartupRole } }>(
+    `/startups/${startupId}/roles/${roleId}`,
+    input,
+  );
+  return data.data.role;
+}
+
+export async function deleteRole(startupId: string, roleId: string) {
+  await apiClient.delete(`/startups/${startupId}/roles/${roleId}`);
+}
+
 /**
  * `emailQueued: false` means the membership row was created but the invitation
- * email never left — the caller has to tell the inviter to follow up manually.
+ * email never left the caller has to tell the inviter to follow up manually.
  */
 export async function inviteMember(startupId: string, body: { email: string; roleId: string }) {
   const { data } = await apiClient.post<{ message: string; emailQueued: boolean }>(
@@ -66,7 +95,7 @@ export async function inviteMember(startupId: string, body: { email: string; rol
 
 /**
  * Issues a fresh invite link and emails it again. The previous link stops
- * working — only its hash was stored, so it cannot be re-sent, only replaced.
+ * working only its hash was stored, so it cannot be re-sent, only replaced.
  * Fails with 409 ALREADY_ACCEPTED if the person has since joined.
  */
 export async function resendInvite(startupId: string, memberId: string) {

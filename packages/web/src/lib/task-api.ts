@@ -3,7 +3,7 @@ import { apiClient } from "./api-client";
 export const TASK_STATUSES = ["open", "completed"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
-/** Shared with Pipeline.priority — same three-level scale. */
+/** Shared with Pipeline.priority same three-level scale. */
 export const PRIORITIES = ["low", "medium", "high"] as const;
 export type Priority = (typeof PRIORITIES)[number];
 

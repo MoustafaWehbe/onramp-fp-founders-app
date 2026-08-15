@@ -31,7 +31,7 @@ function monthsBetween(a: Date, b: Date): number {
 /**
  * Cumulative bankable total at the end of each month, replayed from real
  * status transitions rather than derived from when each commitment row was
- * created — a commitment recorded as soft-circled in January and wired in
+ * created a commitment recorded as soft-circled in January and wired in
  * March raised its money in March, not January. A commitment that moves
  * backward (withdrawn after being wired) shows the total actually dropping,
  * because that is what really happened.
@@ -84,7 +84,7 @@ type FundingHistoryChartProps = {
 
 /**
  * The funding-over-time chart, driven entirely by CommitmentStatusEvent rows
- * — every point here can be traced to a real transition the API recorded,
+ * every point here can be traced to a real transition the API recorded,
  * never implied from a commitment's createdAt.
  */
 export function FundingHistoryChart({ startupId, roundId, currency, compact = false }: FundingHistoryChartProps) {

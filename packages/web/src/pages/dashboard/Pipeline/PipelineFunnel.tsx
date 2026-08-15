@@ -12,12 +12,12 @@ type ConversionRow = PipelineAnalytics["conversion"][number];
 type PipelineFunnelProps = {
   funnel: FunnelRow[];
   conversion: ConversionRow[];
-  /** The round's own currency — a deal's amount is never assumed to be USD. */
+  /** The round's own currency a deal's amount is never assumed to be USD. */
   currency: string;
 };
 
 /**
- * "Passed" is an exit, not a step forward — mixing it into the taper would
+ * "Passed" is an exit, not a step forward mixing it into the taper would
  * break the funnel's shape and its story. It's already covered by the win
  * rate on the outcomes tiles above.
  */

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Users } from "lucide-react";
+import { Pencil, Plus, ShieldCheck, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { Button } from "../../../components/ui/button";
@@ -16,23 +16,28 @@ import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
 import { useAuth } from "../../../hooks/useAuth";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
-import { useActiveStartupId } from "../../../hooks/useWorkspace";
+import { useActiveStartupId, MY_STARTUPS_KEY } from "../../../hooks/useWorkspace";
 import { qk } from "../../../lib/query-keys";
 import {
   changeMemberRole,
+  createRole,
+  deleteRole,
   inviteMember,
   listMembers,
   listRoles,
   removeMember,
   resendInvite,
+  updateRole,
+  type StartupRole,
 } from "../../../lib/team-api";
 import { InviteMemberDialog } from "./InviteMemberDialog";
 import { MembersCardList } from "./MembersCardList";
 import { MembersTable } from "./MembersTable";
+import { RolePermissionsDialog, type RolePermissionsFormValues } from "./RolePermissionsDialog";
 import { mapMemberToRow, roleLabel, type TeamMemberRow } from "./team-types";
 
 const FORBIDDEN_HINT =
-  "You don't have permission to manage this team — only owners can invite, change roles, or remove members.";
+  "You don't have permission to manage this team only owners can invite, change roles, or remove members.";
 
 /** Maps the API's operational error codes onto copy that explains the rule. */
 function mutationErrorMessage(err: unknown, fallback: string): string {
@@ -41,10 +46,20 @@ function mutationErrorMessage(err: unknown, fallback: string): string {
       return "This is the last active owner. Promote someone else to owner first.";
     case "OWNER_ONLY":
       return "Only an owner can assign the owner role.";
+    case "INVITE_ROLE_FORBIDDEN":
+      return "As a collaborator, you can only invite viewers.";
     case "ALREADY_MEMBER":
       return "That person is already a member or already has a pending invitation.";
     case "ROLE_NOT_FOUND":
       return "That role no longer exists in this workspace.";
+    case "ROLE_NAME_TAKEN":
+      return "A role with that name already exists.";
+    case "OWNER_ROLE_LOCKED":
+      return "The owner role's permissions can't be changed.";
+    case "SYSTEM_ROLE":
+      return "Built-in roles can't be deleted.";
+    case "ROLE_IN_USE":
+      return "This role is still assigned to members move them to another role first.";
     default:
       return apiErrorMessage(err, fallback, FORBIDDEN_HINT);
   }
@@ -57,6 +72,8 @@ export function Team() {
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [pendingRemoval, setPendingRemoval] = useState<TeamMemberRow | null>(null);
+  const [roleDialog, setRoleDialog] = useState<{ mode: "create" | "edit"; role?: StartupRole } | null>(null);
+  const [pendingRoleDelete, setPendingRoleDelete] = useState<StartupRole | null>(null);
 
   const membersQuery = useQuery({
     queryKey: qk.members(startupId),
@@ -79,15 +96,27 @@ export function Team() {
   // every screen agrees on what the caller may do.
   const { role: myRole, can } = usePermissions();
 
-  // team:create / team:update / team:delete travel together — only owners hold
-  // any of them, so one check covers inviting, role changes and removal.
-  const canManage = can("team", "create");
+  const canInvite = can("team", "create");
+  const canChangeRole = can("team", "update");
+  const canRemoveMember = can("team", "delete");
+  const canManageRoles = can("team", "manage");
+  // Owners may invite into any role; collaborators (the only other holder of
+  // team:create) may only invite viewers enforced server-side too.
+  const canInviteAnyRole = myRole === "owner";
 
   const activeCount = members.filter((member) => !member.isPending).length;
   const pendingCount = members.length - activeCount;
 
   const invalidateMembers = () =>
     void queryClient.invalidateQueries({ queryKey: qk.members(startupId) });
+
+  const invalidateRoles = () => {
+    void queryClient.invalidateQueries({ queryKey: qk.roles(startupId) });
+    // A role's own permissions may have just changed, which changes what the
+    // signed-in owner (or anyone else) is allowed to do refresh the
+    // workspace list so usePermissions sees the new grants right away.
+    void queryClient.invalidateQueries({ queryKey: MY_STARTUPS_KEY });
+  };
 
   const inviteMutation = useMutation({
     mutationFn: (input: { email: string; roleId: string }) => inviteMember(startupId, input),
@@ -97,7 +126,7 @@ export function Team() {
         toast.success(`Invitation sent to ${input.email}`);
       } else {
         // The membership row exists either way. The raw token never leaves the
-        // server, so there is no link to share by hand — resending issues a
+        // server, so there is no link to share by hand resending issues a
         // fresh one and mails it again.
         toast.warning(
           `${input.email} was invited, but the email failed to send. Use Resend invitation to try again.`,
@@ -151,6 +180,41 @@ export function Team() {
     onError: (err) => toast.error(mutationErrorMessage(err, "Could not remove the member")),
   });
 
+  const createRoleMutation = useMutation({
+    mutationFn: (input: RolePermissionsFormValues) =>
+      createRole(startupId, { name: input.name!, description: input.description || undefined, permissions: input.permissions }),
+    onSuccess: (role) => {
+      toast.success(`${roleLabel(role.name)} role created`);
+      setRoleDialog(null);
+      invalidateRoles();
+    },
+    onError: (err) => toast.error(mutationErrorMessage(err, "Could not create the role")),
+  });
+
+  const updateRoleMutation = useMutation({
+    mutationFn: (input: { roleId: string; values: RolePermissionsFormValues }) =>
+      updateRole(startupId, input.roleId, {
+        description: input.values.description,
+        permissions: input.values.permissions,
+      }),
+    onSuccess: (role) => {
+      toast.success(`${roleLabel(role.name)} permissions updated`);
+      setRoleDialog(null);
+      invalidateRoles();
+    },
+    onError: (err) => toast.error(mutationErrorMessage(err, "Could not update the role")),
+  });
+
+  const deleteRoleMutation = useMutation({
+    mutationFn: (role: StartupRole) => deleteRole(startupId, role.id),
+    onSuccess: (_result, role) => {
+      setPendingRoleDelete(null);
+      toast.success(`${roleLabel(role.name)} role deleted`);
+      invalidateRoles();
+    },
+    onError: (err) => toast.error(mutationErrorMessage(err, "Could not delete the role")),
+  });
+
   const busyMemberId = roleMutation.isPending
     ? (roleMutation.variables?.member.id ?? null)
     : removeMutation.isPending
@@ -167,7 +231,7 @@ export function Team() {
         title="Team"
         description="Manage teammates, roles, and who can see this workspace."
         actions={
-          canManage ? (
+          canInvite ? (
             <Button size="sm" type="button" onClick={() => setInviteOpen(true)}>
               <Plus className="h-4 w-4" />
               Invite teammate
@@ -176,49 +240,93 @@ export function Team() {
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>Team members</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="font-display text-4xl font-semibold tabular-nums">
-              {membersQuery.isLoading ? <Skeleton className="h-9 w-12" /> : activeCount}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h2 className="font-display text-lg font-semibold">Roles &amp; permissions</h2>
+            <p className="text-sm text-muted-foreground">
+              {activeCount} member{activeCount === 1 ? "" : "s"}
+              {pendingCount > 0 && ` · ${pendingCount} pending`} · you're{" "}
+              {myRole ? roleLabel(myRole) : "—"}
             </p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              People with access to this workspace.
-            </p>
-          </CardContent>
-        </Card>
+          </div>
+          {canManageRoles && (
+            <Button size="sm" variant="outline" onClick={() => setRoleDialog({ mode: "create" })}>
+              <Plus className="h-4 w-4" />
+              New role
+            </Button>
+          )}
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Pending invites</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="font-display text-4xl font-semibold tabular-nums">
-              {membersQuery.isLoading ? <Skeleton className="h-9 w-12" /> : pendingCount}
-            </p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Invitations waiting to be accepted.
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Your role</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-base font-medium">{myRole ? roleLabel(myRole) : "—"}</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {canManage
-                ? "You can invite teammates and change roles."
-                : "Only owners can change team membership."}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+        {rolesQuery.isLoading ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-hidden>
+            {Array.from({ length: 3 }, (_, i) => (
+              <Card key={i}>
+                <CardContent className="space-y-2 p-4">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-3 w-full" />
+                  <Skeleton className="h-3 w-2/3" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {roles.map((role) => {
+              const isOwnerRole = role.name === "owner";
+              return (
+                <Card key={role.id}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center justify-between text-base">
+                      <span className="flex items-center gap-1.5">
+                        <ShieldCheck className="h-4 w-4 text-primary" />
+                        {roleLabel(role.name)}
+                      </span>
+                      <span className="font-mono text-[11px] font-normal tabular-nums text-muted-foreground">
+                        {role.memberCount} member{role.memberCount === 1 ? "" : "s"}
+                      </span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 pt-0">
+                    <p className="text-sm text-muted-foreground">
+                      {role.description || `${role.permissions.length} permissions granted`}
+                    </p>
+                    {isOwnerRole ? (
+                      <p className="text-xs text-muted-foreground">Full access can't be changed.</p>
+                    ) : (
+                      canManageRoles && (
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setRoleDialog({ mode: "edit", role })}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Edit permissions
+                          </Button>
+                          {!role.isSystemRole && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive hover:text-destructive"
+                              disabled={role.memberCount > 0}
+                              title={role.memberCount > 0 ? "Move members off this role first" : undefined}
+                              onClick={() => setPendingRoleDelete(role)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Delete
+                            </Button>
+                          )}
+                        </div>
+                      )
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {membersQuery.isError && (
         <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-6 text-sm text-destructive">
@@ -256,7 +364,9 @@ export function Team() {
               <MembersTable
                 members={members}
                 roles={roles}
-                canManage={canManage}
+                canResend={canInvite}
+                canChangeRole={canChangeRole}
+                canRemove={canRemoveMember}
                 currentUserId={user?.id ?? null}
                 onChangeRole={(member, roleId) => roleMutation.mutate({ member, roleId })}
                 onRemove={setPendingRemoval}
@@ -269,7 +379,9 @@ export function Team() {
               <MembersCardList
                 members={members}
                 roles={roles}
-                canManage={canManage}
+                canResend={canInvite}
+                canChangeRole={canChangeRole}
+                canRemove={canRemoveMember}
                 currentUserId={user?.id ?? null}
                 onChangeRole={(member, roleId) => roleMutation.mutate({ member, roleId })}
                 onRemove={setPendingRemoval}
@@ -292,8 +404,33 @@ export function Team() {
         open={inviteOpen}
         onOpenChange={setInviteOpen}
         roles={roles}
+        canInviteAnyRole={canInviteAnyRole}
         isSubmitting={inviteMutation.isPending}
         onSubmit={(input) => inviteMutation.mutate(input)}
+      />
+
+      <RolePermissionsDialog
+        open={roleDialog !== null}
+        onOpenChange={(open) => !open && setRoleDialog(null)}
+        mode={roleDialog?.mode ?? "create"}
+        role={roleDialog?.role}
+        isSubmitting={createRoleMutation.isPending || updateRoleMutation.isPending}
+        onSubmit={(values) =>
+          roleDialog?.mode === "edit" && roleDialog.role
+            ? updateRoleMutation.mutate({ roleId: roleDialog.role.id, values })
+            : createRoleMutation.mutate(values)
+        }
+      />
+
+      <ConfirmDialog
+        open={pendingRoleDelete !== null}
+        onOpenChange={(open) => !open && setPendingRoleDelete(null)}
+        title={`Delete the ${pendingRoleDelete ? roleLabel(pendingRoleDelete.name) : ""} role?`}
+        description="This role is removed permanently. It can only be deleted while no one currently holds it."
+        confirmLabel="Delete role"
+        pendingLabel="Deleting…"
+        isPending={deleteRoleMutation.isPending}
+        onConfirm={() => pendingRoleDelete && deleteRoleMutation.mutate(pendingRoleDelete)}
       />
 
       <ConfirmDialog

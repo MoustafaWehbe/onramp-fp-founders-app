@@ -30,7 +30,7 @@ const CONTACT_SELECT = {
 const PIPELINE_SELECT = {
   id: true,
   // A contact's expectedAmount is only meaningful in the currency of the
-  // round it belongs to — the client needs roundId to look that up.
+  // round it belongs to the client needs roundId to look that up.
   roundId: true,
   stage: true,
   expectedAmount: true,
@@ -48,7 +48,7 @@ type PipelineRow = {
 /**
  * "Engaged" means this startup has actually approached the contact: they are
  * on the pipeline board, or someone has logged a call/email/meeting with them.
- * Everything else is a prospect — sourced or imported, never reached out to.
+ * Everything else is a prospect sourced or imported, never reached out to.
  * Derived rather than stored, so it cannot drift from what the team has done.
  */
 const ENGAGEMENT_FILTERS = {
@@ -61,14 +61,14 @@ const ENGAGEMENT_FILTERS = {
   },
 } as const satisfies Record<string, Prisma.StartupInvestorWhereInput>;
 
-/** "a", "a and b", "a, b and c" — for naming what blocks a delete. */
+/** "a", "a and b", "a, b and c" for naming what blocks a delete. */
 function listPhrase(items: string[]): string {
   if (items.length <= 1) return items[0] ?? "";
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
 // Decimal serializes to a JSON string, but the API contract documents these as
-// numbers — convert at the boundary rather than leaking Prisma's type.
+// numbers convert at the boundary rather than leaking Prisma's type.
 function serializePipeline(entry: PipelineRow | undefined) {
   if (!entry) return null;
   return {
@@ -98,7 +98,7 @@ export class InvestorService {
   }
 
   async listInvestors(startupId: string, query: ListInvestorsQuery) {
-    const { page, limit, search, investorType, stage, engagement } = query;
+    const { page, limit, search, investorType, stage, engagement, roundId } = query;
 
     // Everything except the engagement split. The tab counts are taken against
     // this so they answer "how many match my search on the other tab", rather
@@ -106,7 +106,7 @@ export class InvestorService {
     const baseWhere: Prisma.StartupInvestorWhereInput = {
       startupId,
       ...(investorType && { investorType }),
-      ...(stage && { pipeline: { some: { stage } } }),
+      ...(stage && { pipeline: { some: { stage, ...(roundId && { roundId }) } } }),
       ...(search && {
         OR: [
           { fullName: { contains: search, mode: "insensitive" as const } },
@@ -137,15 +137,19 @@ export class InvestorService {
         take: limit,
         select: {
           ...CONTACT_SELECT,
-          // At most one entry exists per contact — the schema enforces
+          // At most one entry exists per contact the schema enforces
           // @@unique([startupId, startupInvestorId]).
-          pipeline: { select: PIPELINE_SELECT, take: 1 },
+          pipeline: {
+            ...(roundId && { where: { roundId } }),
+            select: PIPELINE_SELECT,
+            take: 1,
+          },
         },
       }),
     ]);
 
     // The two counts partition the same base set, so the total for whichever
-    // view is being asked for falls out of them — no third count query.
+    // view is being asked for falls out of them no third count query.
     const total =
       engagement === "engaged"
         ? engagedCount
@@ -318,7 +322,7 @@ export class InvestorService {
   }
 
   /**
-   * When each contact was last actually spoken to — the newest interactionDate,
+   * When each contact was last actually spoken to the newest interactionDate,
    * falling back to when the log was written for entries that never got one.
    * Two grouped queries rather than one because there is no COALESCE to
    * aggregate over, and ordering by the nullable column directly would sort

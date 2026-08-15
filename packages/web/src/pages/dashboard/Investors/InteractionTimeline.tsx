@@ -7,6 +7,7 @@ import {
   MessageSquare,
   Milestone,
   Phone,
+  RefreshCw,
   StickyNote,
   Users,
   type LucideIcon,
@@ -58,7 +59,7 @@ function formatWhen(iso: string | null): string {
   }).format(date);
 }
 
-/** The name is the part someone actually scans for — give it real weight. */
+/** The name is the part someone actually scans for give it real weight. */
 function Author({ name }: { name: string }) {
   return <span className="font-medium text-foreground">{name}</span>;
 }
@@ -69,14 +70,14 @@ type ActivityItem =
 
 type InteractionTimelineProps = {
   logs: InteractionLog[];
-  /** Stage moves for this deal, oldest first — omit where there's no pipeline entry to show. */
+  /** Stage moves for this deal, oldest first omit where there's no pipeline entry to show. */
   stageEvents?: PipelineStageEvent[];
   /** Maps createdBy/changedBy user ids to display names; falls back to "A teammate". */
   authorNames: Map<string, string>;
   /**
    * The deal this timeline is being shown against, when there is one.
    *
-   * Logs belong to the investor, not the deal — the same contact can be in a
+   * Logs belong to the investor, not the deal the same contact can be in a
    * Seed and a Series A round at once, and a log made from the Investors page
    * carries no deal at all. Showing the whole relationship is the useful
    * thing, but presenting another round's calls as if they were this deal's
@@ -152,7 +153,7 @@ export function InteractionTimeline({
                 <Milestone className="h-3.5 w-3.5" />
               </span>
               <div className="min-w-0 flex-1">
-                {/* The stage badges carry the weight here — surrounding words
+                {/* The stage badges carry the weight here surrounding words
                     stay quiet so this reads as a lightweight system note
                     rather than competing with real interaction logs below. */}
                 <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
@@ -181,13 +182,18 @@ export function InteractionTimeline({
         const Icon = TYPE_ICONS[log.type] ?? MessageSquare;
         const author = authorNames.get(log.createdBy) ?? "A teammate";
         const followupDone = log.followupCompletedAt !== null;
-        // Only when it is pinned to some *other* deal — an unattached log is
+        // Only when it is pinned to some *other* deal an unattached log is
         // relationship-level and belongs in every one of this investor's
         // timelines without qualification.
         const fromAnotherDeal =
           currentPipelineId !== null &&
           log.pipelineId !== null &&
           log.pipelineId !== currentPipelineId;
+        // Notes go through the same edit dialog as every other type, which
+        // exposes a type/date form that makes no sense for a note simpler
+        // to not offer editing at all than a form the wrong shape for what
+        // it edits. Deleting and re-adding is the fix for a typo.
+        const canEditThis = canEdit && log.type !== "note";
 
         return (
           <li
@@ -220,13 +226,22 @@ export function InteractionTimeline({
                       Another deal
                     </span>
                   )}
+                  {log.source === "google_calendar" && (
+                    <span
+                      title="Logged automatically from Google Calendar"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+                    >
+                      <RefreshCw className="h-2.5 w-2.5" />
+                      Synced
+                    </span>
+                  )}
                 </div>
                 <div className="mt-0.5 truncate text-xs text-muted-foreground">
                   {formatWhen(log.interactionDate)} · <Author name={author} />
                 </div>
               </div>
 
-              {(canEdit || canDelete) && (
+              {(canEditThis || canDelete) && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -239,7 +254,7 @@ export function InteractionTimeline({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="min-w-40">
-                    {canEdit && (
+                    {canEditThis && (
                       <DropdownMenuItem onSelect={() => onEdit(log)}>Edit</DropdownMenuItem>
                     )}
                     {canDelete && (

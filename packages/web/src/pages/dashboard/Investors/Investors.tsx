@@ -10,12 +10,15 @@ import { EmptyState } from "../../../components/shared/EmptyState";
 import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { useActiveStartupId } from "../../../hooks/useWorkspace";
+import { useGoogleConnectionStatus } from "../../../hooks/useGoogleConnection";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
 import { runWithConcurrency } from "../../../lib/concurrency";
+import { sendInvestorEmail } from "../../../lib/gmail-api";
 import { DEFAULT_PROBABILITY_BY_STAGE } from "../../../lib/mock-data";
 import {
   createInvestor,
   deleteInvestor,
+  getInvestor,
   listInvestors,
   updateInvestor,
   type Engagement,
@@ -24,8 +27,9 @@ import {
 import { listFundraisingRounds } from "../../../lib/fundraising-api";
 import { STAGES, type PipelineStageId } from "../../../lib/mock-data";
 import { createPipelineEntry } from "../../../lib/pipeline-api";
-import { invalidateDealData, qk } from "../../../lib/query-keys";
+import { invalidateDealData, invalidateInteractionData, qk } from "../../../lib/query-keys";
 import { cn } from "../../../lib/utils";
+import { ComposeEmailDialog, type ComposeFormValues } from "./ComposeEmailDialog";
 import { ImportInvestorsDialog } from "./ImportInvestorsDialog";
 import { InvestorDetailDialog } from "./InvestorDetailDialog";
 import { InvestorFormDialog } from "./InvestorFormDialog";
@@ -42,7 +46,7 @@ const VALID_STAGE_IDS = new Set<string>(STAGES.map((stage) => stage.id));
 /**
  * A chart segment elsewhere in the app (a pipeline stage on the Dashboard
  * pie, a funnel bar) links here as `?tab=engaged&stage=X` to open already
- * filtered to what was clicked — read once on mount, same as Pipeline.tsx
+ * filtered to what was clicked read once on mount, same as Pipeline.tsx
  * does for its own `?view=` param.
  */
 function initialStateFromUrl(): { tab: Engagement; stage: PipelineStageId | null } {
@@ -58,7 +62,7 @@ const TABS: { id: Engagement; label: string; blurb: string }[] = [
   {
     id: "engaged",
     label: "My investors",
-    blurb: "Contacts you've approached — on the pipeline board, or with a logged interaction.",
+    blurb: "Contacts you've approached on the pipeline board, or with a logged interaction.",
   },
   {
     id: "prospect",
@@ -77,11 +81,26 @@ function mutationErrorMessage(err: unknown, fallback: string): string {
     case "HAS_DEPENDENTS":
       return "This contact has pipeline entries, commitments or logged interactions, so it can't be deleted.";
     case "INVESTOR_NOT_FOUND":
-      return "That contact no longer exists — it may have been removed by a teammate.";
+      return "That contact no longer exists it may have been removed by a teammate.";
     case "ALREADY_IN_PIPELINE":
       return "Already in the pipeline.";
     default:
       return apiErrorMessage(err, fallback, FORBIDDEN_HINT);
+  }
+}
+
+function sendEmailErrorMessage(err: unknown): string {
+  switch (apiErrorCode(err)) {
+    case "INVESTOR_EMAIL_MISSING":
+      return "This investor has no email on file.";
+    case "GOOGLE_NOT_CONNECTED":
+      return "Connect your Google account in Settings to send email.";
+    case "GOOGLE_NEEDS_REAUTH":
+      return "Your Google connection needs to be reconnected see Settings.";
+    case "GMAIL_SEND_FAILED":
+      return "Google rejected the send. Please try again.";
+    default:
+      return apiErrorMessage(err, "Could not send the email", FORBIDDEN_HINT);
   }
 }
 
@@ -90,8 +109,11 @@ export function Investors() {
   const { can } = usePermissions();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const googleStatus = useGoogleConnectionStatus();
 
   const canCreate = can("pipeline", "create");
+  const canDelete = can("pipeline", "delete");
+  const canSelect = canCreate || canDelete;
 
   const [tab, setTab] = useState<Engagement>(() => initialStateFromUrl().tab);
   const [search, setSearch] = useState("");
@@ -101,7 +123,9 @@ export function Investors() {
     stage: initialStateFromUrl().stage,
   }));
   const [page, setPage] = useState(1);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // null means selection mode is off entirely; an empty set means it's on,
+  // with nothing picked yet same convention as the Pipeline board.
+  const [selectedIds, setSelectedIds] = useState<Set<string> | null>(null);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<InvestorRow | null>(null);
@@ -109,6 +133,20 @@ export function Investors() {
   const [viewing, setViewing] = useState<InvestorRow | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  const [quickEmailInvestor, setQuickEmailInvestor] = useState<InvestorRow | null>(null);
+
+  // A chat unfurl card or notification can deep-link straight to one contact
+  // via `?investor=` it may not be on the current filtered/paginated page,
+  // so it's fetched directly rather than looked up in `rows`.
+  const [deepLinkInvestorId] = useState(() => new URLSearchParams(window.location.search).get("investor"));
+  const deepLinkInvestorQuery = useQuery({
+    queryKey: qk.investors(startupId, { deepLink: deepLinkInvestorId }),
+    queryFn: () => getInvestor(startupId, deepLinkInvestorId!),
+    enabled: deepLinkInvestorId !== null,
+  });
+  useEffect(() => {
+    if (deepLinkInvestorQuery.data) setViewing(mapContactToRow(deepLinkInvestorQuery.data));
+  }, [deepLinkInvestorQuery.data]);
 
   // Typing shouldn't fire a request per keystroke now that search runs server-side.
   useEffect(() => {
@@ -144,7 +182,7 @@ export function Investors() {
   );
 
   // A contact's expectedAmount belongs to whichever round its pipeline entry
-  // is in — this directory can span several rounds, each with its own
+  // is in this directory can span several rounds, each with its own
   // currency, so amounts are never assumed to be USD.
   const roundsQuery = useQuery({ queryKey: qk.rounds(startupId), queryFn: () => listFundraisingRounds(startupId) });
   const currencyByRoundId = useMemo(
@@ -199,7 +237,7 @@ export function Investors() {
         toast.success(`${succeeded} investor${succeeded === 1 ? "" : "s"} deleted`);
       } else {
         toast.error(
-          `${succeeded} deleted, ${failedIds.length} could not be removed — ${mutationErrorMessage(firstFailure, "some have related records")}`,
+          `${succeeded} deleted, ${failedIds.length} could not be removed ${mutationErrorMessage(firstFailure, "some have related records")}`,
         );
       }
     },
@@ -253,10 +291,23 @@ export function Investors() {
         toast.success(`${succeeded} investor${succeeded === 1 ? "" : "s"} added to pipeline`);
       } else {
         toast.error(
-          `${succeeded} added, ${failedIds.length} could not be added — ${mutationErrorMessage(firstFailure, "some are already in the pipeline")}`,
+          `${succeeded} added, ${failedIds.length} could not be added ${mutationErrorMessage(firstFailure, "some are already in the pipeline")}`,
         );
       }
     },
+  });
+
+  const quickEmailMutation = useMutation({
+    mutationFn: (values: ComposeFormValues) =>
+      sendInvestorEmail(startupId, quickEmailInvestor!.id, values),
+    onSuccess: (result) => {
+      toast.success(
+        result.logCreated ? "Email sent and logged" : "Email sent it'll appear in the timeline shortly",
+      );
+      setQuickEmailInvestor(null);
+      invalidateInteractionData(queryClient, startupId);
+    },
+    onError: (err) => toast.error(sendEmailErrorMessage(err)),
   });
 
   const handleFilterChange = <K extends keyof InvestorFilters>(
@@ -266,21 +317,17 @@ export function Investors() {
 
   const toggleOne = (id: string) =>
     setSelectedIds((prev) => {
+      if (!prev) return prev;
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
 
-  const toggleAllVisible = (checked: boolean) =>
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      for (const inv of rows) {
-        if (checked) next.add(inv.id);
-        else next.delete(inv.id);
-      }
-      return next;
-    });
+  const selectAllVisible = () => setSelectedIds(new Set(rows.map((inv) => inv.id)));
+
+  const toggleSelectionMode = () =>
+    setSelectedIds((current) => (current === null ? new Set() : null));
 
   const openAdd = () => {
     setEditing(null);
@@ -293,6 +340,8 @@ export function Investors() {
   };
 
   const activeTab = TABS.find((t) => t.id === tab)!;
+  const selectionActive = selectedIds !== null;
+  const selectedCount = selectedIds?.size ?? 0;
 
   return (
     <div className="space-y-6">
@@ -371,12 +420,20 @@ export function Investors() {
         onFilterChange={handleFilterChange}
         onClearFilters={() => setFilters(emptyFilters)}
         showStageFilter={tab === "engaged"}
-        selectedCount={selectedIds.size}
-        onBulkDelete={() => setBulkDeleteConfirm(true)}
+        canSelect={canSelect}
+        selectionActive={selectionActive}
+        onToggleSelection={toggleSelectionMode}
+        onSelectAllVisible={selectAllVisible}
+        visibleCount={rows.length}
+        selectedCount={selectedCount}
+        onBulkDelete={canDelete ? () => setBulkDeleteConfirm(true) : undefined}
         bulkDeleting={bulkDeleteMutation.isPending}
         onBulkAddToPipeline={
           canCreate
-            ? () => bulkAddToPipelineMutation.mutate(rows.filter((row) => selectedIds.has(row.id)))
+            ? () =>
+                bulkAddToPipelineMutation.mutate(
+                  rows.filter((row) => selectedIds?.has(row.id)),
+                )
             : undefined
         }
         bulkAddingToPipeline={bulkAddToPipelineMutation.isPending}
@@ -430,11 +487,12 @@ export function Investors() {
                 currencyByRoundId={currencyByRoundId}
                 selectedIds={selectedIds}
                 onToggleOne={toggleOne}
-                onToggleAll={toggleAllVisible}
                 onMoveToPipeline={(investor) => moveMutation.mutate(investor)}
                 onEdit={openEdit}
                 onDelete={setPendingDelete}
                 onViewHistory={setViewing}
+                onEmail={setQuickEmailInvestor}
+                googleConnected={googleStatus.data?.connected === true}
                 movingInvestorId={moveMutation.isPending ? moveMutation.variables?.id : null}
               />
             </div>
@@ -449,6 +507,8 @@ export function Investors() {
                 onEdit={openEdit}
                 onDelete={setPendingDelete}
                 onViewHistory={setViewing}
+                onEmail={setQuickEmailInvestor}
+                googleConnected={googleStatus.data?.connected === true}
                 movingInvestorId={moveMutation.isPending ? moveMutation.variables?.id : null}
               />
             </div>
@@ -506,12 +566,21 @@ export function Investors() {
       <ConfirmDialog
         open={bulkDeleteConfirm}
         onOpenChange={setBulkDeleteConfirm}
-        title={`Delete ${selectedIds.size} investors?`}
+        title={`Delete ${selectedCount} investors?`}
         description="Contacts with pipeline entries, commitments or logged interactions will be skipped and stay selected so you can see which ones need those removed first."
-        confirmLabel={`Delete ${selectedIds.size}`}
+        confirmLabel={`Delete ${selectedCount}`}
         pendingLabel="Deleting…"
         isPending={bulkDeleteMutation.isPending}
-        onConfirm={() => bulkDeleteMutation.mutate(Array.from(selectedIds))}
+        onConfirm={() => bulkDeleteMutation.mutate(Array.from(selectedIds ?? []))}
+      />
+
+      <ComposeEmailDialog
+        open={quickEmailInvestor !== null}
+        onOpenChange={(open) => !open && setQuickEmailInvestor(null)}
+        investorName={quickEmailInvestor?.name ?? ""}
+        investorEmail={quickEmailInvestor?.email ?? ""}
+        isSubmitting={quickEmailMutation.isPending}
+        onSubmit={(values) => quickEmailMutation.mutate(values)}
       />
 
       <InvestorFormDialog
@@ -529,7 +598,7 @@ export function Investors() {
         open={pendingDelete !== null}
         onOpenChange={(open) => !open && setPendingDelete(null)}
         title={`Delete ${pendingDelete?.name}?`}
-        description="This removes the contact from your directory. If they're on the pipeline board or have logged interactions, the delete will be refused — remove those first."
+        description="This removes the contact from your directory. If they're on the pipeline board or have logged interactions, the delete will be refused remove those first."
         confirmLabel="Delete investor"
         pendingLabel="Deleting…"
         isPending={deleteMutation.isPending}

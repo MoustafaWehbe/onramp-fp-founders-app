@@ -23,7 +23,7 @@ import { TaskDialog } from "./TaskDialog";
 type TaskListProps = {
   startupId: string;
   pipelineId: string;
-  /** The investor this deal is with — named on the task composer. */
+  /** The investor this deal is with named on the task composer. */
   dealLabel: string;
 };
 

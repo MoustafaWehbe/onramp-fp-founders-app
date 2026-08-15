@@ -53,7 +53,7 @@ type TaskDialogProps = {
 function taskErrorMessage(err: unknown, fallback: string): string {
   switch (apiErrorCode(err)) {
     case "TASK_NOT_FOUND":
-      return "That task no longer exists — a teammate may have removed it.";
+      return "That task no longer exists a teammate may have removed it.";
     case "PIPELINE_NOT_FOUND":
       return "That deal is no longer on the board.";
     case "MEMBER_NOT_FOUND":
@@ -65,7 +65,7 @@ function taskErrorMessage(err: unknown, fallback: string): string {
 
 /**
  * The one place a task is written. Creating and editing share it so the two
- * paths can never offer different fields — before this, a task could be given
+ * paths can never offer different fields before this, a task could be given
  * an assignee and due date on the way in but only its due date could be
  * changed afterwards, and a wrong title or investor meant deleting and
  * retyping the whole thing.

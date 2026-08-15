@@ -86,7 +86,7 @@ function dueLabel(dueDate: string | null, now: number): { text: string; tone: st
 /**
  * Every task across the round in one list. Tasks were only reachable by
  * opening the one deal that owned them, so work assigned to you was invisible
- * unless you already knew where to look — and what was overdue across the
+ * unless you already knew where to look and what was overdue across the
  * whole raise could not be answered at all.
  */
 export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQueueProps) {

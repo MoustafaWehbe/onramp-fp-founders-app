@@ -1,7 +1,8 @@
 import type { Request, Response } from "express";
 import { asyncHandler } from "../utils/errors";
 import { notificationService } from "../services/notification.service";
-import { notificationBus, type NotificationEvent } from "../events/notification-bus";
+import { notificationBus } from "../events/notification-bus";
+import type { RealtimeEvent } from "../events/realtime-bus";
 import type { ListNotificationsQuery } from "../validators/notification.schemas";
 
 /** Browsers reconnect an EventSource on their own; this paces the retries. */
@@ -18,6 +19,12 @@ export const notificationController = {
    * Server-sent events, chosen over WebSockets because the traffic is entirely
    * server → client: it rides ordinary HTTP, so the existing cookie auth and
    * trust-proxy setup apply unchanged, and the browser handles reconnection.
+   *
+   * Despite the route name, this stream carries every RealtimeEvent for the
+   * signed-in user, chat included see events/realtime-bus.ts. Multiplexing
+   * onto the one connection this endpoint already opens avoids a second
+   * EventSource per tab; an unrecognized `event:` name is simply ignored by
+   * whichever listeners haven't been added for it yet.
    */
   stream: (req: Request, res: Response): void => {
     const userId = req.user!.userId;
@@ -27,7 +34,7 @@ export const notificationController = {
       "Cache-Control": "no-store",
       Connection: "keep-alive",
       // nginx buffers proxied responses by default, which would hold every
-      // event back until the buffer filled — i.e. forever, on a quiet stream.
+      // event back until the buffer filled i.e. forever, on a quiet stream.
       "X-Accel-Buffering": "no",
     });
     res.flushHeaders();
@@ -36,7 +43,7 @@ export const notificationController = {
     // An immediate frame proves the pipe is open before anything happens.
     res.write(`event: ready\ndata: {}\n\n`);
 
-    const send = (event: NotificationEvent) => {
+    const send = (event: RealtimeEvent) => {
       res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
     };
 

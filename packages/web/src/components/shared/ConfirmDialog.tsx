@@ -14,7 +14,7 @@ type ConfirmDialogProps = {
   onOpenChange: (open: boolean) => void;
   title: string;
   description: ReactNode;
-  /** Label for the action being confirmed — say what happens, not "OK". */
+  /** Label for the action being confirmed say what happens, not "OK". */
   confirmLabel: string;
   /** Shown on the confirm button while the mutation runs. */
   pendingLabel?: string;

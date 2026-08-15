@@ -7,7 +7,9 @@ import type { TeamMemberRow } from "./team-types";
 type MembersCardListProps = {
   members: TeamMemberRow[];
   roles: StartupRole[];
-  canManage: boolean;
+  canResend: boolean;
+  canChangeRole: boolean;
+  canRemove: boolean;
   currentUserId: string | null;
   onChangeRole: (member: TeamMemberRow, roleId: string) => void;
   onRemove: (member: TeamMemberRow) => void;
@@ -18,7 +20,9 @@ type MembersCardListProps = {
 export function MembersCardList({
   members,
   roles,
-  canManage,
+  canResend,
+  canChangeRole,
+  canRemove,
   currentUserId,
   onChangeRole,
   onRemove,
@@ -69,7 +73,9 @@ export function MembersCardList({
             <MemberActions
               member={member}
               roles={roles}
-              canManage={canManage}
+              canResend={canResend}
+              canChangeRole={canChangeRole}
+              canRemove={canRemove}
               isSelf={isSelf}
               onChangeRole={onChangeRole}
               onRemove={onRemove}

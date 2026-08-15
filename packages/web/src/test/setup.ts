@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom";
 
 // Radix's listbox primitives (Select) drive positioning and focus through
-// pointer-capture, scrollIntoView and ResizeObserver — none of which jsdom
+// pointer-capture, scrollIntoView and ResizeObserver none of which jsdom
 // implements. Without these stubs the dropdown throws the moment it opens.
 if (!Element.prototype.hasPointerCapture) {
   Element.prototype.hasPointerCapture = () => false;
@@ -21,7 +21,7 @@ if (!globalThis.ResizeObserver) {
   } as unknown as typeof ResizeObserver;
 }
 
-// jsdom has no layout engine, so no query ever actually matches — every test
+// jsdom has no layout engine, so no query ever actually matches every test
 // runs as if on a full-width viewport, same as useMediaQuery's SSR fallback.
 if (!window.matchMedia) {
   window.matchMedia = (query: string) =>

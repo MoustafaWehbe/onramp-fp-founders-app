@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, History, LayoutDashboard, Linkedin, ListChecks, Mail, Plus, Sparkles, StickyNote } from "lucide-react";
+import { ArrowRight, CalendarPlus, History, LayoutDashboard, Linkedin, ListChecks, Mail, Sparkles, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
@@ -14,6 +14,7 @@ import {
 } from "../../../components/ui/dialog";
 import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
 import { usePermissions } from "../../../hooks/usePermissions";
+import { useGoogleConnectionStatus } from "../../../hooks/useGoogleConnection";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
 import {
   createInteractionLog,
@@ -22,6 +23,8 @@ import {
   updateInteractionLog,
   type InteractionLog,
 } from "../../../lib/interaction-log-api";
+import { sendInvestorEmail } from "../../../lib/gmail-api";
+import { scheduleMeeting } from "../../../lib/calendar-api";
 import { INVESTOR_TYPE_LABELS } from "../../../lib/investor-api";
 import { fetchAllPages } from "../../../lib/pagination";
 import { listPipelineStageEvents } from "../../../lib/pipeline-api";
@@ -29,11 +32,46 @@ import { invalidateInteractionData, qk } from "../../../lib/query-keys";
 import { listMembers } from "../../../lib/team-api";
 import { cn, getInitials } from "../../../lib/utils";
 import { TaskList } from "../Pipeline/TaskList";
+import { AddNoteDialog } from "./AddNoteDialog";
+import { ComposeEmailDialog, type ComposeFormValues } from "./ComposeEmailDialog";
 import { InteractionTimeline } from "./InteractionTimeline";
 import { LogInteractionDialog, type LogFormValues } from "./LogInteractionDialog";
-import { NoteByline } from "./NoteByline";
+import { ScheduleMeetingDialog, type ScheduleFormValues } from "./ScheduleMeetingDialog";
 import { StageBadge } from "./StageBadge";
 import type { InvestorRow } from "./investor-types";
+
+function sendEmailErrorMessage(err: unknown): string {
+  switch (apiErrorCode(err)) {
+    case "INVESTOR_EMAIL_MISSING":
+      return "This investor has no email on file.";
+    case "GOOGLE_NOT_CONNECTED":
+      return "Connect your Google account in Settings to send email.";
+    case "GOOGLE_NEEDS_REAUTH":
+      return "Your Google connection needs to be reconnected see Settings.";
+    case "GMAIL_SEND_FAILED":
+      return "Google rejected the send. Please try again.";
+    default:
+      return apiErrorMessage(err, "Could not send the email");
+  }
+}
+
+function scheduleMeetingErrorMessage(err: unknown): string {
+  switch (apiErrorCode(err)) {
+    case "INVESTOR_EMAIL_MISSING":
+      return "This investor has no email on file.";
+    case "PIPELINE_MISMATCH":
+      return "That pipeline entry belongs to a different contact.";
+    case "GOOGLE_NOT_CONNECTED":
+      return "Connect your Google account in Settings to schedule meetings.";
+    case "GOOGLE_NEEDS_REAUTH":
+    case "GOOGLE_INSUFFICIENT_SCOPE":
+      return "Your Google connection needs to be reconnected see Settings.";
+    case "CALENDAR_EVENT_FAILED":
+      return "Google rejected the request. Please try again.";
+    default:
+      return apiErrorMessage(err, "Could not schedule the meeting");
+  }
+}
 
 type InvestorDetailDialogProps = {
   startupId: string;
@@ -47,7 +85,7 @@ function logErrorMessage(err: unknown, fallback: string): string {
     case "PIPELINE_MISMATCH":
       return "That pipeline entry belongs to a different contact.";
     case "LOG_NOT_FOUND":
-      return "That entry no longer exists — a teammate may have removed it.";
+      return "That entry no longer exists a teammate may have removed it.";
     case "INVESTOR_NOT_FOUND":
       return "This contact no longer exists.";
     default:
@@ -72,7 +110,12 @@ export function InvestorDetailDialog({
   const [logOpen, setLogOpen] = useState(false);
   const [editingLog, setEditingLog] = useState<InteractionLog | null>(null);
   const [pendingDelete, setPendingDelete] = useState<InteractionLog | null>(null);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [addNoteOpen, setAddNoteOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "activity">("overview");
+
+  const googleStatus = useGoogleConnectionStatus();
 
   const investorId = investor?.id ?? null;
 
@@ -120,7 +163,7 @@ export function InvestorDetailDialog({
   const logs = logsQuery.data?.data ?? [];
 
   // Logging an interaction is what moves a contact out of Prospects, and it
-  // also feeds nextFollowupDate on the list — both come from the list query.
+  // also feeds nextFollowupDate on the list both come from the list query.
   const invalidate = () => invalidateInteractionData(queryClient, startupId);
 
   const saveMutation = useMutation({
@@ -146,6 +189,77 @@ export function InvestorDetailDialog({
     },
     onError: (err) => toast.error(logErrorMessage(err, "Could not remove the interaction")),
   });
+
+  const sendEmailMutation = useMutation({
+    mutationFn: (values: ComposeFormValues) =>
+      sendInvestorEmail(startupId, investorId!, {
+        pipelineId: pipelineId ?? undefined,
+        ...values,
+      }),
+    onSuccess: (result) => {
+      toast.success(
+        result.logCreated
+          ? "Email sent and logged"
+          : "Email sent it'll appear in the timeline shortly",
+      );
+      setComposeOpen(false);
+      invalidate();
+    },
+    onError: (err) => toast.error(sendEmailErrorMessage(err)),
+  });
+
+  const scheduleMutation = useMutation({
+    mutationFn: (values: ScheduleFormValues) =>
+      scheduleMeeting(startupId, investorId!, {
+        pipelineId: pipelineId ?? undefined,
+        type: values.type,
+        startDateTime: values.startDateTime,
+        durationMinutes: values.durationMinutes,
+        subject: values.subject ?? undefined,
+        description: values.description ?? undefined,
+      }),
+    onSuccess: (result) => {
+      toast.success(
+        result.logCreated
+          ? "Meeting scheduled and logged"
+          : "Meeting scheduled it'll appear in the timeline shortly",
+      );
+      setScheduleOpen(false);
+      invalidate();
+    },
+    onError: (err) => toast.error(scheduleMeetingErrorMessage(err)),
+  });
+
+  const addNoteMutation = useMutation({
+    mutationFn: (description: string) =>
+      createInteractionLog(startupId, {
+        investorId: investorId!,
+        pipelineId: pipelineId ?? undefined,
+        type: "note",
+        interactionDate: new Date().toISOString(),
+        description,
+      }),
+    onSuccess: () => {
+      toast.success("Note added");
+      setAddNoteOpen(false);
+      invalidate();
+    },
+    onError: (err) => toast.error(logErrorMessage(err, "Could not add the note")),
+  });
+
+  const canSendEmail = Boolean(investor?.email) && googleStatus.data?.connected === true;
+  const composeDisabledReason = !investor?.email
+    ? "This investor has no email on file"
+    : googleStatus.data?.connected !== true
+      ? "Connect your Google account in Settings to send email"
+      : undefined;
+
+  const canSchedule = Boolean(investor?.email) && googleStatus.data?.connected === true;
+  const scheduleDisabledReason = !investor?.email
+    ? "This investor has no email on file"
+    : googleStatus.data?.connected !== true
+      ? "Connect your Google account in Settings to schedule meetings"
+      : undefined;
 
   const details = investor
     ? [
@@ -197,11 +311,15 @@ export function InvestorDetailDialog({
                     Not contacted
                   </Badge>
                 )}
-                {investor.email && (
-                  <Button variant="outline" size="sm" asChild>
-                    <a href={`mailto:${investor.email}`}>
-                      <Mail className="h-3.5 w-3.5" /> Email
-                    </a>
+                {canCreate && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!canSendEmail}
+                    title={composeDisabledReason}
+                    onClick={() => setComposeOpen(true)}
+                  >
+                    <Mail className="h-3.5 w-3.5" /> Send email
                   </Button>
                 )}
                 {investor.linkedinUrl && (
@@ -212,8 +330,13 @@ export function InvestorDetailDialog({
                   </Button>
                 )}
                 {canCreate && (
-                  <Button size="sm" onClick={() => { setEditingLog(null); setLogOpen(true); }}>
-                    <Plus className="h-4 w-4" /> Log interaction
+                  <Button
+                    size="sm"
+                    disabled={!canSchedule}
+                    title={scheduleDisabledReason}
+                    onClick={() => setScheduleOpen(true)}
+                  >
+                    <CalendarPlus className="h-4 w-4" /> Schedule
                   </Button>
                 )}
                 <Button
@@ -243,7 +366,7 @@ export function InvestorDetailDialog({
 
               <section className="relative overflow-hidden rounded-2xl border border-primary/25 bg-primary/[0.055] p-4" aria-label="Recommended next action">
                 <div className="absolute -right-8 -top-10 h-28 w-28 rounded-full bg-primary/10 blur-2xl" />
-                <div className="relative flex flex-wrap items-center gap-3"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary"><Sparkles className="h-5 w-5" /></div><div className="min-w-48 flex-1"><p className="font-mono text-[10px] uppercase tracking-widest text-primary">Recommended next action</p><h3 className="mt-1 text-sm font-semibold">{pipelineId ? "Keep the next commitment clear" : "Start the relationship"}</h3><p className="mt-0.5 text-xs text-muted-foreground">{pipelineId ? "Review assigned work or log the latest investor conversation." : "Log your first outreach, then add this contact to the active pipeline when qualified."}</p></div>{canCreate && <Button size="sm" onClick={() => { setEditingLog(null); setLogOpen(true); }}>{pipelineId ? "Log interaction" : "Log outreach"}<ArrowRight className="h-3.5 w-3.5" /></Button>}</div>
+                <div className="relative flex flex-wrap items-center gap-3"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary"><Sparkles className="h-5 w-5" /></div><div className="min-w-48 flex-1"><p className="font-mono text-[10px] uppercase tracking-widest text-primary">Recommended next action</p><h3 className="mt-1 text-sm font-semibold">{pipelineId ? "Keep the next commitment clear" : "Start the relationship"}</h3><p className="mt-0.5 text-xs text-muted-foreground">{pipelineId ? "Review assigned work or log the latest investor conversation." : "Log your first outreach, then add this contact to the active pipeline when qualified."}</p></div>{canCreate && <Button size="sm" disabled={!canSchedule} title={scheduleDisabledReason} onClick={() => setScheduleOpen(true)}>{pipelineId ? "Schedule call" : "Schedule outreach"}<ArrowRight className="h-3.5 w-3.5" /></Button>}</div>
               </section>
 
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-border/70 bg-surface/50 p-3 text-sm sm:grid-cols-3">
@@ -257,7 +380,6 @@ export function InvestorDetailDialog({
                 ))}
               </dl>
 
-              <section className="rounded-xl border border-border/70 bg-surface/40 p-4"><div className="flex items-center gap-2"><div className="grid h-8 w-8 place-items-center rounded-lg bg-muted text-muted-foreground"><StickyNote className="h-4 w-4" /></div><div><h3 className="text-sm font-semibold">Investor notes</h3><p className="text-xs text-muted-foreground">Shared relationship context for your team.</p></div></div><p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{investor.contact.notes || "No notes have been added for this investor."}</p>{investor.contact.notes && <NoteByline contact={investor.contact} authorNames={authorNames} />}</section>
               </>}
 
               {/* Only a contact already on the board has a deal to attach tasks to. */}
@@ -266,6 +388,11 @@ export function InvestorDetailDialog({
               {activeTab === "activity" && <>
               <div className="flex items-center justify-between gap-2">
                 <div><h3 className="font-display text-base font-semibold">Activity</h3><p className="mt-1 text-xs text-muted-foreground">Interactions and pipeline changes, newest first.</p></div>
+                {canCreate && (
+                  <Button size="sm" variant="outline" onClick={() => setAddNoteOpen(true)}>
+                    <StickyNote className="h-3.5 w-3.5" /> Add note
+                  </Button>
+                )}
               </div>
 
               <div className={cn("max-h-[40vh] overflow-y-auto pr-1", "scrollbar-slim")}>
@@ -274,7 +401,7 @@ export function InvestorDetailDialog({
                   stageEvents={stageEventsQuery.data ?? []}
                   authorNames={authorNames}
                   // stageEventsQuery is disabled for a prospect with no pipeline
-                  // entry — isPending stays true forever on a disabled query, so
+                  // entry isPending stays true forever on a disabled query, so
                   // it must not count as "loading" while fetchStatus is idle.
                   isLoading={
                     logsQuery.isPending ||
@@ -315,6 +442,32 @@ export function InvestorDetailDialog({
         pendingLabel="Removing…"
         isPending={deleteMutation.isPending}
         onConfirm={() => pendingDelete && deleteMutation.mutate(pendingDelete)}
+      />
+
+      <ComposeEmailDialog
+        open={composeOpen}
+        onOpenChange={setComposeOpen}
+        investorName={investor?.name ?? ""}
+        investorEmail={investor?.email ?? ""}
+        isSubmitting={sendEmailMutation.isPending}
+        onSubmit={(values) => sendEmailMutation.mutate(values)}
+      />
+
+      <ScheduleMeetingDialog
+        open={scheduleOpen}
+        onOpenChange={setScheduleOpen}
+        investorName={investor?.name ?? ""}
+        investorEmail={investor?.email ?? ""}
+        isSubmitting={scheduleMutation.isPending}
+        onSubmit={(values) => scheduleMutation.mutate(values)}
+      />
+
+      <AddNoteDialog
+        open={addNoteOpen}
+        onOpenChange={setAddNoteOpen}
+        investorName={investor?.name ?? ""}
+        isSubmitting={addNoteMutation.isPending}
+        onSubmit={(description) => addNoteMutation.mutate(description)}
       />
     </>
   );

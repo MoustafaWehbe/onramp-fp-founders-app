@@ -74,7 +74,7 @@ export function NoWorkspaceHome() {
             You're not in a workspace yet
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Start your own startup, or wait for a teammate to invite you — invitations show up
+            Start your own startup, or wait for a teammate to invite you invitations show up
             right here.
           </p>
         </div>
@@ -145,7 +145,7 @@ export function NoWorkspaceHome() {
           </div>
           <p className="text-sm font-medium text-foreground">No invitations waiting</p>
           <p className="max-w-sm text-sm text-muted-foreground">
-            If someone invites you, it'll appear here and in your notifications — you won't need
+            If someone invites you, it'll appear here and in your notifications you won't need
             the email link.
           </p>
         </section>

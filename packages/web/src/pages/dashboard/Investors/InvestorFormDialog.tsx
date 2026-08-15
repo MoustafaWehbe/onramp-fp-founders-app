@@ -17,10 +17,16 @@ import {
 } from "../../../components/ui/dropdown-menu";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
-import { Textarea } from "../../../components/ui/textarea";
+import { Select } from "../../../components/ui/select";
 import {
+  INVESTOR_SOURCE_LABELS,
+  INVESTOR_SOURCE_OPTIONS,
   INVESTOR_TYPES,
   INVESTOR_TYPE_LABELS,
+  SECTOR_FOCUS_LABELS,
+  SECTOR_FOCUS_OPTIONS,
+  STAGE_PREFERENCE_LABELS,
+  STAGE_PREFERENCE_OPTIONS,
   type InvestorContact,
   type InvestorInput,
   type InvestorType,
@@ -44,7 +50,6 @@ type FormState = {
   investmentStagePreference: string;
   linkedinUrl: string;
   source: string;
-  notes: string;
 };
 
 const EMPTY: FormState = {
@@ -56,7 +61,6 @@ const EMPTY: FormState = {
   investmentStagePreference: "",
   linkedinUrl: "",
   source: "",
-  notes: "",
 };
 
 function toFormState(investor: InvestorContact | null | undefined): FormState {
@@ -70,7 +74,6 @@ function toFormState(investor: InvestorContact | null | undefined): FormState {
     investmentStagePreference: investor.investmentStagePreference ?? "",
     linkedinUrl: investor.linkedinUrl ?? "",
     source: investor.source ?? "",
-    notes: investor.notes ?? "",
   };
 }
 
@@ -88,7 +91,6 @@ function toInput(form: FormState): InvestorInput {
     investmentStagePreference: orNull(form.investmentStagePreference),
     linkedinUrl: orNull(form.linkedinUrl),
     source: orNull(form.source),
-    notes: orNull(form.notes),
   };
 }
 
@@ -111,11 +113,7 @@ export function InvestorFormDialog({
     // never hides something the record actually has.
     setShowMore(
       Boolean(
-        next.sectorFocus ||
-          next.investmentStagePreference ||
-          next.linkedinUrl ||
-          next.source ||
-          next.notes,
+        next.sectorFocus || next.investmentStagePreference || next.linkedinUrl || next.source,
       ),
     );
   }, [open, investor]);
@@ -235,34 +233,43 @@ export function InvestorFormDialog({
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="investor-sector">Sector focus</Label>
-                  <Input
+                  <Select
                     id="investor-sector"
                     value={form.sectorFocus}
-                    onChange={(e) => set("sectorFocus", e.target.value)}
-                    maxLength={200}
-                    placeholder="Fintech, SaaS"
+                    onValueChange={(value) => set("sectorFocus", value)}
+                    placeholder="Not set"
+                    options={[
+                      { value: "", label: "Not set" },
+                      ...SECTOR_FOCUS_OPTIONS.map((value) => ({ value, label: SECTOR_FOCUS_LABELS[value] })),
+                    ]}
                   />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="investor-stage-pref">Stage preference</Label>
-                  <Input
+                  <Select
                     id="investor-stage-pref"
                     value={form.investmentStagePreference}
-                    onChange={(e) => set("investmentStagePreference", e.target.value)}
-                    maxLength={200}
-                    placeholder="Seed to Series A"
+                    onValueChange={(value) => set("investmentStagePreference", value)}
+                    placeholder="Not set"
+                    options={[
+                      { value: "", label: "Not set" },
+                      ...STAGE_PREFERENCE_OPTIONS.map((value) => ({ value, label: STAGE_PREFERENCE_LABELS[value] })),
+                    ]}
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="investor-source">Source</Label>
-                <Input
+                <Select
                   id="investor-source"
                   value={form.source}
-                  onChange={(e) => set("source", e.target.value)}
-                  maxLength={100}
+                  onValueChange={(value) => set("source", value)}
+                  options={[
+                    { value: "", label: "Not set" },
+                    ...INVESTOR_SOURCE_OPTIONS.map((value) => ({ value, label: INVESTOR_SOURCE_LABELS[value] })),
+                  ]}
                   placeholder="Warm intro, conference…"
                 />
               </div>
@@ -281,18 +288,6 @@ export function InvestorFormDialog({
                     Include the full address, starting with http:// or https://
                   </p>
                 )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="investor-notes">Notes</Label>
-                <Textarea
-                  id="investor-notes"
-                  value={form.notes}
-                  onChange={(e) => set("notes", e.target.value)}
-                  maxLength={2000}
-                  rows={3}
-                  placeholder="Context worth remembering before the next conversation."
-                />
               </div>
             </div>
           )}

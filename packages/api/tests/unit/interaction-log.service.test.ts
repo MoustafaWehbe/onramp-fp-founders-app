@@ -230,6 +230,21 @@ describe("InteractionLogService.listLogs", () => {
 
     expect(result.meta).toEqual({ page: 2, limit: 20, total: 25, totalPages: 2 });
   });
+
+  // Settings' "Remove synced meetings" fetches exactly this filter to find
+  // what it's about to bulk-delete it must never see a manual log.
+  it("filters by source when asked, for bulk-removing synced entries", async () => {
+    (mockPrisma.interactionLog.count as jest.Mock).mockResolvedValue(0);
+    (mockPrisma.interactionLog.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.listLogs(STARTUP_ID, { ...DEFAULT_QUERY, source: "google_calendar" } as never);
+
+    expect(mockPrisma.interactionLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { startupInvestor: { startupId: STARTUP_ID }, source: "google_calendar" },
+      }),
+    );
+  });
 });
 
 describe("InteractionLogService.getLog", () => {
@@ -365,6 +380,34 @@ describe("InteractionLogService.updateLog", () => {
     const result = await service.updateLog(STARTUP_ID, LOG_ID, { type: "meeting" } as never);
 
     expect(result.data.type).toBe("meeting");
+  });
+
+  // A synced log's cancellation-retraction only skips rows a human touched —
+  // this flag is that signal, so every edit through this path must set it.
+  it("marks the log as edited by a human, so a future calendar sync will never overwrite or retract it", async () => {
+    (mockPrisma.interactionLog.findUnique as jest.Mock).mockResolvedValue({
+      id: LOG_ID,
+      startupInvestorId: CONTACT_ID,
+      startupInvestor: { startupId: STARTUP_ID },
+    });
+    (mockPrisma.interactionLog.update as jest.Mock).mockResolvedValue({
+      id: LOG_ID,
+      startupInvestorId: CONTACT_ID,
+      pipelineId: null,
+      createdBy: USER_ID,
+      type: "meeting",
+      subject: null,
+      description: null,
+      interactionDate: new Date(),
+      nextFollowupDate: null,
+      createdAt: new Date(),
+    });
+
+    await service.updateLog(STARTUP_ID, LOG_ID, { subject: "Edited subject" } as never);
+
+    expect(mockPrisma.interactionLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ editedByUser: true }) }),
+    );
   });
 
   it("throws LOG_NOT_FOUND for a cross-tenant log", async () => {

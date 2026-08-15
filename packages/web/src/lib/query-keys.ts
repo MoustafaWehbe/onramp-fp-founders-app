@@ -5,14 +5,14 @@ import type { QueryClient } from "@tanstack/react-query";
  *
  * Dashboard, Pipeline, Investors and Fundraising all read the same board, so
  * they must agree on both halves of a cache entry: its key *and* the shape
- * stored under it. When they drifted, two things broke — an optimistic
+ * stored under it. When they drifted, two things broke an optimistic
  * `setQueryData` written by one screen missed the copy another screen was
  * reading, and navigating between screens handed a component a cached value
  * of the wrong shape until a hard refresh replaced it.
  *
  * Rules this file exists to enforce:
  * - A key is built here, never spelled out inline.
- * - Everything under `pipeline(...)` stores `{ data: PipelineEntry[] }` — the
+ * - Everything under `pipeline(...)` stores `{ data: PipelineEntry[] }` the
  *   paginated envelope, never a bare array.
  * - Round-scoped keys normalise a missing round to `null` rather than leaving
  *   `undefined` in the tuple, so the same round always serialises the same way.
@@ -38,7 +38,7 @@ export const qk = {
   /**
    * Stores `{ data: PipelineEntry[] }` for the whole round. `filters`
    * distinguishes the board's unfiltered fetch (used for totals) from its
-   * search/attention/mine/showPassed fetch — see Pipeline.tsx — while still
+   * search/attention/mine/showPassed fetch see Pipeline.tsx while still
    * falling under the same `["pipeline", startupId]` prefix for invalidation.
    */
   pipeline: (
@@ -83,9 +83,29 @@ export const qk = {
 
   /** One workspace-wide fetch the board derives its last-touch signals from. */
   logsForBoard: (startupId: string) => ["interaction-logs", startupId, "board"] as const,
+
+  conversations: (startupId: string) => ["chat-conversations", startupId] as const,
+
+  messages: (startupId: string, conversationId: string | null | undefined) =>
+    ["chat-messages", startupId, conversationId ?? null] as const,
+
+  /** A thread's parent + replies opened from the reply count on a top-level message. */
+  replies: (startupId: string, messageId: string | null | undefined) =>
+    ["chat-replies", startupId, messageId ?? null] as const,
+
+  mentionables: (startupId: string, q: string, types?: string[]) =>
+    ["chat-mentionables", startupId, q, types ?? null] as const,
+
+  /** Batch-resolved chip data for one message list refDigest is the sorted, deduped "type:id" list. */
+  resolveMentions: (startupId: string, refDigest: string) =>
+    ["chat-resolve-mentions", startupId, refDigest] as const,
+
+  /** The Discussion tab's backlink every message referencing one entity. */
+  mentionBacklink: (startupId: string, targetType: string, targetId: string | null | undefined) =>
+    ["chat-mention-backlink", startupId, targetType, targetId ?? null] as const,
 };
 
-/** Prefixes — anything scoped to a startup, regardless of round or deal. */
+/** Prefixes anything scoped to a startup, regardless of round or deal. */
 const prefix = {
   pipeline: (startupId: string) => ["pipeline", startupId] as const,
   pipelineFocus: (startupId: string) => ["pipeline-focus", startupId] as const,
@@ -105,7 +125,7 @@ function invalidateAll(queryClient: QueryClient, keys: readonly (readonly unknow
 }
 
 /**
- * After anything that changes a deal — stage, owner, lead, amount, removal.
+ * After anything that changes a deal stage, owner, lead, amount, removal.
  * The focus list and analytics are both derived from the board, and the
  * Investors directory embeds each contact's pipeline entry, so none of them
  * can be left behind.

@@ -14,8 +14,8 @@ export type AcceptedMembership = {
  * POST /invites/accept is reachable signed-out, but only ever activates the
  * membership for a signed-in user whose email matches the invitation. It has
  * two success shapes:
- * 200 — the membership was activated (or already belonged to this user);
- * 202 — the invitation is untouched because nobody is signed in as the invited
+ * 200 the membership was activated (or already belonged to this user);
+ * 202 the invitation is untouched because nobody is signed in as the invited
  * person yet, either because they have no account or because they are signed
  * out. Registration claims a pending invite automatically.
  */

@@ -13,6 +13,7 @@ import { Dashboard } from "../pages/dashboard/Dashboard";
 import { Notifications } from "../pages/dashboard/Notifications/Notifications";
 import { Pipeline } from "../pages/dashboard/Pipeline/Pipeline";
 import { Investors } from "../pages/dashboard/Investors/Investors";
+import { Chat } from "../pages/dashboard/Chat/Chat";
 import { Fundraising } from "../pages/dashboard/Fundraising/Fundraising";
 import { Documents } from "../pages/dashboard/Documents/Documents";
 import { AiInsights } from "../pages/dashboard/AiInsights/AiInsights";
@@ -21,6 +22,7 @@ import { Settings } from "../pages/dashboard/Settings";
 import { Reviewers } from "../pages/dashboard/Reviewers";
 import { Audit } from "../pages/dashboard/Audit";
 import { Startup } from "../pages/dashboard/Startup";
+import { Profile } from "../pages/dashboard/Profile";
 import { NotFound } from "../pages/NotFound";
 import { LandingPage } from "../pages/landing/Landing";
 import PricingPage from "../pages/landing/Pricing";
@@ -66,11 +68,13 @@ export function AppRoutes() {
           <Route path="/app" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/notifications" element={<Notifications />} />
+          <Route path="/profile" element={<Profile />} />
 
           {/* Everything below needs a startup id to render at all. */}
           <Route element={<RequireWorkspace />}>
             <Route path="/pipeline" element={<Pipeline />} />
             <Route path="/investors" element={<Investors />} />
+            <Route path="/chat" element={<Chat />} />
             <Route path="/fundraising" element={<Fundraising />} />
             <Route path="/documents" element={<Documents />} />
             <Route path="/ai-insights" element={<AiInsights />} />

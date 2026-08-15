@@ -22,7 +22,7 @@ type Tile = {
 
 type PipelineSummaryProps = {
   totals: PipelineTotals;
-  /** The round's own currency — a deal's amount is never assumed to be USD. */
+  /** The round's own currency a deal's amount is never assumed to be USD. */
   currency: string;
   /** Set when the "needs attention" filter is on, so the tile reads as pressed. */
   attentionActive: boolean;
@@ -91,7 +91,7 @@ export function PipelineSummary({
           value={String(totals.attentionCount)}
           hint={
             attentionActive
-              ? "Showing these only — click to clear"
+              ? "Showing these only click to clear"
               : "Overdue follow-ups and quiet deals"
           }
           icon={AlertTriangle}

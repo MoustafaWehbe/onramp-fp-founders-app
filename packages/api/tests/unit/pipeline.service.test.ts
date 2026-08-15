@@ -17,10 +17,12 @@ jest.mock("../../src/db/prisma", () => {
     commitment: {
       count: jest.fn(),
       findFirst: jest.fn(),
+      findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
     },
+    commitmentStatusEvent: { createMany: jest.fn() },
     fundraisingRound: { findUnique: jest.fn(), findMany: jest.fn() },
     task: { count: jest.fn(), findMany: jest.fn(), deleteMany: jest.fn() },
     interactionLog: { groupBy: jest.fn() },
@@ -80,12 +82,21 @@ function entryRow(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   jest.clearAllMocks();
   (mockPrisma.pipelineStageEvent.create as jest.Mock).mockResolvedValue({});
+  (mockPrisma.commitment.findMany as jest.Mock).mockResolvedValue([]);
   (mockPrisma.pipeline.aggregate as jest.Mock).mockResolvedValue({ _max: { sortOrder: null } });
   (mockPrisma.fundraisingRound.findMany as jest.Mock).mockResolvedValue([{ id: ROUND_ID }]);
   (mockPrisma.task.count as jest.Mock).mockResolvedValue(0);
 });
 
 describe("PipelineService.createEntry", () => {
+  it.each(["committed", "passed"])("rejects terminal initial stage %s before touching the database", async (stage) => {
+    await expect(
+      service.createEntry(STARTUP_ID, { investorId: CONTACT_ID, stage } as never),
+    ).rejects.toMatchObject({ statusCode: 400, code: "INITIAL_STAGE_NOT_ALLOWED" });
+
+    expect(mockPrisma.startupInvestor.findUnique).not.toHaveBeenCalled();
+  });
+
   it("creates an entry scoped to the startup and nests the contact", async () => {
     (mockPrisma.startupInvestor.findUnique as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
     (mockPrisma.pipeline.create as jest.Mock).mockResolvedValue(entryRow());
@@ -446,6 +457,36 @@ describe("PipelineService.updateEntry moving between rounds", () => {
         data: expect.objectContaining({ roundId: OTHER_ROUND, sortOrder: 4000 }),
       }),
     );
+    expect(mockPrisma.pipelineStageEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          roundId: OTHER_ROUND,
+          fromStage: null,
+          toStage: "contacted",
+        }),
+      }),
+    );
+  });
+
+  it("records a simultaneous new commitment against the destination round", async () => {
+    (mockPrisma.commitment.findFirst as jest.Mock).mockResolvedValue(null);
+
+    await service.updateEntry(STARTUP_ID, PIPELINE_ID, {
+      roundId: OTHER_ROUND,
+      stage: "committed",
+      commitment: { amount: 250_000, status: "soft_circled" },
+    } as never);
+
+    expect(mockPrisma.pipeline.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ roundId: OTHER_ROUND, stage: "committed" }),
+      }),
+    );
+    expect(mockPrisma.commitment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ roundId: OTHER_ROUND, pipelineId: PIPELINE_ID }),
+      }),
+    );
   });
 
   it.each(["closed", "cancelled"])("refuses to carry a deal into a %s round", async (status) => {
@@ -498,7 +539,7 @@ describe("PipelineService.updateEntry moving between rounds", () => {
   it("does not touch the round when the same one is sent back", async () => {
     await service.updateEntry(STARTUP_ID, PIPELINE_ID, { roundId: ROUND_ID } as never);
 
-    // No verification, no repositioning — it is not a move.
+    // No verification, no repositioning it is not a move.
     expect(mockPrisma.pipeline.aggregate).not.toHaveBeenCalled();
     expect(mockPrisma.commitment.count).not.toHaveBeenCalled();
   });
@@ -589,11 +630,32 @@ describe("PipelineService.updateEntry committing", () => {
 
     await service.updateEntry(STARTUP_ID, PIPELINE_ID, { stage: "term_sheet" } as never);
 
-    // The row survives as history rather than being deleted — anything
+    // The row survives as history rather than being deleted anything
     // already marked funded must not silently vanish from the round.
     expect(mockPrisma.commitment.updateMany).toHaveBeenCalledWith({
       where: { startupId: STARTUP_ID, pipelineId: PIPELINE_ID, status: { not: "withdrawn" } },
       data: { status: "withdrawn" },
+    });
+  });
+
+  it("records funding-history events for automatic commitment withdrawals", async () => {
+    (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({
+      ...COMMITTING,
+      stage: "committed",
+    });
+    (mockPrisma.pipeline.update as jest.Mock).mockResolvedValue(entryRow({ stage: "term_sheet" }));
+    (mockPrisma.commitment.findMany as jest.Mock).mockResolvedValue([
+      { id: "commitment-1", status: "hard_circled" },
+      { id: "commitment-2", status: "soft_circled" },
+    ]);
+
+    await service.updateEntry(STARTUP_ID, PIPELINE_ID, { stage: "term_sheet" } as never, USER_ID);
+
+    expect(mockPrisma.commitmentStatusEvent.createMany).toHaveBeenCalledWith({
+      data: [
+        { startupId: STARTUP_ID, commitmentId: "commitment-1", fromStatus: "hard_circled", toStatus: "withdrawn", changedBy: USER_ID },
+        { startupId: STARTUP_ID, commitmentId: "commitment-2", fromStatus: "soft_circled", toStatus: "withdrawn", changedBy: USER_ID },
+      ],
     });
   });
 
@@ -863,7 +925,7 @@ describe("PipelineService.getAnalytics", () => {
       event("p1", "contacted", 2),
       event("p1", "meeting_scheduled", 3),
       event("p1", "due_diligence", 4),
-      // p2 was added directly at due diligence — no sourced/contacted/meeting
+      // p2 was added directly at due diligence no sourced/contacted/meeting
       // events exist for it, but it plainly cleared those stages too.
       event("p2", "due_diligence", 1),
     ]);
@@ -872,7 +934,7 @@ describe("PipelineService.getAnalytics", () => {
 
     const byStage = (stage: string) => data.funnel.find((row) => row.stage === stage)!.everReached;
     // Every earlier stage must count both deals, not just the one with a
-    // matching literal event — otherwise a later stage can end up with a
+    // matching literal event otherwise a later stage can end up with a
     // higher count than an earlier one, which isn't a funnel anymore.
     expect(byStage("sourced")).toBe(2);
     expect(byStage("contacted")).toBe(2);
@@ -904,7 +966,7 @@ describe("PipelineService.deleteEntry", () => {
     expect(mockPrisma.commitment.count).toHaveBeenCalledWith({
       where: { pipelineId: PIPELINE_ID, startupId: STARTUP_ID },
     });
-    // Only unfinished work blocks — a completed checklist must not strand the
+    // Only unfinished work blocks a completed checklist must not strand the
     // deal on the board forever.
     expect(mockPrisma.task.count).toHaveBeenCalledWith({
       where: { pipelineId: PIPELINE_ID, startupId: STARTUP_ID, status: "open" },
@@ -940,7 +1002,7 @@ describe("PipelineService.deleteEntry", () => {
     expect(mockPrisma.pipeline.delete).not.toHaveBeenCalled();
   });
 
-  it("throws HAS_DEPENDENTS when open tasks exist — someone still expects to act on this deal", async () => {
+  it("throws HAS_DEPENDENTS when open tasks exist someone still expects to act on this deal", async () => {
     (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({ id: PIPELINE_ID });
     (mockPrisma.commitment.count as jest.Mock).mockResolvedValue(0);
     (mockPrisma.task.count as jest.Mock).mockResolvedValue(3);
@@ -967,8 +1029,8 @@ describe("PipelineService.listStageEvents", () => {
   it("returns the history oldest first", async () => {
     (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({ id: PIPELINE_ID });
     const events = [
-      { id: "e1", fromStage: null, toStage: "sourced", changedBy: USER_ID, createdAt: new Date("2026-01-01") },
-      { id: "e2", fromStage: "sourced", toStage: "contacted", changedBy: USER_ID, createdAt: new Date("2026-01-05") },
+      { id: "e1", roundId: ROUND_ID, fromStage: null, toStage: "sourced", changedBy: USER_ID, createdAt: new Date("2026-01-01") },
+      { id: "e2", roundId: ROUND_ID, fromStage: "sourced", toStage: "contacted", changedBy: USER_ID, createdAt: new Date("2026-01-05") },
     ];
     (mockPrisma.pipelineStageEvent.findMany as jest.Mock).mockResolvedValue(events);
 
@@ -1018,7 +1080,7 @@ describe("PipelineService.getFocus", () => {
   }
 
   /**
-   * Last touch is two grouped queries — dated logs aggregated by
+   * Last touch is two grouped queries dated logs aggregated by
    * interactionDate, undated ones by createdAt. `dated`/`undated` map a
    * contact id to the aggregate that query should report for it.
    */
@@ -1133,7 +1195,7 @@ describe("PipelineService.getFocus", () => {
 
     const { data } = await service.getFocus(STARTUP_ID, ROUND_ID);
 
-    // Spoken to yesterday, so not quiet — and nothing else applies.
+    // Spoken to yesterday, so not quiet and nothing else applies.
     expect(data).toHaveLength(0);
   });
 

@@ -16,7 +16,7 @@ function optionalText(max: number, label: string) {
     .optional();
 }
 
-// z.coerce.date() runs `new Date(input)` on whatever it's given — null, false,
+// z.coerce.date() runs `new Date(input)` on whatever it's given null, false,
 // and 0 all coerce to the 1970 epoch instead of failing. Only strings and Date
 // instances are legitimate wire representations of a datetime, so anything
 // else is forced to NaN first, which z.coerce.date() reliably rejects.
@@ -64,7 +64,7 @@ export const updateTaskSchema = z
 
 export const listTaskQuerySchema = z.object({
   pipelineId: z.string().uuid("pipelineId must be a valid UUID").optional(),
-  // Every task on every deal in one raise — what a cross-deal "my work" view
+  // Every task on every deal in one raise what a cross-deal "my work" view
   // needs, without the client fetching each deal's list separately.
   roundId: z.string().uuid("roundId must be a valid UUID").optional(),
   status: taskStatusEnum.optional(),
