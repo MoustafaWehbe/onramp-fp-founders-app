@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Bell, BellOff, Hash, MessageSquare, User } from "lucide-react";
 import { toast } from "sonner";
+import { Avatar, AvatarFallback, AvatarImage } from "../../../components/ui/avatar";
 import { Button } from "../../../components/ui/button";
 import { EmptyState } from "../../../components/shared/EmptyState";
 import { Skeleton } from "../../../components/ui/skeleton";
+import { getInitials } from "../../../lib/utils";
 import { apiErrorMessage } from "../../../lib/api-error";
 import { qk } from "../../../lib/query-keys";
 import {
@@ -13,6 +15,7 @@ import {
   setNotifyLevel,
   toggleReaction,
   type Conversation,
+  type Message,
 } from "../../../lib/chat-api";
 import { useResolvedMentions } from "../../../hooks/useResolvedMentions";
 import { useTypingUsers } from "../../../hooks/useTypingUsers";
@@ -33,9 +36,18 @@ function conversationDisplayName(conversation: Conversation): string {
   return c ? `${c.firstName ?? ""} ${c.lastName ?? ""}`.trim() || "Teammate" : "Direct message";
 }
 
+/** Consecutive messages from the same sender, close enough together to read as one run, collapse under a single avatar/name — same 5-minute window Slack uses. */
+const GROUP_WINDOW_MS = 5 * 60 * 1000;
+
+function isGrouped(previous: Message | undefined, message: Message): boolean {
+  if (!previous || !message.senderId || previous.senderId !== message.senderId) return false;
+  return new Date(message.createdAt).getTime() - new Date(previous.createdAt).getTime() < GROUP_WINDOW_MS;
+}
+
 export function MessageThread({ startupId, conversation, canSend, onBack }: MessageThreadProps) {
   const queryClient = useQueryClient();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const [threadMessageId, setThreadMessageId] = useState<string | null>(null);
   const typingNames = useTypingUsers(conversation.id);
   const displayName = conversationDisplayName(conversation);
@@ -48,10 +60,15 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
   const messages = messagesQuery.data ?? [];
   const resolved = useResolvedMentions(startupId, messages);
 
+  /** Scrolling to a sentinel at the very end is more reliable than computing scrollHeight by hand — it can't drift out of sync with layout the way a manual scrollTo can. */
+  function scrollToBottom(behavior: ScrollBehavior = "auto") {
+    bottomRef.current?.scrollIntoView({ behavior, block: "end" });
+  }
+
   // A new channel or an incoming live message should both land at the bottom
   // — the newest message is what a founder opened the thread to see.
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    scrollToBottom();
   }, [messages.length, conversation.id]);
 
   // Opening a room (or a new message landing while it's open) counts as
@@ -97,12 +114,19 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
           </Button>
         )}
         {conversation.type === "channel" ? (
-          <Hash className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+            <Hash className="h-3.5 w-3.5" />
+          </div>
         ) : (
-          <User className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <Avatar className="h-7 w-7 shrink-0">
+            <AvatarImage src={conversation.counterpart?.avatarUrl ?? undefined} alt="" />
+            <AvatarFallback className="text-[11px] font-medium">
+              {conversation.counterpart ? getInitials(displayName) : <User className="h-3.5 w-3.5" />}
+            </AvatarFallback>
+          </Avatar>
         )}
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium">{displayName}</div>
+          <div className="truncate text-sm font-semibold">{displayName}</div>
           {conversation.topic && (
             <div className="truncate text-xs text-muted-foreground">{conversation.topic}</div>
           )}
@@ -143,17 +167,18 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
             title="No messages yet"
             description={
               canSend
-                ? "Say something to get the conversation started — type @ to reference an investor, deal, task, round or document."
+                ? "Say something to get the conversation started."
                 : "Nobody has posted here yet."
             }
             compact
           />
         ) : (
-          <div className="space-y-4">
-            {messages.map((message) => (
+          <div>
+            {messages.map((message, index) => (
               <MessageItem
                 key={message.id}
                 message={message}
+                grouped={isGrouped(messages[index - 1], message)}
                 resolved={resolved}
                 onReact={canSend ? (emoji) => reactMutation.mutate({ messageId: message.id, emoji }) : undefined}
                 onOpenThread={canSend ? () => setThreadMessageId(message.id) : undefined}
@@ -161,6 +186,7 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
             ))}
           </div>
         )}
+        <div ref={bottomRef} />
       </div>
 
       {typingNames.length > 0 && (
@@ -176,11 +202,8 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
           startupId={startupId}
           conversationId={conversation.id}
           conversationName={displayName}
-          placeholder={
-            conversation.type === "dm"
-              ? `Message ${displayName}`
-              : `Message #${displayName} — type @ to reference an investor, deal, task, round or document`
-          }
+          placeholder={conversation.type === "dm" ? `Message ${displayName}` : undefined}
+          onSent={() => scrollToBottom("smooth")}
         />
       ) : (
         <div className="border-t border-border/60 px-4 py-3 text-center text-xs text-muted-foreground">

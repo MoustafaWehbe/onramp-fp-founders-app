@@ -221,6 +221,8 @@ export type ResolvedMention =
       status: string;
       dueDate: string | null;
       priority: Priority;
+      /** The deal this task belongs to — used to deep-link the unfurl card into the right Pipeline dialog. */
+      pipelineId: string;
     }
   | {
       type: "round";

@@ -26,7 +26,11 @@ export function Chat() {
   const { can } = usePermissions();
   const canCreate = can("chat", "create");
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // A notification (a mention or a DM) can deep-link straight to a
+  // conversation via `?c=` — read once on mount.
+  const [selectedId, setSelectedId] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get("c"),
+  );
   const [createOpen, setCreateOpen] = useState(false);
   const [createDmOpen, setCreateDmOpen] = useState(false);
 
@@ -38,8 +42,11 @@ export function Chat() {
   const conversations = conversationsQuery.data ?? [];
 
   // Land on the most recently active channel by default, and follow along if
-  // the one that was selected gets archived out from under the list.
+  // the one that was selected gets archived out from under the list. Wait
+  // for the list to actually load first — otherwise this would clobber a
+  // `?c=` deep link with `null` before the real conversations ever arrive.
   useEffect(() => {
+    if (conversationsQuery.isLoading) return;
     if (conversations.length === 0) {
       setSelectedId(null);
       return;
@@ -47,7 +54,7 @@ export function Chat() {
     if (!selectedId || !conversations.some((c) => c.id === selectedId)) {
       setSelectedId(conversations[0].id);
     }
-  }, [conversations, selectedId]);
+  }, [conversations, selectedId, conversationsQuery.isLoading]);
 
   const createMutation = useMutation({
     mutationFn: (input: CreateConversationInput) => createConversation(startupId, input),

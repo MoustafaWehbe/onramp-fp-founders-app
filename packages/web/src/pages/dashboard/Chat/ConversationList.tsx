@@ -1,6 +1,7 @@
 import { BellOff, Hash, Plus, User } from "lucide-react";
-import { cn } from "../../../lib/utils";
+import { cn, getInitials } from "../../../lib/utils";
 import type { Conversation } from "../../../lib/chat-api";
+import { Avatar, AvatarFallback, AvatarImage } from "../../../components/ui/avatar";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { EmptyState } from "../../../components/shared/EmptyState";
 import { Button } from "../../../components/ui/button";
@@ -33,8 +34,8 @@ type ConversationRowProps = {
 };
 
 function ConversationRow({ conversation, active, onSelect }: ConversationRowProps) {
-  const Icon = conversation.type === "channel" ? Hash : User;
   const unread = conversation.unreadCount > 0;
+  const label = conversationLabel(conversation);
 
   return (
     <li>
@@ -42,21 +43,37 @@ function ConversationRow({ conversation, active, onSelect }: ConversationRowProp
         type="button"
         onClick={onSelect}
         className={cn(
-          "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors",
+          "flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-sm transition-colors",
           active
             ? "bg-sidebar-accent font-medium text-primary"
             : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground",
         )}
       >
-        <Icon className={cn("h-3.5 w-3.5 shrink-0", active ? "text-primary" : "text-muted-foreground")} />
+        {conversation.type === "channel" ? (
+          <div
+            className={cn(
+              "grid h-6 w-6 shrink-0 place-items-center rounded-md",
+              active ? "bg-primary/15 text-primary" : "bg-surface text-muted-foreground",
+            )}
+          >
+            <Hash className="h-3.5 w-3.5" />
+          </div>
+        ) : (
+          <Avatar className="h-6 w-6 shrink-0">
+            <AvatarImage src={conversation.counterpart?.avatarUrl ?? undefined} alt="" />
+            <AvatarFallback className="text-[10px] font-medium">
+              {conversation.counterpart ? getInitials(label) : <User className="h-3 w-3" />}
+            </AvatarFallback>
+          </Avatar>
+        )}
         <span className={cn("min-w-0 flex-1 truncate", unread && !active && "font-semibold text-foreground")}>
-          {conversationLabel(conversation)}
+          {label}
         </span>
         {conversation.notifyLevel === "none" && (
           <BellOff className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Muted" />
         )}
         {unread && (
-          <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-primary px-1 font-mono text-[10px] font-semibold tabular-nums text-primary-foreground">
+          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 font-mono text-[10px] font-semibold tabular-nums text-primary-foreground shadow-sm">
             {conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}
           </span>
         )}

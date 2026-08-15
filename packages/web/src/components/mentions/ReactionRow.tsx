@@ -1,7 +1,4 @@
-import { useState } from "react";
-import { SmilePlus } from "lucide-react";
 import { cn } from "../../lib/utils";
-import { REACTION_EMOJIS } from "../../lib/mentions";
 import type { MessageReactionSummary } from "../../lib/chat-api";
 
 type ReactionRowProps = {
@@ -20,12 +17,12 @@ function pillClass(reactedByMe: boolean, interactive: boolean): string {
   );
 }
 
+/** Existing reactions only — adding a new one lives in the hover-revealed MessageHoverActions instead, since an empty message shouldn't carry a permanent "add reaction" row. */
 export function ReactionRow({ reactions, onToggle }: ReactionRowProps) {
-  const [pickerOpen, setPickerOpen] = useState(false);
-  if (reactions.length === 0 && !onToggle) return null;
+  if (reactions.length === 0) return null;
 
   return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-1">
+    <div className="mt-1 flex flex-wrap items-center gap-1">
       {reactions.map((r) =>
         onToggle ? (
           <button
@@ -43,36 +40,6 @@ export function ReactionRow({ reactions, onToggle }: ReactionRowProps) {
             <span className="font-mono tabular-nums">{r.count}</span>
           </div>
         ),
-      )}
-
-      {onToggle && (
-        <div className="relative">
-          <button
-            type="button"
-            aria-label="Add reaction"
-            onClick={() => setPickerOpen((v) => !v)}
-            className="flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
-          >
-            <SmilePlus className="h-3.5 w-3.5" />
-          </button>
-          {pickerOpen && (
-            <div className="absolute bottom-full left-0 z-10 mb-1 flex gap-0.5 rounded-lg border border-border/70 bg-popover p-1 shadow-lg">
-              {REACTION_EMOJIS.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  onClick={() => {
-                    onToggle(emoji);
-                    setPickerOpen(false);
-                  }}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-base hover:bg-sidebar-accent"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
       )}
     </div>
   );

@@ -16,6 +16,7 @@ import { DEFAULT_PROBABILITY_BY_STAGE } from "../../../lib/mock-data";
 import {
   createInvestor,
   deleteInvestor,
+  getInvestor,
   listInvestors,
   updateInvestor,
   type Engagement,
@@ -109,6 +110,19 @@ export function Investors() {
   const [viewing, setViewing] = useState<InvestorRow | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+
+  // A chat unfurl card or notification can deep-link straight to one contact
+  // via `?investor=` — it may not be on the current filtered/paginated page,
+  // so it's fetched directly rather than looked up in `rows`.
+  const [deepLinkInvestorId] = useState(() => new URLSearchParams(window.location.search).get("investor"));
+  const deepLinkInvestorQuery = useQuery({
+    queryKey: qk.investors(startupId, { deepLink: deepLinkInvestorId }),
+    queryFn: () => getInvestor(startupId, deepLinkInvestorId!),
+    enabled: deepLinkInvestorId !== null,
+  });
+  useEffect(() => {
+    if (deepLinkInvestorQuery.data) setViewing(mapContactToRow(deepLinkInvestorQuery.data));
+  }, [deepLinkInvestorQuery.data]);
 
   // Typing shouldn't fire a request per keystroke now that search runs server-side.
   useEffect(() => {

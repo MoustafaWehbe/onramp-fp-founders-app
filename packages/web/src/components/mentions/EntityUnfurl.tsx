@@ -1,10 +1,12 @@
-import { Crown, FileText, ListChecks, Wallet } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { ChevronRight, Crown, FileText, ListChecks, Users, Briefcase, Wallet } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { getStage } from "../../lib/mock-data";
 import { formatCompactMoney, formatDate, cn } from "../../lib/utils";
 import { ROUND_STATUS_LABELS, type RoundStatus } from "../../lib/fundraising-api";
 import { INVESTOR_TYPE_LABELS, type InvestorType } from "../../lib/investor-api";
 import { PRIORITY_LABELS } from "../../lib/task-api";
+import { entityHref } from "../../lib/entity-routes";
 import type { ResolvedMention } from "../../lib/chat-api";
 
 /**
@@ -19,10 +21,12 @@ export function isUnfurlable(type: ResolvedMention["type"]): boolean {
 }
 
 export function EntityUnfurl({ mention }: { mention: ResolvedMention }) {
+  const href = entityHref(mention);
+
   switch (mention.type) {
     case "investor":
       return (
-        <UnfurlCard title={mention.title} subtitle={mention.subtitle}>
+        <UnfurlCard title={mention.title} subtitle={mention.subtitle} icon={Users} href={href}>
           {mention.investorType && (
             <Badge variant="outline" className="border-border/70 bg-surface font-medium">
               {INVESTOR_TYPE_LABELS[mention.investorType as InvestorType] ?? mention.investorType}
@@ -34,7 +38,7 @@ export function EntityUnfurl({ mention }: { mention: ResolvedMention }) {
     case "deal": {
       const stage = getStage(mention.stage);
       return (
-        <UnfurlCard title={mention.title} subtitle={mention.subtitle}>
+        <UnfurlCard title={mention.title} subtitle={mention.subtitle} icon={Briefcase} href={href}>
           <Badge variant="outline" className={cn("border-transparent font-medium", stage.badgeClass)}>
             {stage.label}
           </Badge>
@@ -57,7 +61,7 @@ export function EntityUnfurl({ mention }: { mention: ResolvedMention }) {
 
     case "task":
       return (
-        <UnfurlCard title={mention.title} icon={ListChecks}>
+        <UnfurlCard title={mention.title} icon={ListChecks} href={href}>
           <Badge
             variant="outline"
             className={cn(
@@ -80,7 +84,7 @@ export function EntityUnfurl({ mention }: { mention: ResolvedMention }) {
 
     case "round":
       return (
-        <UnfurlCard title={mention.title} icon={Wallet}>
+        <UnfurlCard title={mention.title} icon={Wallet} href={href}>
           <Badge variant="outline" className="border-border/70 bg-surface font-medium">
             {ROUND_STATUS_LABELS[mention.status as RoundStatus] ?? mention.status}
           </Badge>
@@ -94,7 +98,7 @@ export function EntityUnfurl({ mention }: { mention: ResolvedMention }) {
 
     case "document":
       return (
-        <UnfurlCard title={mention.title} icon={FileText}>
+        <UnfurlCard title={mention.title} icon={FileText} href={href}>
           <Badge variant="outline" className="border-border/70 bg-surface font-medium capitalize">
             {mention.documentType.replace(/_/g, " ")}
           </Badge>
@@ -110,23 +114,45 @@ function UnfurlCard({
   title,
   subtitle,
   icon: Icon,
+  href,
   children,
 }: {
   title: string;
   subtitle?: string | null;
-  icon?: typeof Wallet;
+  icon: typeof Wallet;
+  href: string | null;
   children?: React.ReactNode;
 }) {
-  return (
-    <div className="mt-1.5 flex max-w-md flex-wrap items-center gap-2 rounded-lg border border-border/70 border-l-[3px] border-l-primary/60 bg-surface/40 px-3 py-2">
-      <div className="min-w-0 basis-full sm:basis-auto">
-        <div className="flex items-center gap-1.5 truncate text-sm font-semibold">
-          {Icon && <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-          {title}
-        </div>
-        {subtitle && <div className="truncate text-xs text-muted-foreground">{subtitle}</div>}
+  const navigate = useNavigate();
+
+  const content = (
+    <>
+      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+        <Icon className="h-4 w-4" />
       </div>
-      {children && <div className="flex flex-wrap items-center gap-1.5">{children}</div>}
-    </div>
+      <div className="min-w-0 flex-1 basis-full sm:basis-0">
+        <div className="truncate text-sm font-semibold text-foreground">{title}</div>
+        {subtitle && <div className="truncate text-xs text-muted-foreground">{subtitle}</div>}
+        {children && <div className="mt-1 flex flex-wrap items-center gap-1.5">{children}</div>}
+      </div>
+      {href && <ChevronRight className="h-4 w-4 shrink-0 self-center text-muted-foreground/60" />}
+    </>
+  );
+
+  const className =
+    "mt-1.5 flex max-w-md items-start gap-3 rounded-lg border border-border/70 border-l-[3px] border-l-primary/60 bg-surface/40 px-3 py-2.5 text-left transition-colors";
+
+  if (!href) {
+    return <div className={className}>{content}</div>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => navigate(href)}
+      className={cn(className, "cursor-pointer hover:border-primary/40 hover:bg-surface/70")}
+    >
+      {content}
+    </button>
   );
 }

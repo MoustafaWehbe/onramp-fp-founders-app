@@ -89,6 +89,8 @@ type DealDetailDialogProps = {
   rounds: FundraisingRound[];
   /** Investors already leading this round, excluding this one. */
   otherLeadNames: string[];
+  /** Set when opened via a deep link (e.g. a chat unfurl card or notification) that wants a specific tab up front, instead of the usual "overview" default. */
+  initialTab?: "overview" | "tasks" | "discussion" | "activity";
   onOpenChange: (open: boolean) => void;
   onRemove: (deal: PipelineEntry) => void;
 };
@@ -159,6 +161,7 @@ export function DealDetailDialog({
   roundName,
   rounds,
   otherLeadNames,
+  initialTab,
   onOpenChange,
   onRemove,
 }: DealDetailDialogProps) {
@@ -193,7 +196,7 @@ export function DealDetailDialog({
   // draft never leaks onto the next investor.
   useEffect(() => {
     if (!deal) return;
-    setActiveTab("overview");
+    setActiveTab(initialTab ?? "overview");
     setAmount(deal.expectedAmount == null ? "" : String(deal.expectedAmount));
     setProbability(deal.probabilityPercentage == null ? "" : String(deal.probabilityPercentage));
     setInvestorFitScore(deal.investorFitScore == null ? "" : String(deal.investorFitScore));

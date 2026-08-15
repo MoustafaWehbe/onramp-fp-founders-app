@@ -45,6 +45,14 @@ export function Fundraising() {
   const queryClient = useQueryClient();
   const preferredRoundId = useAppStore((s) => s.activeRoundIds[startupId]);
   const setActiveRoundId = useAppStore((s) => s.setActiveRoundId);
+  // A chat unfurl card or notification can deep-link straight to a round via
+  // `?round=` — read once on mount and fed into the same "active round"
+  // selection state the round switcher already uses.
+  const [deepLinkRoundId] = useState(() => new URLSearchParams(window.location.search).get("round"));
+  useEffect(() => {
+    if (deepLinkRoundId) setActiveRoundId(startupId, deepLinkRoundId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [roundDialog, setRoundDialog] = useState<FundraisingRound | "new" | null>(null);
   const [commitmentDialog, setCommitmentDialog] = useState<Commitment | "new" | null>(null);
   const roundsQuery = useQuery({ queryKey: qk.rounds(startupId), queryFn: () => listFundraisingRounds(startupId) });

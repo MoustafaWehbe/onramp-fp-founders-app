@@ -163,7 +163,18 @@ export function Pipeline() {
   const dragFrameRef = useRef<number | null>(null);
   const pendingDragRef = useRef<{ activeId: string; overId: string } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
-  const [openDealId, setOpenDealId] = useState<string | null>(null);
+  // A chat unfurl card or notification can deep-link straight to a deal (and,
+  // optionally, a tab within it) via `?deal=`/`?tab=` — read once on mount,
+  // same pattern as `activeView` below.
+  const [openDealId, setOpenDealId] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get("deal"),
+  );
+  const [openDealInitialTab] = useState<"overview" | "tasks" | "discussion" | "activity" | undefined>(() => {
+    const requested = new URLSearchParams(window.location.search).get("tab");
+    return requested === "tasks" || requested === "discussion" || requested === "activity"
+      ? requested
+      : undefined;
+  });
   const [pendingRemove, setPendingRemove] = useState<PipelineEntry | null>(null);
   const [activeView, setActiveView] = useState<PipelineViewId>(() => {
     const requested = new URLSearchParams(window.location.search).get("view");
@@ -1013,6 +1024,7 @@ export function Pipeline() {
         otherLeadNames={leads
           .filter((entry) => entry.id !== openDealId)
           .map((entry) => entry.investor.fullName)}
+        initialTab={openDealInitialTab}
         onOpenChange={(open) => !open && setOpenDealId(null)}
         onRemove={setPendingRemove}
       />

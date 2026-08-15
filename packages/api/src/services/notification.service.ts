@@ -15,6 +15,7 @@ export const NOTIFICATION_TYPES = {
   LEAD_STALE: "lead_stale",
   DEAL_NO_NEXT_STEP: "deal_no_next_step",
   CHAT_MENTION: "chat_mention",
+  DIRECT_MESSAGE: "direct_message",
 } as const;
 
 /**
@@ -323,7 +324,7 @@ export class NotificationService {
   async notifyMention(input: {
     userId: string;
     startupId: string;
-    messageId: string;
+    conversationId: string;
     senderName: string;
     // Null for a DM — a direct message has no channel name to show.
     conversationName: string | null;
@@ -342,8 +343,11 @@ export class NotificationService {
           type: NOTIFICATION_TYPES.CHAT_MENTION,
           title,
           body: input.excerpt,
-          entityType: "message",
-          entityId: input.messageId,
+          // Points at the conversation, not the message — there's no
+          // per-message deep link, but the conversation is exactly where a
+          // click on this notification should land.
+          entityType: "conversation",
+          entityId: input.conversationId,
         },
         select: { id: true, type: true, title: true, body: true },
       });
@@ -354,6 +358,42 @@ export class NotificationService {
       });
     } catch (err) {
       console.error("[notifyMention] failed:", err);
+    }
+  }
+
+  /**
+   * A plain (non-mention) message in a DM. Unlike `notifyMention`, this is
+   * suppressed by the caller when the recipient already has the room open —
+   * see chat.service.ts's notifyDmRecipient — so it only fires for messages
+   * someone would otherwise miss.
+   */
+  async notifyDirectMessage(input: {
+    userId: string;
+    startupId: string;
+    conversationId: string;
+    senderName: string;
+    excerpt: string;
+  }): Promise<void> {
+    try {
+      const created = await prisma.notification.create({
+        data: {
+          userId: input.userId,
+          startupId: input.startupId,
+          type: NOTIFICATION_TYPES.DIRECT_MESSAGE,
+          title: `${input.senderName} sent you a message`,
+          body: input.excerpt,
+          entityType: "conversation",
+          entityId: input.conversationId,
+        },
+        select: { id: true, type: true, title: true, body: true },
+      });
+
+      notificationBus.publish(input.userId, {
+        type: "notification.created",
+        notification: created,
+      });
+    } catch (err) {
+      console.error("[notifyDirectMessage] failed:", err);
     }
   }
 

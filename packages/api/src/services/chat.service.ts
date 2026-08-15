@@ -628,12 +628,20 @@ export class ChatService {
 
     // Being @-referenced is different from chat volume — it's addressed to
     // someone specifically, so it does earn a real notification.
-    await this.notifyMentionedMembers(startupId, conversationId, memberId, validMentions, {
-      messageId: message.id,
+    const senderName = this.senderDisplayName(serialized.sender);
+    const excerpt = toPlainExcerpt(input.body);
+    const mentionedUserIds = await this.notifyMentionedMembers(startupId, conversationId, memberId, validMentions, {
       conversationName,
       conversationType,
-      senderName: this.senderDisplayName(serialized.sender),
-      excerpt: toPlainExcerpt(input.body),
+      senderName,
+      excerpt,
+    });
+
+    // A DM is addressed to one specific person too, even without a mention —
+    // but only when they don't already have the room open, see notifyDmRecipient.
+    await this.notifyDmRecipient(startupId, conversationId, conversationType, memberId, mentionedUserIds, {
+      senderName,
+      excerpt,
     });
 
     return { data: serialized };
@@ -645,23 +653,25 @@ export class ChatService {
     return name || "A teammate";
   }
 
+  /** Notifies every @-mentioned teammate and returns the set of userIds it notified, so a follow-up DM notification can avoid double-notifying the same person for the same message. */
   private async notifyMentionedMembers(
     startupId: string,
     conversationId: string,
     senderMemberId: string,
     mentions: ParsedMention[],
     context: {
-      messageId: string;
       conversationName: string;
       conversationType: string;
       senderName: string;
       excerpt: string;
     },
-  ): Promise<void> {
+  ): Promise<Set<string>> {
+    const notified = new Set<string>();
+
     const memberMentionIds = mentions
       .filter((m) => m.type === "member" && m.id !== senderMemberId)
       .map((m) => m.id);
-    if (memberMentionIds.length === 0) return;
+    if (memberMentionIds.length === 0) return notified;
 
     const members = await prisma.startupMember.findMany({
       where: { startupId, id: { in: memberMentionIds } },
@@ -676,12 +686,65 @@ export class ChatService {
       // Fully muting the room suppresses even a direct @-mention; "all" and
       // "mentions" both still let this through — see ConversationMember.notifyLevel.
       if (member.conversationMemberships[0]?.notifyLevel === "none") continue;
+      notified.add(member.userId);
       void notificationService.notifyMention({
         userId: member.userId,
         startupId,
-        messageId: context.messageId,
+        conversationId,
         senderName: context.senderName,
         conversationName: context.conversationType === "dm" ? null : context.conversationName,
+        excerpt: context.excerpt,
+      });
+    }
+
+    return notified;
+  }
+
+  /**
+   * How stale `lastReadAt` must be before a plain DM message earns a
+   * notification. This is a presence heuristic, not literal tab-focus
+   * tracking: `MessageThread` marks the conversation read on open, and again
+   * whenever a live message arrives while it's mounted (the SSE handler
+   * invalidates the conversations query on every `chat.message.created`,
+   * which re-triggers the read-on-open effect) — so an open thread's
+   * `lastReadAt` keeps refreshing on its own, while a closed one goes stale
+   * within this window.
+   */
+  private static readonly ACTIVE_VIEW_WINDOW_MS = 60_000;
+
+  /** A plain (non-mention) message in a DM notifies the other participant, unless they were already notified via a mention above, have this DM's notifications set to "mentions" or "none", or already have the room open. */
+  private async notifyDmRecipient(
+    startupId: string,
+    conversationId: string,
+    conversationType: string,
+    senderMemberId: string,
+    alreadyNotified: Set<string>,
+    context: { senderName: string; excerpt: string },
+  ): Promise<void> {
+    if (conversationType !== "dm") return;
+
+    const others = await prisma.conversationMember.findMany({
+      where: { conversationId, memberId: { not: senderMemberId } },
+      select: { notifyLevel: true, lastReadAt: true, member: { select: { userId: true } } },
+    });
+
+    const cutoff = new Date(Date.now() - ChatService.ACTIVE_VIEW_WINDOW_MS);
+
+    for (const other of others) {
+      const userId = other.member.userId;
+      if (!userId) continue;
+      if (alreadyNotified.has(userId)) continue;
+      // "mentions" exists precisely to suppress this — a plain message is
+      // exactly what it's meant to hold back, while an explicit @-mention
+      // still goes through notifyMentionedMembers above regardless.
+      if (other.notifyLevel !== "all") continue;
+      if (other.lastReadAt && other.lastReadAt > cutoff) continue;
+
+      void notificationService.notifyDirectMessage({
+        userId,
+        startupId,
+        conversationId,
+        senderName: context.senderName,
         excerpt: context.excerpt,
       });
     }
@@ -901,7 +964,7 @@ export class ChatService {
       case "task": {
         const rows = await prisma.task.findMany({
           where: { startupId, id: { in: ids } },
-          select: { id: true, title: true, status: true, dueDate: true, priority: true },
+          select: { id: true, title: true, status: true, dueDate: true, priority: true, pipelineId: true },
         });
         return rows.map((r) => ({
           type,
@@ -911,6 +974,7 @@ export class ChatService {
           status: r.status,
           dueDate: r.dueDate,
           priority: r.priority,
+          pipelineId: r.pipelineId,
         }));
       }
       case "round": {

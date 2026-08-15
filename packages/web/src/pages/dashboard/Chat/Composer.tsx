@@ -1,44 +1,57 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Paperclip, SendHorizontal, X } from "lucide-react";
+import { Briefcase, ListChecks, Paperclip, SendHorizontal, Share2, Users, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../../components/ui/button";
 import { Textarea } from "../../../components/ui/textarea";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../../../components/ui/dropdown-menu";
 import { apiErrorMessage } from "../../../lib/api-error";
 import { qk } from "../../../lib/query-keys";
+import { usePermissions } from "../../../hooks/usePermissions";
 import { sendMessage, searchMentionables, pingTyping, type MentionableItem } from "../../../lib/chat-api";
-import { MENTION_TARGET_TYPES, mentionToken, type MentionTargetType } from "../../../lib/mentions";
+import { mentionToken, type MentionTargetType } from "../../../lib/mentions";
 import { MentionPicker } from "./MentionPicker";
-import { AttachDocumentMenu } from "./AttachDocumentMenu";
+import { EntityPickerMenu } from "./EntityPickerMenu";
 
 type MentionContext = {
   /** Index of the "@" that opened the picker. */
   start: number;
   query: string;
-  typeFilter?: MentionTargetType;
 };
 
 /**
- * `@` anywhere in the message opens the picker; `type:` right after it (e.g.
- * "@deal:sequ") narrows the search. Only fires after start-of-string or
- * whitespace, so "email@x.com" never triggers it.
+ * `@` anywhere in the message opens the picker. Only fires after
+ * start-of-string or whitespace, so "email@x.com" never triggers it.
+ * Teammates only — referencing an investor, deal, task or round goes through
+ * the Share button instead, see `SHARE_TYPES` below.
  */
 function detectMentionContext(value: string, cursor: number): MentionContext | null {
   const before = value.slice(0, cursor);
-  const match = before.match(/(?:^|\s)@([a-zA-Z0-9:_-]{0,60})$/);
+  const match = before.match(/(?:^|\s)@([a-zA-Z0-9_-]{0,60})$/);
   if (!match) return null;
 
   const raw = match[1];
   const start = cursor - raw.length - 1;
-  const colonIndex = raw.indexOf(":");
-  if (colonIndex > 0) {
-    const candidate = raw.slice(0, colonIndex);
-    if ((MENTION_TARGET_TYPES as readonly string[]).includes(candidate)) {
-      return { start, query: raw.slice(colonIndex + 1), typeFilter: candidate as MentionTargetType };
-    }
-  }
   return { start, query: raw };
 }
+
+const SHARE_TYPES: {
+  type: MentionTargetType;
+  label: string;
+  icon: typeof Briefcase;
+  /** The read permission that gates offering this type at all — mirrors TYPE_PERMISSION_RESOURCE server-side. */
+  resource: "pipeline" | "financial";
+}[] = [
+  { type: "investor", label: "Investor", icon: Users, resource: "pipeline" },
+  { type: "deal", label: "Deal", icon: Briefcase, resource: "pipeline" },
+  { type: "task", label: "Task", icon: ListChecks, resource: "pipeline" },
+  { type: "round", label: "Round", icon: Wallet, resource: "financial" },
+];
 
 /** Minimum gap between typing pings — pinging on every keystroke would flood the SSE fan-out for no UX gain. */
 const TYPING_PING_INTERVAL_MS = 2500;
@@ -69,6 +82,8 @@ export function Composer({
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [attachedDocs, setAttachedDocs] = useState<MentionableItem[]>([]);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const [shareType, setShareType] = useState<MentionTargetType | null>(null);
+  const { can } = usePermissions();
   const nonceRef = useRef(crypto.randomUUID());
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lastTypingPingRef = useRef(0);
@@ -81,15 +96,11 @@ export function Composer({
 
   useEffect(() => {
     setHighlightedIndex(0);
-  }, [debouncedQuery, mention?.typeFilter]);
+  }, [debouncedQuery]);
 
   const mentionablesQuery = useQuery({
-    queryKey: qk.mentionables(startupId, debouncedQuery, mention?.typeFilter ? [mention.typeFilter] : undefined),
-    queryFn: () =>
-      searchMentionables(startupId, {
-        q: debouncedQuery,
-        types: mention?.typeFilter ? [mention.typeFilter] : undefined,
-      }),
+    queryKey: qk.mentionables(startupId, debouncedQuery, ["member"]),
+    queryFn: () => searchMentionables(startupId, { q: debouncedQuery, types: ["member"] }),
     enabled: mention !== null && debouncedQuery.trim().length > 0,
   });
 
@@ -162,6 +173,21 @@ export function Composer({
     setAttachedDocs((prev) => prev.filter((d) => d.id !== id));
   }
 
+  /** A Share-button pick is appended to the draft rather than spliced at the caret — it's an attachment-style reference, not something typed mid-sentence. */
+  function appendMentionToken(item: MentionableItem) {
+    const textarea = textareaRef.current;
+    const token = mentionToken(item.type, item.id, item.label);
+    const separator = body.length > 0 && !body.endsWith(" ") ? " " : "";
+    const next = `${body}${separator}${token} `;
+    setBody(next);
+    setShareType(null);
+
+    requestAnimationFrame(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(next.length, next.length);
+    });
+  }
+
   function handleSend() {
     if (!body.trim() || sendMutation.isPending) return;
     sendMutation.mutate();
@@ -215,11 +241,33 @@ export function Composer({
 
       {attachMenuOpen && (
         <div className="absolute bottom-full left-3 z-10 mb-2">
-          <AttachDocumentMenu
+          <EntityPickerMenu
             startupId={startupId}
+            types={["document"]}
+            icon={Paperclip}
+            searchPlaceholder="Search documents…"
+            idleHint="Type to search the document vault."
             excludeIds={attachedDocs.map((d) => d.id)}
             onSelect={selectAttachment}
           />
+        </div>
+      )}
+
+      {shareType && (
+        <div className="absolute bottom-full left-12 z-10 mb-2">
+          {(() => {
+            const shareDef = SHARE_TYPES.find((s) => s.type === shareType)!;
+            return (
+              <EntityPickerMenu
+                startupId={startupId}
+                types={[shareType]}
+                icon={shareDef.icon}
+                searchPlaceholder={`Search ${shareDef.label.toLowerCase()}s…`}
+                idleHint={`Type to search ${shareDef.label.toLowerCase()}s.`}
+                onSelect={appendMentionToken}
+              />
+            );
+          })()}
         </div>
       )}
 
@@ -250,11 +298,40 @@ export function Composer({
           variant="ghost"
           size="icon"
           aria-label="Attach a document"
-          onClick={() => setAttachMenuOpen((v) => !v)}
+          onClick={() => {
+            setShareType(null);
+            setAttachMenuOpen((v) => !v);
+          }}
           className="h-9 w-9 shrink-0"
         >
           <Paperclip className="h-4 w-4" />
         </Button>
+
+        {SHARE_TYPES.some((s) => can(s.resource, "read")) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Share an investor, deal, task or round"
+                onClick={() => setAttachMenuOpen(false)}
+                className="h-9 w-9 shrink-0"
+              >
+                <Share2 className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {SHARE_TYPES.filter((s) => can(s.resource, "read")).map((s) => (
+                <DropdownMenuItem key={s.type} onSelect={() => setShareType(s.type)}>
+                  <s.icon className="h-4 w-4" />
+                  {s.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
         <Textarea
           ref={textareaRef}
           value={body}
@@ -263,7 +340,7 @@ export function Composer({
           onClick={(event) =>
             updateMentionContext(event.currentTarget.value, event.currentTarget.selectionStart)
           }
-          placeholder={placeholder ?? `Message #${conversationName} — type @ to reference an investor, deal, task, round or document`}
+          placeholder={placeholder ?? `@ to mention a teammate`}
           rows={1}
           className="min-h-[2.5rem] resize-none py-2"
           disabled={sendMutation.isPending}

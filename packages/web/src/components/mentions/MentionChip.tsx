@@ -15,7 +15,7 @@ type MentionChipProps = {
 export function MentionChip({ type, label }: MentionChipProps) {
   const Icon = MENTION_TYPE_ICONS[type];
   return (
-    <span className="mx-0.5 inline-flex items-center gap-1 rounded-md border border-primary/25 bg-primary/[0.08] px-1.5 py-0.5 align-middle text-[0.8em] font-medium text-primary">
+    <span className="mx-0.5 inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/[0.14] px-1.5 py-0.5 align-middle text-[0.85em] font-semibold text-primary">
       <Icon className="h-3 w-3 shrink-0" />
       {label}
     </span>

@@ -1,10 +1,11 @@
 import { FileText, MessagesSquare } from "lucide-react";
-import { Avatar, AvatarFallback } from "../ui/avatar";
-import { getInitials } from "../../lib/utils";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import { cn, getInitials } from "../../lib/utils";
 import { collectMentionRefs } from "../../lib/mentions";
 import type { Message, ResolvedMention } from "../../lib/chat-api";
 import { MessageBody } from "./MessageBody";
 import { EntityUnfurl, isUnfurlable } from "./EntityUnfurl";
+import { MessageHoverActions } from "./MessageHoverActions";
 import { ReactionRow } from "./ReactionRow";
 
 function senderName(sender: Message["sender"]): string {
@@ -22,6 +23,8 @@ function formatTime(iso: string): string {
 type MessageItemProps = {
   message: Message;
   resolved: Map<string, ResolvedMention>;
+  /** True when the previous message in the list is from the same sender, close enough in time to read as one run — collapses the avatar/name into a hover-only timestamp, Slack-style. */
+  grouped?: boolean;
   /** Extra content to the right of the timestamp — DiscussionTab uses this for the source channel. */
   meta?: React.ReactNode;
   /** Present only where reacting makes sense (the live thread) — DiscussionTab omits it and reactions render read-only. */
@@ -31,22 +34,39 @@ type MessageItemProps = {
 };
 
 /** One chat message — avatar, name, time, body with reference chips, attachments, reactions, and any unfurl cards. Shared by MessageThread, ThreadDialog and DiscussionTab so a message renders identically everywhere. */
-export function MessageItem({ message, resolved, meta, onReact, onOpenThread }: MessageItemProps) {
+export function MessageItem({ message, resolved, grouped, meta, onReact, onOpenThread }: MessageItemProps) {
   const refs = collectMentionRefs(message.body).filter((ref) => isUnfurlable(ref.type));
+  const hasReplies = message.replyCount > 0;
 
   return (
-    <div className="flex items-start gap-3">
-      <Avatar className="h-8 w-8 shrink-0">
-        <AvatarFallback className="text-xs font-medium">
-          {getInitials(senderName(message.sender))}
-        </AvatarFallback>
-      </Avatar>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="text-sm font-medium">{senderName(message.sender)}</span>
-          <span className="text-[11px] text-muted-foreground">{formatTime(message.createdAt)}</span>
-          {meta}
+    <div
+      className={cn(
+        "group relative -mx-2 flex items-start gap-3 rounded-md px-2 py-1 transition-colors hover:bg-surface/40",
+        grouped ? "mt-px" : "mt-3 first:mt-0",
+      )}
+    >
+      {grouped ? (
+        <div className="grid h-8 w-8 shrink-0 place-items-center">
+          <span className="hidden font-mono text-[10px] tabular-nums text-muted-foreground group-hover:inline">
+            {formatTime(message.createdAt)}
+          </span>
         </div>
+      ) : (
+        <Avatar className="h-8 w-8 shrink-0">
+          <AvatarImage src={message.sender?.avatarUrl ?? undefined} alt="" />
+          <AvatarFallback className="text-xs font-medium">
+            {getInitials(senderName(message.sender))}
+          </AvatarFallback>
+        </Avatar>
+      )}
+      <div className="min-w-0 flex-1">
+        {!grouped && (
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="text-sm font-semibold text-foreground">{senderName(message.sender)}</span>
+            <span className="text-[11px] text-muted-foreground">{formatTime(message.createdAt)}</span>
+            {meta}
+          </div>
+        )}
         <MessageBody body={message.body} />
 
         {message.attachments.length > 0 && (
@@ -70,19 +90,19 @@ export function MessageItem({ message, resolved, meta, onReact, onOpenThread }: 
 
         <ReactionRow reactions={message.reactions} onToggle={onReact} />
 
-        {onOpenThread && (
+        {hasReplies && onOpenThread && (
           <button
             type="button"
             onClick={onOpenThread}
             className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
           >
             <MessagesSquare className="h-3 w-3" />
-            {message.replyCount > 0
-              ? `${message.replyCount} ${message.replyCount === 1 ? "reply" : "replies"}`
-              : "Reply in thread"}
+            {message.replyCount} {message.replyCount === 1 ? "reply" : "replies"}
           </button>
         )}
       </div>
+
+      <MessageHoverActions onReact={onReact} onOpenThread={!hasReplies ? onOpenThread : undefined} />
     </div>
   );
 }
