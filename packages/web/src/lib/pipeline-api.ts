@@ -184,6 +184,8 @@ export async function deletePipelineEntry(startupId: string, pipelineId: string)
 
 export type PipelineStageEvent = {
   id: string;
+  /** Fundraising round that owned this transition at the time. */
+  roundId: string;
   /** Null for the first event — the deal being added to the pipeline. */
   fromStage: PipelineStageId | null;
   toStage: PipelineStageId;

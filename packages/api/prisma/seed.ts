@@ -1363,6 +1363,7 @@ async function seedWorkspace(
           data: {
             id: nextId(G.STAGE_EVENT),
             startupId: startup.id,
+            roundId: round.id,
             pipelineId: entry.id,
             fromStage: i === 0 ? null : path[i - 1],
             toStage: stage,

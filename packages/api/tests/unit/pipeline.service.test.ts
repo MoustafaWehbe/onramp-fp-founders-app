@@ -457,6 +457,15 @@ describe("PipelineService.updateEntry moving between rounds", () => {
         data: expect.objectContaining({ roundId: OTHER_ROUND, sortOrder: 4000 }),
       }),
     );
+    expect(mockPrisma.pipelineStageEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          roundId: OTHER_ROUND,
+          fromStage: null,
+          toStage: "contacted",
+        }),
+      }),
+    );
   });
 
   it("records a simultaneous new commitment against the destination round", async () => {
@@ -1020,8 +1029,8 @@ describe("PipelineService.listStageEvents", () => {
   it("returns the history oldest first", async () => {
     (mockPrisma.pipeline.findUnique as jest.Mock).mockResolvedValue({ id: PIPELINE_ID });
     const events = [
-      { id: "e1", fromStage: null, toStage: "sourced", changedBy: USER_ID, createdAt: new Date("2026-01-01") },
-      { id: "e2", fromStage: "sourced", toStage: "contacted", changedBy: USER_ID, createdAt: new Date("2026-01-05") },
+      { id: "e1", roundId: ROUND_ID, fromStage: null, toStage: "sourced", changedBy: USER_ID, createdAt: new Date("2026-01-01") },
+      { id: "e2", roundId: ROUND_ID, fromStage: "sourced", toStage: "contacted", changedBy: USER_ID, createdAt: new Date("2026-01-05") },
     ];
     (mockPrisma.pipelineStageEvent.findMany as jest.Mock).mockResolvedValue(events);
 

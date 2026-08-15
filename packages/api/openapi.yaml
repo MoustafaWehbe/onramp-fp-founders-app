@@ -1299,6 +1299,10 @@ components:
         id:
           type: string
           format: uuid
+        roundId:
+          type: string
+          format: uuid
+          description: Fundraising round that owned this transition when it occurred.
         fromStage:
           allOf:
             - $ref: "#/components/schemas/PipelineStage"
@@ -4518,7 +4522,8 @@ paths:
       description: >
         Chronological record of every stage change on this deal, including
         who made each one. The first event (fromStage null) is when the deal
-        was added to the pipeline.
+        was added to the pipeline. Each event remains attributed to the round
+        active at that time, even if the deal later moves to another round.
       operationId: listPipelineStageEvents
       security:
         - cookieAuth: []

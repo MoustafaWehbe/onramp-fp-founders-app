@@ -181,6 +181,7 @@ export class PipelineService {
         await tx.pipelineStageEvent.create({
           data: {
             startupId,
+            roundId,
             pipelineId: created.id,
             fromStage: null,
             toStage: created.stage,
@@ -347,6 +348,32 @@ export class PipelineService {
     }
 
     if (movedTo === null) {
+      if (movedToRound) {
+        const entry = await prisma.$transaction(async (tx) => {
+          const updated = await tx.pipeline.update({
+            where: { id: pipelineId },
+            data: fields,
+            select: ENTRY_SELECT,
+          });
+          // This is a new opportunity in the destination raise, not a stage
+          // transition in the old one. It gives the new round a funnel entry
+          // while leaving every earlier event attached to the original round.
+          await tx.pipelineStageEvent.create({
+            data: {
+              startupId,
+              roundId: movedToRound,
+              pipelineId,
+              fromStage: null,
+              toStage: existing.stage,
+              changedBy: userId ?? null,
+            },
+          });
+          return updated;
+        }).catch((err) => {
+          throw this.translateDuplicatePipeline(err);
+        });
+        return serializeEntry(entry);
+      }
       try {
         const entry = await prisma.pipeline.update({
           where: { id: pipelineId },
@@ -369,9 +396,24 @@ export class PipelineService {
         select: ENTRY_SELECT,
       });
 
+      if (movedToRound) {
+        await tx.pipelineStageEvent.create({
+          data: {
+            startupId,
+            roundId: movedToRound,
+            pipelineId,
+            fromStage: null,
+            toStage: existing.stage,
+            changedBy: userId ?? null,
+            createdAt: changedAt,
+          },
+        });
+      }
+
       await tx.pipelineStageEvent.create({
         data: {
           startupId,
+          roundId: commitmentRoundId,
           pipelineId,
           fromStage: existing.stage,
           toStage: movedTo,
@@ -523,7 +565,7 @@ export class PipelineService {
         select: { id: true, stage: true, expectedAmount: true, stageChangedAt: true },
       }),
       prisma.pipelineStageEvent.findMany({
-        where: { startupId, pipeline: { roundId } },
+        where: { startupId, roundId },
         orderBy: { createdAt: "asc" },
         select: { pipelineId: true, toStage: true, createdAt: true },
       }),
@@ -667,6 +709,7 @@ export class PipelineService {
       orderBy: { createdAt: "asc" },
       select: {
         id: true,
+        roundId: true,
         fromStage: true,
         toStage: true,
         reason: true,

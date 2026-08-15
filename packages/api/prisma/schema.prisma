@@ -376,6 +376,7 @@ model Pipeline {
 model PipelineStageEvent {
   id         String   @id @default(uuid())
   startupId  String   @map("startup_id")
+  roundId    String   @map("round_id")
   pipelineId String   @map("pipeline_id")
   fromStage  String?  @map("from_stage")
   toStage    String   @map("to_stage")
@@ -384,10 +385,12 @@ model PipelineStageEvent {
   createdAt  DateTime @default(now()) @map("created_at")
 
   startup  Startup  @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  round    FundraisingRound @relation("PipelineStageEventRound", fields: [roundId, startupId], references: [id, startupId], onDelete: Restrict)
   pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   actor    User?    @relation(fields: [changedBy], references: [id], onDelete: SetNull)
 
   @@index([startupId, createdAt])
+  @@index([startupId, roundId, createdAt])
   @@index([pipelineId, createdAt])
   @@map("pipeline_stage_events")
 }
@@ -462,6 +465,7 @@ model FundraisingRound {
 
   startup     Startup      @relation(fields: [startupId], references: [id], onDelete: Cascade)
   pipeline    Pipeline[]   @relation("PipelineRound")
+  pipelineStageEvents PipelineStageEvent[] @relation("PipelineStageEventRound")
   commitments Commitment[] @relation("CommitmentRound")
 
   @@unique([startupId, id])

@@ -257,7 +257,7 @@ export class FundraisingService {
   ): Promise<void> {
     const deal = await tx.pipeline.findUnique({
       where: { startupId_id: { startupId, id: pipelineId } },
-      select: { id: true, stage: true },
+      select: { id: true, stage: true, roundId: true },
     });
     if (!deal || deal.stage === stage) return;
 
@@ -269,6 +269,7 @@ export class FundraisingService {
     await tx.pipelineStageEvent.create({
       data: {
         startupId,
+        roundId: deal.roundId,
         pipelineId,
         fromStage: deal.stage,
         toStage: stage,

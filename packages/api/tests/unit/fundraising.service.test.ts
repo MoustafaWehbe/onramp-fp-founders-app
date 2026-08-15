@@ -61,13 +61,13 @@ describe("FundraisingService.createCommitment", () => {
     mockPrisma.startupInvestor.findUnique.mockResolvedValue({ id: INVESTOR_ID } as never);
     mockPrisma.fundraisingRound.findUnique.mockResolvedValue({ id: ROUND_ID } as never);
     mockPrisma.pipeline.findFirst.mockResolvedValue({ id: PIPELINE_ID } as never);
-    mockPrisma.pipeline.findUnique.mockResolvedValue({ id: PIPELINE_ID, stage: "term_sheet" } as never);
+    mockPrisma.pipeline.findUnique.mockResolvedValue({ id: PIPELINE_ID, stage: "term_sheet", roundId: ROUND_ID } as never);
     mockPrisma.commitment.create.mockResolvedValue(commitment as never);
 
     await service.createCommitment(STARTUP_ID, { investorId: INVESTOR_ID, roundId: ROUND_ID, pipelineId: PIPELINE_ID, amount: 50000 });
 
     expect(mockPrisma.pipeline.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: PIPELINE_ID }, data: expect.objectContaining({ stage: "committed" }) }));
-    expect(mockPrisma.pipelineStageEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ fromStage: "term_sheet", toStage: "committed" }) }));
+    expect(mockPrisma.pipelineStageEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ roundId: ROUND_ID, fromStage: "term_sheet", toStage: "committed" }) }));
   });
 
   it("does not re-move a deal that is already committed", async () => {
