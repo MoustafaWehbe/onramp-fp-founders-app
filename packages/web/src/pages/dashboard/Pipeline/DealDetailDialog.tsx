@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, CalendarPlus, ChevronDown, Crown, History, LayoutDashboard, Linkedin, ListChecks, Mail, Sparkles, StickyNote, Trash2 } from "lucide-react";
+import { ArrowRight, CalendarPlus, ChevronDown, Crown, History, LayoutDashboard, Linkedin, ListChecks, Mail, MessageSquare, Sparkles, StickyNote, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
 import { Button } from "../../../components/ui/button";
@@ -52,6 +52,7 @@ import {
   qk,
 } from "../../../lib/query-keys";
 import { listMembers } from "../../../lib/team-api";
+import { DiscussionTab } from "./DiscussionTab";
 import {
   OPEN_ROUND_STATUSES,
   ROUND_STATUS_LABELS,
@@ -180,7 +181,7 @@ export function DealDetailDialog({
   const [investorFitScore, setInvestorFitScore] = useState("");
   const [passReasonOpen, setPassReasonOpen] = useState(false);
   const [commitOpen, setCommitOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "activity">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "discussion" | "activity">("overview");
   const [detailsOpen, setDetailsOpen] = useState(false);
   // Naming the round's lead is a commitment the whole team reads, so it is
   // confirmed in both directions rather than toggled by a stray click.
@@ -542,6 +543,7 @@ export function DealDetailDialog({
                 {([
                   { id: "overview", label: "Overview", icon: LayoutDashboard },
                   { id: "tasks", label: "Tasks", icon: ListChecks },
+                  { id: "discussion", label: "Discussion", icon: MessageSquare },
                   { id: "activity", label: "Activity", icon: History },
                 ] as const).map(({ id, label, icon: Icon }) => (
                   <button
@@ -775,6 +777,10 @@ export function DealDetailDialog({
                   pipelineId={deal.id}
                   dealLabel={investor.fullName}
                 />
+              )}
+
+              {activeTab === "discussion" && (
+                <DiscussionTab startupId={startupId} pipelineId={deal.id} dealLabel={investor.fullName} />
               )}
 
               {activeTab === "activity" && <div>

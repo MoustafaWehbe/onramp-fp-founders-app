@@ -14,6 +14,7 @@ export const NOTIFICATION_TYPES = {
   TASK_ASSIGNED: "task_assigned",
   LEAD_STALE: "lead_stale",
   DEAL_NO_NEXT_STEP: "deal_no_next_step",
+  CHAT_MENTION: "chat_mention",
 } as const;
 
 /**
@@ -311,6 +312,42 @@ export class NotificationService {
       });
     } catch (err) {
       console.error("[notifyTaskAssigned] failed:", err);
+    }
+  }
+
+  /**
+   * Tells someone they were @-referenced in a chat message. Not deduped —
+   * same reasoning as notifyTaskAssigned: every mention is genuinely new
+   * information, there is no "already told them" state to check against.
+   */
+  async notifyMention(input: {
+    userId: string;
+    startupId: string;
+    messageId: string;
+    senderName: string;
+    conversationName: string;
+    excerpt: string;
+  }): Promise<void> {
+    try {
+      const created = await prisma.notification.create({
+        data: {
+          userId: input.userId,
+          startupId: input.startupId,
+          type: NOTIFICATION_TYPES.CHAT_MENTION,
+          title: `${input.senderName} mentioned you in #${input.conversationName}`,
+          body: input.excerpt,
+          entityType: "message",
+          entityId: input.messageId,
+        },
+        select: { id: true, type: true, title: true, body: true },
+      });
+
+      notificationBus.publish(input.userId, {
+        type: "notification.created",
+        notification: created,
+      });
+    } catch (err) {
+      console.error("[notifyMention] failed:", err);
     }
   }
 

@@ -1577,6 +1577,115 @@ components:
             retried POST resolves to the original message instead of
             duplicating it.
 
+    MentionTargetType:
+      type: string
+      enum: [member, investor, deal, task, round, document]
+      description: >-
+        What a `@[Label](type:id)` reference token inside a message body
+        points at. "deal" is a Pipeline entry — investor + round together.
+      example: deal
+
+    MentionableItem:
+      type: object
+      description: One autocomplete result from GET /chat/mentionables.
+      properties:
+        type:
+          $ref: "#/components/schemas/MentionTargetType"
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+        sublabel:
+          type: string
+          nullable: true
+
+    ResolveMentionsBody:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: object
+            required: [type, id]
+            properties:
+              type:
+                $ref: "#/components/schemas/MentionTargetType"
+              id:
+                type: string
+                format: uuid
+
+    ResolvedMention:
+      type: object
+      description: >-
+        One rendered reference chip's unfurl data. Fields beyond type/id/
+        title/subtitle are type-specific — a "deal" carries stage/isLead/
+        expectedAmount (expectedAmount is null without financial:read, even
+        though the deal itself is visible with pipeline:read alone); a
+        "task" carries status/dueDate/priority; a "round" carries status/
+        targetAmount/currency; a "document" carries documentType; a "member"
+        carries avatarUrl. An id the caller cannot read, or that no longer
+        exists, is simply absent from the response rather than erroring.
+      properties:
+        type:
+          $ref: "#/components/schemas/MentionTargetType"
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        subtitle:
+          type: string
+          nullable: true
+        stage:
+          $ref: "#/components/schemas/PipelineStage"
+        isLead:
+          type: boolean
+        expectedAmount:
+          type: number
+          nullable: true
+        currency:
+          type: string
+        ownerName:
+          type: string
+          nullable: true
+        status:
+          type: string
+        dueDate:
+          type: string
+          format: date-time
+          nullable: true
+        priority:
+          $ref: "#/components/schemas/Priority"
+        targetAmount:
+          type: number
+          nullable: true
+        documentType:
+          type: string
+        avatarUrl:
+          type: string
+          nullable: true
+        investorType:
+          $ref: "#/components/schemas/InvestorType"
+
+    MentionBacklinkEntry:
+      type: object
+      description: One message referencing the requested entity — the Discussion tab's unit of data.
+      properties:
+        mentionId:
+          type: string
+          format: uuid
+        conversationId:
+          type: string
+          format: uuid
+        conversationName:
+          type: string
+        message:
+          $ref: "#/components/schemas/Message"
+
     CreateInteractionLogBody:
       type: object
       required: [investorId, type, interactionDate]
@@ -5356,6 +5465,184 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /startups/{startupId}/chat/mentionables:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Chat]
+      summary: Autocomplete for @-references
+      description: >
+        Fans out across members, investors, deals, tasks, rounds and
+        documents. Each type is only searched if the caller's role holds the
+        read permission that type is gated on (deal/investor/task need
+        pipeline:read, round needs financial:read, document needs
+        documents:read; member needs nothing beyond chat:read itself) —
+        filtered server-side, not left to the client to hide.
+      operationId: searchMentionables
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 120
+          description: Empty or missing returns no results.
+        - name: types
+          in: query
+          schema:
+            type: string
+          description: Comma-separated MentionTargetType values, e.g. "deal,investor".
+      responses:
+        "200":
+          description: Matching items, grouped by type in the response array
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MentionableItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing chat:read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /startups/{startupId}/chat/resolve:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Chat]
+      summary: Batch-render reference chips into unfurl cards
+      description: >
+        One request per message list instead of one per chip. An item the
+        caller cannot read, or that no longer exists, is simply absent from
+        the response — the client falls back to the token's plain-text
+        label rather than the whole render failing.
+      operationId: resolveMentions
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveMentionsBody"
+      responses:
+        "200":
+          description: Resolved items — may be fewer than requested
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ResolvedMention"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing chat:read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /startups/{startupId}/chat/mentions:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Chat]
+      summary: Backlink — every message that references one entity
+      description: >
+        Powers the Discussion tab on a deal (and, by the same query, any
+        other entity type). Scoped to conversations the caller is a member
+        of, newest first.
+      operationId: listMentions
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: targetType
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/MentionTargetType"
+        - name: targetId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: Messages referencing the entity, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MentionBacklinkEntry"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: >-
+            Not an active member, missing chat:read, or missing the read
+            permission targetType is gated on (e.g. financial:read for a round)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ════════════════════════════════════════════════════════════════
   #  FUNDRAISING ROUNDS (Financial)

@@ -1537,6 +1537,12 @@ async function main() {
   await prisma.$transaction(async (tx) => {
     await tx.aiChatMessage.deleteMany();
     await tx.aiChatSession.deleteMany();
+    // Team chat content has a Restrict sender relation to StartupMember, so
+    // remove the full child chain before removing workspace memberships.
+    await tx.messageMention.deleteMany();
+    await tx.message.deleteMany();
+    await tx.conversationMember.deleteMany();
+    await tx.conversation.deleteMany();
     await tx.personaQuestion.deleteMany();
     await tx.investorPersona.deleteMany();
     await tx.aiGapAnalysis.deleteMany();

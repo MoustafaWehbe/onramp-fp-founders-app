@@ -119,6 +119,7 @@ model Startup {
   conversations          Conversation[]
   conversationMembers    ConversationMember[]
   messages               Message[]
+  messageMentions        MessageMention[]
 
   @@map("startups")
 }
@@ -146,6 +147,7 @@ model StartupMember {
 
   conversationMemberships ConversationMember[]
   messagesSent            Message[]            @relation("MessageSender")
+  chatMentions            MessageMention[]     @relation("MentionedMember")
 
   @@unique([startupId, userId])
   @@unique([startupId, invitedEmail])
@@ -339,6 +341,7 @@ model StartupInvestor {
   interactionLogs     InteractionLog[]
   commitments         Commitment[]         @relation("CommitmentInvestor")
   reviewerInvitations ReviewerInvitation[]
+  mentions            MessageMention[]
 
   @@unique([startupId, email])
   @@unique([startupId, id])
@@ -370,6 +373,7 @@ model Pipeline {
   commitments     Commitment[]         @relation("CommitmentPipeline")
   stageEvents     PipelineStageEvent[]
   tasks           Task[]
+  mentions        MessageMention[]
 
   @@unique([roundId, startupInvestorId])
   @@unique([id, startupInvestorId])
@@ -417,11 +421,13 @@ model Task {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  startup  Startup        @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  pipeline Pipeline       @relation(fields: [pipelineId, startupId], references: [id, startupId], onDelete: Restrict)
-  assignee StartupMember? @relation("TaskAssignee", fields: [assigneeId, startupId], references: [id, startupId], onDelete: NoAction)
-  creator  User           @relation(fields: [createdBy], references: [id])
+  startup  Startup          @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  pipeline Pipeline         @relation(fields: [pipelineId, startupId], references: [id, startupId], onDelete: Restrict)
+  assignee StartupMember?   @relation("TaskAssignee", fields: [assigneeId, startupId], references: [id, startupId], onDelete: NoAction)
+  creator  User             @relation(fields: [createdBy], references: [id])
+  mentions MessageMention[]
 
+  @@unique([startupId, id])
   @@index([startupId, pipelineId, status])
   @@index([startupId, status, dueDate])
   @@map("tasks")
@@ -474,6 +480,7 @@ model FundraisingRound {
   pipeline            Pipeline[]           @relation("PipelineRound")
   pipelineStageEvents PipelineStageEvent[] @relation("PipelineStageEventRound")
   commitments         Commitment[]         @relation("CommitmentRound")
+  mentions            MessageMention[]
 
   @@unique([startupId, id])
   @@map("fundraising_rounds")
@@ -537,6 +544,7 @@ model Document {
   reviewerDocs     ReviewerInvitationDocument[]
   reviewerComments ReviewerComment[]
   aiChatSessions   AiChatSession[]              @relation("AiChatSessionDocument")
+  mentions         MessageMention[]
 
   @@unique([startupId, id])
   @@map("documents")
@@ -694,6 +702,7 @@ model Conversation {
   creator  User                 @relation(fields: [createdBy], references: [id])
   members  ConversationMember[]
   messages Message[]
+  mentions MessageMention[]
 
   @@unique([startupId, id])
   @@unique([startupId, name])
@@ -734,14 +743,53 @@ model Message {
   deletedAt   DateTime? @map("deleted_at") // tombstone, never a hard delete
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  startup      Startup        @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  conversation Conversation   @relation(fields: [conversationId, startupId], references: [id, startupId], onDelete: Cascade)
-  sender       StartupMember? @relation("MessageSender", fields: [senderId, startupId], references: [id, startupId], onDelete: NoAction)
+  startup      Startup          @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  conversation Conversation     @relation(fields: [conversationId, startupId], references: [id, startupId], onDelete: Cascade)
+  sender       StartupMember?   @relation("MessageSender", fields: [senderId, startupId], references: [id, startupId], onDelete: NoAction)
+  mentions     MessageMention[]
 
   @@unique([startupId, id])
   @@unique([conversationId, clientNonce])
   @@index([conversationId, seq])
   @@map("messages")
+}
+
+model MessageMention {
+  id             String @id @default(uuid())
+  startupId      String @map("startup_id")
+  messageId      String @map("message_id")
+  conversationId String @map("conversation_id") // denormalized: backlinks skip a join through Message
+
+  // "member" | "investor" | "deal" | "task" | "round" | "document"
+  targetType String @map("target_type")
+
+  mentionedMemberId String? @map("mentioned_member_id")
+  investorId        String? @map("investor_id")
+  pipelineId        String? @map("pipeline_id")
+  taskId            String? @map("task_id")
+  roundId           String? @map("round_id")
+  documentId        String? @map("document_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  startup         Startup           @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  message         Message           @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  conversation    Conversation      @relation(fields: [conversationId, startupId], references: [id, startupId], onDelete: Cascade)
+  mentionedMember StartupMember?    @relation("MentionedMember", fields: [mentionedMemberId, startupId], references: [id, startupId], onDelete: Cascade)
+  investor        StartupInvestor?  @relation(fields: [investorId, startupId], references: [id, startupId], onDelete: Cascade)
+  pipeline        Pipeline?         @relation(fields: [pipelineId, startupId], references: [id, startupId], onDelete: Cascade)
+  task            Task?             @relation(fields: [taskId, startupId], references: [id, startupId], onDelete: Cascade)
+  round           FundraisingRound? @relation(fields: [roundId, startupId], references: [id, startupId], onDelete: Cascade)
+  document        Document?         @relation(fields: [documentId, startupId], references: [id, startupId], onDelete: Cascade)
+
+  @@index([startupId, targetType, pipelineId, createdAt])
+  @@index([startupId, targetType, investorId, createdAt])
+  @@index([startupId, targetType, taskId, createdAt])
+  @@index([startupId, targetType, roundId, createdAt])
+  @@index([startupId, targetType, documentId, createdAt])
+  @@index([startupId, mentionedMemberId, createdAt])
+  @@index([messageId])
+  @@map("message_mentions")
 }
 
 // ─── PLATFORM ─────────────────────────────────────────────────────────────────

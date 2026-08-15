@@ -1,4 +1,9 @@
 import { z } from "zod";
+import { MENTION_TARGET_TYPES } from "../utils/mentions";
+
+const mentionTargetTypeEnum = z.enum(MENTION_TARGET_TYPES, {
+  errorMap: () => ({ message: "Invalid mention type" }),
+});
 
 export const createConversationSchema = z.object({
   name: z
@@ -43,6 +48,43 @@ export const listMessagesQuerySchema = z.object({
     .default(50),
 });
 
+export const mentionableQuerySchema = z.object({
+  q: z.string().trim().max(120, "q must be at most 120 characters").default(""),
+  // Comma-separated in the URL, e.g. "investor,deal" — narrows the picker
+  // once the composer knows the user typed "@deal:" or similar.
+  types: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.length > 0 ? value.split(",").filter(Boolean) : undefined,
+    z.array(mentionTargetTypeEnum).optional(),
+  ),
+});
+
+export const resolveMentionsSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        type: mentionTargetTypeEnum,
+        id: z.string().uuid("id must be a valid UUID"),
+      }),
+    )
+    .min(1, "At least one item is required")
+    .max(50, "At most 50 items per request"),
+});
+
+export const mentionsBacklinkQuerySchema = z.object({
+  targetType: mentionTargetTypeEnum,
+  targetId: z.string().uuid("targetId must be a valid UUID"),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1, "limit must be at least 1")
+    .max(50, "limit must be at most 50")
+    .default(20),
+});
+
 export type CreateConversationInput = z.infer<typeof createConversationSchema>;
 export type SendMessageInput = z.infer<typeof sendMessageSchema>;
 export type ListMessagesQuery = z.infer<typeof listMessagesQuerySchema>;
+export type MentionableQuery = z.infer<typeof mentionableQuerySchema>;
+export type ResolveMentionsInput = z.infer<typeof resolveMentionsSchema>;
+export type MentionsBacklinkQuery = z.infer<typeof mentionsBacklinkQuerySchema>;

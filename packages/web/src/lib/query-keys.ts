@@ -88,6 +88,17 @@ export const qk = {
 
   messages: (startupId: string, conversationId: string | null | undefined) =>
     ["chat-messages", startupId, conversationId ?? null] as const,
+
+  mentionables: (startupId: string, q: string, types?: string[]) =>
+    ["chat-mentionables", startupId, q, types ?? null] as const,
+
+  /** Batch-resolved chip data for one message list — refDigest is the sorted, deduped "type:id" list. */
+  resolveMentions: (startupId: string, refDigest: string) =>
+    ["chat-resolve-mentions", startupId, refDigest] as const,
+
+  /** The Discussion tab's backlink — every message referencing one entity. */
+  mentionBacklink: (startupId: string, targetType: string, targetId: string | null | undefined) =>
+    ["chat-mention-backlink", startupId, targetType, targetId ?? null] as const,
 };
 
 /** Prefixes — anything scoped to a startup, regardless of round or deal. */
