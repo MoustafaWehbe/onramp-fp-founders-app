@@ -13,7 +13,7 @@ jest.mock("../../src/db/prisma", () => ({
     refreshToken: { findUnique: jest.fn(), create: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
     passwordReset: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), deleteMany: jest.fn() },
     pendingRegistration: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn(), deleteMany: jest.fn() },
-    startupMember: { findMany: jest.fn(), updateMany: jest.fn() },
+    startupMember: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
     $transaction: jest.fn(),
   },
 }));

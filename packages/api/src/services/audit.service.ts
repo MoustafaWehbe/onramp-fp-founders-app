@@ -14,9 +14,9 @@ function detailFromChanges(changes: Prisma.JsonValue | null): string {
 
 export class AuditService {
   async listLogs(startupId: string, query: ListAuditLogsQuery) {
-    const { page, limit, search, entityType } = query;
+    const { page, limit } = query;
 
-    const where = this.buildWhere(startupId, search, entityType);
+    const where = this.buildWhere(startupId, query);
 
     const [total, rows] = await Promise.all([
       prisma.auditLog.count({ where }),
@@ -57,8 +57,11 @@ export class AuditService {
     };
   }
 
-  async exportCsv(startupId: string, query: Pick<ListAuditLogsQuery, "search" | "entityType">) {
-    const where = this.buildWhere(startupId, query.search, query.entityType);
+  async exportCsv(
+    startupId: string,
+    query: Pick<ListAuditLogsQuery, "search" | "entityType" | "action" | "from" | "to">,
+  ) {
+    const where = this.buildWhere(startupId, query);
     const rows = await prisma.auditLog.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -103,14 +106,41 @@ export class AuditService {
     return lines.join("\n");
   }
 
+  /** Distinct action/entityType values actually present, to populate filter menus. */
+  async facets(startupId: string) {
+    const [actions, entityTypes] = await Promise.all([
+      prisma.auditLog.findMany({
+        where: { startupId },
+        select: { action: true },
+        distinct: ["action"],
+      }),
+      prisma.auditLog.findMany({
+        where: { startupId },
+        select: { entityType: true },
+        distinct: ["entityType"],
+      }),
+    ]);
+    return {
+      actions: actions.map((row) => row.action).sort(),
+      entityTypes: entityTypes.map((row) => row.entityType).sort(),
+    };
+  }
+
   private buildWhere(
     startupId: string,
-    search?: string,
-    entityType?: string,
+    params: Pick<ListAuditLogsQuery, "search" | "entityType" | "action" | "from" | "to">,
   ): Prisma.AuditLogWhereInput {
+    const { search, entityType, action, from, to } = params;
+    const entityTypes = entityType?.split(",").map((v) => v.trim()).filter(Boolean);
+    const actions = action?.split(",").map((v) => v.trim()).filter(Boolean);
+
     return {
       startupId,
-      ...(entityType ? { entityType } : {}),
+      ...(entityTypes?.length ? { entityType: { in: entityTypes } } : {}),
+      ...(actions?.length ? { action: { in: actions } } : {}),
+      ...(from || to
+        ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } }
+        : {}),
       ...(search
         ? {
             OR: [

@@ -24,6 +24,9 @@ jest.mock("../../src/db/prisma", () => ({
     startup: {
       findUnique: jest.fn(),
     },
+    auditLog: {
+      create: jest.fn(),
+    },
     $transaction: jest.fn(),
   },
 }));
@@ -533,7 +536,7 @@ describe("InviteService.changeRole", () => {
       return cb(tx);
     });
 
-    const result = await service.changeRole(STARTUP_ID, MEMBER_ID, { roleId: ROLE_ID }, ACTOR_ID);
+    const result = await service.changeRole(STARTUP_ID, MEMBER_ID, { roleId: ROLE_ID }, ACTOR_ID, INVITER_ID);
 
     expect(result).toHaveProperty("data");
     if ("data" in result) {
@@ -574,7 +577,7 @@ describe("InviteService.changeRole", () => {
     });
 
     await expect(
-      service.changeRole(STARTUP_ID, MEMBER_ID, { roleId: ROLE_ID }, ACTOR_ID),
+      service.changeRole(STARTUP_ID, MEMBER_ID, { roleId: ROLE_ID }, ACTOR_ID, INVITER_ID),
     ).rejects.toMatchObject({ statusCode: 403, code: "OWNER_ONLY" });
   });
 
@@ -601,7 +604,7 @@ describe("InviteService.changeRole", () => {
     });
 
     await expect(
-      service.changeRole(STARTUP_ID, MEMBER_ID, { roleId: ROLE_ID }, MEMBER_ID),
+      service.changeRole(STARTUP_ID, MEMBER_ID, { roleId: ROLE_ID }, MEMBER_ID, INVITER_ID),
     ).rejects.toMatchObject({ statusCode: 404, code: "ROLE_NOT_FOUND" });
   });
 
@@ -628,7 +631,7 @@ describe("InviteService.changeRole", () => {
     });
 
     await expect(
-      service.changeRole(STARTUP_ID, MEMBER_ID, { roleId: ROLE_ID }, MEMBER_ID),
+      service.changeRole(STARTUP_ID, MEMBER_ID, { roleId: ROLE_ID }, MEMBER_ID, INVITER_ID),
     ).rejects.toMatchObject({ statusCode: 404, code: "NOT_FOUND" });
   });
 
@@ -656,7 +659,7 @@ describe("InviteService.changeRole", () => {
     });
 
     await expect(
-      service.changeRole(STARTUP_ID, MEMBER_ID, { roleId: ROLE_ID }, MEMBER_ID),
+      service.changeRole(STARTUP_ID, MEMBER_ID, { roleId: ROLE_ID }, MEMBER_ID, INVITER_ID),
     ).rejects.toMatchObject({ statusCode: 409, code: "LAST_OWNER" });
   });
 
@@ -694,7 +697,7 @@ describe("InviteService.changeRole", () => {
       return cb(tx);
     });
 
-    const result = await service.changeRole(STARTUP_ID, MEMBER_ID, { roleId: ROLE_ID }, MEMBER_ID);
+    const result = await service.changeRole(STARTUP_ID, MEMBER_ID, { roleId: ROLE_ID }, MEMBER_ID, INVITER_ID);
     expect(result).toHaveProperty("data");
   });
 });

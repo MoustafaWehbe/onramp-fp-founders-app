@@ -29,4 +29,13 @@ router.get(
   auditController.exportLogs,
 );
 
+router.get(
+  "/facets",
+  authenticate,
+  validate(startupIdParamSchema, "params"),
+  requireMember,
+  requirePermission("startup", "read"),
+  auditController.facets,
+);
+
 export { router as auditRouter };

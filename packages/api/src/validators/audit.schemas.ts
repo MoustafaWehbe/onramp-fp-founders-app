@@ -17,9 +17,17 @@ export const listAuditLogsQuerySchema = z.object({
   entityType: z
     .string()
     .trim()
-    .max(50, "entityType must be at most 50 characters")
+    .max(500, "entityType must be at most 500 characters")
     .optional()
     .transform((value) => (value ? value : undefined)),
+  action: z
+    .string()
+    .trim()
+    .max(500, "action must be at most 500 characters")
+    .optional()
+    .transform((value) => (value ? value : undefined)),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
 });
 
 export type ListAuditLogsQuery = z.infer<typeof listAuditLogsQuerySchema>;

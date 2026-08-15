@@ -7096,11 +7096,45 @@ paths:
             type: string
         - name: entityType
           in: query
+          description: Comma-separated list of entity types to include.
           schema:
             type: string
+        - name: action
+          in: query
+          description: Comma-separated list of actions to include.
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
       responses:
         "200":
           description: List
+
+  /startups/{startupId}/audit-logs/facets:
+    get:
+      tags: [Audit]
+      summary: Distinct action/entityType values present in this startup's audit log
+      operationId: getAuditLogFacets
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Facets
 
   /startups/{startupId}/audit-logs/export:
     get:
@@ -7122,8 +7156,24 @@ paths:
             type: string
         - name: entityType
           in: query
+          description: Comma-separated list of entity types to include.
           schema:
             type: string
+        - name: action
+          in: query
+          description: Comma-separated list of actions to include.
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
       responses:
         "200":
           description: CSV file

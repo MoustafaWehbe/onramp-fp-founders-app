@@ -457,7 +457,7 @@ describe("POST /api/v1/auth/logout", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.message).toBe("Logged out successfully");
-    expect(mock.logout).toHaveBeenCalledWith("session-1");
+    expect(mock.logout).toHaveBeenCalledWith("uuid-1", "session-1", { ipAddress: expect.any(String) });
     const cookies = res.headers["set-cookie"] as unknown as string[];
     expect(cookies.some((c: string) => c.startsWith("accessToken=;"))).toBe(true);
   });

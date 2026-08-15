@@ -15,6 +15,7 @@ import { createError, type AppError } from "../utils/errors";
 import { inviteService } from "./invite.service";
 import { storageService } from "./storage.service";
 import { getAppUrl } from "../config/env";
+import { AUDIT_ACTIONS, recordAccountAuditEvent } from "./audit-writer";
 
 const USER_SELECT = {
   id: true,
@@ -218,6 +219,15 @@ export class AuthService {
       },
     });
 
+    await recordAccountAuditEvent({
+      userId: user.id,
+      action: AUDIT_ACTIONS.LOGIN,
+      entityType: "session",
+      entityId: user.id,
+      changes: { method: "password" },
+      ipAddress: input.ipAddress ?? null,
+    });
+
     return {
       user: {
         id: user.id,
@@ -337,7 +347,7 @@ export class AuthService {
     };
   }
 
-  async resetPassword(input: { token: string; new_password: string }) {
+  async resetPassword(input: { token: string; new_password: string }, meta: { ipAddress?: string } = {}) {
     const tokenHash = hashToken(input.token);
     const now = new Date();
 
@@ -378,6 +388,14 @@ export class AuthService {
         data: { revokedAt: now },
       }),
     ]);
+
+    await recordAccountAuditEvent({
+      userId: reset.userId,
+      action: AUDIT_ACTIONS.UPDATE,
+      entityType: "password",
+      entityId: reset.userId,
+      ipAddress: meta.ipAddress ?? null,
+    });
 
     return {
       message: "Password reset successful. Please log in with your new password.",
@@ -493,6 +511,15 @@ export class AuthService {
       },
     });
 
+    await recordAccountAuditEvent({
+      userId: user.id,
+      action: AUDIT_ACTIONS.LOGIN,
+      entityType: "session",
+      entityId: user.id,
+      changes: { method: "google", isNewUser },
+      ipAddress: input.ipAddress ?? null,
+    });
+
     const { avatarStorageKey, ...restUser } = user;
     return {
       user: { ...restUser, avatarUrl: resolvedAvatarUrl(user) },
@@ -502,10 +529,18 @@ export class AuthService {
     };
   }
 
-  async logout(familyId: string) {
+  async logout(userId: string, familyId: string, meta: { ipAddress?: string } = {}) {
     await prisma.refreshToken.updateMany({
       where: { familyId, revokedAt: null },
       data: { revokedAt: new Date() },
+    });
+
+    await recordAccountAuditEvent({
+      userId,
+      action: AUDIT_ACTIONS.LOGOUT,
+      entityType: "session",
+      entityId: userId,
+      ipAddress: meta.ipAddress ?? null,
     });
   }
 

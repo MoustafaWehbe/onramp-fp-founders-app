@@ -1552,6 +1552,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/startups/{startupId}/audit-logs/facets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Distinct action/entityType values present in this startup's audit log */
+        get: operations["getAuditLogFacets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/startups/{startupId}/audit-logs/export": {
         parameters: {
             query?: never;
@@ -8090,7 +8107,12 @@ export interface operations {
                 /** @description Number of items per page */
                 limit?: components["parameters"]["LimitParam"];
                 search?: string;
+                /** @description Comma-separated list of entity types to include. */
                 entityType?: string;
+                /** @description Comma-separated list of actions to include. */
+                action?: string;
+                from?: string;
+                to?: string;
             };
             header?: never;
             path: {
@@ -8109,11 +8131,36 @@ export interface operations {
             };
         };
     };
+    getAuditLogFacets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Facets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     exportAuditLogs: {
         parameters: {
             query?: {
                 search?: string;
+                /** @description Comma-separated list of entity types to include. */
                 entityType?: string;
+                /** @description Comma-separated list of actions to include. */
+                action?: string;
+                from?: string;
+                to?: string;
             };
             header?: never;
             path: {

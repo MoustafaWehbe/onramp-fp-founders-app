@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
 import { hashToken } from "../utils/auth";
+import { AUDIT_ACTIONS, recordAuditEvent } from "./audit-writer";
 import type { InviteMemberInput, AcceptInviteInput, ChangeRoleInput } from "../validators/invite.schemas";
 
 type Db = typeof prisma | Prisma.TransactionClient;
@@ -103,6 +104,15 @@ export class InviteService {
         invitedBy: inviterUserId,
       },
       select: MEMBER_SELECT,
+    });
+
+    await recordAuditEvent({
+      startupId,
+      userId: inviterUserId,
+      action: AUDIT_ACTIONS.CREATE,
+      entityType: "team_member",
+      entityId: member.id,
+      changes: { email, roleName: role.name },
     });
 
     return { member, rawToken, inviteExpiresAt, roleName: role.name };
@@ -217,7 +227,7 @@ export class InviteService {
    * having established that the row belongs to that person.
    */
   private async activateMembership(memberId: string, userId: string) {
-    return prisma.$transaction(async (tx) => {
+    const activated = await prisma.$transaction(async (tx) => {
       // Re-check status inside the transaction so two concurrent accepts cannot
       // both activate the second finds nothing pending and bails.
       const claimed = await tx.startupMember.updateMany({
@@ -247,6 +257,16 @@ export class InviteService {
 
       return activated;
     });
+
+    await recordAuditEvent({
+      startupId: activated.startupId,
+      userId,
+      action: AUDIT_ACTIONS.ACCEPT,
+      entityType: "team_member",
+      entityId: memberId,
+    });
+
+    return activated;
   }
 
   /**
@@ -295,13 +315,21 @@ export class InviteService {
   async declineMyInvite(memberId: string, userId: string) {
     const member = await this.findMyPendingInvite(memberId, userId);
     await prisma.startupMember.deleteMany({ where: { id: member.id, status: "pending" } });
+
+    await recordAuditEvent({
+      startupId: member.startupId,
+      userId,
+      action: AUDIT_ACTIONS.DECLINE,
+      entityType: "team_member",
+      entityId: member.id,
+    });
   }
 
   private async findMyPendingInvite(memberId: string, userId: string) {
     const [member, user] = await Promise.all([
       prisma.startupMember.findUnique({
         where: { id: memberId },
-        select: { id: true, status: true, invitedEmail: true, inviteExpiresAt: true },
+        select: { id: true, startupId: true, status: true, invitedEmail: true, inviteExpiresAt: true },
       }),
       prisma.user.findUnique({ where: { id: userId }, select: { email: true } }),
     ]);
@@ -328,8 +356,14 @@ export class InviteService {
     return member;
   }
 
-  async changeRole(startupId: string, memberId: string, input: ChangeRoleInput, actorMemberId: string) {
-    return prisma.$transaction(async (tx) => {
+  async changeRole(
+    startupId: string,
+    memberId: string,
+    input: ChangeRoleInput,
+    actorMemberId: string,
+    actorUserId: string,
+  ) {
+    const result = await prisma.$transaction(async (tx) => {
       // Verify target member belongs to startup
       const target = await tx.startupMember.findUnique({
         where: { id: memberId },
@@ -383,12 +417,23 @@ export class InviteService {
         },
       });
 
-      return { data: updated };
+      return { data: updated, previousRoleName: target.role.name, newRoleName: newRole.name };
     });
+
+    await recordAuditEvent({
+      startupId,
+      userId: actorUserId,
+      action: AUDIT_ACTIONS.UPDATE,
+      entityType: "team_member",
+      entityId: memberId,
+      changes: { roleFrom: result.previousRoleName, roleTo: result.newRoleName },
+    });
+
+    return { data: result.data };
   }
 
   async removeMember(startupId: string, memberId: string, actorUserId: string) {
-    return prisma.$transaction(async (tx) => {
+    const removedRoleName = await prisma.$transaction(async (tx) => {
       // Verify target member belongs to startup
       const target = await tx.startupMember.findUnique({
         where: { id: memberId },
@@ -448,6 +493,16 @@ export class InviteService {
       });
 
       await tx.startupMember.delete({ where: { id: memberId } });
+      return target.role.name;
+    });
+
+    await recordAuditEvent({
+      startupId,
+      userId: actorUserId,
+      action: AUDIT_ACTIONS.DELETE,
+      entityType: "team_member",
+      entityId: memberId,
+      changes: { roleWas: removedRoleName },
     });
   }
 
