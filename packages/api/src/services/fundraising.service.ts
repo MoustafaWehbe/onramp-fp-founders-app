@@ -313,7 +313,12 @@ export class FundraisingService {
       // the board keeps claiming money the round no longer counts. Term sheet
       // is where it lands: they had one, then withdrew.
       if (input.status === "withdrawn" && existing.status !== "withdrawn") {
-        await this.moveDealToStage(tx, startupId, existing.pipelineId, "term_sheet", userId);
+        const remainingLiveCommitments = await tx.commitment.count({
+          where: { startupId, pipelineId: existing.pipelineId, status: { not: "withdrawn" } },
+        });
+        if (remainingLiveCommitments === 0) {
+          await this.moveDealToStage(tx, startupId, existing.pipelineId, "term_sheet", userId);
+        }
       }
       // Reinstating a withdrawn commitment puts the deal back on Committed.
       if (input.status && input.status !== "withdrawn" && existing.status === "withdrawn") {
@@ -333,7 +338,12 @@ export class FundraisingService {
       // Nothing records this money any more, so the deal cannot stay on
       // Committed — that is exactly the divergence this link exists to stop.
       if (existing.status !== "withdrawn") {
-        await this.moveDealToStage(tx, startupId, existing.pipelineId, "term_sheet", userId);
+        const remainingLiveCommitments = await tx.commitment.count({
+          where: { startupId, pipelineId: existing.pipelineId, status: { not: "withdrawn" } },
+        });
+        if (remainingLiveCommitments === 0) {
+          await this.moveDealToStage(tx, startupId, existing.pipelineId, "term_sheet", userId);
+        }
       }
     });
   }

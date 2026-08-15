@@ -28,7 +28,10 @@ const PIPELINE_ID = "00000000-0000-0000-0000-000000000004";
 const investor = { id: INVESTOR_ID, startupId: STARTUP_ID, fullName: "Ada", email: null, ventureFirm: null, investorType: null, sectorFocus: null, investmentStagePreference: null, linkedinUrl: null, notes: null, source: null, createdAt: new Date(), updatedAt: new Date() };
 const commitment = { id: "00000000-0000-0000-0000-000000000005", startupId: STARTUP_ID, startupInvestorId: INVESTOR_ID, pipelineId: PIPELINE_ID, roundId: ROUND_ID, amount: new Prisma.Decimal(50000), status: "hard_circled", expectedCloseDate: null, createdAt: new Date(), updatedAt: new Date(), startupInvestor: investor };
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockPrisma.commitment.count.mockResolvedValue(0 as never);
+});
 
 describe("FundraisingService.createCommitment", () => {
   it("rejects a pipeline deal that does not belong to the selected investor and round", async () => {
@@ -117,6 +120,16 @@ describe("FundraisingService.updateCommitment", () => {
     await service.updateCommitment(STARTUP_ID, commitment.id, { status: "withdrawn" } as never);
 
     expect(mockPrisma.pipeline.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ stage: "term_sheet" }) }));
+  });
+
+  it("keeps the deal committed when another live commitment remains", async () => {
+    mockPrisma.commitment.findFirst.mockResolvedValue(commitment as never);
+    mockPrisma.commitment.update.mockResolvedValue({ ...commitment, status: "withdrawn" } as never);
+    mockPrisma.commitment.count.mockResolvedValue(1 as never);
+
+    await service.updateCommitment(STARTUP_ID, commitment.id, { status: "withdrawn" } as never);
+
+    expect(mockPrisma.pipeline.update).not.toHaveBeenCalled();
   });
 
   it("puts the deal back on committed when a withdrawn commitment is reinstated", async () => {
