@@ -1,5 +1,9 @@
 import cron from "node-cron";
 import { prisma } from "../db/prisma";
+import { notifyStaleLeadsAndIdleDeals } from "./pipeline-reminders";
+import { notifyOverdueAndDueTodayTasks } from "./task-notifications";
+import { calendarSyncQueue } from "./queue";
+import { isGoogleIntegrationEnabled } from "../config/env";
 
 export function startCronJobs(): void {
   // Delete expired pending registrations every 30 minutes
@@ -13,6 +17,53 @@ export function startCronJobs(): void {
       console.error("[cron] Failed to clean up pending registrations:", err);
     }
   });
+
+  // Once a day is enough notifyOverdueAndDueTodayTasks skips tasks it has
+  // already notified about, so a missed or re-run tick never duplicates a
+  // notice. (The follow-up equivalent used to run here too; tasks replaced
+  // it, and nothing writes a follow-up date any more.)
+  cron.schedule("0 9 * * *", async () => {
+    try {
+      await notifyOverdueAndDueTodayTasks();
+    } catch (err) {
+      console.error("[cron] Failed to notify overdue/due-today tasks:", err);
+    }
+
+    // Deliberately after the task pass and in its own try: a deal reminder is
+    // less urgent than a dated task, and neither may take the other down.
+    try {
+      await notifyStaleLeadsAndIdleDeals();
+    } catch (err) {
+      console.error("[cron] Failed to notify stale leads / deals without a next step:", err);
+    }
+  });
+
+  // Every 30 minutes rather than once a day like the reminders above a
+  // meeting is only useful on an investor's timeline soon after it happens,
+  // not the next morning. Skipped entirely when the integration isn't
+  // configured, so an unconfigured deployment isn't polling Google for nothing.
+  if (isGoogleIntegrationEnabled()) {
+    cron.schedule("*/30 * * * *", async () => {
+      try {
+        const connections = await prisma.googleConnection.findMany({
+          where: { status: "active", calendarSyncEnabled: true },
+          select: { userId: true },
+        });
+        for (const { userId } of connections) {
+          // jobId dedupes: if the previous cycle's sync for this user is still
+          // running, BullMQ reuses the in-flight job instead of stacking a
+          // second one on top of it.
+          await calendarSyncQueue.add(
+            "calendar-sync",
+            { userId },
+            { jobId: `calendar-sync:${userId}` },
+          );
+        }
+      } catch (err) {
+        console.error("[cron] Failed to enqueue calendar sync:", err);
+      }
+    });
+  }
 
   console.info("Cron jobs scheduled");
 }

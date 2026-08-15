@@ -4,6 +4,8 @@ import { Worker, type Processor } from "bullmq";
 import { getRedis } from "../queue";
 import { emailJob } from "./email.worker";
 import { embeddingsJob } from "./embeddings.worker";
+import { calendarSyncJob } from "./calendar-sync.worker";
+import { gmailLogRetryJob } from "./gmail-log-retry.worker";
 
 interface WorkerDef {
   name: string;
@@ -11,7 +13,7 @@ interface WorkerDef {
   process: Processor;
 }
 
-const JOBS: WorkerDef[] = [emailJob, embeddingsJob];
+const JOBS: WorkerDef[] = [emailJob, embeddingsJob, calendarSyncJob, gmailLogRetryJob];
 
 export function startWorkers(): Worker[] {
   const conn = getRedis();
@@ -31,7 +33,7 @@ export function startWorkers(): Worker[] {
   return workers;
 }
 
-// Entry point — only runs when executed directly
+// Entry point only runs when executed directly
 if (require.main === module) {
   const workers = startWorkers();
 

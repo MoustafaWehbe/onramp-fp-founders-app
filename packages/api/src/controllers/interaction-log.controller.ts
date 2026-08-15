@@ -1,5 +1,6 @@
 import { asyncHandler } from "../utils/errors";
 import { interactionLogService } from "../services/interaction-log.service";
+import { notificationService } from "../services/notification.service";
 import type {
   CreateInteractionLogInput,
   UpdateInteractionLogInput,
@@ -33,19 +34,23 @@ export const interactionLogController = {
   }),
 
   updateLog: asyncHandler(async (req, res) => {
+    const logId = req.params.logId as string;
+    const input = req.body as UpdateInteractionLogInput;
     const result = await interactionLogService.updateLog(
       req.params.startupId as string,
-      req.params.logId as string,
-      req.body as UpdateInteractionLogInput,
+      logId,
+      input,
     );
+
     res.json(result);
   }),
 
   deleteLog: asyncHandler(async (req, res) => {
-    await interactionLogService.deleteLog(
-      req.params.startupId as string,
-      req.params.logId as string,
-    );
+    const logId = req.params.logId as string;
+    await interactionLogService.deleteLog(req.params.startupId as string, logId);
+    // Legacy follow-up notices can still exist against old logs, so a deleted
+    // log still takes its own with it.
+    void notificationService.clearFollowupNotifications([logId]);
     res.json({ message: "Interaction log removed" });
   }),
 

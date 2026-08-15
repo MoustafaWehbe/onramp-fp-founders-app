@@ -36,6 +36,8 @@ export const investorController = {
       req.params.startupId as string,
       req.params.investorId as string,
       req.body as UpdateInvestorInput,
+      // Stamps note authorship; every other field is author-agnostic.
+      req.user?.userId,
     );
     res.json({ data: investor });
   }),

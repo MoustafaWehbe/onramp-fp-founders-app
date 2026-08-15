@@ -1,21 +1,16 @@
 import { Queue } from "bullmq";
-import IORedis from "ioredis";
 import { emailJob } from "./workers/email.worker";
 import type { EmailJobData } from "../types";
 import { embeddingsJob, type EmbeddingsJobData } from "./workers/embeddings.worker";
+import { calendarSyncJob, type CalendarSyncJobData } from "./workers/calendar-sync.worker";
+import { gmailLogRetryJob, type GmailLogRetryJobData } from "./workers/gmail-log-retry.worker";
 
-// Redis singleton (shared with workers)
+// The Redis singleton now lives in db/redis so non-job callers (the rate
+// limiters) can share it without importing the workers. Re-exported here
+// because the workers still reach for it through this module.
+export { getRedis } from "../db/redis";
 
-let redis: IORedis | null = null;
-
-export function getRedis(): IORedis {
-  if (!redis) {
-    redis = new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379", {
-      maxRetriesPerRequest: null,
-    });
-  }
-  return redis;
-}
+import { getRedis } from "../db/redis";
 
 // Queue factory
 
@@ -34,3 +29,5 @@ function makeQueue<T>(name: string): Queue<T> {
 
 export const emailQueue = makeQueue<EmailJobData>(emailJob.name);
 export const embeddingsQueue = makeQueue<EmbeddingsJobData>(embeddingsJob.name);
+export const calendarSyncQueue = makeQueue<CalendarSyncJobData>(calendarSyncJob.name);
+export const gmailLogRetryQueue = makeQueue<GmailLogRetryJobData>(gmailLogRetryJob.name);

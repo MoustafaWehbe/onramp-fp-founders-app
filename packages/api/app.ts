@@ -8,10 +8,14 @@ import yaml from "js-yaml";
 import fs from "fs";
 import path from "path";
 import { errorHandler } from "./src/utils/errors";
+import { getTrustProxy } from "./src/config/env";
 import { rateLimiter } from "./src/middleware/rate-limiter";
 import { router } from "./src/routes";
 
 const app = express();
+
+// Must be set before any middleware reads req.ip the rate limiters key on it.
+app.set("trust proxy", getTrustProxy());
 
 // Security
 app.use(helmet());
@@ -33,6 +37,13 @@ app.use(express.urlencoded({ extended: true }));
 if (process.env.NODE_ENV !== "test") {
   app.use(morgan("dev"));
 }
+
+// Every API response is scoped to the caller's session. Letting a browser or
+// an intermediary hold on to one risks replaying it for whoever signs in next.
+app.use("/api/v1", (_req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
 
 // Rate limiting
 app.use("/api/v1/", rateLimiter);

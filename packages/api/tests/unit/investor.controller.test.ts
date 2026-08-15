@@ -5,6 +5,9 @@ import { app } from "../../app";
 jest.mock("../../src/middleware/rate-limiter", () => ({
   rateLimiter: (_req: any, _res: any, next: any) => next(),
   authRateLimiter: (_req: any, _res: any, next: any) => next(),
+  credentialRateLimiter: (_req: any, _res: any, next: any) => next(),
+  emailSendRateLimiter: (_req: any, _res: any, next: any) => next(),
+  scheduleMeetingRateLimiter: (_req: any, _res: any, next: any) => next(),
 }));
 
 jest.mock("../../src/db/prisma", () => ({
@@ -210,10 +213,13 @@ describe("PATCH /api/v1/startups/:startupId/investors/:investorId", () => {
       .send({ notes: "warm" });
 
     expect(res.status).toBe(200);
+    // The caller's id travels with the update so the service can stamp note
+    // authorship; it is never taken from the body.
     expect(mockService.updateInvestor).toHaveBeenCalledWith(
       STARTUP_ID,
       CONTACT_ID,
       expect.objectContaining({ notes: "warm" }),
+      USER_ID,
     );
   });
 

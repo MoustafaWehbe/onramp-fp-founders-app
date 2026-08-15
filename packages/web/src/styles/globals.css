@@ -43,6 +43,7 @@
     --chart-3: 152 68% 45%;
     --chart-4: 38 92% 50%;
     --chart-5: 280 85% 60%;
+    --chart-6: 340 82% 58%;
 
     --sidebar: 222 47% 7%;
     --sidebar-foreground: 210 40% 98%;
@@ -80,12 +81,31 @@
   h6 {
     @apply font-semibold tracking-tight text-foreground;
 
-    /* "Space Grotesk" keeps its quotes — multi-word family names require them. */
+    /* "Space Grotesk" keeps its quotes multi-word family names require them. */
     font-family: "Space Grotesk", Inter, sans-serif;
   }
 
   ::selection {
     @apply bg-primary/35 text-foreground;
+  }
+
+  /* Respect the OS-level motion preference everywhere at once, instead of
+     gating every animate-in/animate-out/animate-spin/animate-pulse call site
+     one by one. Transforms still apply instantly; only the animated easing
+     between states is removed. */
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
@@ -117,6 +137,16 @@
 
   .scrollbar-slim::-webkit-scrollbar-corner {
     background: transparent;
+  }
+
+  /* Fully hidden scrollbar the element still scrolls, nothing is drawn for it. */
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
   }
 
   .glow-orange {

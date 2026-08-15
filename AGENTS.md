@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Guidance for AI coding agents working in this repo. `README.md` is stale in
-places (it describes Sequelize, `packages/workers`, `packages/shared` — none
+places (it describes Sequelize, `packages/workers`, `packages/shared` none
 of which exist anymore); this file reflects the codebase as it actually is.
 
 ## What this is
@@ -12,8 +12,8 @@ rounds, documents, and team access.
 
 ```
 packages/
-  api/   Express REST API — port 3000
-  web/   React + Vite frontend — port 5173
+  api/   Express REST API port 3000
+  web/   React + Vite frontend port 5173
 ```
 
 There is no `packages/workers` or `packages/shared`. Background jobs
@@ -30,7 +30,7 @@ There is no `packages/workers` or `packages/shared`. Background jobs
 | Monorepo | npm workspaces + Turborepo |
 | Language | TypeScript everywhere |
 
-The root README says "Sequelize" — ignore that; the API uses **Prisma**
+The root README says "Sequelize" ignore that; the API uses **Prisma**
 (`packages/api/prisma/schema.prisma`, migrations in `prisma/migrations/`).
 
 ## Setup
@@ -63,7 +63,7 @@ into a package and run directly:
 | `cd packages/api && npm run db:migrate:dev` | create + apply a new migration |
 | `cd packages/web && npm run gen:api-types` | regenerate `src/lib/api-types.ts` from `packages/api/openapi.yaml` |
 
-`packages/api/openapi.yaml` is the API contract of record — when you add or
+`packages/api/openapi.yaml` is the API contract of record when you add or
 change a route, update it in the same change (existing routes keep it in
 sync; don't let it drift).
 
@@ -79,10 +79,10 @@ throws via `createError(message, statusCode, code)`) → `validators/*.schemas.t
   are mounted under `/api/v1/startups/:startupId/...` with `mergeParams:
   true`. Services fetch/update/delete through Prisma composite keys like
   `{ startupId_id: { startupId, id } }` so a request can never touch another
-  tenant's row — follow this pattern for any new startup-scoped resource.
+  tenant's row follow this pattern for any new startup-scoped resource.
 - **RBAC** (`middleware/rbac.ts`): `requireMember` checks the caller has a
   `StartupMember` row for `req.params.startupId` with
-  `status === "active"` — no other status value is ever treated as
+  `status === "active"` no other status value is ever treated as
   authorized (see gotcha below). `requirePermission(resource, action)`
   then checks the member's role has that permission
   (`config/permissions.ts` defines the `PERMISSIONS` list and the
@@ -93,16 +93,16 @@ throws via `createError(message, statusCode, code)`) → `validators/*.schemas.t
   - URL fields: plain `z.string().url()` accepts `javascript:` and other
     non-http schemes. The established pattern (see
     `investor.schemas.ts`'s `linkedinUrl`, `startup.schemas.ts`'s
-    `website`) is `.url().refine(v => /^https?:\/\//i.test(v))` — reuse
+    `website`) is `.url().refine(v => /^https?:\/\//i.test(v))` reuse
     that, don't add bare `.url()` for anything user-controlled.
 - Config lookups (pipeline stages, investor types) live in
   `config/crm.ts` and are shared by validators on both the create and
-  update path — don't hardcode stage/type string literals elsewhere.
+  update path don't hardcode stage/type string literals elsewhere.
 
 ## Frontend architecture (`packages/web/src`)
 
 - Server state: TanStack Query. Client/UI state: Zustand
-  (`lib/app-store.ts` — currently just `activeStartupId` and local
+  (`lib/app-store.ts` currently just `activeStartupId` and local
   notification read-state, persisted to localStorage).
 - **Not every dashboard page is wired to the real API yet.** As of this
   writing only `pages/dashboard/Pipeline` and `pages/dashboard/Investors`
@@ -110,7 +110,7 @@ throws via `createError(message, statusCode, code)`) → `validators/*.schemas.t
   Fundraising, Documents, AI Insights, Team, Notifications, Settings all
   still render from static fixtures in `lib/mock-data.ts`. Before
   "fixing" a page that looks broken, check whether it's supposed to be
-  live yet — a 403 from `requireMember`/`requirePermission` only shows up
+  live yet a 403 from `requireMember`/`requirePermission` only shows up
   on pages that actually call the API.
 - `ProtectedRoute` only checks that you're logged in; it does not check
   startup membership. Membership/permission failures surface per-request
@@ -118,24 +118,24 @@ throws via `createError(message, statusCode, code)`) → `validators/*.schemas.t
 - UI primitives in `components/ui/` follow shadcn/ui conventions
   (`class-variance-authority`, `cn()` = `twMerge(clsx(...))`). Dropdown
   and dialog open/close animations depend on the `tailwindcss-animate`
-  Tailwind plugin being registered in `tailwind.config.js` — if you ever
+  Tailwind plugin being registered in `tailwind.config.js` if you ever
   see Radix `data-[state=open]`/`animate-in` classes doing nothing, check
   that plugin registration first.
   - Box-shadow does not interpolate cleanly across a CSS `transition`
     when the shadow value differs between states (multi-layer shadows
-    especially) — it can visibly snap/flash instead of animating
+    especially) it can visibly snap/flash instead of animating
     smoothly. Prefer a static `shadow-*` plus `transition-colors` on
     `border-color`/`background-color` for state-based trigger styling
     (see the sidebar `UserMenu`/`StartupSwitcher` triggers) rather than
     swapping the shadow itself.
-- Tailwind v3.4 here — `line-clamp-*` works out of the box (merged into
+- Tailwind v3.4 here `line-clamp-*` works out of the box (merged into
   Tailwind core since 3.3), no separate plugin needed.
 
 ## Testing
 
 - API: Jest, `packages/api/tests/unit/*.test.ts`, mocks `prisma` per test
   file. Good coverage on services/controllers/schemas for wired resources.
-- Web: Vitest, but coverage is thin — only a few `components`/`lib` tests
+- Web: Vitest, but coverage is thin only a few `components`/`lib` tests
   exist (`src/test/`). None of the dashboard pages have tests yet, so
   don't assume regressions there would be caught by `npm run test`.
 
@@ -152,6 +152,6 @@ throws via `createError(message, statusCode, code)`) → `validators/*.schemas.t
   server, a stray Jest worker) still has the file open. Stop other
   processes and retry rather than debugging it as a schema problem.
 - ESLint is not installed in some environments here (`npx eslint` fails
-  with "not found") even though `npm run lint` is defined — fall back to
+  with "not found") even though `npm run lint` is defined fall back to
   `tsc --noEmit` for a sanity check if `npm run lint` errors out on a
   missing binary rather than real lint findings.

@@ -11,7 +11,7 @@ interface AvatarContextValue {
 
 // AvatarImage and AvatarFallback are siblings in the DOM, so the fallback has no
 // way of knowing whether the image loaded. The parent owns that state and each
-// child renders only when it is the one that should be visible — otherwise a
+// child renders only when it is the one that should be visible otherwise a
 // consumer using both gets a squashed image sitting next to its own fallback.
 const AvatarContext = React.createContext<AvatarContextValue | null>(null);
 

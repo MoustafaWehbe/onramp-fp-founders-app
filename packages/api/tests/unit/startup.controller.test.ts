@@ -5,6 +5,9 @@ import { app } from "../../app";
 jest.mock("../../src/middleware/rate-limiter", () => ({
   rateLimiter: (_req: any, _res: any, next: any) => next(),
   authRateLimiter: (_req: any, _res: any, next: any) => next(),
+  credentialRateLimiter: (_req: any, _res: any, next: any) => next(),
+  emailSendRateLimiter: (_req: any, _res: any, next: any) => next(),
+  scheduleMeetingRateLimiter: (_req: any, _res: any, next: any) => next(),
 }));
 
 jest.mock("../../src/db/prisma", () => ({
@@ -21,6 +24,9 @@ jest.mock("../../src/services/startup.service", () => ({
     updateStartup: jest.fn(),
     deleteStartup: jest.fn(),
     listMembers: jest.fn(),
+    listRoles: jest.fn(),
+    listMyStartups: jest.fn(),
+    setActiveStartup: jest.fn(),
   },
 }));
 
@@ -181,6 +187,97 @@ describe("DELETE /api/v1/startups/:startupId", () => {
 
     expect(res.status).toBe(403);
     expect(mockService.deleteStartup).not.toHaveBeenCalled();
+  });
+});
+
+describe("PUT /api/v1/startups/:startupId/activate", () => {
+  it("records the active workspace and answers 204", async () => {
+    mockService.setActiveStartup.mockResolvedValue(undefined);
+
+    const res = await request(app)
+      .put(`/api/v1/startups/${STARTUP_ID}/activate`)
+      .set("Cookie", [accessCookie()]);
+
+    expect(res.status).toBe(204);
+    expect(mockService.setActiveStartup).toHaveBeenCalledWith(STARTUP_ID, USER_ID);
+  });
+
+  it("refuses for someone who is not an active member", async () => {
+    // Guarded by requireMember alone any role may switch into a workspace
+    // they belong to, so no extra permission is required.
+    mockPrisma.startupMember.findUnique.mockResolvedValue(null);
+
+    const res = await request(app)
+      .put(`/api/v1/startups/${STARTUP_ID}/activate`)
+      .set("Cookie", [accessCookie()]);
+
+    expect(res.status).toBe(403);
+    expect(mockService.setActiveStartup).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 without an auth cookie", async () => {
+    const res = await request(app).put(`/api/v1/startups/${STARTUP_ID}/activate`);
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("GET /api/v1/startups", () => {
+  it("returns the caller's workspaces", async () => {
+    mockService.listMyStartups.mockResolvedValue([
+      { ...STARTUP, member: { id: "m1", status: "active", role: "owner", joinedAt: null } },
+    ] as never);
+
+    const res = await request(app).get("/api/v1/startups").set("Cookie", [accessCookie()]);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.startups).toHaveLength(1);
+    expect(res.body.data.startups[0].member.role).toBe("owner");
+    expect(mockService.listMyStartups).toHaveBeenCalledWith(USER_ID);
+  });
+
+  it("returns 200 with an empty list rather than 403 for a user with no workspace", async () => {
+    // This is the signal the client uses to route someone to onboarding, so it
+    // must not be conflated with a permission failure.
+    mockService.listMyStartups.mockResolvedValue([] as never);
+
+    const res = await request(app).get("/api/v1/startups").set("Cookie", [accessCookie()]);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.startups).toEqual([]);
+  });
+
+  it("returns 401 without an auth cookie", async () => {
+    const res = await request(app).get("/api/v1/startups");
+    expect(res.status).toBe(401);
+    expect(mockService.listMyStartups).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/v1/startups/:startupId/roles", () => {
+  it("returns the startup's assignable roles", async () => {
+    mockService.listRoles.mockResolvedValue([
+      { id: "role-owner", name: "owner", description: "Full access", isSystemRole: true },
+      { id: "role-viewer", name: "viewer", description: "Read-only", isSystemRole: true },
+    ] as never);
+
+    const res = await request(app)
+      .get(`/api/v1/startups/${STARTUP_ID}/roles`)
+      .set("Cookie", [accessCookie()]);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.roles).toHaveLength(2);
+    expect(res.body.data.roles[0].name).toBe("owner");
+  });
+
+  it("returns 403 without team:read permission", async () => {
+    mockPrisma.rolePermission.findFirst.mockResolvedValue(null);
+
+    const res = await request(app)
+      .get(`/api/v1/startups/${STARTUP_ID}/roles`)
+      .set("Cookie", [accessCookie()]);
+
+    expect(res.status).toBe(403);
+    expect(mockService.listRoles).not.toHaveBeenCalled();
   });
 });
 

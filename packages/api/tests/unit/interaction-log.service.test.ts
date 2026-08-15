@@ -1,6 +1,12 @@
 import { Prisma } from "@prisma/client";
 import { InteractionLogService } from "../../src/services/interaction-log.service";
 
+// Clearing overdue-follow-up notifications is a side effect of closing
+// follow-ups; these tests only care about the follow-up bookkeeping itself.
+jest.mock("../../src/services/notification.service", () => ({
+  notificationService: { clearFollowupNotifications: jest.fn() },
+}));
+
 jest.mock("../../src/db/prisma", () => ({
   prisma: {
     startupInvestor: {
@@ -15,6 +21,7 @@ jest.mock("../../src/db/prisma", () => ({
       findMany: jest.fn(),
       count: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
       delete: jest.fn(),
     },
   },
@@ -38,6 +45,10 @@ const DEFAULT_QUERY = { page: 1, limit: 20 };
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Creating a log closes the follow-ups it satisfies; tests that don't care
+  // about that still need the sweep to resolve.
+  (mockPrisma.interactionLog.findMany as jest.Mock).mockResolvedValue([]);
+  (mockPrisma.interactionLog.updateMany as jest.Mock).mockResolvedValue({ count: 0 });
 });
 
 describe("InteractionLogService.createLog", () => {
@@ -219,6 +230,21 @@ describe("InteractionLogService.listLogs", () => {
 
     expect(result.meta).toEqual({ page: 2, limit: 20, total: 25, totalPages: 2 });
   });
+
+  // Settings' "Remove synced meetings" fetches exactly this filter to find
+  // what it's about to bulk-delete it must never see a manual log.
+  it("filters by source when asked, for bulk-removing synced entries", async () => {
+    (mockPrisma.interactionLog.count as jest.Mock).mockResolvedValue(0);
+    (mockPrisma.interactionLog.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.listLogs(STARTUP_ID, { ...DEFAULT_QUERY, source: "google_calendar" } as never);
+
+    expect(mockPrisma.interactionLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { startupInvestor: { startupId: STARTUP_ID }, source: "google_calendar" },
+      }),
+    );
+  });
 });
 
 describe("InteractionLogService.getLog", () => {
@@ -273,6 +299,64 @@ describe("InteractionLogService.getLog", () => {
   });
 });
 
+// Follow-ups are retired: tasks superseded them, so a new log no longer
+// closes anything and neither follow-up column can be written. The rows
+// already recorded stay readable, which is why LOG_SELECT still returns them.
+describe("InteractionLogService follow-up retirement", () => {
+  it("does not scan for follow-ups to close when a log is created", async () => {
+    (mockPrisma.startupInvestor.findUnique as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
+    (mockPrisma.interactionLog.create as jest.Mock).mockResolvedValue({
+      id: LOG_ID,
+      startupInvestorId: CONTACT_ID,
+      pipelineId: null,
+      createdBy: USER_ID,
+      type: "call",
+      subject: null,
+      description: null,
+      interactionDate: new Date("2026-08-09T10:00:00.000Z"),
+      nextFollowupDate: null,
+      followupCompletedAt: null,
+      createdAt: new Date("2026-08-09T10:00:00.000Z"),
+    });
+
+    await service.createLog(
+      STARTUP_ID,
+      { investorId: CONTACT_ID, type: "call", interactionDate: new Date() } as never,
+      USER_ID,
+    );
+
+    expect(mockPrisma.interactionLog.findMany).not.toHaveBeenCalled();
+    expect(mockPrisma.interactionLog.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("never writes a follow-up column when a log is created", async () => {
+    (mockPrisma.startupInvestor.findUnique as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
+    (mockPrisma.interactionLog.create as jest.Mock).mockResolvedValue({
+      id: LOG_ID,
+      startupInvestorId: CONTACT_ID,
+      pipelineId: null,
+      createdBy: USER_ID,
+      type: "call",
+      subject: null,
+      description: null,
+      interactionDate: new Date(),
+      nextFollowupDate: null,
+      followupCompletedAt: null,
+      createdAt: new Date(),
+    });
+
+    await service.createLog(
+      STARTUP_ID,
+      { investorId: CONTACT_ID, type: "call", interactionDate: new Date() } as never,
+      USER_ID,
+    );
+
+    const [{ data }] = (mockPrisma.interactionLog.create as jest.Mock).mock.calls[0];
+    expect(data).not.toHaveProperty("nextFollowupDate");
+    expect(data).not.toHaveProperty("followupCompletedAt");
+  });
+});
+
 describe("InteractionLogService.updateLog", () => {
   it("updates the log when it belongs to the startup", async () => {
     (mockPrisma.interactionLog.findUnique as jest.Mock).mockResolvedValue({
@@ -296,6 +380,34 @@ describe("InteractionLogService.updateLog", () => {
     const result = await service.updateLog(STARTUP_ID, LOG_ID, { type: "meeting" } as never);
 
     expect(result.data.type).toBe("meeting");
+  });
+
+  // A synced log's cancellation-retraction only skips rows a human touched —
+  // this flag is that signal, so every edit through this path must set it.
+  it("marks the log as edited by a human, so a future calendar sync will never overwrite or retract it", async () => {
+    (mockPrisma.interactionLog.findUnique as jest.Mock).mockResolvedValue({
+      id: LOG_ID,
+      startupInvestorId: CONTACT_ID,
+      startupInvestor: { startupId: STARTUP_ID },
+    });
+    (mockPrisma.interactionLog.update as jest.Mock).mockResolvedValue({
+      id: LOG_ID,
+      startupInvestorId: CONTACT_ID,
+      pipelineId: null,
+      createdBy: USER_ID,
+      type: "meeting",
+      subject: null,
+      description: null,
+      interactionDate: new Date(),
+      nextFollowupDate: null,
+      createdAt: new Date(),
+    });
+
+    await service.updateLog(STARTUP_ID, LOG_ID, { subject: "Edited subject" } as never);
+
+    expect(mockPrisma.interactionLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ editedByUser: true }) }),
+    );
   });
 
   it("throws LOG_NOT_FOUND for a cross-tenant log", async () => {

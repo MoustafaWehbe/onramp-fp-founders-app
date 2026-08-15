@@ -112,16 +112,119 @@ describe("InvestorService.createInvestor", () => {
 });
 
 describe("InvestorService.listInvestors", () => {
+  /** The two counts resolve in order: engaged first, then prospect. */
+  function mockCounts(engaged: number, prospect: number) {
+    (mockPrisma.startupInvestor.count as jest.Mock)
+      .mockResolvedValueOnce(engaged)
+      .mockResolvedValueOnce(prospect);
+  }
+
   it("returns pagination meta alongside the rows", async () => {
-    (mockPrisma.startupInvestor.count as jest.Mock).mockResolvedValue(45);
+    mockCounts(12, 33);
     (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([]);
 
     const result = await service.listInvestors(STARTUP_ID, { page: 2, limit: 20 } as never);
 
-    expect(result.meta).toEqual({ page: 2, limit: 20, total: 45, totalPages: 3 });
+    // With no engagement filter the view spans both tabs, so total is the sum.
+    expect(result.meta).toEqual({
+      page: 2,
+      limit: 20,
+      total: 45,
+      totalPages: 3,
+      engagementCounts: { engaged: 12, prospect: 33 },
+    });
     expect(mockPrisma.startupInvestor.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ skip: 20, take: 20 }),
     );
+  });
+
+  it("treats a contact as engaged when it is in the pipeline or has logged interactions", async () => {
+    mockCounts(4, 9);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([]);
+
+    const result = await service.listInvestors(STARTUP_ID, {
+      ...DEFAULT_QUERY,
+      engagement: "engaged",
+    } as never);
+
+    const { where } = (mockPrisma.startupInvestor.findMany as jest.Mock).mock.calls[0][0];
+    expect(where.AND[1]).toEqual({
+      OR: [{ pipeline: { some: {} } }, { interactionLogs: { some: {} } }],
+    });
+    // Total narrows to the tab being viewed; the counts still describe both.
+    expect(result.meta.total).toBe(4);
+    expect(result.meta.engagementCounts).toEqual({ engaged: 4, prospect: 9 });
+  });
+
+  it("treats a contact as a prospect only when it has neither", async () => {
+    mockCounts(4, 9);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([]);
+
+    const result = await service.listInvestors(STARTUP_ID, {
+      ...DEFAULT_QUERY,
+      engagement: "prospect",
+    } as never);
+
+    const { where } = (mockPrisma.startupInvestor.findMany as jest.Mock).mock.calls[0][0];
+    expect(where.AND[1]).toEqual({
+      pipeline: { none: {} },
+      interactionLogs: { none: {} },
+    });
+    expect(result.meta.total).toBe(9);
+  });
+
+  it("keeps the search filter when an engagement tab is selected", async () => {
+    // Both halves use `OR`, so merging them as plain keys would drop the
+    // search entirely and quietly return the whole tab.
+    mockCounts(1, 1);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.listInvestors(STARTUP_ID, {
+      ...DEFAULT_QUERY,
+      search: "accel",
+      engagement: "engaged",
+    } as never);
+
+    const { where } = (mockPrisma.startupInvestor.findMany as jest.Mock).mock.calls[0][0];
+    expect(where.AND[0].OR).toEqual([
+      { fullName: { contains: "accel", mode: "insensitive" } },
+      { email: { contains: "accel", mode: "insensitive" } },
+      { ventureFirm: { contains: "accel", mode: "insensitive" } },
+    ]);
+    expect(where.AND[1].OR).toEqual([
+      { pipeline: { some: {} } },
+      { interactionLogs: { some: {} } },
+    ]);
+  });
+
+  it("keeps the stage filter when an engagement tab is selected", async () => {
+    // Both halves constrain `pipeline`, the other collision case.
+    mockCounts(1, 1);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.listInvestors(STARTUP_ID, {
+      ...DEFAULT_QUERY,
+      stage: "term_sheet",
+      engagement: "engaged",
+    } as never);
+
+    const { where } = (mockPrisma.startupInvestor.findMany as jest.Mock).mock.calls[0][0];
+    expect(where.AND[0].pipeline).toEqual({ some: { stage: "term_sheet" } });
+    expect(where.AND[1]).toHaveProperty("OR");
+  });
+
+  it("counts both tabs against the same search, so the badges follow the filter", async () => {
+    mockCounts(2, 5);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.listInvestors(STARTUP_ID, { ...DEFAULT_QUERY, search: "seed" } as never);
+
+    const countCalls = (mockPrisma.startupInvestor.count as jest.Mock).mock.calls;
+    for (const [{ where }] of countCalls) {
+      expect(where.AND[0].OR).toEqual(
+        expect.arrayContaining([{ fullName: { contains: "seed", mode: "insensitive" } }]),
+      );
+    }
   });
 
   it("joins the pipeline entry and converts Decimal amounts to numbers", async () => {
@@ -166,22 +269,93 @@ describe("InvestorService.listInvestors", () => {
     expect(result.data[0]!.nextFollowupDate).toBeNull();
   });
 
-  it("attaches the earliest upcoming follow-up date", async () => {
-    const followup = new Date("2030-01-01T00:00:00.000Z");
+  it("attaches the earliest open follow-up date, including overdue dates", async () => {
+    const followup = new Date("2020-01-01T00:00:00.000Z");
     (mockPrisma.startupInvestor.count as jest.Mock).mockResolvedValue(1);
     (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([
       { id: CONTACT_ID, fullName: "Ada", pipeline: [] },
     ]);
-    (mockPrisma.interactionLog.groupBy as jest.Mock).mockResolvedValue([
-      { startupInvestorId: CONTACT_ID, _min: { nextFollowupDate: followup } },
-    ]);
+    // Three grouped queries now share this mock the follow-up one asks for
+    // _min, the two last-touch ones for _max.
+    (mockPrisma.interactionLog.groupBy as jest.Mock).mockImplementation((args) =>
+      Promise.resolve(
+        args._min ? [{ startupInvestorId: CONTACT_ID, _min: { nextFollowupDate: followup } }] : [],
+      ),
+    );
 
     const result = await service.listInvestors(STARTUP_ID, DEFAULT_QUERY as never);
 
     expect(result.data[0]!.nextFollowupDate).toEqual(followup);
+    expect(mockPrisma.interactionLog.groupBy).toHaveBeenCalledWith({
+      by: ["startupInvestorId"],
+      where: {
+        startupInvestorId: { in: [CONTACT_ID] },
+        nextFollowupDate: { not: null },
+        followupCompletedAt: null,
+      },
+      _min: { nextFollowupDate: true },
+    });
   });
 
-  it("resolves follow-ups in one grouped query rather than per row", async () => {
+  it("attaches the newest interaction date as last contact", async () => {
+    const interaction = new Date("2026-03-01T00:00:00.000Z");
+    (mockPrisma.startupInvestor.count as jest.Mock).mockResolvedValue(1);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([
+      { id: CONTACT_ID, fullName: "Ada", pipeline: [] },
+    ]);
+    (mockPrisma.interactionLog.groupBy as jest.Mock).mockImplementation((args) =>
+      Promise.resolve(
+        args._max?.interactionDate
+          ? [{ startupInvestorId: CONTACT_ID, _max: { interactionDate: interaction } }]
+          : [],
+      ),
+    );
+
+    const result = await service.listInvestors(STARTUP_ID, DEFAULT_QUERY as never);
+
+    expect(result.data[0]!.lastInteractionDate).toEqual(interaction);
+  });
+
+  it("falls back to a log's createdAt when it carries no interaction date", async () => {
+    const written = new Date("2026-04-01T00:00:00.000Z");
+    (mockPrisma.startupInvestor.count as jest.Mock).mockResolvedValue(1);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([
+      { id: CONTACT_ID, fullName: "Ada", pipeline: [] },
+    ]);
+    (mockPrisma.interactionLog.groupBy as jest.Mock).mockImplementation((args) =>
+      Promise.resolve(
+        args._max?.createdAt ? [{ startupInvestorId: CONTACT_ID, _max: { createdAt: written } }] : [],
+      ),
+    );
+
+    const result = await service.listInvestors(STARTUP_ID, DEFAULT_QUERY as never);
+
+    expect(result.data[0]!.lastInteractionDate).toEqual(written);
+  });
+
+  it("prefers a real interaction date over an undated log written later", async () => {
+    const interaction = new Date("2026-05-01T00:00:00.000Z");
+    const writtenEarlier = new Date("2026-04-01T00:00:00.000Z");
+    (mockPrisma.startupInvestor.count as jest.Mock).mockResolvedValue(1);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([
+      { id: CONTACT_ID, fullName: "Ada", pipeline: [] },
+    ]);
+    (mockPrisma.interactionLog.groupBy as jest.Mock).mockImplementation((args) =>
+      Promise.resolve(
+        args._max?.interactionDate
+          ? [{ startupInvestorId: CONTACT_ID, _max: { interactionDate: interaction } }]
+          : args._max?.createdAt
+            ? [{ startupInvestorId: CONTACT_ID, _max: { createdAt: writtenEarlier } }]
+            : [],
+      ),
+    );
+
+    const result = await service.listInvestors(STARTUP_ID, DEFAULT_QUERY as never);
+
+    expect(result.data[0]!.lastInteractionDate).toEqual(interaction);
+  });
+
+  it("resolves follow-ups and last contact in a fixed number of grouped queries, not per row", async () => {
     (mockPrisma.startupInvestor.count as jest.Mock).mockResolvedValue(3);
     (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([
       { id: "a", fullName: "A", pipeline: [] },
@@ -191,7 +365,9 @@ describe("InvestorService.listInvestors", () => {
 
     await service.listInvestors(STARTUP_ID, DEFAULT_QUERY as never);
 
-    expect(mockPrisma.interactionLog.groupBy).toHaveBeenCalledTimes(1);
+    // One for the follow-up date, two for last contact (dated vs. undated
+    // logs) constant regardless of how many contacts are on the page.
+    expect(mockPrisma.interactionLog.groupBy).toHaveBeenCalledTimes(3);
     expect(mockPrisma.interactionLog.groupBy).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ startupInvestorId: { in: ["a", "b", "c"] } }),
@@ -327,6 +503,105 @@ describe("InvestorService.updateInvestor", () => {
       expect.objectContaining({ data: { ventureFirm: null } }),
     );
   });
+
+  // Note authorship is derived from the authenticated caller, never trusted
+  // from the body the same rule completedAt follows on tasks.
+  describe("note authorship", () => {
+    const USER_ID = "00000000-0000-0000-0000-000000000009";
+    const EDITOR_ID = "00000000-0000-0000-0000-00000000000a";
+
+    function updateData() {
+      return (mockPrisma.startupInvestor.update as jest.Mock).mock.calls[0][0].data;
+    }
+
+    it("records author and editor when the first note is written", async () => {
+      mockFindUnique({ byId: { id: CONTACT_ID, email: null, notes: null, notesCreatedAt: null } });
+      (mockPrisma.startupInvestor.update as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
+
+      await service.updateInvestor(STARTUP_ID, CONTACT_ID, { notes: "warm" } as never, USER_ID);
+
+      expect(updateData()).toMatchObject({
+        notes: "warm",
+        notesCreatedBy: USER_ID,
+        notesUpdatedBy: USER_ID,
+        notesCreatedAt: expect.any(Date),
+        notesUpdatedAt: expect.any(Date),
+      });
+    });
+
+    it("keeps the original author when someone else edits the note", async () => {
+      mockFindUnique({
+        byId: {
+          id: CONTACT_ID,
+          email: null,
+          notes: "warm",
+          notesCreatedAt: new Date("2026-01-01"),
+        },
+      });
+      (mockPrisma.startupInvestor.update as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
+
+      await service.updateInvestor(STARTUP_ID, CONTACT_ID, { notes: "warmer" } as never, EDITOR_ID);
+
+      const data = updateData();
+      expect(data).toMatchObject({ notesUpdatedBy: EDITOR_ID, notesUpdatedAt: expect.any(Date) });
+      expect(data).not.toHaveProperty("notesCreatedBy");
+      expect(data).not.toHaveProperty("notesCreatedAt");
+    });
+
+    it("clears authorship with the note, so a new note never inherits a byline", async () => {
+      mockFindUnique({
+        byId: {
+          id: CONTACT_ID,
+          email: null,
+          notes: "warm",
+          notesCreatedAt: new Date("2026-01-01"),
+        },
+      });
+      (mockPrisma.startupInvestor.update as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
+
+      await service.updateInvestor(STARTUP_ID, CONTACT_ID, { notes: null } as never, USER_ID);
+
+      expect(updateData()).toMatchObject({
+        notes: null,
+        notesCreatedAt: null,
+        notesCreatedBy: null,
+        notesUpdatedAt: null,
+        notesUpdatedBy: null,
+      });
+    });
+
+    it("does not touch the timestamps when the note is resubmitted unchanged", async () => {
+      mockFindUnique({
+        byId: {
+          id: CONTACT_ID,
+          email: null,
+          notes: "warm",
+          notesCreatedAt: new Date("2026-01-01"),
+        },
+      });
+      (mockPrisma.startupInvestor.update as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
+
+      await service.updateInvestor(
+        STARTUP_ID,
+        CONTACT_ID,
+        { notes: "warm", ventureFirm: "Acme" } as never,
+        USER_ID,
+      );
+
+      expect(updateData()).toEqual({ notes: "warm", ventureFirm: "Acme" });
+    });
+
+    it("leaves authorship alone when the update does not mention the note", async () => {
+      mockFindUnique({
+        byId: { id: CONTACT_ID, email: null, notes: "warm", notesCreatedAt: new Date("2026-01-01") },
+      });
+      (mockPrisma.startupInvestor.update as jest.Mock).mockResolvedValue({ id: CONTACT_ID });
+
+      await service.updateInvestor(STARTUP_ID, CONTACT_ID, { sectorFocus: "Fintech" } as never, USER_ID);
+
+      expect(updateData()).toEqual({ sectorFocus: "Fintech" });
+    });
+  });
 });
 
 describe("InvestorService.deleteInvestor", () => {
@@ -377,7 +652,7 @@ describe("InvestorService.deleteInvestor", () => {
       message: "This contact has interaction logs and cannot be deleted",
     });
 
-    // The FK cascades — without the guard this delete would have destroyed the
+    // The FK cascades without the guard this delete would have destroyed the
     // logged history instead of failing.
     expect(mockPrisma.startupInvestor.delete).not.toHaveBeenCalled();
   });

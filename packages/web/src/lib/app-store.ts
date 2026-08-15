@@ -1,48 +1,51 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { notifications as seedNotifications, type Notification } from "./mock-data";
 
-/** Seeded Acme Corp startup — used until a real startup switcher is wired. */
-export const SEED_STARTUP_ID = "00000000-0000-0000-0000-000000000002";
+// Non-auth app state auth is managed by AuthProvider, and which workspace is
+// actually open is resolved by useWorkspace. This only remembers the user's
+// last explicit choice; it is a preference, not a source of truth, because the
+// stored id may point at a workspace they have since been removed from.
+//
+// Notifications used to live here as seeded mock data; they come from
+// GET /notifications now, via useNotifications.
+/** Months of history shown on the funding chart, or "all" for the whole round. */
+export type FundingChartRange = 3 | 6 | 12 | "all";
 
-// Non-auth app state — auth is managed by AuthProvider
 interface AppState {
-  activeStartupId: string;
+  preferredStartupId: string | null;
+  /** The round the founder last chose in each startup's pipeline. */
+  activeRoundIds: Record<string, string>;
+  /** The funding chart's time range, remembered per startup. */
+  fundingChartRanges: Record<string, FundingChartRange>;
   setActiveStartupId: (startupId: string) => void;
-  notifications: Notification[];
-  markNotificationRead: (id: string) => void;
-  markAllNotificationsRead: () => void;
+  setActiveRoundId: (startupId: string, roundId: string) => void;
+  setFundingChartRange: (startupId: string, range: FundingChartRange) => void;
+  /** Drops the stored preference it belongs to whoever was signed in. */
+  clearActiveStartupId: () => void;
 }
 
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
-      activeStartupId: SEED_STARTUP_ID,
-      setActiveStartupId: (startupId) => set({ activeStartupId: startupId }),
-      notifications: seedNotifications,
-      markNotificationRead: (id) =>
-        set((state) => ({
-          notifications: state.notifications.map((n) =>
-            n.id === id ? { ...n, read: true } : n,
-          ),
-        })),
-      markAllNotificationsRead: () =>
-        set((state) => ({
-          notifications: state.notifications.map((n) => (n.read ? n : { ...n, read: true })),
-        })),
+      preferredStartupId: null,
+      activeRoundIds: {},
+      fundingChartRanges: {},
+      setActiveStartupId: (startupId) => set({ preferredStartupId: startupId }),
+      setActiveRoundId: (startupId, roundId) =>
+        set((state) => ({ activeRoundIds: { ...state.activeRoundIds, [startupId]: roundId } })),
+      setFundingChartRange: (startupId, range) =>
+        set((state) => ({ fundingChartRanges: { ...state.fundingChartRanges, [startupId]: range } })),
+      clearActiveStartupId: () => set({ preferredStartupId: null }),
     }),
     {
-      name: "fp:app-store",
-      partialize: (state) => ({ activeStartupId: state.activeStartupId }),
+      // Bumped from the previous key: stored values were seeded with a
+      // hardcoded demo startup id that no longer means anything.
+      name: "fp:app-store:v2",
+      partialize: (state) => ({
+        preferredStartupId: state.preferredStartupId,
+        activeRoundIds: state.activeRoundIds,
+        fundingChartRanges: state.fundingChartRanges,
+      }),
     },
   ),
 );
-
-export const useUnreadNotificationCount = () =>
-  useAppStore((state) => state.notifications.reduce((total, n) => (n.read ? total : total + 1), 0));
-
-export const useActiveStartupId = () =>
-  useAppStore((state) => {
-    const id = state.activeStartupId;
-    return /^[0-9a-f-]{36}$/i.test(id) ? id : SEED_STARTUP_ID;
-  });

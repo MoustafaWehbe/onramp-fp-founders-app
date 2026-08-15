@@ -25,7 +25,6 @@ describe("createInteractionLogSchema", () => {
       pipelineId: "00000000-0000-0000-0000-000000000002",
       subject: "Follow-up call",
       description: "Discussed terms",
-      nextFollowupDate: "2025-02-01T10:00:00.000Z",
     });
     expect(result.success).toBe(true);
   });
@@ -81,14 +80,17 @@ describe("createInteractionLogSchema", () => {
     },
   );
 
-  it("accepts null for nextFollowupDate, not the 1970 epoch", () => {
+  // Tasks superseded follow-ups. The columns and their existing rows survive
+  // as read-only history, but nothing may write a new one, so the field is
+  // dropped rather than persisted.
+  it("ignores a nextFollowupDate instead of writing one", () => {
     const result = createInteractionLogSchema.safeParse({
       ...validBody,
-      nextFollowupDate: null,
+      nextFollowupDate: "2026-02-01T10:00:00.000Z",
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.nextFollowupDate).toBeNull();
+      expect(result.data).not.toHaveProperty("nextFollowupDate");
     }
   });
 
@@ -116,11 +118,16 @@ describe("updateInteractionLogSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("accepts null for nextFollowupDate to clear it, not the 1970 epoch", () => {
-    const result = updateInteractionLogSchema.safeParse({ nextFollowupDate: null });
+  it("ignores follow-up fields rather than writing them", () => {
+    const result = updateInteractionLogSchema.safeParse({
+      subject: "Updated",
+      nextFollowupDate: "2026-02-01T10:00:00.000Z",
+      followupCompletedAt: "2026-02-02T10:00:00.000Z",
+    });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.nextFollowupDate).toBeNull();
+      expect(result.data).not.toHaveProperty("nextFollowupDate");
+      expect(result.data).not.toHaveProperty("followupCompletedAt");
     }
   });
 

@@ -1,4 +1,4 @@
-// Global test setup — runs before each test file
+// Global test setup runs before each test file
 
 // Silence console output during tests
 global.console.info = jest.fn();

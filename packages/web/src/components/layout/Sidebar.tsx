@@ -1,11 +1,14 @@
-import { NavLink, useLocation } from "react-router-dom";
+import { useState } from "react";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Briefcase,
-  Building2,
+  Check,
   ChevronDown,
   FileText,
   LayoutDashboard,
   LogOut,
+  MessageCircle,
   MessageSquare,
   Plus,
   ScrollText,
@@ -19,7 +22,9 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
-import { cn } from "../../lib/utils";
+import { useWorkspace } from "../../hooks/useWorkspace";
+import { CreateStartupDialog } from "../startup/CreateStartupDialog";
+import { cn, getInitials } from "../../lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,7 +33,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "../ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Button } from "../ui/button";
 
 const navGroups = [
@@ -42,6 +47,7 @@ const navGroups = [
       { to: "/investors", label: "Investors", icon: Users },
       { to: "/pipeline", label: "Pipeline", icon: Briefcase },
       { to: "/fundraising", label: "Rounds", icon: Wallet },
+      { to: "/chat", label: "Chat", icon: MessageCircle },
     ],
   },
   {
@@ -62,7 +68,6 @@ const navGroups = [
     label: "Workspace",
     items: [
       { to: "/team", label: "Team & Roles", icon: UserCog },
-      { to: "/startup", label: "Startup", icon: Building2 },
       { to: "/audit", label: "Audit Log", icon: ScrollText },
       { to: "/settings", label: "Settings", icon: Settings },
     ],
@@ -103,7 +108,7 @@ export function Sidebar({ className, onNavigate, onClose }: SidebarProps) {
       </div>
 
       <div className="px-3 py-3">
-        <StartupSwitcher />
+        <StartupSwitcher onNavigate={onNavigate} />
       </div>
 
       <nav className="scrollbar-slim min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4">
@@ -165,6 +170,7 @@ function UserMenu({ onNavigate }: { onNavigate?: () => void }) {
       <DropdownMenuTrigger asChild>
         <button className="group flex w-full items-center gap-2.5 rounded-xl border border-border/70 bg-card/95 px-3 py-2.5 text-left shadow-[0_1px_0_0_rgba(255,255,255,0.03)_inset,0_8px_20px_-14px_rgba(0,0,0,0.7)] transition-colors duration-200 hover:border-primary/40 hover:bg-surface-hover focus:outline-none focus:ring-1 focus:ring-ring data-[state=open]:border-primary/40 data-[state=open]:bg-surface-hover">
           <Avatar className="h-9 w-9 shrink-0 ring-1 ring-primary/15">
+            <AvatarImage src={user?.avatarUrl ?? undefined} alt={displayName} className="object-cover" />
             <AvatarFallback className="bg-primary/15 font-display text-xs font-semibold text-primary">
               {initials}
             </AvatarFallback>
@@ -186,8 +192,8 @@ function UserMenu({ onNavigate }: { onNavigate?: () => void }) {
       >
         <DropdownMenuLabel>Account</DropdownMenuLabel>
         <DropdownMenuItem asChild>
-          {/* Closes the mobile drawer too — otherwise it stays open over Settings. */}
-          <NavLink to="/settings" onClick={onNavigate}>
+          {/* Closes the mobile drawer too otherwise it stays open over Settings. */}
+          <NavLink to="/profile" onClick={onNavigate}>
             <User className="mr-2 h-4 w-4" /> Profile
           </NavLink>
         </DropdownMenuItem>
@@ -200,17 +206,49 @@ function UserMenu({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function StartupSwitcher() {
+const FUNDING_STAGE_LABELS: Record<string, string> = {
+  pre_seed: "Pre-seed",
+  seed: "Seed",
+  series_a: "Series A",
+  series_b: "Series B",
+  series_c: "Series C",
+};
+
+function StartupSwitcher({ onNavigate }: { onNavigate?: () => void }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { startups, activeStartup, setActiveStartupId } = useWorkspace();
+  const [createOpen, setCreateOpen] = useState(false);
+
+  if (!activeStartup) return null;
+
+  const subtitle = [
+    FUNDING_STAGE_LABELS[activeStartup.fundingStage] ?? activeStartup.fundingStage,
+    activeStartup.industry,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  function switchTo(startupId: string) {
+    if (startupId === activeStartup?.id) return;
+    setActiveStartupId(startupId);
+    // Every cached list is keyed by startup id, so the new workspace's queries
+    // simply miss the cache but drop the old ones so a switch back is fresh.
+    void queryClient.invalidateQueries();
+    onNavigate?.();
+    navigate("/dashboard");
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button className="group flex w-full items-center gap-2.5 rounded-xl border border-border/70 bg-card/95 px-3 py-2.5 text-left text-sm shadow-[0_1px_0_0_rgba(255,255,255,0.03)_inset,0_8px_20px_-14px_rgba(0,0,0,0.7)] transition-colors duration-200 hover:border-primary/40 hover:bg-surface-hover focus:outline-none focus:ring-1 focus:ring-ring data-[state=open]:border-primary/40 data-[state=open]:bg-surface-hover">
           <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-primary font-display text-xs font-bold text-primary-foreground">
-            AC
+            {getInitials(activeStartup.name)}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate font-medium text-foreground">Acme Corp</div>
-            <div className="truncate text-xs text-muted-foreground">Pre-Seed · $500k target</div>
+            <div className="truncate font-medium text-foreground">{activeStartup.name}</div>
+            {subtitle && <div className="truncate text-xs text-muted-foreground">{subtitle}</div>}
           </div>
           <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
         </button>
@@ -221,13 +259,34 @@ function StartupSwitcher() {
         className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-56"
       >
         <DropdownMenuLabel>Startups</DropdownMenuLabel>
-        <DropdownMenuItem>Acme Corp</DropdownMenuItem>
-        <DropdownMenuItem disabled>Northwind Labs</DropdownMenuItem>
+        {startups.map((startup) => (
+          <DropdownMenuItem key={startup.id} onSelect={() => switchTo(startup.id)}>
+            <div className="min-w-0 flex-1">
+              <div className="truncate">{startup.name}</div>
+              <div className="truncate text-xs capitalize text-muted-foreground">
+                {startup.member.role}
+              </div>
+            </div>
+            {startup.id === activeStartup.id && (
+              <Check className="ml-2 h-4 w-4 shrink-0 text-primary" />
+            )}
+          </DropdownMenuItem>
+        ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => setCreateOpen(true)}>
           <Plus className="mr-2 h-4 w-4" /> New startup
         </DropdownMenuItem>
       </DropdownMenuContent>
+
+      <CreateStartupDialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          // The dialog switches into the new workspace itself; closing it is
+          // the moment the mobile nav has finished its job.
+          if (!open) onNavigate?.();
+        }}
+      />
     </DropdownMenu>
   );
 }

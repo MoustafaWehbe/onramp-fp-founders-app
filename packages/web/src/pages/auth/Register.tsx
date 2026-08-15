@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -52,9 +52,14 @@ function PasswordStrength({ password }: { password: string }) {
 }
 
 function Register() {
+  // Arriving from /accept-invite: the invited address is prefilled because the
+  // API only claims pending invites that match the verified email exactly.
+  const [searchParams] = useSearchParams();
+  const invitedEmail = searchParams.get("email");
+
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(invitedEmail ?? "");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { registerInitiate } = useAuthContext();
@@ -86,13 +91,25 @@ function Register() {
     <div>
       <h1 className="font-display text-2xl font-semibold">Create your account</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Start as a user. You can create a startup or accept an invite once you're in.
+        {invitedEmail
+          ? "Finish signing up and you'll land straight in the workspace you were invited to."
+          : "Start as a user. You can create a startup or accept an invite once you're in."}
       </p>
 
       <div className="mt-6 rounded-md border border-border bg-surface p-3 text-xs text-muted-foreground">
-        <strong className="text-foreground">Heads up:</strong> registering only creates{" "}
-        <em>you</em> no startup yet. Waiting on a team invite? Sign up, then paste the invite
-        link.
+        {invitedEmail ? (
+          <>
+            <strong className="text-foreground">Your invitation is tied to this email.</strong>{" "}
+            Sign up with <em>{invitedEmail}</em> and you'll join the workspace as soon as you
+            verify it. Registering with a different address won't accept the invite.
+          </>
+        ) : (
+          <>
+            <strong className="text-foreground">Heads up:</strong> registering only creates{" "}
+            <em>you</em> no startup yet. Waiting on a team invite? Sign up, then open the invite
+            link from your email.
+          </>
+        )}
       </div>
 
       <form onSubmit={onSubmit} className="mt-6 space-y-4">

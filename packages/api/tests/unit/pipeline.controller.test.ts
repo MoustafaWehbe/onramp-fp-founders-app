@@ -5,6 +5,9 @@ import { app } from "../../app";
 jest.mock("../../src/middleware/rate-limiter", () => ({
   rateLimiter: (_req: any, _res: any, next: any) => next(),
   authRateLimiter: (_req: any, _res: any, next: any) => next(),
+  credentialRateLimiter: (_req: any, _res: any, next: any) => next(),
+  emailSendRateLimiter: (_req: any, _res: any, next: any) => next(),
+  scheduleMeetingRateLimiter: (_req: any, _res: any, next: any) => next(),
 }));
 
 jest.mock("../../src/db/prisma", () => ({
@@ -21,6 +24,8 @@ jest.mock("../../src/services/pipeline.service", () => ({
     getEntry: jest.fn(),
     updateEntry: jest.fn(),
     deleteEntry: jest.fn(),
+    getAnalytics: jest.fn(),
+    listStageEvents: jest.fn(),
   },
 }));
 
@@ -83,6 +88,8 @@ describe("POST /api/v1/startups/:startupId/pipeline", () => {
         expectedAmount: 100000,
         probabilityPercentage: 25,
       }),
+      // The actor is attributed on the stage event, never taken from the body.
+      USER_ID,
     );
   });
 
@@ -176,6 +183,7 @@ describe("PATCH /api/v1/startups/:startupId/pipeline/:pipelineId", () => {
       STARTUP_ID,
       PIPELINE_ID,
       expect.objectContaining({ stage: "committed", probabilityPercentage: 90 }),
+      USER_ID,
     );
   });
 
@@ -212,5 +220,27 @@ describe("DELETE /api/v1/startups/:startupId/pipeline/:pipelineId", () => {
 
     expect(res.status).toBe(403);
     expect(mockService.deleteEntry).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/v1/startups/:startupId/pipeline/:pipelineId/stage-events", () => {
+  it("returns 200 with the stage history", async () => {
+    mockService.listStageEvents.mockResolvedValue({
+      data: [{ id: "e1", fromStage: null, toStage: "sourced" }],
+    } as never);
+
+    const res = await request(app)
+      .get(`${BASE}/${PIPELINE_ID}/stage-events`)
+      .set("Cookie", [accessCookie()]);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(mockService.listStageEvents).toHaveBeenCalledWith(STARTUP_ID, PIPELINE_ID);
+  });
+
+  it("returns 401 without an auth cookie", async () => {
+    const res = await request(app).get(`${BASE}/${PIPELINE_ID}/stage-events`);
+    expect(res.status).toBe(401);
+    expect(mockService.listStageEvents).not.toHaveBeenCalled();
   });
 });

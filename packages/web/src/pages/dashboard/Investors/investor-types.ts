@@ -1,5 +1,5 @@
 import type { PipelineStageId } from "../../../lib/mock-data";
-import type { InvestorContact } from "../../../lib/pipeline-api";
+import type { InvestorListItem, InvestorType } from "../../../lib/investor-api";
 
 export type InvestorRow = {
   id: string;
@@ -8,11 +8,16 @@ export type InvestorRow = {
   firm: string;
   sector: string;
   stagePreference: string;
+  investorType: InvestorType | null;
   pipelineStageId: PipelineStageId | null;
   pipelineId: string | null;
+  /** Which round `amount` belongs to look up its currency, never assume USD. */
+  roundId: string | null;
   amount: number | null;
   lastContact: string;
   linkedinUrl: string | null;
+  /** Kept so the edit dialog can be opened straight from a row. */
+  contact: InvestorListItem;
 };
 
 function formatRelativeDate(iso: string | null | undefined): string {
@@ -31,7 +36,7 @@ function formatRelativeDate(iso: string | null | undefined): string {
   return date.toLocaleDateString();
 }
 
-export function mapContactToRow(contact: InvestorContact): InvestorRow {
+export function mapContactToRow(contact: InvestorListItem): InvestorRow {
   return {
     id: contact.id,
     name: contact.fullName,
@@ -39,10 +44,17 @@ export function mapContactToRow(contact: InvestorContact): InvestorRow {
     firm: contact.ventureFirm ?? "—",
     sector: contact.sectorFocus ?? "—",
     stagePreference: contact.investmentStagePreference ?? "—",
+    investorType: contact.investorType,
     pipelineStageId: contact.pipeline?.stage ?? null,
     pipelineId: contact.pipeline?.id ?? null,
+    roundId: contact.pipeline?.roundId ?? null,
     amount: contact.pipeline?.expectedAmount ?? null,
-    lastContact: formatRelativeDate(contact.nextFollowupDate ?? contact.updatedAt),
+    // Strictly the last interaction on record. It used to read
+    // nextFollowupDate a *future* date, which formatRelativeDate renders as
+    // "Today" falling back to updatedAt, which moves when the contact's
+    // details are edited rather than when anyone spoke to them.
+    lastContact: formatRelativeDate(contact.lastInteractionDate),
     linkedinUrl: contact.linkedinUrl,
+    contact,
   };
 }

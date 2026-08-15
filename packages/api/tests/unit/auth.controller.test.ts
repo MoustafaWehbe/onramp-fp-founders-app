@@ -4,6 +4,9 @@ import { app } from "../../app";
 jest.mock("../../src/middleware/rate-limiter", () => ({
   rateLimiter: (_req: any, _res: any, next: any) => next(),
   authRateLimiter: (_req: any, _res: any, next: any) => next(),
+  credentialRateLimiter: (_req: any, _res: any, next: any) => next(),
+  emailSendRateLimiter: (_req: any, _res: any, next: any) => next(),
+  scheduleMeetingRateLimiter: (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../src/db/prisma", () => ({ prisma: {} }));
 jest.mock("../../src/config/email", () => ({ resend: {} }));
@@ -389,6 +392,50 @@ describe("POST /api/v1/auth/google", () => {
     expect(res.body.data.is_new_user).toBe(false);
     const cookies = res.headers["set-cookie"] as unknown as string[];
     expect(cookies.some((c: string) => c.startsWith("accessToken="))).toBe(true);
+  });
+});
+
+// POST /api/v1/auth/refresh
+
+describe("POST /api/v1/auth/refresh", () => {
+  it("returns 200 and sets fresh cookies on a valid refresh token", async () => {
+    mock.refresh.mockResolvedValue({
+      accessToken: "new.access.token",
+      refreshToken: "new.refresh.token",
+    });
+
+    const res = await request(app)
+      .post("/api/v1/auth/refresh")
+      .send({ refreshToken: "old.refresh.token" });
+
+    expect(res.status).toBe(200);
+    const cookies = res.headers["set-cookie"] as unknown as string[];
+    expect(cookies.some((c: string) => c.startsWith("accessToken=new.access.token"))).toBe(true);
+    expect(cookies.some((c: string) => c.startsWith("refreshToken=new.refresh.token"))).toBe(true);
+  });
+
+  it("returns 401 when no refresh token is supplied", async () => {
+    const res = await request(app).post("/api/v1/auth/refresh").send({});
+    expect(res.status).toBe(401);
+  });
+
+  // A refresh token that's missing, expired, or already revoked will never
+  // work again the stale cookies must be cleared so the browser stops
+  // resending a dead token on every subsequent request.
+  it("clears the auth cookies when the refresh token is invalid", async () => {
+    mock.refresh.mockRejectedValue(
+      Object.assign(new Error("Invalid refresh token"), { statusCode: 401, code: "INVALID_TOKEN" }),
+    );
+
+    const res = await request(app)
+      .post("/api/v1/auth/refresh")
+      .send({ refreshToken: "dead.refresh.token" });
+
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("INVALID_TOKEN");
+    const cookies = res.headers["set-cookie"] as unknown as string[];
+    expect(cookies.some((c: string) => c.startsWith("accessToken=;"))).toBe(true);
+    expect(cookies.some((c: string) => c.startsWith("refreshToken=;"))).toBe(true);
   });
 });
 

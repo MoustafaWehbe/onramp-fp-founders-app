@@ -11,13 +11,37 @@ const REQUIRED: Record<string, string[]> = {
     "RESEND_FROM",
     "GOOGLE_CLIENT_ID",
   ],
+  // Only required once a deployment actually offers the Google integration —
+  // most self-hosted instances of this starter kit will never set these, and
+  // login-with-Google must keep working without them.
+  googleIntegration: [
+    "GOOGLE_CLIENT_SECRET",
+    "GOOGLE_REDIRECT_URI",
+    "GOOGLE_TOKEN_ENCRYPTION_KEY",
+  ],
 };
+
+/**
+ * Whether this deployment has Google Calendar/Gmail integration configured.
+ * Checked at call time (not cached) so tests can toggle it by setting env vars.
+ */
+export function isGoogleIntegrationEnabled(): boolean {
+  return REQUIRED.googleIntegration.every((key) => Boolean(process.env[key]));
+}
+
+export function getGoogleRedirectUri(): string {
+  const uri = process.env.GOOGLE_REDIRECT_URI;
+  if (uri) return uri;
+  // Dev fallback: the API is reached through the frontend's dev-server proxy,
+  // so the redirect Google is sent back to must be the frontend origin too.
+  return `${getAppUrl()}/api/v1/integrations/google/callback`;
+}
 
 export function getAppUrl(): string {
   const raw = process.env.APP_URL ?? process.env.CORS_ORIGIN;
 
   if (!raw) {
-    throw new Error("APP_URL is not set (CORS_ORIGIN is unset too) — cannot build email links");
+    throw new Error("APP_URL is not set (CORS_ORIGIN is unset too) cannot build email links");
   }
 
   let parsed: URL;
@@ -32,6 +56,33 @@ export function getAppUrl(): string {
   }
 
   return raw.replace(/\/+$/, "");
+}
+
+/**
+ * How many reverse proxies sit in front of this process, as an Express
+ * `trust proxy` value.
+ *
+ * This drives `req.ip`, which is what every rate limiter keys on. Get it wrong
+ * in either direction and the limiters break: too low and every request behind
+ * a load balancer shares the proxy's IP, so one attacker locks out all users;
+ * too high (or `true`) and a client can forge `X-Forwarded-For` to present a
+ * fresh IP on every request and never be limited at all.
+ *
+ * Defaults to 0 trust nothing which is correct for local development and
+ * for a process exposed directly. Set TRUST_PROXY to the number of hops you
+ * actually run behind (typically 1 for a single nginx/ALB/Cloudflare layer).
+ */
+export function getTrustProxy(): number | string | boolean {
+  const raw = process.env.TRUST_PROXY?.trim();
+  if (!raw) return 0;
+
+  const hops = Number(raw);
+  if (Number.isInteger(hops) && hops >= 0) return hops;
+
+  // Anything else is treated as a comma-separated list of trusted addresses or
+  // subnets, which Express parses itself. `true` is deliberately not special-
+  // cased spell out the hop count or the addresses instead.
+  return raw;
 }
 
 export function validateEnv(): void {
@@ -51,6 +102,22 @@ export function validateEnv(): void {
     getAppUrl();
   } catch (err) {
     problems.push((err as Error).message);
+  }
+
+  // Partial Google-integration config is worse than none: it would let a
+  // connect attempt start and fail deep inside the OAuth exchange instead of
+  // at boot. Either every var is set, or none are.
+  const googleVarsSet = REQUIRED.googleIntegration.filter((key) => Boolean(process.env[key]));
+  if (googleVarsSet.length > 0 && googleVarsSet.length < REQUIRED.googleIntegration.length) {
+    const missing = REQUIRED.googleIntegration.filter((key) => !process.env[key]);
+    problems.push(
+      `Partial Google integration config: set ${missing.join(", ")} too, or unset ${googleVarsSet.join(", ")}`,
+    );
+  }
+
+  const encryptionKey = process.env.GOOGLE_TOKEN_ENCRYPTION_KEY;
+  if (encryptionKey && !/^[0-9a-f]{64}$/i.test(encryptionKey)) {
+    problems.push("GOOGLE_TOKEN_ENCRYPTION_KEY must be a 64-character hex string (32 bytes)");
   }
 
   if (problems.length > 0) {

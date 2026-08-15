@@ -15,7 +15,13 @@ import { createError, type AppError } from "../utils/errors";
 import { inviteService } from "./invite.service";
 import { getAppUrl } from "../config/env";
 
-const USER_SELECT = { id: true, email: true, firstName: true, lastName: true } as const;
+const USER_SELECT = {
+  id: true,
+  email: true,
+  firstName: true,
+  lastName: true,
+  avatarUrl: true,
+} as const;
 
 interface RegisterInitiateInput {
   first_name: string;
@@ -69,7 +75,7 @@ export class AuthService {
           authProvider: "local",
           emailVerifiedAt: new Date(),
         },
-        select: { id: true, email: true, firstName: true, lastName: true },
+        select: USER_SELECT,
       });
 
       await tx.pendingRegistration.delete({ where: { email: input.email } });
@@ -114,13 +120,12 @@ export class AuthService {
 
     const { raw: rawOtp, hash: otpHash } = generateOTP();
 
-    await prisma.pendingRegistration.delete({ where: { email } });
-    await prisma.pendingRegistration.create({
+    // Carry the failed-attempt count across the reissue. Starting the new row
+    // at zero would let a caller sit just under MAX_OTP_ATTEMPTS, resend, and
+    // guess again indefinitely the cap has to survive a new code.
+    await prisma.pendingRegistration.update({
+      where: { email },
       data: {
-        firstName: pending.firstName,
-        lastName: pending.lastName,
-        email,
-        passwordHash: pending.passwordHash,
         otpHash,
         otpExpiresAt: new Date(Date.now() + OTP_TTL_MS),
       },
@@ -206,7 +211,13 @@ export class AuthService {
     });
 
     return {
-      user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName },
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        avatarUrl: user.avatarUrl,
+      },
       accessToken,
       refreshToken: rawRefresh,
     };
@@ -221,7 +232,7 @@ export class AuthService {
       throw createError("Invalid refresh token", 401, "INVALID_TOKEN");
     }
 
-    // REPLAY ATTACK DETECTION — if token was already revoked, revoke entire family
+    // REPLAY ATTACK DETECTION if token was already revoked, revoke entire family
     if (stored.revokedAt !== null) {
       if (stored.familyId) {
         await prisma.refreshToken.updateMany({
@@ -229,7 +240,7 @@ export class AuthService {
           data: { revokedAt: new Date() },
         });
       } else {
-        // No familyId — fall back to revoking all sessions for this user
+        // No familyId fall back to revoking all sessions for this user
         await prisma.refreshToken.updateMany({
           where: { userId: stored.userId, revokedAt: null },
           data: { revokedAt: new Date() },
@@ -275,7 +286,7 @@ export class AuthService {
   }
   async forgotPassword(input: { email: string }) {
     const user = await prisma.user.findUnique({ where: { email: input.email } });
-    // Always return 200 — prevent email enumeration
+    // Always return 200 prevent email enumeration
     if (!user) {
       return {
         message: "If an account exists with that email, a password reset link has been sent.",
@@ -488,6 +499,7 @@ export class AuthService {
         avatarUrl: true,
         emailVerifiedAt: true,
         createdAt: true,
+        lastActiveStartupId: true,
       },
     });
     if (!user) throw createError("User not found", 404);

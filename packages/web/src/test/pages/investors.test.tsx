@@ -1,0 +1,353 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
+import { AxiosError, AxiosHeaders } from "axios";
+import type { InvestorListItem } from "../../lib/investor-api";
+
+const listInvestors = vi.fn();
+const createInvestor = vi.fn();
+const updateInvestor = vi.fn();
+const deleteInvestor = vi.fn();
+
+vi.mock("../../lib/investor-api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/investor-api")>()),
+  listInvestors: (...a: unknown[]) => listInvestors(...a),
+  createInvestor: (...a: unknown[]) => createInvestor(...a),
+  updateInvestor: (...a: unknown[]) => updateInvestor(...a),
+  deleteInvestor: (...a: unknown[]) => deleteInvestor(...a),
+}));
+
+const createPipelineEntry = vi.fn();
+vi.mock("../../lib/pipeline-api", () => ({
+  createPipelineEntry: (...a: unknown[]) => createPipelineEntry(...a),
+}));
+vi.mock("../../lib/fundraising-api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/fundraising-api")>()),
+  listFundraisingRounds: vi.fn().mockResolvedValue({ data: [], meta: {} }),
+}));
+vi.mock("../../hooks/useWorkspace", () => ({ useActiveStartupId: () => "startup-1" }));
+vi.mock("../../hooks/useGoogleConnection", () => ({
+  useGoogleConnectionStatus: () => ({ data: { connected: true, configured: true } }),
+}));
+
+let role = "owner";
+vi.mock("../../hooks/usePermissions", async (importOriginal) => {
+  const { roleCan } = await import("../../lib/permissions");
+  void importOriginal;
+  return {
+    usePermissions: () => ({ role, can: (r: never, a: never) => roleCan(role, r, a) }),
+  };
+});
+
+const toast = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), message: vi.fn() };
+vi.mock("sonner", () => ({ toast }));
+
+const { Investors } = await import("../../pages/dashboard/Investors/Investors");
+
+function contact(id: string, fullName: string, inPipeline = false): InvestorListItem {
+  return {
+    id,
+    startupId: "startup-1",
+    fullName,
+    email: `${id}@fund.com`,
+    ventureFirm: "Acme Ventures",
+    investorType: "vc",
+    sectorFocus: "Fintech",
+    investmentStagePreference: "Seed",
+    linkedinUrl: null,
+    notes: null,
+    notesCreatedAt: null,
+    notesCreatedBy: null,
+    notesUpdatedAt: null,
+    notesUpdatedBy: null,
+    source: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    pipeline: inPipeline
+      ? { id: `p-${id}`, roundId: "round-1", stage: "term_sheet", expectedAmount: 250000, probabilityPercentage: 60 }
+      : null,
+    nextFollowupDate: null,
+    lastInteractionDate: null,
+  };
+}
+
+function page(rows: InvestorListItem[], engaged = 2, prospect = 5) {
+  return {
+    data: rows,
+    meta: {
+      page: 1,
+      limit: 25,
+      total: rows.length,
+      totalPages: 1,
+      engagementCounts: { engaged, prospect },
+    },
+  };
+}
+
+function apiError(status: number, code: string, message: string) {
+  return new AxiosError(message, String(status), undefined, null, {
+    status,
+    statusText: "",
+    data: { code, error: message },
+    headers: {},
+    config: { headers: new AxiosHeaders() },
+  });
+}
+
+function renderInvestors() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <Investors />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+/** The most recent set of query params the page asked the API for. */
+function lastQuery() {
+  return listInvestors.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  role = "owner";
+  listInvestors.mockResolvedValue(page([contact("i1", "Ada Lovelace", true)]));
+});
+
+describe("Investors", () => {
+  it("opens on My investors and asks the API for engaged contacts only", async () => {
+    renderInvestors();
+
+    await waitFor(() => expect(listInvestors).toHaveBeenCalled());
+    expect(lastQuery()).toMatchObject({ engagement: "engaged", page: 1 });
+    expect(await screen.findAllByText("Ada Lovelace")).not.toHaveLength(0);
+  });
+
+  it("labels both tabs from the counts in one response", async () => {
+    renderInvestors();
+
+    // Wait for the response, not just the request the badges start at 0.
+    await screen.findAllByText("Ada Lovelace");
+    const tabs = screen.getAllByRole("tab");
+    expect(within(tabs[0]).getByText("2")).toBeInTheDocument();
+    expect(within(tabs[1]).getByText("5")).toBeInTheDocument();
+  });
+
+  it("re-queries for prospects when the other tab is selected", async () => {
+    const user = userEvent.setup();
+    renderInvestors();
+    await waitFor(() => expect(listInvestors).toHaveBeenCalled());
+
+    await user.click(screen.getByRole("tab", { name: /Prospects/ }));
+
+    await waitFor(() => expect(lastQuery()).toMatchObject({ engagement: "prospect" }));
+  });
+
+  // A chart segment elsewhere in the app (the Dashboard's stage pie, a
+  // funnel bar) links here as "?tab=engaged&stage=X" to open pre-filtered to
+  // what was clicked, rather than dumping the founder on an unfiltered list.
+  describe("opened from a chart segment", () => {
+    const originalLocation = window.location.href;
+
+    afterEach(() => {
+      window.history.pushState({}, "", originalLocation);
+    });
+
+    it("reads the stage filter out of the URL on load", async () => {
+      window.history.pushState({}, "", "/investors?tab=engaged&stage=meeting_scheduled");
+      renderInvestors();
+
+      await waitFor(() =>
+        expect(lastQuery()).toMatchObject({ engagement: "engaged", stage: "meeting_scheduled" }),
+      );
+    });
+
+    it("ignores a stage id that isn't real rather than sending it to the API", async () => {
+      window.history.pushState({}, "", "/investors?tab=engaged&stage=not-a-real-stage");
+      renderInvestors();
+
+      await waitFor(() => expect(listInvestors).toHaveBeenCalled());
+      expect(lastQuery()).not.toHaveProperty("stage");
+    });
+
+    it("defaults to the engaged tab when the URL only names a stage", async () => {
+      window.history.pushState({}, "", "/investors?stage=sourced");
+      renderInvestors();
+
+      await waitFor(() => expect(lastQuery()).toMatchObject({ engagement: "engaged", stage: "sourced" }));
+    });
+  });
+
+  it("drops the stage filter on the prospects tab, where it cannot apply", async () => {
+    const user = userEvent.setup();
+    renderInvestors();
+    await waitFor(() => expect(listInvestors).toHaveBeenCalled());
+
+    // Stage is only offered while viewing engaged contacts.
+    expect(screen.getByRole("button", { name: "Stage" })).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: /Prospects/ }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Stage" })).not.toBeInTheDocument(),
+    );
+    expect(lastQuery()).not.toHaveProperty("stage");
+  });
+
+  it("sends the search to the API instead of filtering in memory", async () => {
+    const user = userEvent.setup();
+    renderInvestors();
+    await waitFor(() => expect(listInvestors).toHaveBeenCalled());
+
+    await user.type(screen.getByLabelText("Search investors"), "accel");
+
+    await waitFor(() => expect(lastQuery()).toMatchObject({ search: "accel" }), {
+      timeout: 2000,
+    });
+  });
+
+  it("creates an investor from the add dialog", async () => {
+    createInvestor.mockResolvedValue({ ...contact("new", "Grace Hopper") });
+    const user = userEvent.setup();
+    renderInvestors();
+    await waitFor(() => expect(listInvestors).toHaveBeenCalled());
+
+    await user.click(screen.getByRole("button", { name: /add investor/i }));
+    await user.type(screen.getByLabelText("Full name"), "Grace Hopper");
+    await user.click(screen.getByRole("button", { name: "Add investor" }));
+
+    await waitFor(() =>
+      expect(createInvestor).toHaveBeenCalledWith(
+        "startup-1",
+        expect.objectContaining({ fullName: "Grace Hopper" }),
+      ),
+    );
+  });
+
+  it("sends blank optional fields as null so they can be cleared", async () => {
+    createInvestor.mockResolvedValue({ ...contact("new", "Grace Hopper") });
+    const user = userEvent.setup();
+    renderInvestors();
+    await waitFor(() => expect(listInvestors).toHaveBeenCalled());
+
+    await user.click(screen.getByRole("button", { name: /add investor/i }));
+    await user.type(screen.getByLabelText("Full name"), "Grace Hopper");
+    await user.click(screen.getByRole("button", { name: "Add investor" }));
+
+    await waitFor(() => expect(createInvestor).toHaveBeenCalled());
+    const [, input] = createInvestor.mock.calls[0];
+    expect(input.email).toBeNull();
+    expect(input.ventureFirm).toBeNull();
+    expect(input.investorType).toBeNull();
+  });
+
+  it("explains a duplicate email rather than showing the raw error", async () => {
+    createInvestor.mockRejectedValue(
+      apiError(409, "DUPLICATE_EMAIL", "This startup already has a contact with that email"),
+    );
+    const user = userEvent.setup();
+    renderInvestors();
+    await waitFor(() => expect(listInvestors).toHaveBeenCalled());
+
+    await user.click(screen.getByRole("button", { name: /add investor/i }));
+    await user.type(screen.getByLabelText("Full name"), "Ada Lovelace");
+    await user.type(screen.getByLabelText("Email"), "ada@fund.com");
+    await user.click(screen.getByRole("button", { name: "Add investor" }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Another contact in this workspace already uses that email.",
+      ),
+    );
+  });
+
+  it("confirms before deleting, and explains when the API refuses", async () => {
+    deleteInvestor.mockRejectedValue(
+      apiError(409, "HAS_DEPENDENTS", "This contact has pipeline entries"),
+    );
+    const user = userEvent.setup();
+    renderInvestors();
+    await screen.findAllByText("Ada Lovelace");
+
+    await user.click(screen.getAllByRole("button", { name: "Actions for Ada Lovelace" })[0]);
+    await user.click(await screen.findByRole("menuitem", { name: /delete investor/i }));
+
+    expect(await screen.findByText("Delete Ada Lovelace?")).toBeInTheDocument();
+    expect(deleteInvestor).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Delete investor" }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "This contact has pipeline entries, commitments or logged interactions, so it can't be deleted.",
+      ),
+    );
+  });
+
+  it("adds every selected contact to the pipeline in one action", async () => {
+    listInvestors.mockResolvedValue(
+      page([contact("i1", "Ada Lovelace"), contact("i2", "Grace Hopper")]),
+    );
+    createPipelineEntry.mockResolvedValue({ id: "deal-1" });
+    const user = userEvent.setup();
+    renderInvestors();
+
+    await screen.findAllByText("Ada Lovelace");
+    await user.click(screen.getByRole("button", { name: "Select" }));
+    await user.click(screen.getAllByText("Ada Lovelace")[0]);
+    await user.click(screen.getAllByText("Grace Hopper")[0]);
+    await user.click(screen.getByRole("button", { name: /Add to pipeline/ }));
+
+    await waitFor(() => expect(createPipelineEntry).toHaveBeenCalledTimes(2));
+    expect(createPipelineEntry).toHaveBeenCalledWith(
+      "startup-1",
+      expect.objectContaining({ investorId: "i1", stage: "sourced" }),
+    );
+    expect(createPipelineEntry).toHaveBeenCalledWith(
+      "startup-1",
+      expect.objectContaining({ investorId: "i2", stage: "sourced" }),
+    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("2 investors added to pipeline"));
+  });
+
+  it("keeps only the contacts that failed selected, after a partial bulk add", async () => {
+    listInvestors.mockResolvedValue(
+      page([contact("i1", "Ada Lovelace"), contact("i2", "Grace Hopper", true)]),
+    );
+    createPipelineEntry.mockImplementation((_startupId: string, body: { investorId: string }) =>
+      body.investorId === "i2"
+        ? Promise.reject(apiError(409, "ALREADY_IN_PIPELINE", "Already in pipeline"))
+        : Promise.resolve({ id: "deal-1" }),
+    );
+    const user = userEvent.setup();
+    renderInvestors();
+
+    await screen.findAllByText("Ada Lovelace");
+    await user.click(screen.getByRole("button", { name: "Select" }));
+    await user.click(screen.getAllByText("Ada Lovelace")[0]);
+    await user.click(screen.getAllByText("Grace Hopper")[0]);
+    await user.click(screen.getByRole("button", { name: /Add to pipeline/ }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("1 added, 1 could not be added")),
+    );
+    expect(screen.getAllByText("Ada Lovelace")[0].closest("tr")).toHaveAttribute("aria-selected", "false");
+    expect(screen.getAllByText("Grace Hopper")[0].closest("tr")).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("gives a viewer no way to add, edit or delete", async () => {
+    role = "viewer";
+    const user = userEvent.setup();
+    renderInvestors();
+    await screen.findAllByText("Ada Lovelace");
+
+    expect(screen.queryByRole("button", { name: /add investor/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "Actions for Ada Lovelace" })[0]);
+    expect(screen.queryByRole("menuitem", { name: /edit details/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /delete investor/i })).not.toBeInTheDocument();
+  });
+});

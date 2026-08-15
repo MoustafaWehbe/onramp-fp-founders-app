@@ -9,6 +9,7 @@ export const PERMISSIONS = [
   { resource: "team", action: "create", description: "Invite team members" },
   { resource: "team", action: "update", description: "Change member roles" },
   { resource: "team", action: "delete", description: "Remove team members" },
+  { resource: "team", action: "manage", description: "Create and edit roles and permission grants" },
 
   // CRM / Pipeline
   { resource: "pipeline", action: "read", description: "View investors and pipeline" },
@@ -32,6 +33,11 @@ export const PERMISSIONS = [
   // AI
   { resource: "ai_reports", action: "read", description: "View AI analyses and chat" },
   { resource: "ai_reports", action: "create", description: "Trigger AI analysis and start chats" },
+
+  // Team chat
+  { resource: "chat", action: "read", description: "View conversations" },
+  { resource: "chat", action: "create", description: "Post messages and create channels" },
+  { resource: "chat", action: "manage", description: "Archive channels, remove any message" },
 ] as const;
 
 export const ROLE_TEMPLATES = {
@@ -39,6 +45,7 @@ export const ROLE_TEMPLATES = {
   collaborator: [
     "startup:read",
     "team:read",
+    "team:create",
     "pipeline:read",
     "pipeline:create",
     "pipeline:update",
@@ -48,14 +55,17 @@ export const ROLE_TEMPLATES = {
     "financial:read",
     "ai_reports:read",
     "ai_reports:create",
+    "chat:read",
+    "chat:create",
   ],
   viewer: [
     "startup:read",
     "team:read",
     "pipeline:read",
     "documents:read",
-    "financial:read",
     "ai_reports:read",
+    "chat:read",
+    "chat:create",
   ],
 } as const;
 

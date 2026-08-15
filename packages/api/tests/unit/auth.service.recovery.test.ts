@@ -394,3 +394,60 @@ describe("AuthService.resetPassword", () => {
     });
   });
 });
+
+describe("AuthService.registerResend", () => {
+  const PENDING = {
+    id: "pending-1",
+    firstName: "Alice",
+    lastName: "Smith",
+    email: "alice@example.com",
+    passwordHash: "$2a$12$hash",
+    otpHash: "old-otp-hash",
+    otpExpiresAt: new Date(Date.now() + 600_000),
+    attempts: 4,
+    createdAt: new Date(),
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("reissues a code without resetting the failed-attempt count", async () => {
+    mockPrisma.pendingRegistration.findUnique.mockResolvedValue(PENDING as never);
+    mockPrisma.pendingRegistration.update.mockResolvedValue(PENDING as never);
+
+    await service.registerResend(PENDING.email);
+
+    // Updating in place is what preserves `attempts`. Deleting and recreating
+    // the row would silently reset it to 0 and reopen the guessing budget.
+    expect(mockPrisma.pendingRegistration.delete).not.toHaveBeenCalled();
+    expect(mockPrisma.pendingRegistration.create).not.toHaveBeenCalled();
+
+    const [[call]] = mockPrisma.pendingRegistration.update.mock.calls;
+    expect(call.where).toEqual({ email: PENDING.email });
+    expect(call.data).not.toHaveProperty("attempts");
+    expect(call.data.otpHash).toBeDefined();
+  });
+
+  it("refuses to reissue once the attempt cap is reached", async () => {
+    mockPrisma.pendingRegistration.findUnique.mockResolvedValue({
+      ...PENDING,
+      attempts: 5,
+    } as never);
+
+    await expect(service.registerResend(PENDING.email)).rejects.toMatchObject({
+      statusCode: 429,
+      code: "TOO_MANY_ATTEMPTS",
+    });
+    expect(mockPrisma.pendingRegistration.update).not.toHaveBeenCalled();
+  });
+
+  it("answers the same way when no registration is pending, to avoid leaking whether one exists", async () => {
+    mockPrisma.pendingRegistration.findUnique.mockResolvedValue(null);
+
+    const result = await service.registerResend("nobody@example.com");
+
+    expect(result.email).toBe("nobody@example.com");
+    expect(mockPrisma.pendingRegistration.update).not.toHaveBeenCalled();
+  });
+});

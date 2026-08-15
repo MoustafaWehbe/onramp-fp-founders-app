@@ -18,6 +18,10 @@ const CONTACT_SELECT = {
   investmentStagePreference: true,
   linkedinUrl: true,
   notes: true,
+  notesCreatedAt: true,
+  notesCreatedBy: true,
+  notesUpdatedAt: true,
+  notesUpdatedBy: true,
   source: true,
   createdAt: true,
   updatedAt: true,
@@ -25,6 +29,9 @@ const CONTACT_SELECT = {
 
 const PIPELINE_SELECT = {
   id: true,
+  // A contact's expectedAmount is only meaningful in the currency of the
+  // round it belongs to the client needs roundId to look that up.
+  roundId: true,
   stage: true,
   expectedAmount: true,
   probabilityPercentage: true,
@@ -32,23 +39,41 @@ const PIPELINE_SELECT = {
 
 type PipelineRow = {
   id: string;
+  roundId: string;
   stage: string;
   expectedAmount: Prisma.Decimal | null;
   probabilityPercentage: number | null;
 };
 
-/** "a", "a and b", "a, b and c" — for naming what blocks a delete. */
+/**
+ * "Engaged" means this startup has actually approached the contact: they are
+ * on the pipeline board, or someone has logged a call/email/meeting with them.
+ * Everything else is a prospect sourced or imported, never reached out to.
+ * Derived rather than stored, so it cannot drift from what the team has done.
+ */
+const ENGAGEMENT_FILTERS = {
+  engaged: {
+    OR: [{ pipeline: { some: {} } }, { interactionLogs: { some: {} } }],
+  },
+  prospect: {
+    pipeline: { none: {} },
+    interactionLogs: { none: {} },
+  },
+} as const satisfies Record<string, Prisma.StartupInvestorWhereInput>;
+
+/** "a", "a and b", "a, b and c" for naming what blocks a delete. */
 function listPhrase(items: string[]): string {
   if (items.length <= 1) return items[0] ?? "";
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
 // Decimal serializes to a JSON string, but the API contract documents these as
-// numbers — convert at the boundary rather than leaking Prisma's type.
+// numbers convert at the boundary rather than leaking Prisma's type.
 function serializePipeline(entry: PipelineRow | undefined) {
   if (!entry) return null;
   return {
     id: entry.id,
+    roundId: entry.roundId,
     stage: entry.stage,
     expectedAmount: entry.expectedAmount === null ? null : Number(entry.expectedAmount),
     probabilityPercentage: entry.probabilityPercentage,
@@ -73,12 +98,15 @@ export class InvestorService {
   }
 
   async listInvestors(startupId: string, query: ListInvestorsQuery) {
-    const { page, limit, search, investorType, stage } = query;
+    const { page, limit, search, investorType, stage, engagement, roundId } = query;
 
-    const where: Prisma.StartupInvestorWhereInput = {
+    // Everything except the engagement split. The tab counts are taken against
+    // this so they answer "how many match my search on the other tab", rather
+    // than always reporting the whole directory.
+    const baseWhere: Prisma.StartupInvestorWhereInput = {
       startupId,
       ...(investorType && { investorType }),
-      ...(stage && { pipeline: { some: { stage } } }),
+      ...(stage && { pipeline: { some: { stage, ...(roundId && { roundId }) } } }),
       ...(search && {
         OR: [
           { fullName: { contains: search, mode: "insensitive" as const } },
@@ -88,8 +116,20 @@ export class InvestorService {
       }),
     };
 
-    const [total, contacts] = await Promise.all([
-      prisma.startupInvestor.count({ where }),
+    // Combined with AND rather than spread: both sides use `OR` (search vs.
+    // engaged) and `pipeline` (stage vs. prospect), so merging them as keys
+    // would silently drop one of the two filters.
+    const where: Prisma.StartupInvestorWhereInput = engagement
+      ? { AND: [baseWhere, ENGAGEMENT_FILTERS[engagement]] }
+      : baseWhere;
+
+    const [engagedCount, prospectCount, contacts] = await Promise.all([
+      prisma.startupInvestor.count({
+        where: { AND: [baseWhere, ENGAGEMENT_FILTERS.engaged] },
+      }),
+      prisma.startupInvestor.count({
+        where: { AND: [baseWhere, ENGAGEMENT_FILTERS.prospect] },
+      }),
       prisma.startupInvestor.findMany({
         where,
         orderBy: { createdAt: "desc" },
@@ -97,26 +137,45 @@ export class InvestorService {
         take: limit,
         select: {
           ...CONTACT_SELECT,
-          // At most one entry exists per contact — the schema enforces
+          // At most one entry exists per contact the schema enforces
           // @@unique([startupId, startupInvestorId]).
-          pipeline: { select: PIPELINE_SELECT, take: 1 },
+          pipeline: {
+            ...(roundId && { where: { roundId } }),
+            select: PIPELINE_SELECT,
+            take: 1,
+          },
         },
       }),
     ]);
 
-    const followups = await this.nextFollowupsFor(contacts.map((c) => c.id));
+    // The two counts partition the same base set, so the total for whichever
+    // view is being asked for falls out of them no third count query.
+    const total =
+      engagement === "engaged"
+        ? engagedCount
+        : engagement === "prospect"
+          ? prospectCount
+          : engagedCount + prospectCount;
+
+    const contactIds = contacts.map((c) => c.id);
+    const [followups, lastInteractions] = await Promise.all([
+      this.nextFollowupsFor(contactIds),
+      this.lastInteractionsFor(contactIds),
+    ]);
 
     return {
       data: contacts.map(({ pipeline, ...contact }) => ({
         ...contact,
         pipeline: serializePipeline(pipeline[0]),
         nextFollowupDate: followups.get(contact.id) ?? null,
+        lastInteractionDate: lastInteractions.get(contact.id) ?? null,
       })),
       meta: {
         page,
         limit,
         total,
         totalPages: Math.ceil(total / limit),
+        engagementCounts: { engaged: engagedCount, prospect: prospectCount },
       },
     };
   }
@@ -132,20 +191,29 @@ export class InvestorService {
 
     if (!contact) throw createError("Investor contact not found", 404, "INVESTOR_NOT_FOUND");
 
-    const followups = await this.nextFollowupsFor([contact.id]);
+    const [followups, lastInteractions] = await Promise.all([
+      this.nextFollowupsFor([contact.id]),
+      this.lastInteractionsFor([contact.id]),
+    ]);
     const { pipeline, ...rest } = contact;
 
     return {
       ...rest,
       pipeline: serializePipeline(pipeline[0]),
       nextFollowupDate: followups.get(contact.id) ?? null,
+      lastInteractionDate: lastInteractions.get(contact.id) ?? null,
     };
   }
 
-  async updateInvestor(startupId: string, investorId: string, input: UpdateInvestorInput) {
+  async updateInvestor(
+    startupId: string,
+    investorId: string,
+    input: UpdateInvestorInput,
+    userId?: string,
+  ) {
     const existing = await prisma.startupInvestor.findUnique({
       where: { startupId_id: { startupId, id: investorId } },
-      select: { id: true, email: true },
+      select: { id: true, email: true, notes: true, notesCreatedAt: true },
     });
     if (!existing) throw createError("Investor contact not found", 404, "INVESTOR_NOT_FOUND");
 
@@ -156,12 +224,47 @@ export class InvestorService {
     try {
       return await prisma.startupInvestor.update({
         where: { id: investorId },
-        data: input,
+        data: { ...input, ...this.noteAuthorship(input, existing, userId) },
         select: CONTACT_SELECT,
       });
     } catch (err) {
       throw this.translateDuplicateEmail(err);
     }
+  }
+
+  /**
+   * Note authorship is derived here rather than trusted from the client, the
+   * same way completedAt is on tasks. Writing the first note records an
+   * author; every later change records an editor; clearing the note clears
+   * both, so a fresh note never inherits the previous one's byline. An
+   * identical resubmission is not an edit and leaves the timestamps alone.
+   */
+  private noteAuthorship(
+    input: UpdateInvestorInput,
+    existing: { notes: string | null; notesCreatedAt: Date | null },
+    userId?: string,
+  ): Prisma.StartupInvestorUncheckedUpdateInput {
+    if (input.notes === undefined) return {};
+
+    if (input.notes === null) {
+      return {
+        notesCreatedAt: null,
+        notesCreatedBy: null,
+        notesUpdatedAt: null,
+        notesUpdatedBy: null,
+      };
+    }
+
+    if (input.notes === existing.notes) return {};
+
+    const now = new Date();
+    const isFirstNote = !existing.notes || existing.notesCreatedAt === null;
+
+    return {
+      ...(isFirstNote && { notesCreatedAt: now, notesCreatedBy: userId ?? null }),
+      notesUpdatedAt: now,
+      notesUpdatedBy: userId ?? null,
+    };
   }
 
   async deleteInvestor(startupId: string, investorId: string) {
@@ -198,8 +301,9 @@ export class InvestorService {
   }
 
   /**
-   * Earliest upcoming follow-up per contact, in one grouped query so the list
-   * endpoint does not fan out per row.
+   * Earliest open follow-up per contact, in one grouped query so the list
+   * endpoint does not fan out per row. This intentionally includes overdue
+   * dates: an overdue next step is more important than a later upcoming one.
    */
   private async nextFollowupsFor(contactIds: string[]): Promise<Map<string, Date | null>> {
     if (contactIds.length === 0) return new Map();
@@ -208,12 +312,49 @@ export class InvestorService {
       by: ["startupInvestorId"],
       where: {
         startupInvestorId: { in: contactIds },
-        nextFollowupDate: { gt: new Date() },
+        nextFollowupDate: { not: null },
+        followupCompletedAt: null,
       },
       _min: { nextFollowupDate: true },
     });
 
     return new Map(grouped.map((row) => [row.startupInvestorId, row._min.nextFollowupDate]));
+  }
+
+  /**
+   * When each contact was last actually spoken to the newest interactionDate,
+   * falling back to when the log was written for entries that never got one.
+   * Two grouped queries rather than one because there is no COALESCE to
+   * aggregate over, and ordering by the nullable column directly would sort
+   * NULLS FIRST on Postgres and let an undated log win.
+   */
+  private async lastInteractionsFor(contactIds: string[]): Promise<Map<string, Date>> {
+    if (contactIds.length === 0) return new Map();
+
+    const [dated, undated] = await Promise.all([
+      prisma.interactionLog.groupBy({
+        by: ["startupInvestorId"],
+        where: { startupInvestorId: { in: contactIds }, interactionDate: { not: null } },
+        _max: { interactionDate: true },
+      }),
+      prisma.interactionLog.groupBy({
+        by: ["startupInvestorId"],
+        where: { startupInvestorId: { in: contactIds }, interactionDate: null },
+        _max: { createdAt: true },
+      }),
+    ]);
+
+    const lastTouch = new Map<string, Date>();
+    for (const row of dated) {
+      if (row._max.interactionDate) lastTouch.set(row.startupInvestorId, row._max.interactionDate);
+    }
+    for (const row of undated) {
+      const at = row._max.createdAt;
+      if (!at) continue;
+      const existing = lastTouch.get(row.startupInvestorId);
+      if (!existing || at > existing) lastTouch.set(row.startupInvestorId, at);
+    }
+    return lastTouch;
   }
 
   private async assertEmailAvailable(startupId: string, email: string, excludeId?: string) {

@@ -11,8 +11,25 @@ export const pipelineController = {
     const entry = await pipelineService.createEntry(
       req.params.startupId as string,
       req.body as CreatePipelineEntryInput,
+      req.user!.userId,
     );
     res.status(201).json({ data: entry });
+  }),
+
+  getAnalytics: asyncHandler(async (req, res) => {
+    const result = await pipelineService.getAnalytics(
+      req.params.startupId as string,
+      req.query.roundId as string | undefined,
+    );
+    res.json(result);
+  }),
+
+  getFocus: asyncHandler(async (req, res) => {
+    const result = await pipelineService.getFocus(
+      req.params.startupId as string,
+      req.query.roundId as string | undefined,
+    );
+    res.json(result);
   }),
 
   listEntries: asyncHandler(async (req, res) => {
@@ -36,6 +53,7 @@ export const pipelineController = {
       req.params.startupId as string,
       req.params.pipelineId as string,
       req.body as UpdatePipelineEntryInput,
+      req.user!.userId,
     );
     res.json({ data: entry });
   }),
@@ -46,5 +64,13 @@ export const pipelineController = {
       req.params.pipelineId as string,
     );
     res.json({ message: "Pipeline entry removed" });
+  }),
+
+  listStageEvents: asyncHandler(async (req, res) => {
+    const result = await pipelineService.listStageEvents(
+      req.params.startupId as string,
+      req.params.pipelineId as string,
+    );
+    res.json(result);
   }),
 };

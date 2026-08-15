@@ -6,7 +6,8 @@ export const apiClient = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
-// Refresh the access token cookie on 401, then retry the original request
+let refreshPromise: Promise<unknown> | null = null;
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
@@ -18,7 +19,14 @@ apiClient.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        await axios.post("/api/v1/auth/refresh", null, { withCredentials: true });
+        if (!refreshPromise) {
+          refreshPromise = axios
+            .post("/api/v1/auth/refresh", null, { withCredentials: true })
+            .finally(() => {
+              refreshPromise = null;
+            });
+        }
+        await refreshPromise;
         return apiClient(originalRequest);
       } catch {
         return Promise.reject(error);

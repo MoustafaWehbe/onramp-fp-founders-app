@@ -15,14 +15,27 @@ export function getInitials(name: string, max = 2): string {
     .toUpperCase();
 }
 
-/** Formats a USD amount as $850, $250k or $2.5M. */
-export function formatCompactUsd(amount: number): string {
-  if (amount >= 1_000_000) {
-    const millions = amount / 1_000_000;
-    return `$${Number.isInteger(millions) ? millions : millions.toFixed(1)}M`;
-  }
-  if (amount >= 1_000) return `$${Math.round(amount / 1_000)}k`;
-  return `$${amount}`;
+/**
+ * Full currency formatting $1,500,000, €250,000 never assuming USD.
+ * Every amount on the board belongs to a round, and a round can be raised in
+ * any three-letter currency; the caller must always pass the round's own.
+ */
+export function formatMoney(amount: number, currency: string): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+/** Compact currency $850, $250K, $2.5M in the given currency, never assumed USD. */
+export function formatCompactMoney(amount: number, currency: string): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(amount);
 }
 
 export function formatDate(date: string | Date): string {

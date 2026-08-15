@@ -11,7 +11,7 @@ function optionalText(max: number, label: string) {
     .optional();
 }
 
-// z.coerce.date() runs `new Date(input)` on whatever it's given — null, false,
+// z.coerce.date() runs `new Date(input)` on whatever it's given null, false,
 // and 0 all coerce to the 1970 epoch instead of failing. Only strings and Date
 // instances are legitimate wire representations of a datetime, so anything
 // else is forced to NaN first, which z.coerce.date() reliably rejects.
@@ -22,11 +22,9 @@ function coercedDate(label: string) {
   );
 }
 
-const optionalDatetime = z
-  .union([z.null(), coercedDate("nextFollowupDate")])
-  .transform((value) => (value === null ? null : value))
-  .optional();
-
+// nextFollowupDate / followupCompletedAt are deliberately absent from both
+// schemas: tasks superseded follow-ups, so no new log sets one. Existing rows
+// stay readable; they just cannot be written any more.
 export const createInteractionLogSchema = z.object({
   investorId: z.string().uuid("investorId must be a valid UUID"),
   pipelineId: z.string().uuid("pipelineId must be a valid UUID").optional(),
@@ -34,7 +32,6 @@ export const createInteractionLogSchema = z.object({
   interactionDate: coercedDate("interactionDate"),
   subject: optionalText(200, "Subject"),
   description: optionalText(2000, "Description"),
-  nextFollowupDate: optionalDatetime,
 });
 
 export const updateInteractionLogSchema = z
@@ -50,10 +47,6 @@ export const updateInteractionLogSchema = z
     interactionDate: z.union([z.null(), coercedDate("interactionDate")]).optional(),
     subject: optionalText(200, "Subject"),
     description: optionalText(2000, "Description"),
-    nextFollowupDate: z
-      .union([z.null(), coercedDate("nextFollowupDate")])
-      .transform((value) => (value === null ? null : value))
-      .optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one field is required",
@@ -67,6 +60,7 @@ export const listInteractionLogQuerySchema = z.object({
     .min(1, "limit must be at least 1")
     .max(100, "limit must be at most 100")
     .default(20),
+  source: z.enum(["manual", "google_calendar", "gmail"]).optional(),
 });
 
 export const logIdParamSchema = z.object({
