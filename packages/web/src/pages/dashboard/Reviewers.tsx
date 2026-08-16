@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, Clock, Copy, Plus, Shield, type LucideIcon } from "lucide-react";
+import { Ban, BarChart3, Clock, Copy, Plus, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "../../components/shared/EmptyState";
+import { StatTile } from "../../components/shared/StatTile";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -24,15 +25,10 @@ import { listDocuments } from "../../lib/document-api";
 import {
   createReviewerInvitation,
   listReviewerInvitations,
+  reviewerStatusClass,
   revokeReviewerInvitation,
 } from "../../lib/reviewer-api";
-
-function statusClass(status: string) {
-  if (status === "in_review" || status === "completed") return "bg-success/15 text-success";
-  if (status === "pending" || status === "opened") return "bg-warning/20 text-warning";
-  if (status === "revoked") return "bg-destructive/15 text-destructive";
-  return "bg-muted text-muted-foreground";
-}
+import { ReviewerAnalyticsSheet } from "./ReviewerAnalyticsSheet";
 
 function expiresLabel(iso: string, status: string) {
   if (status === "revoked") return "Revoked";
@@ -53,6 +49,7 @@ export function Reviewers() {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [selectedVersionIds, setSelectedVersionIds] = useState<string[]>([]);
+  const [analyticsInvitationId, setAnalyticsInvitationId] = useState<string | null>(null);
 
   const invitesQuery = useQuery({
     queryKey: ["reviewer-invitations", startupId],
@@ -134,9 +131,9 @@ export function Reviewers() {
       />
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <Stat label="In review / opened" value={String(stats.active)} icon={Shield} tone="success" />
-        <Stat label="Pending" value={String(stats.pending)} icon={Clock} tone="warning" />
-        <Stat label="Closed" value={String(stats.closed)} icon={Ban} tone="muted" />
+        <StatTile label="In review / opened" value={String(stats.active)} icon={Shield} tone="success" />
+        <StatTile label="Pending" value={String(stats.pending)} icon={Clock} tone="warning" />
+        <StatTile label="Closed" value={String(stats.closed)} icon={Ban} tone="muted" />
       </div>
 
       <div className="card-elevated overflow-hidden">
@@ -186,7 +183,7 @@ export function Reviewers() {
                       <div className="text-xs text-muted-foreground">{row.email}</div>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge className={`${statusClass(row.status)} border-0 capitalize`}>
+                      <Badge className={`${reviewerStatusClass(row.status)} border-0 capitalize`}>
                         {row.status.replace("_", " ")}
                       </Badge>
                     </td>
@@ -196,6 +193,14 @@ export function Reviewers() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs"
+                          onClick={() => setAnalyticsInvitationId(row.id)}
+                        >
+                          <BarChart3 className="mr-1 h-3 w-3" /> Analytics
+                        </Button>
                         <Button
                           size="sm"
                           variant="ghost"
@@ -290,35 +295,12 @@ export function Reviewers() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
 
-function Stat({
-  label,
-  value,
-  icon: Icon,
-  tone,
-}: {
-  label: string;
-  value: string;
-  icon: LucideIcon;
-  tone: "success" | "warning" | "muted";
-}) {
-  const toneClass = {
-    success: "bg-success/15 text-success",
-    warning: "bg-warning/20 text-warning",
-    muted: "bg-muted text-muted-foreground",
-  }[tone];
-  return (
-    <div className="card-elevated flex items-center gap-3 p-4">
-      <div className={`grid h-10 w-10 place-items-center rounded-md ${toneClass}`}>
-        <Icon className="h-5 w-5" />
-      </div>
-      <div>
-        <div className="text-xs text-muted-foreground">{label}</div>
-        <div className="text-2xl font-semibold tabular-nums">{value}</div>
-      </div>
+      <ReviewerAnalyticsSheet
+        startupId={startupId}
+        invitationId={analyticsInvitationId}
+        onOpenChange={(next) => !next && setAnalyticsInvitationId(null)}
+      />
     </div>
   );
 }

@@ -200,6 +200,120 @@ export class ReviewerInvitationService {
     };
   }
 
+  /**
+   * Per-invitation engagement + security summary for the founder dashboard.
+   * Scoped by `startupId_id` the same way `revokeInvitation` is, so a
+   * founder from another startup can never resolve this by guessing an id.
+   */
+  async getInvitationAnalytics(startupId: string, invitationId: string) {
+    const invitation = await prisma.reviewerInvitation.findUnique({
+      where: { startupId_id: { startupId, id: invitationId } },
+      select: {
+        id: true,
+        reviewerName: true,
+        emailNormalized: true,
+        status: true,
+        revokedAt: true,
+        expiresAt: true,
+        allowDownload: true,
+        lastActivityAt: true,
+      },
+    });
+    if (!invitation) throw createError("Invitation not found", 404, "INVITATION_NOT_FOUND");
+
+    const pinnedDocs = await prisma.reviewerInvitationDocument.findMany({
+      where: { invitationId },
+      include: {
+        document: { select: { id: true, title: true } },
+        documentVersion: { select: { id: true, pageCount: true } },
+      },
+    });
+
+    const visits = await prisma.reviewerVisit.findMany({
+      where: { invitationId },
+      orderBy: { startedAt: "desc" },
+      select: {
+        id: true,
+        startedAt: true,
+        lastSeenAt: true,
+        endedAt: true,
+        totalActiveMs: true,
+        pagesViewed: true,
+        maxPageReached: true,
+        completionPct: true,
+      },
+    });
+
+    const summary = {
+      visitCount: visits.length,
+      totalActiveMs: visits.reduce((sum, v) => sum + v.totalActiveMs, 0),
+      lastSeenAt: visits.reduce<Date | null>(
+        (latest, v) => (!latest || v.lastSeenAt > latest ? v.lastSeenAt : latest),
+        null,
+      ),
+      completionPct: visits.reduce((max, v) => Math.max(max, v.completionPct), 0),
+    };
+
+    // Skip the page-view query entirely when there are no visits — an empty
+    // `visitId: { in: [] }` would just be a wasted round trip.
+    const pageRows =
+      visits.length === 0
+        ? []
+        : await prisma.reviewerPageView.groupBy({
+            by: ["documentVersionId", "pageNumber"],
+            where: { visitId: { in: visits.map((v) => v.id) } },
+            _sum: { activeMs: true, viewCount: true },
+          });
+
+    const documents = pinnedDocs.map((pinned) => ({
+      documentId: pinned.document.id,
+      title: pinned.document.title,
+      versionId: pinned.documentVersion.id,
+      pageCount: pinned.documentVersion.pageCount,
+      pages: pageRows
+        .filter((row) => row.documentVersionId === pinned.documentVersion.id)
+        .map((row) => ({
+          pageNumber: row.pageNumber,
+          activeMs: row._sum.activeMs ?? 0,
+          viewCount: row._sum.viewCount ?? 0,
+        }))
+        .sort((a, b) => a.pageNumber - b.pageNumber),
+    }));
+
+    const [eventCounts, recentEvents] = await Promise.all([
+      prisma.reviewerEvent.groupBy({
+        by: ["type"],
+        where: { invitationId },
+        _count: { _all: true },
+      }),
+      prisma.reviewerEvent.findMany({
+        where: { invitationId },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: { type: true, pageNumber: true, documentVersionId: true, createdAt: true },
+      }),
+    ]);
+
+    return {
+      invitation: {
+        id: invitation.id,
+        reviewerName: invitation.reviewerName,
+        email: invitation.emailNormalized,
+        status: deriveStatus(invitation),
+        allowDownload: invitation.allowDownload,
+        expiresAt: invitation.expiresAt,
+        lastActivityAt: invitation.lastActivityAt,
+      },
+      summary,
+      documents,
+      visits,
+      security: {
+        counts: Object.fromEntries(eventCounts.map((row) => [row.type, row._count._all])),
+        recent: recentEvents,
+      },
+    };
+  }
+
   async revokeInvitation(startupId: string, invitationId: string, userId?: string) {
     const existing = await prisma.reviewerInvitation.findUnique({
       where: { startupId_id: { startupId, id: invitationId } },

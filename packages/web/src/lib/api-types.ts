@@ -1581,6 +1581,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/startups/{startupId}/reviewer-invitations/{invitationId}/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Per-invitation engagement and security analytics */
+        get: operations["getReviewerInvitationAnalytics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/startups/{startupId}/audit-logs": {
         parameters: {
             query?: never;
@@ -8358,6 +8375,27 @@ export interface operations {
         responses: {
             /** @description Revoked */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getReviewerInvitationAnalytics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                invitationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Analytics */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

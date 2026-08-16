@@ -7221,6 +7221,30 @@ paths:
         "204":
           description: Revoked
 
+  /startups/{startupId}/reviewer-invitations/{invitationId}/analytics:
+    get:
+      tags: [Reviewer Invitations]
+      summary: Per-invitation engagement and security analytics
+      operationId: getReviewerInvitationAnalytics
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: invitationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Analytics
+
   /startups/{startupId}/audit-logs:
     get:
       tags: [Audit]

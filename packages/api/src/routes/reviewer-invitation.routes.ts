@@ -32,6 +32,15 @@ router.post(
   reviewerInvitationController.createInvitation,
 );
 
+router.get(
+  "/:invitationId/analytics",
+  authenticate,
+  validate(invitationIdParamSchema, "params"),
+  requireMember,
+  requirePermission("documents", "read"),
+  reviewerInvitationController.getAnalytics,
+);
+
 router.post(
   "/:invitationId/revoke",
   authenticate,
