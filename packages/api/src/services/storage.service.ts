@@ -98,6 +98,12 @@ function isValidAvatarKey(storageKey: string): boolean {
   return /^avatars\/[a-zA-Z0-9-]+\/[a-f0-9]{16}\.(webp|png)$/.test(storageKey);
 }
 
+function isValidDocumentKey(storageKey: string): boolean {
+  return /^startups\/[a-zA-Z0-9-]+\/documents\/[a-zA-Z0-9-]+\/[a-zA-Z0-9-]+\/[a-zA-Z0-9._-]+$/.test(
+    storageKey,
+  );
+}
+
 function localRoot() {
   return path.resolve(process.cwd(), ".uploads");
 }
@@ -363,6 +369,40 @@ export class StorageService {
     } catch {
       // Nothing to recover from here: the object may already be gone.
     }
+  }
+
+  /**
+   * Best-effort cleanup for one or more document version objects, e.g. when
+   * a document is deleted. A leftover object left behind in storage is a
+   * storage cost, not a correctness bug, so failures are swallowed same
+   * contract as deleteAvatar.
+   */
+  async deleteObjects(objects: { storageKey: string; storageProvider: string }[]): Promise<void> {
+    const supabaseKeys = objects
+      .filter((o) => o.storageProvider === "supabase" && isValidDocumentKey(o.storageKey))
+      .map((o) => o.storageKey);
+    const localKeys = objects
+      .filter((o) => o.storageProvider !== "supabase" && isValidDocumentKey(o.storageKey))
+      .map((o) => o.storageKey);
+
+    if (supabaseKeys.length > 0 && supabaseConfigured()) {
+      try {
+        const { client, bucket } = getSupabase();
+        await client.storage.from(bucket).remove(supabaseKeys);
+      } catch {
+        // Nothing to recover from here: the object(s) may already be gone.
+      }
+    }
+
+    await Promise.all(
+      localKeys.map(async (storageKey) => {
+        try {
+          await fs.unlink(path.join(localRoot(), storageKey));
+        } catch {
+          // Nothing to recover from here: the object may already be gone.
+        }
+      }),
+    );
   }
 
   /**

@@ -345,10 +345,15 @@ export class DocumentService {
   async deleteDocument(startupId: string, documentId: string, userId?: string) {
     const existing = await prisma.document.findUnique({
       where: { startupId_id: { startupId, id: documentId } },
-      select: { id: true, title: true },
+      select: {
+        id: true,
+        title: true,
+        versions: { select: { storageKey: true, storageProvider: true } },
+      },
     });
     if (!existing) throw createError("Document not found", 404, "DOCUMENT_NOT_FOUND");
     await prisma.document.delete({ where: { id: documentId } });
+    await storageService.deleteObjects(existing.versions);
     if (userId) {
       await recordAuditEvent({
         startupId,
