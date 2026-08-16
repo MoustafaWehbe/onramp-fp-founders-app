@@ -14,6 +14,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/api/package.json packages/api/package.json
 COPY packages/web/package.json packages/web/package.json
+# @starter-kit/api's postinstall runs `prisma generate`, which needs the
+# schema present before `npm ci` executes it.
+COPY packages/api/prisma packages/api/prisma
 RUN npm ci
 COPY . .
 RUN npm run build -w @starter-kit/api
@@ -22,8 +25,24 @@ FROM node:20-slim AS runtime
 # fonts-liberation gives LibreOffice metric-compatible substitutes for the
 # Arial/Times/Courier fonts most DOCX/PPTX files actually use, so converted
 # PDFs don't silently reflow onto a different page count than the original.
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends libreoffice fonts-liberation \
+# The live deb.debian.org mirror our network reaches has a corrupted gpg
+# package (its bytes don't match its own index, "Hash Sum mismatch") —
+# consistent across retries and across IPv4/IPv6, so it's the backend
+# itself, not the transfer. Pinning apt to a snapshot.debian.org archive
+# (an immutable, internally-consistent point-in-time mirror — the node
+# image ships this exact URL commented out in debian.sources for this
+# situation) sidesteps the bad file entirely.
+RUN sed -i \
+  -e 's|URIs: http://deb.debian.org/debian$|URIs: http://snapshot.debian.org/archive/debian/20260421T000000Z|' \
+  -e 's|URIs: http://deb.debian.org/debian-security|URIs: http://snapshot.debian.org/archive/debian-security/20260421T000000Z|' \
+  /etc/apt/sources.list.d/debian.sources \
+  && echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until
+RUN n=0; \
+  until apt-get update && apt-get install -y --no-install-recommends libreoffice fonts-liberation; do \
+    n=$((n+1)); \
+    if [ "$n" -ge 5 ]; then echo "apt-get failed after $n attempts" >&2; exit 1; fi; \
+    echo "apt-get failed, retrying ($n)..." >&2; sleep 10; \
+  done \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
