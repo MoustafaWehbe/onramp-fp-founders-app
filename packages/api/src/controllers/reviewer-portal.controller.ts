@@ -11,6 +11,7 @@ import type {
   ReviewerEventInput,
   ReviewerPageParams,
   ReviewerPageQuery,
+  ReviewerTelemetryInput,
   ReviewerVerifyInput,
 } from "../validators/reviewer-portal.schemas";
 
@@ -118,6 +119,16 @@ export const reviewerPortalController = {
       req.reviewer!.invitationId,
       req.reviewer!.sessionId,
       req.body as ReviewerEventInput,
+    );
+    res.status(204).send();
+  }),
+
+  recordTelemetry: asyncHandler(async (req, res) => {
+    await reviewerPortalService.recordTelemetry(
+      req.reviewer!.startupId,
+      req.reviewer!.invitationId,
+      req.reviewer!.sessionId,
+      req.body as ReviewerTelemetryInput,
     );
     res.status(204).send();
   }),

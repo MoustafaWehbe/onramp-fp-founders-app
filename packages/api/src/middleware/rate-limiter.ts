@@ -117,3 +117,20 @@ export const reviewerEventRateLimiter = rateLimit({
     error: "Too many events reported, please wait before retrying.",
   },
 });
+
+/**
+ * Engagement heartbeat flushes land roughly every 10s, so ~30/5min is the
+ * legitimate ceiling; 60 leaves slack for pagehide/visibility flushes firing
+ * close together without opening the door to a flood.
+ */
+export const reviewerTelemetryRateLimiter = rateLimit({
+  windowMs: 5 * 60 * 1_000,
+  max: 60,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  store: makeStore("reviewer-telemetry"),
+  keyGenerator: (req) => req.reviewer?.sessionId ?? req.ip ?? "unknown",
+  message: {
+    error: "Too many telemetry updates, please wait before retrying.",
+  },
+});

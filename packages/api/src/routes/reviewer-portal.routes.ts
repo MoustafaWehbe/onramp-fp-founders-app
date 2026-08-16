@@ -1,13 +1,14 @@
 import { Router } from "express";
 import { validate } from "../utils/validate";
 import { requireReviewerSession } from "../middleware/reviewer-auth";
-import { reviewerEventRateLimiter } from "../middleware/rate-limiter";
+import { reviewerEventRateLimiter, reviewerTelemetryRateLimiter } from "../middleware/rate-limiter";
 import {
   reviewerAccessSchema,
   reviewerCommentSchema,
   reviewerEventSchema,
   reviewerPageParamSchema,
   reviewerPageQuerySchema,
+  reviewerTelemetrySchema,
   reviewerVerifySchema,
   reviewerVersionIdParamSchema,
 } from "../validators/reviewer-portal.schemas";
@@ -68,6 +69,14 @@ router.post(
   reviewerEventRateLimiter,
   validate(reviewerEventSchema),
   reviewerPortalController.logEvent,
+);
+
+router.post(
+  "/telemetry",
+  requireReviewerSession,
+  reviewerTelemetryRateLimiter,
+  validate(reviewerTelemetrySchema),
+  reviewerPortalController.recordTelemetry,
 );
 
 router.post("/complete", requireReviewerSession, reviewerPortalController.complete);

@@ -142,6 +142,32 @@ export async function logReviewerEvent(
   await reviewerPortalClient.post("/events", { type, ...meta }).catch(() => {});
 }
 
+export type EngagementPayload = {
+  pages: Array<{ documentVersionId: string; pageNumber: number; activeMs: number }>;
+};
+
+/**
+ * Fire-and-forget, same as logReviewerEvent. Prefers sendBeacon so a flush
+ * fired from `pagehide` still lands after the page is gone; falls back to a
+ * keepalive fetch for browsers/situations where sendBeacon can't be used.
+ */
+export function flushEngagement(payload: EngagementPayload) {
+  if (payload.pages.length === 0) return;
+
+  const url = `${reviewerPortalClient.defaults.baseURL}/telemetry`;
+  const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+
+  if (navigator.sendBeacon?.(url, blob)) return;
+
+  void fetch(url, {
+    method: "POST",
+    body: blob,
+    headers: { "Content-Type": "application/json" },
+    keepalive: true,
+    credentials: "same-origin",
+  }).catch(() => {});
+}
+
 export async function completeReviewerSession() {
   await reviewerPortalClient.post("/complete");
 }

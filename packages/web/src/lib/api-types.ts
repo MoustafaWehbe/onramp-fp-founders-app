@@ -1781,6 +1781,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/reviewer-portal/telemetry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report per-page dwell time for the current visit */
+        post: operations["reviewerPortalRecordTelemetry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/reviewer-portal/complete": {
         parameters: {
             query?: never;
@@ -8687,6 +8704,24 @@ export interface operations {
         };
     };
     reviewerPortalLogEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recorded */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reviewerPortalRecordTelemetry: {
         parameters: {
             query?: never;
             header?: never;

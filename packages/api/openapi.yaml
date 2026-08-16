@@ -7574,6 +7574,17 @@ paths:
         "204":
           description: Recorded
 
+  /reviewer-portal/telemetry:
+    post:
+      tags: [Reviewer Portal]
+      summary: Report per-page dwell time for the current visit
+      operationId: reviewerPortalRecordTelemetry
+      security:
+        - reviewerSessionAuth: []
+      responses:
+        "204":
+          description: Recorded
+
   /reviewer-portal/complete:
     post:
       tags: [Reviewer Portal]

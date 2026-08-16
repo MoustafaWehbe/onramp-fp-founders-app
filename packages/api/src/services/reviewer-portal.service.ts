@@ -12,12 +12,17 @@ import type {
   ReviewerAccessInput,
   ReviewerCommentInput,
   ReviewerEventInput,
+  ReviewerTelemetryInput,
   ReviewerVerifyInput,
 } from "../validators/reviewer-portal.schemas";
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const IS_PROD = process.env.NODE_ENV === "production";
+// Client flushes every 10s; this is that interval plus jitter slack, not the
+// schema-level sanity bound (120s) — a hostile client cannot inflate
+// engagement by reporting a large activeMs on a single flush.
+const MAX_ACTIVE_MS_PER_FLUSH = 12_000;
 
 function emailHint(email: string) {
   const [local, domain] = email.split("@");
@@ -459,6 +464,80 @@ export class ReviewerPortalService {
     });
   }
 
+  async recordTelemetry(
+    startupId: string,
+    invitationId: string,
+    sessionId: string,
+    input: ReviewerTelemetryInput,
+  ) {
+    if (input.pages.length === 0) return;
+
+    const pinned = await prisma.reviewerInvitationDocument.findMany({
+      where: { invitationId },
+      select: { documentVersionId: true, documentVersion: { select: { pageCount: true } } },
+    });
+    const pinnedIds = new Set(pinned.map((p) => p.documentVersionId));
+    const totalPages = pinned.reduce((sum, p) => sum + (p.documentVersion.pageCount ?? 0), 0);
+
+    // Entries for a version this invitation was never pinned to are dropped,
+    // not errored — a partially-hostile or stale client shouldn't be able to
+    // fail an otherwise-valid batch.
+    const validEntries = input.pages
+      .filter((p) => pinnedIds.has(p.documentVersionId))
+      .map((p) => ({ ...p, activeMs: Math.min(p.activeMs, MAX_ACTIVE_MS_PER_FLUSH) }));
+    if (validEntries.length === 0) return;
+
+    const now = new Date();
+    const visit = await prisma.reviewerVisit.upsert({
+      where: { sessionId },
+      create: { startupId, invitationId, sessionId, startedAt: now, lastSeenAt: now },
+      update: { lastSeenAt: now },
+    });
+
+    await prisma.$transaction(
+      validEntries.map((entry) =>
+        prisma.reviewerPageView.upsert({
+          where: {
+            visitId_documentVersionId_pageNumber: {
+              visitId: visit.id,
+              documentVersionId: entry.documentVersionId,
+              pageNumber: entry.pageNumber,
+            },
+          },
+          create: {
+            visitId: visit.id,
+            documentVersionId: entry.documentVersionId,
+            pageNumber: entry.pageNumber,
+            firstViewedAt: now,
+            lastViewedAt: now,
+            activeMs: entry.activeMs,
+          },
+          update: {
+            lastViewedAt: now,
+            activeMs: { increment: entry.activeMs },
+            viewCount: { increment: 1 },
+          },
+        }),
+      ),
+    );
+
+    const [pagesViewed, maxPageAgg, totalActiveAgg] = await Promise.all([
+      prisma.reviewerPageView.count({ where: { visitId: visit.id } }),
+      prisma.reviewerPageView.aggregate({ where: { visitId: visit.id }, _max: { pageNumber: true } }),
+      prisma.reviewerPageView.aggregate({ where: { visitId: visit.id }, _sum: { activeMs: true } }),
+    ]);
+
+    await prisma.reviewerVisit.update({
+      where: { id: visit.id },
+      data: {
+        pagesViewed,
+        maxPageReached: maxPageAgg._max.pageNumber ?? 0,
+        totalActiveMs: totalActiveAgg._sum.activeMs ?? 0,
+        completionPct: totalPages > 0 ? Math.round((pagesViewed / totalPages) * 100) : 0,
+      },
+    });
+  }
+
   async complete(invitationId: string) {
     await prisma.reviewerInvitation.update({
       where: { id: invitationId },
@@ -474,6 +553,12 @@ export class ReviewerPortalService {
     await prisma.reviewerSession.update({
       where: { id: sessionId },
       data: { revokedAt: new Date() },
+    });
+    // updateMany, not update: a session that never sent telemetry has no
+    // visit row yet, and that's not an error condition.
+    await prisma.reviewerVisit.updateMany({
+      where: { sessionId, endedAt: null },
+      data: { endedAt: new Date() },
     });
   }
 }

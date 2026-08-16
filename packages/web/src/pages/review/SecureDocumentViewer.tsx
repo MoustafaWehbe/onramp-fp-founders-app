@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, Clock, EyeOff, FileWarning, Loader2 } from "lucide-react";
 import {
   fetchReviewerPage,
+  flushEngagement,
   getReviewerPageManifest,
   logReviewerEvent,
   type ReviewerPageManifest,
@@ -25,11 +26,13 @@ function PageCanvas({
   page,
   token,
   onTokenRejected,
+  onIntersect,
 }: {
   versionId: string;
   page: PageMeta;
   token: string;
   onTokenRejected: () => void;
+  onIntersect: (pageNumber: number, ratio: number) => void;
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -52,6 +55,26 @@ function PageCanvas({
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
+
+  // Separate from the prefetch observer above: that one's large rootMargin
+  // marks many pages "visible" at once, which is right for prefetching but
+  // wrong for "what's actually on screen" — engagement tracking needs the
+  // real on-screen ratio to pick a single active page.
+  useEffect(() => {
+    const node = wrapperRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) onIntersect(page.pageNumber, entry.intersectionRatio);
+      },
+      { threshold: [0, 0.25, 0.5, 0.75, 1] },
+    );
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+      onIntersect(page.pageNumber, 0);
+    };
+  }, [page.pageNumber, onIntersect]);
 
   useEffect(() => {
     if (!visible) return;
@@ -202,6 +225,74 @@ function useCaptureGuards(versionId: string) {
 }
 
 /**
+ * Tracks which page is actually on screen, accumulates active-ms against it
+ * while the tab is visible and focused, and flushes to the server. Paused
+ * whenever the tab is hidden or unfocused so "left it open overnight" never
+ * reads as engagement — that distinction is the whole point of doing this
+ * server-side rather than trusting a naive "time on page" number.
+ */
+function useEngagementHeartbeat(versionId: string) {
+  const ratiosRef = useRef<Map<number, number>>(new Map());
+  const accumRef = useRef<Map<number, number>>(new Map());
+  const lastTickRef = useRef(Date.now());
+
+  const reportIntersection = useCallback((pageNumber: number, ratio: number) => {
+    if (ratio > 0) ratiosRef.current.set(pageNumber, ratio);
+    else ratiosRef.current.delete(pageNumber);
+  }, []);
+
+  useEffect(() => {
+    const flush = () => {
+      const pages = Array.from(accumRef.current.entries())
+        .filter(([, activeMs]) => activeMs > 0)
+        .map(([pageNumber, activeMs]) => ({ documentVersionId: versionId, pageNumber, activeMs }));
+      if (pages.length > 0) flushEngagement({ pages });
+      accumRef.current.clear();
+    };
+
+    const tick = () => {
+      const now = Date.now();
+      const elapsed = now - lastTickRef.current;
+      lastTickRef.current = now;
+
+      if (document.visibilityState !== "visible" || !document.hasFocus()) return;
+
+      let activePage: number | null = null;
+      let bestRatio = 0;
+      for (const [pageNumber, ratio] of ratiosRef.current) {
+        if (ratio > bestRatio) {
+          bestRatio = ratio;
+          activePage = pageNumber;
+        }
+      }
+      if (activePage === null) return;
+
+      accumRef.current.set(activePage, (accumRef.current.get(activePage) ?? 0) + elapsed);
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden) flush();
+    };
+
+    lastTickRef.current = Date.now();
+    const tickId = window.setInterval(tick, 1000);
+    const flushId = window.setInterval(flush, 10_000);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pagehide", flush);
+
+    return () => {
+      window.clearInterval(tickId);
+      window.clearInterval(flushId);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, [versionId]);
+
+  return { reportIntersection };
+}
+
+/**
  * Cosmetic, live, and trivially removable in devtools — that's the point.
  * It makes the reviewer *aware* they're identified; the tiled watermark
  * baked into the page pixels server-side is the layer that actually
@@ -243,6 +334,7 @@ export function SecureDocumentViewer({
   }, [manifestQuery]);
 
   const { blanked, blockClipboard } = useCaptureGuards(versionId);
+  const { reportIntersection } = useEngagementHeartbeat(versionId);
 
   if (manifestQuery.isPending) {
     return (
@@ -290,6 +382,7 @@ export function SecureDocumentViewer({
             page={page}
             token={manifest.pageToken}
             onTokenRejected={refreshToken}
+            onIntersect={reportIntersection}
           />
         ))}
       </div>

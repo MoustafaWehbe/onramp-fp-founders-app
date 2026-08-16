@@ -11,6 +11,7 @@ jest.mock("../../src/db/prisma", () => ({
     },
     reviewerInvitationDocument: {
       findFirst: jest.fn(),
+      findMany: jest.fn(),
     },
     reviewerComment: {
       findMany: jest.fn(),
@@ -23,6 +24,17 @@ jest.mock("../../src/db/prisma", () => ({
     reviewerEvent: {
       create: jest.fn(),
     },
+    reviewerVisit: {
+      upsert: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    reviewerPageView: {
+      upsert: jest.fn(),
+      count: jest.fn(),
+      aggregate: jest.fn(),
+    },
+    $transaction: jest.fn(),
   },
 }));
 
@@ -58,7 +70,14 @@ import { watermarkService } from "../../src/services/watermark.service";
 const mockPrisma = prisma as jest.Mocked<typeof prisma>;
 const INVITE_ID = "00000000-0000-0000-0000-000000000010";
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  // Array-form $transaction: the service passes already-invoked mock
+  // promises, so resolving them is enough to exercise the real code path.
+  (mockPrisma.$transaction as jest.Mock).mockImplementation(
+    (ops: Promise<unknown>[]) => Promise.all(ops),
+  );
+});
 
 describe("ReviewerPortalService.requestAccess", () => {
   it("creates OTP challenge and emails code", async () => {
@@ -383,5 +402,118 @@ describe("ReviewerPortalService.getDownload", () => {
     expect(result.originalFilename).toBe("deck.pdf");
     // Never a signed storage URL — the bytes go through us.
     expect(storageService.createSignedReadUrl).not.toHaveBeenCalled();
+  });
+});
+
+describe("ReviewerPortalService.recordTelemetry", () => {
+  function pinnedForTelemetry(pageCount = 10) {
+    return [{ documentVersionId: VERSION_ID, documentVersion: { pageCount } }];
+  }
+
+  it("no-ops on an empty pages array", async () => {
+    await reviewerPortalService.recordTelemetry(STARTUP_ID, INVITE_ID, SESSION_ID, { pages: [] });
+
+    expect(mockPrisma.reviewerInvitationDocument.findMany).not.toHaveBeenCalled();
+    expect(mockPrisma.reviewerVisit.upsert).not.toHaveBeenCalled();
+  });
+
+  it("drops entries for a version not pinned to this invitation", async () => {
+    mockPrisma.reviewerInvitationDocument.findMany.mockResolvedValue(
+      pinnedForTelemetry() as never,
+    );
+
+    await reviewerPortalService.recordTelemetry(STARTUP_ID, INVITE_ID, SESSION_ID, {
+      pages: [{ documentVersionId: OTHER_VERSION_ID, pageNumber: 1, activeMs: 5000 }],
+    });
+
+    // Every entry was dropped, so there is nothing to attribute to a visit.
+    expect(mockPrisma.reviewerVisit.upsert).not.toHaveBeenCalled();
+    expect(mockPrisma.reviewerPageView.upsert).not.toHaveBeenCalled();
+  });
+
+  it("clamps activeMs to the per-flush ceiling before writing", async () => {
+    mockPrisma.reviewerInvitationDocument.findMany.mockResolvedValue(
+      pinnedForTelemetry() as never,
+    );
+    mockPrisma.reviewerVisit.upsert.mockResolvedValue({ id: "visit-1" } as never);
+    mockPrisma.reviewerPageView.upsert.mockResolvedValue({} as never);
+    mockPrisma.reviewerPageView.count.mockResolvedValue(1 as never);
+    mockPrisma.reviewerPageView.aggregate
+      .mockResolvedValueOnce({ _max: { pageNumber: 1 } } as never)
+      .mockResolvedValueOnce({ _sum: { activeMs: 12_000 } } as never);
+
+    await reviewerPortalService.recordTelemetry(STARTUP_ID, INVITE_ID, SESSION_ID, {
+      // Well within the schema's sanity bound (120s) but far past the
+      // server's real per-flush ceiling (12s) — a hostile client shouldn't
+      // be able to buy engagement by inflating a single entry.
+      pages: [{ documentVersionId: VERSION_ID, pageNumber: 1, activeMs: 100_000 }],
+    });
+
+    expect(mockPrisma.reviewerPageView.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ activeMs: 12_000 }),
+      }),
+    );
+  });
+
+  it("upserts a visit keyed by session, and page views keyed by visit/version/page", async () => {
+    mockPrisma.reviewerInvitationDocument.findMany.mockResolvedValue(
+      pinnedForTelemetry() as never,
+    );
+    mockPrisma.reviewerVisit.upsert.mockResolvedValue({ id: "visit-1" } as never);
+    mockPrisma.reviewerPageView.upsert.mockResolvedValue({} as never);
+    mockPrisma.reviewerPageView.count.mockResolvedValue(2 as never);
+    mockPrisma.reviewerPageView.aggregate
+      .mockResolvedValueOnce({ _max: { pageNumber: 3 } } as never)
+      .mockResolvedValueOnce({ _sum: { activeMs: 9_000 } } as never);
+
+    await reviewerPortalService.recordTelemetry(STARTUP_ID, INVITE_ID, SESSION_ID, {
+      pages: [{ documentVersionId: VERSION_ID, pageNumber: 3, activeMs: 4_000 }],
+    });
+
+    expect(mockPrisma.reviewerVisit.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { sessionId: SESSION_ID } }),
+    );
+    expect(mockPrisma.reviewerPageView.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          visitId_documentVersionId_pageNumber: {
+            visitId: "visit-1",
+            documentVersionId: VERSION_ID,
+            pageNumber: 3,
+          },
+        },
+        update: expect.objectContaining({
+          activeMs: { increment: 4_000 },
+          viewCount: { increment: 1 },
+        }),
+      }),
+    );
+    // Rollups are recomputed from ReviewerPageView, not accumulated in
+    // place, so this reflects the mocked aggregate results above.
+    expect(mockPrisma.reviewerVisit.update).toHaveBeenCalledWith({
+      where: { id: "visit-1" },
+      data: {
+        pagesViewed: 2,
+        maxPageReached: 3,
+        totalActiveMs: 9_000,
+        completionPct: 20, // 2 / 10 pages
+      },
+    });
+  });
+});
+
+describe("ReviewerPortalService.logout", () => {
+  it("revokes the session and ends any open visit for it", async () => {
+    await reviewerPortalService.logout(SESSION_ID);
+
+    expect(mockPrisma.reviewerSession.update).toHaveBeenCalledWith({
+      where: { id: SESSION_ID },
+      data: { revokedAt: expect.any(Date) },
+    });
+    expect(mockPrisma.reviewerVisit.updateMany).toHaveBeenCalledWith({
+      where: { sessionId: SESSION_ID, endedAt: null },
+      data: { endedAt: expect.any(Date) },
+    });
   });
 });

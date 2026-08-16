@@ -9,6 +9,31 @@ carries their identity.
 
 ---
 
+## 0. Status (updated 2026-08-16)
+
+- **Phase 1 — shipped.** Rasterization, HMAC page tokens, canvas viewer. `getFileAccess`
+  is gone; there is no route from the portal to a signed storage URL.
+- **Phase 2 — shipped.** Server-side tiled watermark (`sharp` + Redis cache), client
+  capture guards (copy/print/screenshot), `ReviewerEvent` logging, `watermarkEnabled`
+  toggle. **Deferred out of Phase 2**, not yet built: the watermarked download PDF
+  (`pdf-lib`) — `getDownload` still streams the original file unmodified when
+  `allowDownload` is on; the devtools-open heuristic (plan's own §6 table rates it too
+  noisy for v1); the document-level CSP (`frame-ancestors 'none'`) — `packages/web` has
+  no hosting config in this repo yet, so there's nowhere to attach the header. Revisit
+  once hosting is decided.
+- **Phase 3 — backend only, shipped.** `ReviewerVisit` / `ReviewerPageView`, the
+  `POST /reviewer-portal/telemetry` endpoint, and the client heartbeat that feeds it. A
+  visit maps 1:1 to a `ReviewerSession` (server-resolved from the session, not a
+  client-supplied id) rather than the plan's original `visitId`-in-payload shape.
+  Device/geo/forwarding columns on `ReviewerVisit` were intentionally left off — that's
+  Phase 4 territory. **Not built yet**: both founder-facing Analytics tabs and the
+  `notifyOnOpen` notification — the dashboard has no per-invitation or per-document
+  detail view at all today (just flat list pages) and no Tabs UI primitive exists in the
+  codebase, so that's a separate follow-up pass once there's real data to show.
+- **Phase 4, Phase 5 — not started.**
+
+---
+
 ## 1. Where we are today
 
 | Piece | File | State |

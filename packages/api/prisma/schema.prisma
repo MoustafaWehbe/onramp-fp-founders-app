@@ -271,6 +271,7 @@ model ReviewerInvitation {
   documents       ReviewerInvitationDocument[]
   sessions        ReviewerSession[]
   events          ReviewerEvent[]
+  visits          ReviewerVisit[]
 
   @@index([startupId, status])
   @@index([startupId, emailNormalized])
@@ -352,6 +353,44 @@ model ReviewerEvent {
   @@index([invitationId, createdAt])
   @@index([startupId, type, createdAt])
   @@map("reviewer_events")
+}
+
+model ReviewerVisit {
+  id             String    @id @default(uuid())
+  startupId      String    @map("startup_id")
+  invitationId   String    @map("invitation_id")
+  sessionId      String    @unique @map("session_id")
+  startedAt      DateTime  @default(now()) @map("started_at")
+  lastSeenAt     DateTime  @map("last_seen_at")
+  endedAt        DateTime? @map("ended_at")
+  totalActiveMs  Int       @default(0) @map("total_active_ms")
+  pagesViewed    Int       @default(0) @map("pages_viewed")
+  maxPageReached Int       @default(0) @map("max_page_reached")
+  completionPct  Int       @default(0) @map("completion_pct")
+
+  invitation ReviewerInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  pageViews  ReviewerPageView[]
+
+  @@index([invitationId, startedAt])
+  @@index([startupId, startedAt])
+  @@map("reviewer_visits")
+}
+
+model ReviewerPageView {
+  id                String   @id @default(uuid())
+  visitId           String   @map("visit_id")
+  documentVersionId String   @map("document_version_id")
+  pageNumber        Int      @map("page_number")
+  firstViewedAt     DateTime @map("first_viewed_at")
+  lastViewedAt      DateTime @map("last_viewed_at")
+  activeMs          Int      @default(0) @map("active_ms")
+  viewCount         Int      @default(1) @map("view_count")
+
+  visit ReviewerVisit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+
+  @@unique([visitId, documentVersionId, pageNumber])
+  @@index([documentVersionId, pageNumber])
+  @@map("reviewer_page_views")
 }
 
 // ─── CRM ──────────────────────────────────────────────────────────────────────

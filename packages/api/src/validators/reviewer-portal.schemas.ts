@@ -45,9 +45,25 @@ export const reviewerEventSchema = z.object({
   pageNumber: z.coerce.number().int().min(1).max(200).optional(),
 });
 
+// Dwell-time only — capture-deterrent attempts go through /events (Phase 2).
+// Server clamps activeMs to a tighter ceiling than this; the schema bound is
+// just a sanity gate against an absurd single value.
+export const reviewerTelemetrySchema = z.object({
+  pages: z
+    .array(
+      z.object({
+        documentVersionId: z.string().uuid(),
+        pageNumber: z.coerce.number().int().min(1).max(200),
+        activeMs: z.number().int().min(0).max(120_000),
+      }),
+    )
+    .max(50),
+});
+
 export type ReviewerAccessInput = z.infer<typeof reviewerAccessSchema>;
 export type ReviewerVerifyInput = z.infer<typeof reviewerVerifySchema>;
 export type ReviewerCommentInput = z.infer<typeof reviewerCommentSchema>;
 export type ReviewerPageParams = z.infer<typeof reviewerPageParamSchema>;
 export type ReviewerPageQuery = z.infer<typeof reviewerPageQuerySchema>;
 export type ReviewerEventInput = z.infer<typeof reviewerEventSchema>;
+export type ReviewerTelemetryInput = z.infer<typeof reviewerTelemetrySchema>;
