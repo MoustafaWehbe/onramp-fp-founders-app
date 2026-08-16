@@ -1,58 +1,75 @@
-# syntax=docker/dockerfile:1
-#
-# Image for the BullMQ job worker only (src/jobs/workers/index.ts) — NOT the
-# api server. It exists as a separate image solely because the rasterize
-# queue's DOCX/PPTX-to-PDF step (office-convert.service.ts) needs the
-# LibreOffice headless binary installed on the host running it; bundling
-# that into the plain api image would bloat every deploy that never touches
-# it. Build from the repo root: `docker build -f Dockerfile.worker .`
+# syntax=docker/dockerfile:1.4
 
-FROM node:20-slim AS build
+# ==========================================
+# Base Stage: Shared Environment & Apt Setup
+# ==========================================
+FROM node:24-slim AS base
 WORKDIR /app
-# npm workspaces need every package.json present before `npm ci` can resolve
-# and hoist dependencies correctly, even though only @starter-kit/api gets built.
+ENV NODE_ENV=production
+
+# ==========================================
+# Dependencies Stage: Prune & Install
+# ==========================================
+FROM base AS deps
+WORKDIR /app
+
+# Copy lockfiles and workspace manifests first for optimal caching
 COPY package.json package-lock.json ./
 COPY packages/api/package.json packages/api/package.json
 COPY packages/web/package.json packages/web/package.json
-# @starter-kit/api's postinstall runs `prisma generate`, which needs the
-# schema present before `npm ci` executes it.
 COPY packages/api/prisma packages/api/prisma
-RUN npm ci
+
+# Install all dependencies (including devDependencies required for build)
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --include=dev
+
+# ==========================================
+# Build Stage: Compile Application Code
+# ==========================================
+FROM deps AS build
+WORKDIR /app
 COPY . .
 RUN npm run build -w @starter-kit/api
 
-FROM node:20-slim AS runtime
-# fonts-liberation gives LibreOffice metric-compatible substitutes for the
-# Arial/Times/Courier fonts most DOCX/PPTX files actually use, so converted
-# PDFs don't silently reflow onto a different page count than the original.
-# The live deb.debian.org mirror our network reaches has a corrupted gpg
-# package (its bytes don't match its own index, "Hash Sum mismatch") —
-# consistent across retries and across IPv4/IPv6, so it's the backend
-# itself, not the transfer. Pinning apt to a snapshot.debian.org archive
-# (an immutable, internally-consistent point-in-time mirror — the node
-# image ships this exact URL commented out in debian.sources for this
-# situation) sidesteps the bad file entirely.
-RUN sed -i \
-  -e 's|URIs: http://deb.debian.org/debian$|URIs: http://snapshot.debian.org/archive/debian/20260421T000000Z|' \
-  -e 's|URIs: http://deb.debian.org/debian-security|URIs: http://snapshot.debian.org/archive/debian-security/20260421T000000Z|' \
-  /etc/apt/sources.list.d/debian.sources \
-  && echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until
-RUN n=0; \
-  until apt-get update && apt-get install -y --no-install-recommends libreoffice fonts-liberation; do \
-    n=$((n+1)); \
-    if [ "$n" -ge 5 ]; then echo "apt-get failed after $n attempts" >&2; exit 1; fi; \
-    echo "apt-get failed, retrying ($n)..." >&2; sleep 10; \
-  done \
-  && rm -rf /var/lib/apt/lists/*
+# Prune devDependencies to keep runtime node_modules lightweight
+RUN npm prune --omit=dev --workspace=@starter-kit/api
 
+# ==========================================
+# Runtime Stage: Isolated Worker Runner
+# ==========================================
+FROM base AS runtime
 WORKDIR /app
-ENV NODE_ENV=production
-# npm workspaces hoist dependencies to the repo-root node_modules; Node's
-# module resolution walks up from packages/api/dist and finds them there.
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/packages/api/dist ./packages/api/dist
-COPY --from=build /app/packages/api/package.json ./packages/api/package.json
+
+# Install runtime OS dependencies with robust mirror fallback & process init
+RUN set -ex; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends dumb-init ca-certificates; \
+    \
+    # Attempt install via default mirrors first, falling back to Debian Snapshot if broken
+    if ! apt-get install -y --no-install-recommends libreoffice fonts-liberation; then \
+        echo "Primary mirror failed; falling back to Debian Snapshot archive..."; \
+        sed -i \
+          -e 's|URIs: http://deb.debian.org/debian$|URIs: http://snapshot.debian.org/archive/debian/20260803T000000Z|' \
+          -e 's|URIs: http://deb.debian.org/debian-security|URIs: http://snapshot.debian.org/archive/debian-security/20260803T000000Z|' \
+          /etc/apt/sources.list.d/debian.sources; \
+        echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until; \
+        echo 'Acquire::http::Pipeline-Depth "0";' >> /etc/apt/apt.conf.d/99no-check-valid-until; \
+        apt-get update; \
+        apt-get install -y --no-install-recommends libreoffice fonts-liberation; \
+    fi; \
+    rm -rf /var/lib/apt/lists/*
+
+# Run as non-root user for security
+USER node
+
+# Copy pruned workspace dependencies and built output
+COPY --chown=node:node --from=build /app/node_modules ./node_modules
+COPY --chown=node:node --from=build /app/package.json ./package.json
+COPY --chown=node:node --from=build /app/packages/api/dist ./packages/api/dist
+COPY --chown=node:node --from=build /app/packages/api/package.json ./packages/api/package.json
 
 WORKDIR /app/packages/api
+
+# Use dumb-init to properly forward SIGTERM signals to BullMQ worker threads
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 CMD ["node", "dist/src/jobs/workers/index.js"]
