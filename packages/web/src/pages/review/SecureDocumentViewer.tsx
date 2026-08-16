@@ -320,6 +320,10 @@ function WatermarkOverlay({ email }: { email: string }) {
   );
 }
 
+function getManifestErrorCode(error: unknown): string | undefined {
+  return (error as { response?: { data?: { code?: string } } } | null)?.response?.data?.code;
+}
+
 export function SecureDocumentViewer({
   versionId,
   reviewerEmail,
@@ -335,8 +339,12 @@ export function SecureDocumentViewer({
     queryKey: ["reviewer-manifest", versionId],
     queryFn: () => getReviewerPageManifest(versionId),
     // The page token inside the manifest is short-lived; refresh it before it
-    // expires rather than waiting for pages to start failing.
-    refetchInterval: 8 * 60 * 1000,
+    // expires rather than waiting for pages to start failing. While the
+    // document is still rendering server-side, poll quickly instead — a
+    // reviewer who opens the link mid-render shouldn't be stuck on a stale
+    // "still preparing" placeholder for up to 8 minutes.
+    refetchInterval: (query) =>
+      getManifestErrorCode(query.state.error) === "RENDER_PENDING" ? 5_000 : 8 * 60 * 1000,
     retry: false,
   });
 
@@ -356,9 +364,7 @@ export function SecureDocumentViewer({
   }
 
   if (manifestQuery.isError) {
-    const code = (manifestQuery.error as { response?: { data?: { code?: string } } })?.response
-      ?.data?.code;
-    const pending = code === "RENDER_PENDING";
+    const pending = getManifestErrorCode(manifestQuery.error) === "RENDER_PENDING";
     return (
       <div className="grid h-64 place-items-center rounded-md border border-border bg-surface/40 px-6 text-center">
         <div className="space-y-2 text-sm text-muted-foreground">

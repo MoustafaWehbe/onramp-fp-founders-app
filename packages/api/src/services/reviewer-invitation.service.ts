@@ -148,6 +148,18 @@ export class ReviewerInvitationService {
       );
     }
 
+    // Rendering runs async in the rasterize worker; sharing before it finishes
+    // would hand the reviewer a link to a document the secure viewer can't
+    // yet serve, landing them on a stuck "still preparing" placeholder.
+    const notReady = versions.filter((version) => version.renderStatus !== "ready");
+    if (notReady.length > 0) {
+      throw createError(
+        "One or more documents are still being prepared for secure viewing. Wait a moment and try again.",
+        400,
+        "RENDER_PENDING",
+      );
+    }
+
     if (input.startupInvestorId) {
       const contact = await prisma.startupInvestor.findUnique({
         where: { startupId_id: { startupId, id: input.startupInvestorId } },
