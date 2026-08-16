@@ -7411,28 +7411,137 @@ paths:
         "200":
           description: Workspace
 
-  /reviewer-portal/documents/{documentId}/file-access:
-    post:
+  /reviewer-portal/documents/{versionId}/manifest:
+    get:
       tags: [Reviewer Portal]
-      summary: Signed file access for pinned document
-      operationId: reviewerPortalFileAccess
+      summary: Page manifest for a pinned document version
+      description: >
+        Returns page geometry plus a short-lived token for reading page images.
+        Reviewers are never given the source file or its storage location the
+        rendered pages are the only representation the portal exposes.
+      operationId: reviewerPortalPageManifest
       security:
         - reviewerSessionAuth: []
       parameters:
-        - name: documentId
+        - name: versionId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: disposition
+      responses:
+        "200":
+          description: Page manifest
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      versionId: { type: string, format: uuid }
+                      documentId: { type: string, format: uuid }
+                      title: { type: string }
+                      versionNumber: { type: integer }
+                      pageCount: { type: integer }
+                      pages:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            pageNumber: { type: integer }
+                            width: { type: integer }
+                            height: { type: integer }
+                      pageToken: { type: string }
+                      pageTokenExpiresInSeconds: { type: integer }
+        "404":
+          description: Version is not shared with this invitation
+        "409":
+          description: >
+            Version is not viewable RENDER_PENDING, RENDER_FAILED, or
+            RENDER_UNSUPPORTED.
+
+  /reviewer-portal/pages/{versionId}/{pageNumber}:
+    get:
+      tags: [Reviewer Portal]
+      summary: Read one rendered page image
+      description: >
+        Requires both the reviewer session cookie and a page token from the
+        manifest; the token's session must match the cookie's. Served
+        no-store so no copy persists in the browser cache.
+      operationId: reviewerPortalPageImage
+      security:
+        - reviewerSessionAuth: []
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: pageNumber
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: t
+          in: query
+          required: true
+          description: Page token issued by the manifest endpoint.
+          schema:
+            type: string
+        - name: kind
           in: query
           schema:
             type: string
-            enum: [preview, download]
+            enum: [view, thumb]
+            default: view
       responses:
         "200":
-          description: Access
+          description: WebP page image
+          content:
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        "403":
+          description: Page token invalid or expired
+        "404":
+          description: Page not found or version not shared
+
+  /reviewer-portal/documents/{versionId}/download:
+    get:
+      tags: [Reviewer Portal]
+      summary: Download the original file
+      description: >
+        The only route by which a source file leaves the server, and only when
+        the founder set allowDownload on the invitation. Streamed through the
+        API so the object's storage location is never exposed.
+      operationId: reviewerPortalDownload
+      security:
+        - reviewerSessionAuth: []
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: File bytes
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "403":
+          description: Downloads are disabled for this invitation
+        "404":
+          description: Version is not shared with this invitation
 
   /reviewer-portal/comments:
     get:

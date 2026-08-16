@@ -44,7 +44,6 @@ import {
   listPipelineEntries,
   updatePipelineEntry,
   type CommitmentDraft,
-  type FocusReason,
   type PipelineEntry,
 } from "../../../lib/pipeline-api";
 import {

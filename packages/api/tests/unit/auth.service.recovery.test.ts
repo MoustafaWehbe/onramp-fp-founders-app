@@ -1,7 +1,6 @@
 import { AuthService } from "../../src/services/auth.service";
 import { hashPassword } from "../../src/utils/auth";
 
-// eslint-disable-next-line
 const crypto = require("crypto");
 function hashToken(s: string): string {
   return crypto.createHash("sha256").update(s).digest("hex");
@@ -41,9 +40,7 @@ jest.mock("google-auth-library", () => ({
 import { prisma } from "../../src/db/prisma";
 import { sendPasswordReset } from "../../src/services/email.service";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockPrisma = prisma as any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockSendPasswordReset = sendPasswordReset as any;
 const service = new AuthService();
 

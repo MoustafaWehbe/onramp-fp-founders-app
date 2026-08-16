@@ -587,6 +587,9 @@ model DocumentVersion {
   /// pending_upload | processing | ready | failed
   processingStatus String   @default("pending_upload") @map("processing_status")
   processingError  String?  @map("processing_error")
+  renderStatus     String   @default("pending") @map("render_status")
+  renderError      String?  @map("render_error")
+  pageCount        Int?     @map("page_count")
   summary          String?
   uploadedBy       String   @map("uploaded_by")
   createdAt        DateTime @default(now()) @map("created_at")
@@ -594,12 +597,31 @@ model DocumentVersion {
   document   Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
   uploader   User            @relation(fields: [uploadedBy], references: [id])
   chunks     DocumentChunk[]
+  pages      DocumentPage[]
   aiAnalyses AiAnalysis[]
   reviewerInvitationDocuments ReviewerInvitationDocument[]
 
   @@unique([documentId, versionNumber])
   @@unique([documentId, id])
   @@map("document_versions")
+}
+
+model DocumentPage {
+  id                String   @id @default(uuid())
+  documentVersionId String   @map("document_version_id")
+  pageNumber        Int      @map("page_number")
+  width             Int
+  height            Int
+  storageKey        String   @map("storage_key")
+  thumbStorageKey   String   @map("thumb_storage_key")
+  storageProvider   String   @default("local") @map("storage_provider")
+  byteSize          Int?     @map("byte_size")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  documentVersion DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([documentVersionId, pageNumber])
+  @@map("document_pages")
 }
 
 model DocumentChunk {

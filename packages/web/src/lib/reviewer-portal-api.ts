@@ -22,16 +22,24 @@ export type ReviewerWorkspace = {
     title: string;
     documentType: string;
     displayOrder: number;
-    version: {
-      id: string;
-      versionNumber: number;
-      mimeType: string;
-      originalFilename: string;
-      fileSize: number | null;
-      processingStatus: string;
-      summary: string | null;
-    };
+    versionId: string;
+    versionNumber: number;
+    /** pending | rendering | ready | failed | unsupported */
+    renderStatus: string;
+    pageCount: number | null;
+    summary: string | null;
   }>;
+};
+
+export type ReviewerPageManifest = {
+  versionId: string;
+  documentId: string;
+  title: string;
+  versionNumber: number;
+  pageCount: number;
+  pages: Array<{ pageNumber: number; width: number; height: number }>;
+  pageToken: string;
+  pageTokenExpiresInSeconds: number;
 };
 
 export async function requestReviewerAccess(token: string) {
@@ -62,21 +70,45 @@ export async function getReviewerWorkspace() {
   return data.data;
 }
 
-export async function getReviewerFileAccess(
-  documentId: string,
-  disposition: "preview" | "download" = "preview",
-) {
-  const { data } = await reviewerPortalClient.post<{
-    data: {
-      url: string;
-      mimeType: string;
-      originalFilename: string;
-      allowDownload: boolean;
-    };
-  }>(`/documents/${documentId}/file-access`, undefined, {
-    params: { disposition },
-  });
+export async function getReviewerPageManifest(versionId: string) {
+  const { data } = await reviewerPortalClient.get<{ data: ReviewerPageManifest }>(
+    `/documents/${versionId}/manifest`,
+  );
   return data.data;
+}
+
+/**
+ * Fetches one rendered page as bytes.
+ *
+ * Returned as a blob rather than a URL on purpose: the caller draws it to a
+ * canvas and revokes the object URL immediately, so no element in the document
+ * holds a src that reproduces the page.
+ */
+export async function fetchReviewerPage(
+  versionId: string,
+  pageNumber: number,
+  token: string,
+  kind: "view" | "thumb" = "view",
+  signal?: AbortSignal,
+) {
+  const { data } = await reviewerPortalClient.get<Blob>(`/pages/${versionId}/${pageNumber}`, {
+    params: { t: token, kind },
+    responseType: "blob",
+    signal,
+  });
+  return data;
+}
+
+export async function downloadReviewerDocument(versionId: string) {
+  const response = await reviewerPortalClient.get<Blob>(`/documents/${versionId}/download`, {
+    responseType: "blob",
+  });
+  const disposition = response.headers["content-disposition"] as string | undefined;
+  const match = disposition?.match(/filename="([^"]+)"/);
+  return {
+    blob: response.data,
+    filename: match?.[1] ? decodeURIComponent(match[1]) : "document.pdf",
+  };
 }
 
 export async function listReviewerComments(documentId?: string) {

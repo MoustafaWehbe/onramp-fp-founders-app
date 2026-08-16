@@ -8,6 +8,8 @@ import {
 import type {
   ReviewerAccessInput,
   ReviewerCommentInput,
+  ReviewerPageParams,
+  ReviewerPageQuery,
   ReviewerVerifyInput,
 } from "../validators/reviewer-portal.schemas";
 
@@ -34,15 +36,56 @@ export const reviewerPortalController = {
     res.json({ data: result });
   }),
 
-  getFileAccess: asyncHandler(async (req, res) => {
-    const disposition = req.query.disposition === "download" ? "download" : "preview";
-    const result = await reviewerPortalService.getFileAccess(
+  getPageManifest: asyncHandler(async (req, res) => {
+    const result = await reviewerPortalService.getPageManifest(
       req.reviewer!.invitationId,
-      req.params.documentId as string,
-      req.reviewer!.allowDownload,
-      disposition,
+      req.reviewer!.sessionId,
+      req.params.versionId as string,
     );
+    res.set("Cache-Control", "private, no-store, max-age=0");
     res.json({ data: result });
+  }),
+
+  getPageImage: asyncHandler(async (req, res) => {
+    const { versionId, pageNumber } = req.params as unknown as ReviewerPageParams;
+    const { t, kind } = req.query as unknown as ReviewerPageQuery;
+
+    const { body, contentType } = await reviewerPortalService.getPageImage({
+      invitationId: req.reviewer!.invitationId,
+      sessionId: req.reviewer!.sessionId,
+      versionId,
+      pageNumber,
+      token: t,
+      kind,
+    });
+
+    // no-store keeps page images out of the browser's on-disk cache, so there
+    // is no cached copy for the viewer to recover after the session ends.
+    res.set({
+      "Content-Type": contentType,
+      "Content-Length": String(body.length),
+      "Cache-Control": "private, no-store, max-age=0",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      "X-Content-Type-Options": "nosniff",
+    });
+    res.send(body);
+  }),
+
+  getDownload: asyncHandler(async (req, res) => {
+    const { body, mimeType, originalFilename } = await reviewerPortalService.getDownload(
+      req.reviewer!.invitationId,
+      req.reviewer!.allowDownload,
+      req.params.versionId as string,
+    );
+
+    res.set({
+      "Content-Type": mimeType,
+      "Content-Length": String(body.length),
+      "Content-Disposition": `attachment; filename="${encodeURIComponent(originalFilename)}"`,
+      "Cache-Control": "private, no-store, max-age=0",
+      "X-Content-Type-Options": "nosniff",
+    });
+    res.send(body);
   }),
 
   listComments: asyncHandler(async (req, res) => {

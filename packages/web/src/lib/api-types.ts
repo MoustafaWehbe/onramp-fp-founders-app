@@ -1686,17 +1686,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/reviewer-portal/documents/{documentId}/file-access": {
+    "/reviewer-portal/documents/{versionId}/manifest": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Page manifest for a pinned document version
+         * @description Returns page geometry plus a short-lived token for reading page images. Reviewers are never given the source file or its storage location the rendered pages are the only representation the portal exposes.
+         */
+        get: operations["reviewerPortalPageManifest"];
         put?: never;
-        /** Signed file access for pinned document */
-        post: operations["reviewerPortalFileAccess"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviewer-portal/pages/{versionId}/{pageNumber}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one rendered page image
+         * @description Requires both the reviewer session cookie and a page token from the manifest; the token's session must match the cookie's. Served no-store so no copy persists in the browser cache.
+         */
+        get: operations["reviewerPortalPageImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviewer-portal/documents/{versionId}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the original file
+         * @description The only route by which a source file leaves the server, and only when the founder set allowDownload on the invitation. Streamed through the API so the object's storage location is never exposed.
+         */
+        get: operations["reviewerPortalDownload"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -8460,21 +8503,129 @@ export interface operations {
             };
         };
     };
-    reviewerPortalFileAccess: {
+    reviewerPortalPageManifest: {
         parameters: {
-            query?: {
-                disposition?: "preview" | "download";
-            };
+            query?: never;
             header?: never;
             path: {
-                documentId: string;
+                versionId: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Access */
+            /** @description Page manifest */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: {
+                            /** Format: uuid */
+                            versionId?: string;
+                            /** Format: uuid */
+                            documentId?: string;
+                            title?: string;
+                            versionNumber?: number;
+                            pageCount?: number;
+                            pages?: {
+                                pageNumber?: number;
+                                width?: number;
+                                height?: number;
+                            }[];
+                            pageToken?: string;
+                            pageTokenExpiresInSeconds?: number;
+                        };
+                    };
+                };
+            };
+            /** @description Version is not shared with this invitation */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version is not viewable RENDER_PENDING, RENDER_FAILED, or RENDER_UNSUPPORTED. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reviewerPortalPageImage: {
+        parameters: {
+            query: {
+                /** @description Page token issued by the manifest endpoint. */
+                t: string;
+                kind?: "view" | "thumb";
+            };
+            header?: never;
+            path: {
+                versionId: string;
+                pageNumber: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description WebP page image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/webp": string;
+                };
+            };
+            /** @description Page token invalid or expired */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Page not found or version not shared */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reviewerPortalDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description File bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description Downloads are disabled for this invitation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version is not shared with this invitation */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

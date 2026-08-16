@@ -6,6 +6,10 @@ import {
   documentProcessingJob,
   type DocumentProcessingJobData,
 } from "./workers/document-processing.worker";
+import {
+  documentRasterizeJob,
+  type DocumentRasterizeJobData,
+} from "./workers/document-rasterize.worker";
 import { calendarSyncJob, type CalendarSyncJobData } from "./workers/calendar-sync.worker";
 import { gmailLogRetryJob, type GmailLogRetryJobData } from "./workers/gmail-log-retry.worker";
 
@@ -35,6 +39,9 @@ export const emailQueue = makeQueue<EmailJobData>(emailJob.name);
 export const embeddingsQueue = makeQueue<EmbeddingsJobData>(embeddingsJob.name);
 export const documentProcessingQueue = makeQueue<DocumentProcessingJobData>(
   documentProcessingJob.name,
+);
+export const documentRasterizeQueue = makeQueue<DocumentRasterizeJobData>(
+  documentRasterizeJob.name,
 );
 export const calendarSyncQueue = makeQueue<CalendarSyncJobData>(calendarSyncJob.name);
 export const gmailLogRetryQueue = makeQueue<GmailLogRetryJobData>(gmailLogRetryJob.name);

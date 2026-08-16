@@ -19,6 +19,24 @@ export const reviewerDocumentIdParamSchema = z.object({
   documentId: z.string().uuid(),
 });
 
+export const reviewerVersionIdParamSchema = z.object({
+  versionId: z.string().uuid(),
+});
+
+export const reviewerPageParamSchema = z.object({
+  versionId: z.string().uuid(),
+  // Bounded by MAX_RASTER_PAGES; a page number outside it can never resolve, so
+  // reject it before it reaches a query.
+  pageNumber: z.coerce.number().int().min(1).max(200),
+});
+
+export const reviewerPageQuerySchema = z.object({
+  t: z.string().min(10).max(400),
+  kind: z.enum(["view", "thumb"]).default("view"),
+});
+
 export type ReviewerAccessInput = z.infer<typeof reviewerAccessSchema>;
 export type ReviewerVerifyInput = z.infer<typeof reviewerVerifySchema>;
 export type ReviewerCommentInput = z.infer<typeof reviewerCommentSchema>;
+export type ReviewerPageParams = z.infer<typeof reviewerPageParamSchema>;
+export type ReviewerPageQuery = z.infer<typeof reviewerPageQuerySchema>;

@@ -1,5 +1,4 @@
 import { InviteService } from "../../src/services/invite.service";
-import crypto from "crypto";
 
 jest.mock("../../src/db/prisma", () => ({
   prisma: {

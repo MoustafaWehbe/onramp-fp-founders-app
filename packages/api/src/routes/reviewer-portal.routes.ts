@@ -4,8 +4,10 @@ import { requireReviewerSession } from "../middleware/reviewer-auth";
 import {
   reviewerAccessSchema,
   reviewerCommentSchema,
-  reviewerDocumentIdParamSchema,
+  reviewerPageParamSchema,
+  reviewerPageQuerySchema,
   reviewerVerifySchema,
+  reviewerVersionIdParamSchema,
 } from "../validators/reviewer-portal.schemas";
 import { reviewerPortalController } from "../controllers/reviewer-portal.controller";
 
@@ -25,11 +27,28 @@ router.post(
 
 router.get("/workspace", requireReviewerSession, reviewerPortalController.getWorkspace);
 
-router.post(
-  "/documents/:documentId/file-access",
+// Page images replace any form of file access. There is deliberately no route
+// from this router to a signed URL for a source object — see getPageManifest.
+router.get(
+  "/documents/:versionId/manifest",
   requireReviewerSession,
-  validate(reviewerDocumentIdParamSchema, "params"),
-  reviewerPortalController.getFileAccess,
+  validate(reviewerVersionIdParamSchema, "params"),
+  reviewerPortalController.getPageManifest,
+);
+
+router.get(
+  "/pages/:versionId/:pageNumber",
+  requireReviewerSession,
+  validate(reviewerPageParamSchema, "params"),
+  validate(reviewerPageQuerySchema, "query"),
+  reviewerPortalController.getPageImage,
+);
+
+router.get(
+  "/documents/:versionId/download",
+  requireReviewerSession,
+  validate(reviewerVersionIdParamSchema, "params"),
+  reviewerPortalController.getDownload,
 );
 
 router.get("/comments", requireReviewerSession, reviewerPortalController.listComments);

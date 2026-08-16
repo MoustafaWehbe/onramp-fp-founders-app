@@ -84,6 +84,18 @@ function buildStorageKey(startupId: string, documentId: string, versionId: strin
   return `startups/${startupId}/documents/${documentId}/${versionId}/${safe}`;
 }
 
+/** Rendered page images live beside the source object under the same version
+ * prefix, so deleting a version's prefix still collects everything. */
+function buildPageKey(
+  startupId: string,
+  documentId: string,
+  versionId: string,
+  pageNumber: number,
+  kind: "pages" | "thumbs",
+) {
+  return `startups/${startupId}/documents/${documentId}/${versionId}/${kind}/${pageNumber}.webp`;
+}
+
 // Random suffix rather than a fixed per-user path: replacing a photo must mint
 // a new URL so browsers/CDNs never keep serving a stale cached image, and the
 // old object simply becomes unreferenced (deleteAvatar cleans it up).
@@ -98,8 +110,11 @@ function isValidAvatarKey(storageKey: string): boolean {
   return /^avatars\/[a-zA-Z0-9-]+\/[a-f0-9]{16}\.(webp|png)$/.test(storageKey);
 }
 
+/** Matches both the source object and the rendered `pages/`/`thumbs/` images
+ * under a version prefix. Page images were once excluded here, which silently
+ * skipped them during cleanup and left them orphaned in the bucket. */
 function isValidDocumentKey(storageKey: string): boolean {
-  return /^startups\/[a-zA-Z0-9-]+\/documents\/[a-zA-Z0-9-]+\/[a-zA-Z0-9-]+\/[a-zA-Z0-9._-]+$/.test(
+  return /^startups\/[a-zA-Z0-9-]+\/documents\/[a-zA-Z0-9-]+\/[a-zA-Z0-9-]+\/(?:(?:pages|thumbs)\/\d+\.webp|[a-zA-Z0-9._-]+)$/.test(
     storageKey,
   );
 }
@@ -146,6 +161,47 @@ export class StorageService {
 
   buildKey(startupId: string, documentId: string, versionId: string, filename: string) {
     return buildStorageKey(startupId, documentId, versionId, filename);
+  }
+
+  buildPageKey(
+    startupId: string,
+    documentId: string,
+    versionId: string,
+    pageNumber: number,
+    kind: "pages" | "thumbs",
+  ) {
+    return buildPageKey(startupId, documentId, versionId, pageNumber, kind);
+  }
+
+  /** Which provider a server-side write will land on. Recorded on the row so
+   * reads resolve correctly after the environment gains Supabase config. */
+  currentProvider(): "supabase" | "local" {
+    return supabaseConfigured() ? "supabase" : "local";
+  }
+
+  /**
+   * Direct server-side write, unlike documents themselves which are uploaded
+   * from the browser through a signed URL. Rendered page images are produced by
+   * the worker, so there is no client in the loop to sign for.
+   */
+  async putObject(storageKey: string, body: Buffer, contentType: string): Promise<void> {
+    if (!isValidDocumentKey(storageKey)) {
+      throw createError("Refusing to write an unrecognized storage key", 500, "STORAGE_ERROR");
+    }
+
+    if (supabaseConfigured()) {
+      const { client, bucket } = getSupabase();
+      const { error } = await client.storage.from(bucket).upload(storageKey, body, {
+        contentType,
+        upsert: true,
+      });
+      if (error) throw createError(error.message, 502, "STORAGE_ERROR");
+      return;
+    }
+
+    const fullPath = path.join(localRoot(), storageKey);
+    await fs.mkdir(path.dirname(fullPath), { recursive: true });
+    await fs.writeFile(fullPath, body);
   }
 
   async createSignedUpload(input: {

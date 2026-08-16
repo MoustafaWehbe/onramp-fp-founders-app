@@ -5,6 +5,7 @@ import { getRedis } from "../queue";
 import { emailJob } from "./email.worker";
 import { embeddingsJob } from "./embeddings.worker";
 import { documentProcessingJob } from "./document-processing.worker";
+import { documentRasterizeJob } from "./document-rasterize.worker";
 import { calendarSyncJob } from "./calendar-sync.worker";
 import { gmailLogRetryJob } from "./gmail-log-retry.worker";
 
@@ -18,6 +19,7 @@ const JOBS: WorkerDef[] = [
   emailJob,
   embeddingsJob,
   documentProcessingJob,
+  documentRasterizeJob,
   calendarSyncJob,
   gmailLogRetryJob,
 ];

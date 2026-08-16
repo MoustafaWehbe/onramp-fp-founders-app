@@ -21,6 +21,7 @@ jest.mock("../../src/db/prisma", () => ({
 
 jest.mock("../../src/jobs/queue", () => ({
   documentProcessingQueue: { add: jest.fn() },
+  documentRasterizeQueue: { add: jest.fn() },
 }));
 
 jest.mock("../../src/services/audit-writer", () => ({
@@ -37,13 +38,14 @@ jest.mock("../../src/services/storage.service", () => ({
 }));
 
 import { prisma } from "../../src/db/prisma";
-import { documentProcessingQueue } from "../../src/jobs/queue";
+import { documentProcessingQueue, documentRasterizeQueue } from "../../src/jobs/queue";
 import { documentService } from "../../src/services/document.service";
 import { storageService } from "../../src/services/storage.service";
 
 const mockPrisma = prisma as jest.Mocked<typeof prisma>;
 const mockStorage = storageService as jest.Mocked<typeof storageService>;
 const mockQueue = documentProcessingQueue as jest.Mocked<typeof documentProcessingQueue>;
+const mockRasterizeQueue = documentRasterizeQueue as jest.Mocked<typeof documentRasterizeQueue>;
 
 const STARTUP_ID = "00000000-0000-0000-0000-000000000002";
 const USER_ID = "00000000-0000-0000-0000-000000000001";
@@ -148,6 +150,13 @@ describe("DocumentService.confirmVersion", () => {
     const result = await documentService.confirmVersion(STARTUP_ID, DOC_ID, VER_ID);
     expect(result.processingStatus).toBe("processing");
     expect(mockQueue.add).toHaveBeenCalledWith("process-version", {
+      startupId: STARTUP_ID,
+      documentId: DOC_ID,
+      versionId: VER_ID,
+    });
+    // Rasterization is queued alongside text extraction so the version becomes
+    // viewable in the reviewer portal without a second founder action.
+    expect(mockRasterizeQueue.add).toHaveBeenCalledWith("rasterize-version", {
       startupId: STARTUP_ID,
       documentId: DOC_ID,
       versionId: VER_ID,

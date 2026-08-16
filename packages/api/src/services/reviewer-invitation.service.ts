@@ -88,13 +88,35 @@ export class ReviewerInvitationService {
         document: { startupId },
         processingStatus: "ready",
       },
-      select: { id: true, documentId: true },
+      select: { id: true, documentId: true, mimeType: true, renderStatus: true },
     });
     if (versions.length !== input.documentVersionIds.length) {
       throw createError(
         "One or more document versions were not found or are not ready to share",
         400,
         "INVALID_DOCUMENT_VERSIONS",
+      );
+    }
+
+    // The secure viewer serves rendered page images, and only PDFs can be
+    // rendered today. Enforced here rather than in the UI because letting a
+    // non-PDF through would leave the reviewer with a document they can open
+    // but not view — or worse, tempt a fallback that ships the source file.
+    const unsupported = versions.filter((version) => version.mimeType !== "application/pdf");
+    if (unsupported.length > 0) {
+      throw createError(
+        "Only PDF documents can be shared with reviewers. Convert the file to PDF and upload a new version.",
+        400,
+        "UNSUPPORTED_SHARE_FORMAT",
+      );
+    }
+
+    const unrenderable = versions.filter((version) => version.renderStatus === "failed");
+    if (unrenderable.length > 0) {
+      throw createError(
+        "One or more documents could not be prepared for secure viewing. Re-upload them and try again.",
+        400,
+        "RENDER_FAILED",
       );
     }
 

@@ -1,4 +1,4 @@
-import { ArrowRight, Clock, Info, PieChart } from "lucide-react";
+import { ArrowRight, Clock, PieChart } from "lucide-react";
 import { EmptyState } from "../../../components/shared/EmptyState";
 import { getStage } from "../../../lib/mock-data";
 import type { PipelineAnalytics } from "../../../lib/pipeline-api";

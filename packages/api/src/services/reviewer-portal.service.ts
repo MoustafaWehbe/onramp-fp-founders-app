@@ -3,6 +3,7 @@ import type { Response } from "express";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
 import { generateOTP, hashOTP, hashToken } from "../utils/auth";
+import { createPageToken, verifyPageToken, PAGE_TOKEN_TTL_SECONDS } from "../utils/page-token";
 import { emailQueue } from "../jobs/queue";
 import { storageService } from "./storage.service";
 import { reviewerOtpEmail } from "../emails/templates/reviewer-otp";
@@ -195,10 +196,8 @@ export class ReviewerPortalService {
               select: {
                 id: true,
                 versionNumber: true,
-                mimeType: true,
-                originalFilename: true,
-                fileSize: true,
-                processingStatus: true,
+                renderStatus: true,
+                pageCount: true,
                 summary: true,
               },
             },
@@ -225,48 +224,146 @@ export class ReviewerPortalService {
         documentId: row.document.id,
         title: row.document.title,
         documentType: row.document.documentType,
-        version: row.documentVersion,
+        // The viewer addresses documents by version, not by document: the
+        // invitation is pinned to one immutable version of each.
+        versionId: row.documentVersion.id,
+        versionNumber: row.documentVersion.versionNumber,
+        renderStatus: row.documentVersion.renderStatus,
+        pageCount: row.documentVersion.pageCount,
+        summary: row.documentVersion.summary,
         displayOrder: row.displayOrder,
       })),
     };
   }
 
-  async getFileAccess(
-    invitationId: string,
-    documentId: string,
-    allowDownload: boolean,
-    disposition: "preview" | "download",
-  ) {
-    if (disposition === "download" && !allowDownload) {
+  /**
+   * Resolves a version the invitation is actually pinned to.
+   *
+   * Every page/download path goes through here rather than trusting a client
+   * supplied id: the query is anchored on `invitationId`, so a version
+   * belonging to another invitation (or another startup) simply does not match.
+   */
+  private async requirePinnedVersion(invitationId: string, versionId: string) {
+    const pinned = await prisma.reviewerInvitationDocument.findFirst({
+      where: { invitationId, documentVersionId: versionId },
+      include: {
+        document: { select: { id: true, title: true } },
+        documentVersion: true,
+      },
+    });
+    if (!pinned) {
+      throw createError("Document is not shared with this invitation", 404, "NOT_SHARED");
+    }
+    return pinned;
+  }
+
+  /**
+   * Page geometry plus a short-lived token for reading the images.
+   *
+   * Note what is *not* here: no storage URL, no filename, no bytes of the
+   * source object. The manifest is the only way to discover that a version has
+   * pages at all, and reaching it already required a verified session.
+   */
+  async getPageManifest(invitationId: string, sessionId: string, versionId: string) {
+    const pinned = await this.requirePinnedVersion(invitationId, versionId);
+    const version = pinned.documentVersion;
+
+    if (version.renderStatus === "unsupported") {
+      throw createError(
+        "This document cannot be displayed in the secure viewer",
+        409,
+        "RENDER_UNSUPPORTED",
+      );
+    }
+    if (version.renderStatus === "failed") {
+      throw createError("This document could not be prepared for viewing", 409, "RENDER_FAILED");
+    }
+    if (version.renderStatus !== "ready") {
+      throw createError("This document is still being prepared", 409, "RENDER_PENDING");
+    }
+
+    const pages = await prisma.documentPage.findMany({
+      where: { documentVersionId: versionId },
+      orderBy: { pageNumber: "asc" },
+      select: { pageNumber: true, width: true, height: true },
+    });
+
+    return {
+      versionId,
+      documentId: pinned.document.id,
+      title: pinned.document.title,
+      versionNumber: version.versionNumber,
+      pageCount: pages.length,
+      pages,
+      pageToken: createPageToken(sessionId, versionId),
+      pageTokenExpiresInSeconds: PAGE_TOKEN_TTL_SECONDS,
+    };
+  }
+
+  /**
+   * Returns the bytes of one rendered page.
+   *
+   * The token proves this session was handed a manifest for this version; the
+   * pinned-version check is still repeated because the token is only an
+   * authorization hint, never the authority.
+   */
+  async getPageImage(input: {
+    invitationId: string;
+    sessionId: string;
+    versionId: string;
+    pageNumber: number;
+    token: string;
+    kind: "view" | "thumb";
+  }) {
+    const claims = verifyPageToken(input.token);
+    if (
+      !claims ||
+      claims.sessionId !== input.sessionId ||
+      claims.versionId !== input.versionId
+    ) {
+      throw createError("Page access token is invalid or expired", 403, "PAGE_TOKEN_INVALID");
+    }
+
+    await this.requirePinnedVersion(input.invitationId, input.versionId);
+
+    const page = await prisma.documentPage.findUnique({
+      where: {
+        documentVersionId_pageNumber: {
+          documentVersionId: input.versionId,
+          pageNumber: input.pageNumber,
+        },
+      },
+    });
+    if (!page) throw createError("Page not found", 404, "PAGE_NOT_FOUND");
+
+    const key = input.kind === "thumb" ? page.thumbStorageKey : page.storageKey;
+    const body = await storageService.readObject(key, page.storageProvider);
+    return { body, contentType: "image/webp" };
+  }
+
+  /**
+   * The only path by which an original file may leave the server, and only when
+   * the founder explicitly enabled downloads for this invitation.
+   *
+   * Streams through the API rather than handing back a signed storage URL, so
+   * the object's location is never exposed and the transfer stays attributable.
+   */
+  async getDownload(invitationId: string, allowDownload: boolean, versionId: string) {
+    if (!allowDownload) {
       throw createError("Downloads are disabled for this invitation", 403, "DOWNLOAD_FORBIDDEN");
     }
 
-    const pinned = await prisma.reviewerInvitationDocument.findFirst({
-      where: { invitationId, documentId },
-      include: { documentVersion: true },
-    });
-    if (!pinned) throw createError("Document is not shared with this invitation", 404, "NOT_SHARED");
-    if (pinned.documentVersion.processingStatus !== "ready") {
+    const pinned = await this.requirePinnedVersion(invitationId, versionId);
+    const version = pinned.documentVersion;
+    if (version.processingStatus === "pending_upload") {
       throw createError("Document is not ready", 409, "NOT_READY");
     }
 
-    const url = await storageService.createSignedReadUrl(
-      pinned.documentVersion.storageKey,
-      pinned.documentVersion.storageProvider,
-      300,
-      {
-        mimeType: pinned.documentVersion.mimeType,
-        originalFilename: pinned.documentVersion.originalFilename,
-      },
-    );
-
+    const body = await storageService.readObject(version.storageKey, version.storageProvider);
     return {
-      url,
-      expiresInSeconds: 300,
-      mimeType: pinned.documentVersion.mimeType,
-      originalFilename: pinned.documentVersion.originalFilename,
-      versionId: pinned.documentVersion.id,
-      allowDownload,
+      body,
+      mimeType: version.mimeType,
+      originalFilename: version.originalFilename,
     };
   }
 

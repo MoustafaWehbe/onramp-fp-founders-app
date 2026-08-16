@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Download, Eye, FileText, LogOut, MessageSquare, Shield } from "lucide-react";
+import { Download, FileText, LogOut, MessageSquare, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -11,11 +11,12 @@ import { apiErrorMessage } from "../../lib/api-error";
 import {
   completeReviewerSession,
   createReviewerComment,
-  getReviewerFileAccess,
+  downloadReviewerDocument,
   getReviewerWorkspace,
   listReviewerComments,
   logoutReviewerSession,
 } from "../../lib/reviewer-portal-api";
+import { SecureDocumentViewer } from "./SecureDocumentViewer";
 import { formatDate } from "../../lib/utils";
 
 export function ReviewerWorkspace() {
@@ -39,30 +40,21 @@ export function ReviewerWorkspace() {
     enabled: Boolean(workspaceQuery.data),
   });
 
-  const openFile = async (documentId: string, disposition: "preview" | "download") => {
-    const previewTab = disposition === "preview" ? window.open("about:blank", "_blank") : null;
+  // Downloads are the one path by which an original file may leave the server,
+  // and only when the founder enabled them. Viewing never touches this.
+  const download = async (versionId: string) => {
     try {
-      const access = await getReviewerFileAccess(documentId, disposition);
-      const fileRes = await fetch(access.url);
-      if (!fileRes.ok) throw new Error(`Could not fetch file (${fileRes.status})`);
-      const blob = await fileRes.blob();
-      const objectUrl = URL.createObjectURL(
-        new Blob([blob], { type: access.mimeType || blob.type || "application/octet-stream" }),
-      );
-      if (disposition === "download") {
-        const a = document.createElement("a");
-        a.href = objectUrl;
-        a.download = access.originalFilename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      } else if (previewTab) {
-        previewTab.location.href = objectUrl;
-      }
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      const { blob, filename } = await downloadReviewerDocument(versionId);
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
     } catch (error) {
-      previewTab?.close();
-      toast.error(apiErrorMessage(error, "Could not open file"));
+      toast.error(apiErrorMessage(error, "Could not download file"));
     }
   };
 
@@ -168,7 +160,10 @@ export function ReviewerWorkspace() {
                 <FileText className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>
                   <span className="block font-medium">{doc.title}</span>
-                  <span className="text-xs text-muted-foreground">v{doc.version.versionNumber}</span>
+                  <span className="text-xs text-muted-foreground">
+                    v{doc.versionNumber}
+                    {doc.renderStatus !== "ready" ? " · preparing…" : ""}
+                  </span>
                 </span>
               </button>
             ))}
@@ -185,29 +180,33 @@ export function ReviewerWorkspace() {
           ) : (
             <div className="card-elevated space-y-4 p-5">
               <div>
-                <h2 className="font-display text-xl font-semibold">{activeDoc.title}</h2>
-                <p className="text-sm text-muted-foreground">
-                  {activeDoc.version.originalFilename} · updated {formatDate(workspace.invitation.expiresAt)}
-                </p>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="font-display text-xl font-semibold">{activeDoc.title}</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Version {activeDoc.versionNumber}
+                      {activeDoc.pageCount ? ` · ${activeDoc.pageCount} pages` : ""} · access
+                      expires {formatDate(workspace.invitation.expiresAt)}
+                    </p>
+                  </div>
+                  {workspace.invitation.allowDownload && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void download(activeDoc.versionId)}
+                    >
+                      <Download className="mr-1.5 h-4 w-4" /> Download
+                    </Button>
+                  )}
+                </div>
                 {workspace.invitation.personalMessage && (
                   <p className="mt-3 rounded-md border border-border bg-surface/50 p-3 text-sm">
                     {workspace.invitation.personalMessage}
                   </p>
                 )}
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => void openFile(activeDoc.documentId, "preview")}>
-                  <Eye className="mr-1.5 h-4 w-4" /> Preview
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={!workspace.invitation.allowDownload}
-                  onClick={() => void openFile(activeDoc.documentId, "download")}
-                >
-                  <Download className="mr-1.5 h-4 w-4" /> Download
-                </Button>
-              </div>
+
+              <SecureDocumentViewer key={activeDoc.versionId} versionId={activeDoc.versionId} />
 
               <div className="border-t border-border pt-4">
                 <div className="mb-3 flex items-center gap-2 text-sm font-medium">

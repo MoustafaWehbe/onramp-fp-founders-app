@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
-import { documentProcessingQueue } from "../jobs/queue";
+import { documentProcessingQueue, documentRasterizeQueue } from "../jobs/queue";
 import { storageService } from "./storage.service";
 import { recordAuditEvent } from "./audit-writer";
 import type {
@@ -324,6 +324,14 @@ export class DocumentService {
       versionId,
     });
 
+    // Independent of text extraction on purpose: a deck can be searchable
+    // before it is viewable, and viewable before it is searchable.
+    await documentRasterizeQueue.add("rasterize-version", {
+      startupId,
+      documentId,
+      versionId,
+    });
+
     return serializeVersion(updated);
   }
 
@@ -348,12 +356,31 @@ export class DocumentService {
       select: {
         id: true,
         title: true,
-        versions: { select: { storageKey: true, storageProvider: true } },
+        versions: {
+          select: {
+            storageKey: true,
+            storageProvider: true,
+            // Rendered page images are separate objects under the version
+            // prefix; without collecting them here they survive the delete.
+            pages: { select: { storageKey: true, thumbStorageKey: true, storageProvider: true } },
+          },
+        },
       },
     });
     if (!existing) throw createError("Document not found", 404, "DOCUMENT_NOT_FOUND");
     await prisma.document.delete({ where: { id: documentId } });
-    await storageService.deleteObjects(existing.versions);
+    await storageService.deleteObjects([
+      ...existing.versions.map((v) => ({
+        storageKey: v.storageKey,
+        storageProvider: v.storageProvider,
+      })),
+      ...existing.versions.flatMap((v) =>
+        v.pages.flatMap((p) => [
+          { storageKey: p.storageKey, storageProvider: p.storageProvider },
+          { storageKey: p.thumbStorageKey, storageProvider: p.storageProvider },
+        ]),
+      ),
+    ]);
     if (userId) {
       await recordAuditEvent({
         startupId,

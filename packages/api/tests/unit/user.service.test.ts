@@ -20,9 +20,7 @@ jest.mock("../../src/services/storage.service", () => ({
 import { prisma } from "../../src/db/prisma";
 import { storageService } from "../../src/services/storage.service";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockPrisma = prisma as any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockStorage = storageService as any;
 const service = new UserService();
 

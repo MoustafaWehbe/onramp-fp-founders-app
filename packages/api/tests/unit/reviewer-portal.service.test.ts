@@ -16,6 +16,10 @@ jest.mock("../../src/db/prisma", () => ({
       findMany: jest.fn(),
       create: jest.fn(),
     },
+    documentPage: {
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+    },
   },
 }));
 
@@ -26,6 +30,7 @@ jest.mock("../../src/jobs/queue", () => ({
 jest.mock("../../src/services/storage.service", () => ({
   storageService: {
     createSignedReadUrl: jest.fn(),
+    readObject: jest.fn(),
   },
 }));
 
@@ -42,7 +47,6 @@ import { storageService } from "../../src/services/storage.service";
 
 const mockPrisma = prisma as jest.Mocked<typeof prisma>;
 const INVITE_ID = "00000000-0000-0000-0000-000000000010";
-const STARTUP_ID = "00000000-0000-0000-0000-000000000002";
 
 beforeEach(() => jest.clearAllMocks());
 
@@ -85,28 +89,170 @@ describe("ReviewerPortalService.requestAccess", () => {
   });
 });
 
-describe("ReviewerPortalService.getFileAccess", () => {
-  it("blocks downloads when allowDownload is false", async () => {
-    await expect(
-      reviewerPortalService.getFileAccess(INVITE_ID, "doc-1", false, "download"),
-    ).rejects.toMatchObject({ code: "DOWNLOAD_FORBIDDEN" });
+const SESSION_ID = "00000000-0000-0000-0000-000000000020";
+const VERSION_ID = "00000000-0000-0000-0000-000000000030";
+const OTHER_VERSION_ID = "00000000-0000-0000-0000-000000000031";
+
+function pinnedVersion(overrides: Record<string, unknown> = {}) {
+  return {
+    document: { id: "doc-1", title: "Seed Deck" },
+    documentVersion: {
+      id: VERSION_ID,
+      versionNumber: 2,
+      renderStatus: "ready",
+      processingStatus: "ready",
+      storageKey: "startups/s/documents/d/v/deck.pdf",
+      storageProvider: "local",
+      mimeType: "application/pdf",
+      originalFilename: "deck.pdf",
+      ...overrides,
+    },
+  };
+}
+
+describe("ReviewerPortalService.getPageManifest", () => {
+  it("returns page geometry and a token, and never a storage location", async () => {
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(pinnedVersion() as never);
+    mockPrisma.documentPage.findMany.mockResolvedValue([
+      { pageNumber: 1, width: 1600, height: 2070 },
+      { pageNumber: 2, width: 1600, height: 2070 },
+    ] as never);
+
+    const result = await reviewerPortalService.getPageManifest(
+      INVITE_ID,
+      SESSION_ID,
+      VERSION_ID,
+    );
+
+    expect(result.pageCount).toBe(2);
+    expect(result.pageToken).toEqual(expect.any(String));
+    // The whole point of the redesign: nothing that locates the source object
+    // may appear in a portal response.
+    expect(JSON.stringify(result)).not.toContain("startups/s/documents");
+    expect(JSON.stringify(result)).not.toContain("deck.pdf");
   });
 
-  it("returns signed url for pinned ready documents", async () => {
-    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue({
-      documentVersion: {
-        id: "ver-1",
-        processingStatus: "ready",
-        storageKey: "key",
-        storageProvider: "local",
-        mimeType: "text/plain",
-        originalFilename: "deck.txt",
-      },
-    } as never);
-    (storageService.createSignedReadUrl as jest.Mock).mockResolvedValue("/api/v1/documents/local-download/x");
+  it("refuses a version that is not pinned to this invitation", async () => {
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(null as never);
 
-    const result = await reviewerPortalService.getFileAccess(INVITE_ID, "doc-1", true, "preview");
-    expect(result.url).toContain("local-download");
-    expect(result.versionId).toBe("ver-1");
+    await expect(
+      reviewerPortalService.getPageManifest(INVITE_ID, SESSION_ID, OTHER_VERSION_ID),
+    ).rejects.toMatchObject({ code: "NOT_SHARED" });
+  });
+
+  it("reports a version that has not finished rendering", async () => {
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(
+      pinnedVersion({ renderStatus: "rendering" }) as never,
+    );
+
+    await expect(
+      reviewerPortalService.getPageManifest(INVITE_ID, SESSION_ID, VERSION_ID),
+    ).rejects.toMatchObject({ code: "RENDER_PENDING" });
+  });
+});
+
+describe("ReviewerPortalService.getPageImage", () => {
+  async function tokenFor(sessionId: string, versionId: string) {
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(
+      pinnedVersion({ id: versionId }) as never,
+    );
+    mockPrisma.documentPage.findMany.mockResolvedValue([] as never);
+    const { pageToken } = await reviewerPortalService.getPageManifest(
+      INVITE_ID,
+      sessionId,
+      versionId,
+    );
+    return pageToken;
+  }
+
+  it("serves page bytes for a valid token", async () => {
+    const token = await tokenFor(SESSION_ID, VERSION_ID);
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(pinnedVersion() as never);
+    mockPrisma.documentPage.findUnique.mockResolvedValue({
+      storageKey: "startups/s/documents/d/v/pages/1.webp",
+      thumbStorageKey: "startups/s/documents/d/v/thumbs/1.webp",
+      storageProvider: "local",
+    } as never);
+    (storageService.readObject as jest.Mock).mockResolvedValue(Buffer.from("webp-bytes"));
+
+    const result = await reviewerPortalService.getPageImage({
+      invitationId: INVITE_ID,
+      sessionId: SESSION_ID,
+      versionId: VERSION_ID,
+      pageNumber: 1,
+      token,
+      kind: "view",
+    });
+
+    expect(result.contentType).toBe("image/webp");
+    expect(result.body.toString()).toBe("webp-bytes");
+  });
+
+  it("rejects a token minted for a different session", async () => {
+    const token = await tokenFor("00000000-0000-0000-0000-0000000000ff", VERSION_ID);
+
+    await expect(
+      reviewerPortalService.getPageImage({
+        invitationId: INVITE_ID,
+        sessionId: SESSION_ID,
+        versionId: VERSION_ID,
+        pageNumber: 1,
+        token,
+        kind: "view",
+      }),
+    ).rejects.toMatchObject({ code: "PAGE_TOKEN_INVALID" });
+  });
+
+  it("rejects a token minted for a different version", async () => {
+    const token = await tokenFor(SESSION_ID, OTHER_VERSION_ID);
+
+    await expect(
+      reviewerPortalService.getPageImage({
+        invitationId: INVITE_ID,
+        sessionId: SESSION_ID,
+        versionId: VERSION_ID,
+        pageNumber: 1,
+        token,
+        kind: "view",
+      }),
+    ).rejects.toMatchObject({ code: "PAGE_TOKEN_INVALID" });
+  });
+
+  it("still checks the pin even when the token verifies", async () => {
+    const token = await tokenFor(SESSION_ID, VERSION_ID);
+    // Simulates access being revoked between manifest and page read.
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(null as never);
+
+    await expect(
+      reviewerPortalService.getPageImage({
+        invitationId: INVITE_ID,
+        sessionId: SESSION_ID,
+        versionId: VERSION_ID,
+        pageNumber: 1,
+        token,
+        kind: "view",
+      }),
+    ).rejects.toMatchObject({ code: "NOT_SHARED" });
+  });
+});
+
+describe("ReviewerPortalService.getDownload", () => {
+  it("blocks downloads when allowDownload is false", async () => {
+    await expect(
+      reviewerPortalService.getDownload(INVITE_ID, false, VERSION_ID),
+    ).rejects.toMatchObject({ code: "DOWNLOAD_FORBIDDEN" });
+    // Refused before any lookup, so a disabled download cannot even confirm
+    // whether the version exists.
+    expect(mockPrisma.reviewerInvitationDocument.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("streams the original only when the founder enabled downloads", async () => {
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(pinnedVersion() as never);
+    (storageService.readObject as jest.Mock).mockResolvedValue(Buffer.from("%PDF-1.4"));
+
+    const result = await reviewerPortalService.getDownload(INVITE_ID, true, VERSION_ID);
+    expect(result.originalFilename).toBe("deck.pdf");
+    // Never a signed storage URL — the bytes go through us.
+    expect(storageService.createSignedReadUrl).not.toHaveBeenCalled();
   });
 });

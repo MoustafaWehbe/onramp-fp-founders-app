@@ -70,7 +70,6 @@ type ComposerProps = {
 export function Composer({
   startupId,
   conversationId,
-  conversationName,
   parentMessageId,
   placeholder,
   onSent,

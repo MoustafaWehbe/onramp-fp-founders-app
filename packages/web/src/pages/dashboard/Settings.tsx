@@ -88,18 +88,10 @@ function CompanyProfileCard() {
     setFundingStage(activeStartup.fundingStage);
   }, [activeStartup]);
 
-  if (!activeStartup) return null;
-
-  const isDirty =
-    name.trim() !== activeStartup.name ||
-    description.trim() !== (activeStartup.description ?? "") ||
-    industry.trim() !== (activeStartup.industry ?? "") ||
-    website.trim() !== (activeStartup.website ?? "") ||
-    fundingStage !== activeStartup.fundingStage;
-
-  const websiteLooksValid = website.trim() === "" || /^https?:\/\/\S+\.\S+/i.test(website.trim());
-  const selectedStage = FUNDING_STAGES.find((s) => s.id === fundingStage)!;
-
+  // Declared before the `activeStartup` guard below: a hook after an early
+  // return changes the hook count between renders, which React rejects the
+  // moment the workspace resolves from undefined to loaded. Nothing here needs
+  // activeStartup anyway.
   const saveMutation = useMutation({
     mutationFn: () =>
       updateStartup(startupId, {
@@ -115,6 +107,18 @@ function CompanyProfileCard() {
     },
     onError: (err) => toast.error(apiErrorMessage(err, "Could not update the company profile")),
   });
+
+  if (!activeStartup) return null;
+
+  const isDirty =
+    name.trim() !== activeStartup.name ||
+    description.trim() !== (activeStartup.description ?? "") ||
+    industry.trim() !== (activeStartup.industry ?? "") ||
+    website.trim() !== (activeStartup.website ?? "") ||
+    fundingStage !== activeStartup.fundingStage;
+
+  const websiteLooksValid = website.trim() === "" || /^https?:\/\/\S+\.\S+/i.test(website.trim());
+  const selectedStage = FUNDING_STAGES.find((s) => s.id === fundingStage)!;
 
   const canSubmit =
     canEdit &&

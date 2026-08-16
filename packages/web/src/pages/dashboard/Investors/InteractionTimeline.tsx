@@ -101,7 +101,6 @@ export function InteractionTimeline({
   const { can } = usePermissions();
   const canEdit = can("pipeline", "update");
   const canDelete = can("pipeline", "delete");
-  const now = Date.now();
 
   const items = useMemo<ActivityItem[]>(() => {
     const logItems: ActivityItem[] = logs.map((log) => ({

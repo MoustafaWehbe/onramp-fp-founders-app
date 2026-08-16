@@ -2,11 +2,9 @@ import {
   ArrowRight,
   Check,
   FileText,
-  Github,
   LineChart,
   Shield,
   Sparkles,
-  Twitter,
   Users,
   Zap,
 } from "lucide-react";

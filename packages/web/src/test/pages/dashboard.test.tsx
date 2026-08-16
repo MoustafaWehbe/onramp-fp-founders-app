@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 const listRounds = vi.fn();
 const listCommitments = vi.fn();
 const getFundingHistory = vi.fn();
+const getRoundMetrics = vi.fn();
 const listPipeline = vi.fn();
 const getFocus = vi.fn();
 const listTasks = vi.fn();
@@ -32,6 +33,10 @@ vi.mock("../../lib/fundraising-api", async (importOriginal) => ({
   listFundraisingRounds: () => listRounds(),
   listCommitments: () => listCommitments(),
   getFundingHistory: () => getFundingHistory(),
+  // Every query Dashboard issues must be mocked: an unmocked one reaches jsdom's
+  // XHR, fails, and Dashboard renders its error state instead of any content —
+  // which surfaces as every assertion below failing to find its element.
+  getRoundMetrics: () => getRoundMetrics(),
 }));
 vi.mock("../../lib/pipeline-api", () => ({
   listPipelineEntries: () => listPipeline(),
@@ -55,6 +60,21 @@ beforeEach(() => {
   getFundingHistory.mockResolvedValue([
     { id: "e1", commitmentId: "c1", investorName: "Ada Investor", fromStatus: null, toStatus: "wired", amount: 200_000, createdAt: "2026-08-01T00:00:00.000Z" },
   ]);
+  // The round's headline money and progress come from this endpoint, not from
+  // the commitments list.
+  getRoundMetrics.mockResolvedValue({
+    currency: "USD",
+    targetAmount: 1_000_000,
+    wired: 200_000,
+    hardCircled: 0,
+    softCircled: 0,
+    bankableRaised: 200_000,
+    remainingGap: 800_000,
+    percentToTarget: 20,
+    weightedPipeline: 250_000,
+    daysToClose: null,
+    atRiskCommitments: [],
+  });
   listPipeline.mockResolvedValue({ data: [{ id: "deal-1", ownerId: null, stage: "contacted", investor: { fullName: "Ada Investor", ventureFirm: "North VC" } }], meta: { page: 1, totalPages: 1 } });
   getFocus.mockResolvedValue([{ id: "deal-1", ownerId: null, stage: "contacted", isLead: true, reason: "missing", expectedAmount: 250_000, investor: { fullName: "Ada Investor", ventureFirm: "North VC" } }]);
   // meta matters: the round's tasks are paged through, not asked for in one
