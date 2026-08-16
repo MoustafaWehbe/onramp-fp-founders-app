@@ -131,6 +131,17 @@ export async function createReviewerComment(body: {
   return data.data;
 }
 
+/**
+ * Fire-and-forget: a client guard being blocked shouldn't wait on the
+ * network, and a dropped event isn't worth surfacing to the reviewer.
+ */
+export async function logReviewerEvent(
+  type: "copy_attempt" | "print_attempt" | "screenshot_attempt",
+  meta?: { documentVersionId?: string; pageNumber?: number },
+) {
+  await reviewerPortalClient.post("/events", { type, ...meta }).catch(() => {});
+}
+
 export async function completeReviewerSession() {
   await reviewerPortalClient.post("/complete");
 }

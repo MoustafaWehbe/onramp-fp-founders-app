@@ -8,6 +8,7 @@ import {
 import type {
   ReviewerAccessInput,
   ReviewerCommentInput,
+  ReviewerEventInput,
   ReviewerPageParams,
   ReviewerPageQuery,
   ReviewerVerifyInput,
@@ -57,6 +58,8 @@ export const reviewerPortalController = {
       pageNumber,
       token: t,
       kind,
+      email: req.reviewer!.email,
+      watermarkEnabled: req.reviewer!.watermarkEnabled,
     });
 
     // no-store keeps page images out of the browser's on-disk cache, so there
@@ -107,6 +110,16 @@ export const reviewerPortalController = {
       req.body as ReviewerCommentInput,
     );
     res.status(201).json({ data: comment });
+  }),
+
+  logEvent: asyncHandler(async (req, res) => {
+    await reviewerPortalService.logEvent(
+      req.reviewer!.startupId,
+      req.reviewer!.invitationId,
+      req.reviewer!.sessionId,
+      req.body as ReviewerEventInput,
+    );
+    res.status(204).send();
   }),
 
   complete: asyncHandler(async (req, res) => {

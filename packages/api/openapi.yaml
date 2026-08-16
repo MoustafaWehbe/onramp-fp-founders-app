@@ -7563,6 +7563,17 @@ paths:
         "201":
           description: Created
 
+  /reviewer-portal/events:
+    post:
+      tags: [Reviewer Portal]
+      summary: Report a capture-deterrent event (copy, print, or screenshot attempt)
+      operationId: reviewerPortalLogEvent
+      security:
+        - reviewerSessionAuth: []
+      responses:
+        "204":
+          description: Recorded
+
   /reviewer-portal/complete:
     post:
       tags: [Reviewer Portal]

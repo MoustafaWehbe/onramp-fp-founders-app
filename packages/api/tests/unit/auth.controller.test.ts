@@ -7,6 +7,7 @@ jest.mock("../../src/middleware/rate-limiter", () => ({
   credentialRateLimiter: (_req: any, _res: any, next: any) => next(),
   emailSendRateLimiter: (_req: any, _res: any, next: any) => next(),
   scheduleMeetingRateLimiter: (_req: any, _res: any, next: any) => next(),
+  reviewerEventRateLimiter: (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../src/db/prisma", () => ({ prisma: {} }));
 jest.mock("../../src/config/email", () => ({ resend: {} }));

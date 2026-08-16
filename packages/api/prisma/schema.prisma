@@ -255,6 +255,7 @@ model ReviewerInvitation {
   /// pending | opened | in_review | completed | revoked
   status            String    @default("pending")
   allowDownload     Boolean   @default(false) @map("allow_download")
+  watermarkEnabled  Boolean   @default(true) @map("watermark_enabled")
   personalMessage   String?   @map("personal_message")
   expiresAt         DateTime  @map("expires_at")
   completedAt       DateTime? @map("completed_at")
@@ -269,6 +270,7 @@ model ReviewerInvitation {
   creator         User                         @relation(fields: [createdBy], references: [id])
   documents       ReviewerInvitationDocument[]
   sessions        ReviewerSession[]
+  events          ReviewerEvent[]
 
   @@index([startupId, status])
   @@index([startupId, emailNormalized])
@@ -331,6 +333,25 @@ model ReviewerComment {
   chunk    DocumentChunk?  @relation(fields: [chunkId], references: [id])
 
   @@map("reviewer_comments")
+}
+
+model ReviewerEvent {
+  id                String   @id @default(uuid())
+  startupId         String   @map("startup_id")
+  invitationId      String   @map("invitation_id")
+  sessionId         String   @map("session_id")
+  /// copy_attempt | print_attempt | screenshot_attempt
+  type              String
+  documentVersionId String?  @map("document_version_id")
+  pageNumber        Int?     @map("page_number")
+  metadata          Json?
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  invitation ReviewerInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+
+  @@index([invitationId, createdAt])
+  @@index([startupId, type, createdAt])
+  @@map("reviewer_events")
 }
 
 // ─── CRM ──────────────────────────────────────────────────────────────────────

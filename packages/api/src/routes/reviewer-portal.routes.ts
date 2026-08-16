@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { validate } from "../utils/validate";
 import { requireReviewerSession } from "../middleware/reviewer-auth";
+import { reviewerEventRateLimiter } from "../middleware/rate-limiter";
 import {
   reviewerAccessSchema,
   reviewerCommentSchema,
+  reviewerEventSchema,
   reviewerPageParamSchema,
   reviewerPageQuerySchema,
   reviewerVerifySchema,
@@ -58,6 +60,14 @@ router.post(
   requireReviewerSession,
   validate(reviewerCommentSchema),
   reviewerPortalController.createComment,
+);
+
+router.post(
+  "/events",
+  requireReviewerSession,
+  reviewerEventRateLimiter,
+  validate(reviewerEventSchema),
+  reviewerPortalController.logEvent,
 );
 
 router.post("/complete", requireReviewerSession, reviewerPortalController.complete);

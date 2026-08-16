@@ -206,7 +206,11 @@ export function ReviewerWorkspace() {
                 )}
               </div>
 
-              <SecureDocumentViewer key={activeDoc.versionId} versionId={activeDoc.versionId} />
+              <SecureDocumentViewer
+                key={activeDoc.versionId}
+                versionId={activeDoc.versionId}
+                reviewerEmail={workspace.invitation.email}
+              />
 
               <div className="border-t border-border pt-4">
                 <div className="mb-3 flex items-center gap-2 text-sm font-medium">

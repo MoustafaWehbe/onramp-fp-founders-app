@@ -6,10 +6,12 @@ import { generateOTP, hashOTP, hashToken } from "../utils/auth";
 import { createPageToken, verifyPageToken, PAGE_TOKEN_TTL_SECONDS } from "../utils/page-token";
 import { emailQueue } from "../jobs/queue";
 import { storageService } from "./storage.service";
+import { watermarkService } from "./watermark.service";
 import { reviewerOtpEmail } from "../emails/templates/reviewer-otp";
 import type {
   ReviewerAccessInput,
   ReviewerCommentInput,
+  ReviewerEventInput,
   ReviewerVerifyInput,
 } from "../validators/reviewer-portal.schemas";
 
@@ -314,6 +316,8 @@ export class ReviewerPortalService {
     pageNumber: number;
     token: string;
     kind: "view" | "thumb";
+    email: string;
+    watermarkEnabled: boolean;
   }) {
     const claims = verifyPageToken(input.token);
     if (
@@ -338,6 +342,22 @@ export class ReviewerPortalService {
 
     const key = input.kind === "thumb" ? page.thumbStorageKey : page.storageKey;
     const body = await storageService.readObject(key, page.storageProvider);
+
+    // Only the reading surface is watermarked — the thumb strip is a nav
+    // aid, not the document itself, and has no consumer yet.
+    if (input.kind === "view" && input.watermarkEnabled) {
+      const watermarked = await watermarkService.getWatermarkedPage({
+        invitationId: input.invitationId,
+        versionId: input.versionId,
+        pageNumber: input.pageNumber,
+        email: input.email,
+        buffer: body,
+        width: page.width,
+        height: page.height,
+      });
+      return { body: watermarked, contentType: "image/webp" };
+    }
+
     return { body, contentType: "image/webp" };
   }
 
@@ -409,6 +429,34 @@ export class ReviewerPortalService {
     });
 
     return comment;
+  }
+
+  /**
+   * Records a capture-deterrent attempt fired by the client viewer (copy,
+   * print, screenshot). Same IDOR rule as every other portal path: a
+   * supplied `documentVersionId` is only accepted once it's confirmed pinned
+   * to this invitation, never trusted on its own.
+   */
+  async logEvent(
+    startupId: string,
+    invitationId: string,
+    sessionId: string,
+    input: ReviewerEventInput,
+  ) {
+    if (input.documentVersionId) {
+      await this.requirePinnedVersion(invitationId, input.documentVersionId);
+    }
+
+    await prisma.reviewerEvent.create({
+      data: {
+        startupId,
+        invitationId,
+        sessionId,
+        type: input.type,
+        documentVersionId: input.documentVersionId,
+        pageNumber: input.pageNumber,
+      },
+    });
   }
 
   async complete(invitationId: string) {

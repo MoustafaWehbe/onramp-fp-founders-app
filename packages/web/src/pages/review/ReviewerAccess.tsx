@@ -59,9 +59,15 @@ export function ReviewerAccess() {
         </div>
 
         {step === "request" ? (
-          <Button className="w-full" disabled={busy || !token} onClick={() => void requestCode()}>
-            {busy ? "Sending…" : "Email me a verification code"}
-          </Button>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              This document is watermarked with your email address. Your activity is recorded
+              and shared with the sender.
+            </p>
+            <Button className="w-full" disabled={busy || !token} onClick={() => void requestCode()}>
+              {busy ? "Sending…" : "Email me a verification code"}
+            </Button>
+          </div>
         ) : (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">

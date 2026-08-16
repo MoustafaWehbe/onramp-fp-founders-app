@@ -1764,6 +1764,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/reviewer-portal/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report a capture-deterrent event (copy, print, or screenshot attempt) */
+        post: operations["reviewerPortalLogEvent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/reviewer-portal/complete": {
         parameters: {
             query?: never;
@@ -8662,6 +8679,24 @@ export interface operations {
         responses: {
             /** @description Created */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reviewerPortalLogEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recorded */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };

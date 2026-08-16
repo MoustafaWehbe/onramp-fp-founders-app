@@ -35,8 +35,19 @@ export const reviewerPageQuerySchema = z.object({
   kind: z.enum(["view", "thumb"]).default("view"),
 });
 
+// Deliberately not the full event-type list from the analytics plan — only the
+// types the Phase 2 client guards actually emit. No free-form metadata field:
+// this endpoint is client-controlled and public-facing, so the shape stays
+// closed rather than accepting arbitrary JSON.
+export const reviewerEventSchema = z.object({
+  type: z.enum(["copy_attempt", "print_attempt", "screenshot_attempt"]),
+  documentVersionId: z.string().uuid().optional(),
+  pageNumber: z.coerce.number().int().min(1).max(200).optional(),
+});
+
 export type ReviewerAccessInput = z.infer<typeof reviewerAccessSchema>;
 export type ReviewerVerifyInput = z.infer<typeof reviewerVerifySchema>;
 export type ReviewerCommentInput = z.infer<typeof reviewerCommentSchema>;
 export type ReviewerPageParams = z.infer<typeof reviewerPageParamSchema>;
 export type ReviewerPageQuery = z.infer<typeof reviewerPageQuerySchema>;
+export type ReviewerEventInput = z.infer<typeof reviewerEventSchema>;

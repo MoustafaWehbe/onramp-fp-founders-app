@@ -98,3 +98,22 @@ export const scheduleMeetingRateLimiter = rateLimit({
     error: "Too many meetings scheduled please wait before scheduling more.",
   },
 });
+
+/**
+ * Reviewer capture-deterrent events (copy/print/screenshot attempts) come
+ * from an unauthenticated-by-us client script, not a trusted app a hostile
+ * reviewer could script a flood of "attempts" to fill the log with noise.
+ * These are discrete user actions, not a heartbeat stream, so the cap is
+ * generous relative to the global limiter but still bounded per session.
+ */
+export const reviewerEventRateLimiter = rateLimit({
+  windowMs: 5 * 60 * 1_000,
+  max: 60,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  store: makeStore("reviewer-event"),
+  keyGenerator: (req) => req.reviewer?.sessionId ?? req.ip ?? "unknown",
+  message: {
+    error: "Too many events reported, please wait before retrying.",
+  },
+});

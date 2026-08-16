@@ -20,6 +20,9 @@ jest.mock("../../src/db/prisma", () => ({
       findMany: jest.fn(),
       findUnique: jest.fn(),
     },
+    reviewerEvent: {
+      create: jest.fn(),
+    },
   },
 }));
 
@@ -34,6 +37,12 @@ jest.mock("../../src/services/storage.service", () => ({
   },
 }));
 
+jest.mock("../../src/services/watermark.service", () => ({
+  watermarkService: {
+    getWatermarkedPage: jest.fn(),
+  },
+}));
+
 jest.mock("../../src/utils/auth", () => ({
   hashToken: jest.fn((v: string) => `hash:${v}`),
   hashOTP: jest.fn((v: string) => `otp:${v}`),
@@ -44,6 +53,7 @@ import { prisma } from "../../src/db/prisma";
 import { emailQueue } from "../../src/jobs/queue";
 import { reviewerPortalService } from "../../src/services/reviewer-portal.service";
 import { storageService } from "../../src/services/storage.service";
+import { watermarkService } from "../../src/services/watermark.service";
 
 const mockPrisma = prisma as jest.Mocked<typeof prisma>;
 const INVITE_ID = "00000000-0000-0000-0000-000000000010";
@@ -172,6 +182,8 @@ describe("ReviewerPortalService.getPageImage", () => {
       storageKey: "startups/s/documents/d/v/pages/1.webp",
       thumbStorageKey: "startups/s/documents/d/v/thumbs/1.webp",
       storageProvider: "local",
+      width: 1600,
+      height: 2070,
     } as never);
     (storageService.readObject as jest.Mock).mockResolvedValue(Buffer.from("webp-bytes"));
 
@@ -182,10 +194,72 @@ describe("ReviewerPortalService.getPageImage", () => {
       pageNumber: 1,
       token,
       kind: "view",
+      email: "vc@example.com",
+      watermarkEnabled: false,
     });
 
     expect(result.contentType).toBe("image/webp");
     expect(result.body.toString()).toBe("webp-bytes");
+    expect(watermarkService.getWatermarkedPage).not.toHaveBeenCalled();
+  });
+
+  it("watermarks the view rendition when enabled", async () => {
+    const token = await tokenFor(SESSION_ID, VERSION_ID);
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(pinnedVersion() as never);
+    mockPrisma.documentPage.findUnique.mockResolvedValue({
+      storageKey: "startups/s/documents/d/v/pages/1.webp",
+      thumbStorageKey: "startups/s/documents/d/v/thumbs/1.webp",
+      storageProvider: "local",
+      width: 1600,
+      height: 2070,
+    } as never);
+    (storageService.readObject as jest.Mock).mockResolvedValue(Buffer.from("webp-bytes"));
+    (watermarkService.getWatermarkedPage as jest.Mock).mockResolvedValue(
+      Buffer.from("watermarked-bytes"),
+    );
+
+    const result = await reviewerPortalService.getPageImage({
+      invitationId: INVITE_ID,
+      sessionId: SESSION_ID,
+      versionId: VERSION_ID,
+      pageNumber: 1,
+      token,
+      kind: "view",
+      email: "vc@example.com",
+      watermarkEnabled: true,
+    });
+
+    expect(watermarkService.getWatermarkedPage).toHaveBeenCalledWith(
+      expect.objectContaining({ email: "vc@example.com", width: 1600, height: 2070 }),
+    );
+    expect(result.body.toString()).toBe("watermarked-bytes");
+  });
+
+  it("never watermarks the thumb rendition", async () => {
+    const token = await tokenFor(SESSION_ID, VERSION_ID);
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(pinnedVersion() as never);
+    mockPrisma.documentPage.findUnique.mockResolvedValue({
+      storageKey: "startups/s/documents/d/v/pages/1.webp",
+      thumbStorageKey: "startups/s/documents/d/v/thumbs/1.webp",
+      storageProvider: "local",
+      width: 220,
+      height: 285,
+    } as never);
+    (storageService.readObject as jest.Mock).mockResolvedValue(Buffer.from("thumb-bytes"));
+
+    const result = await reviewerPortalService.getPageImage({
+      invitationId: INVITE_ID,
+      sessionId: SESSION_ID,
+      versionId: VERSION_ID,
+      pageNumber: 1,
+      token,
+      kind: "thumb",
+      email: "vc@example.com",
+      watermarkEnabled: true,
+    });
+
+    expect(watermarkService.getWatermarkedPage).not.toHaveBeenCalled();
+    expect(result.body.toString()).toBe("thumb-bytes");
   });
 
   it("rejects a token minted for a different session", async () => {
@@ -199,6 +273,8 @@ describe("ReviewerPortalService.getPageImage", () => {
         pageNumber: 1,
         token,
         kind: "view",
+        email: "vc@example.com",
+        watermarkEnabled: false,
       }),
     ).rejects.toMatchObject({ code: "PAGE_TOKEN_INVALID" });
   });
@@ -214,6 +290,8 @@ describe("ReviewerPortalService.getPageImage", () => {
         pageNumber: 1,
         token,
         kind: "view",
+        email: "vc@example.com",
+        watermarkEnabled: false,
       }),
     ).rejects.toMatchObject({ code: "PAGE_TOKEN_INVALID" });
   });
@@ -231,8 +309,59 @@ describe("ReviewerPortalService.getPageImage", () => {
         pageNumber: 1,
         token,
         kind: "view",
+        email: "vc@example.com",
+        watermarkEnabled: false,
       }),
     ).rejects.toMatchObject({ code: "NOT_SHARED" });
+  });
+});
+
+const STARTUP_ID = "00000000-0000-0000-0000-000000000001";
+
+describe("ReviewerPortalService.logEvent", () => {
+  it("writes an event with no document context", async () => {
+    mockPrisma.reviewerEvent.create.mockResolvedValue({} as never);
+
+    await reviewerPortalService.logEvent(STARTUP_ID, INVITE_ID, SESSION_ID, {
+      type: "copy_attempt",
+    });
+
+    expect(mockPrisma.reviewerInvitationDocument.findFirst).not.toHaveBeenCalled();
+    expect(mockPrisma.reviewerEvent.create).toHaveBeenCalledWith({
+      data: {
+        startupId: STARTUP_ID,
+        invitationId: INVITE_ID,
+        sessionId: SESSION_ID,
+        type: "copy_attempt",
+        documentVersionId: undefined,
+        pageNumber: undefined,
+      },
+    });
+  });
+
+  it("validates a supplied documentVersionId is pinned to this invitation", async () => {
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(pinnedVersion() as never);
+    mockPrisma.reviewerEvent.create.mockResolvedValue({} as never);
+
+    await reviewerPortalService.logEvent(STARTUP_ID, INVITE_ID, SESSION_ID, {
+      type: "print_attempt",
+      documentVersionId: VERSION_ID,
+    });
+
+    expect(mockPrisma.reviewerInvitationDocument.findFirst).toHaveBeenCalled();
+    expect(mockPrisma.reviewerEvent.create).toHaveBeenCalled();
+  });
+
+  it("rejects a documentVersionId that is not pinned to this invitation, same IDOR rule as everywhere else", async () => {
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(null as never);
+
+    await expect(
+      reviewerPortalService.logEvent(STARTUP_ID, INVITE_ID, SESSION_ID, {
+        type: "screenshot_attempt",
+        documentVersionId: OTHER_VERSION_ID,
+      }),
+    ).rejects.toMatchObject({ code: "NOT_SHARED" });
+    expect(mockPrisma.reviewerEvent.create).not.toHaveBeenCalled();
   });
 });
 

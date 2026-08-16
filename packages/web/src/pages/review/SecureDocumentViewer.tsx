@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, Clock, FileWarning, Loader2 } from "lucide-react";
+import { AlertCircle, Clock, EyeOff, FileWarning, Loader2 } from "lucide-react";
 import {
   fetchReviewerPage,
   getReviewerPageManifest,
+  logReviewerEvent,
   type ReviewerPageManifest,
 } from "../../lib/reviewer-portal-api";
 
@@ -134,7 +135,100 @@ function PageCanvas({
   );
 }
 
-export function SecureDocumentViewer({ versionId }: { versionId: string }) {
+/**
+ * Deterrents against copy/print/screenshot. None of these make capture
+ * impossible — see the honesty table in reviewer-secure-viewer-plan.md §6 —
+ * but each one is real enough to be worth the logged event it fires.
+ */
+function useCaptureGuards(versionId: string) {
+  const [blanked, setBlanked] = useState(false);
+
+  useEffect(() => {
+    const blank = () => setBlanked(true);
+    const unblank = () => setBlanked(false);
+    const onVisibility = () => (document.hidden ? blank() : unblank());
+
+    // Suppresses the print dialog for the keyboard path so `beforeprint`
+    // (below) only fires — and only logs — for the menu/UI print path.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p") {
+        event.preventDefault();
+      }
+    };
+
+    // Windows/Chromium only: PrintScreen delivers a keyup, rarely a keydown,
+    // and macOS's Cmd+Shift+3/4/5 never reaches the browser at all.
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key !== "PrintScreen") return;
+      blank();
+      window.setTimeout(unblank, 1500);
+      navigator.clipboard?.writeText("").catch(() => {});
+      void logReviewerEvent("screenshot_attempt", { documentVersionId: versionId });
+    };
+
+    const onBeforePrint = () => {
+      blank();
+      void logReviewerEvent("print_attempt", { documentVersionId: versionId });
+    };
+
+    window.addEventListener("blur", blank);
+    window.addEventListener("focus", unblank);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("beforeprint", onBeforePrint);
+    window.addEventListener("afterprint", unblank);
+
+    return () => {
+      window.removeEventListener("blur", blank);
+      window.removeEventListener("focus", unblank);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("beforeprint", onBeforePrint);
+      window.removeEventListener("afterprint", unblank);
+    };
+  }, [versionId]);
+
+  const blockClipboard = useCallback(
+    (event: React.ClipboardEvent) => {
+      event.preventDefault();
+      void logReviewerEvent("copy_attempt", { documentVersionId: versionId });
+    },
+    [versionId],
+  );
+
+  return { blanked, blockClipboard };
+}
+
+/**
+ * Cosmetic, live, and trivially removable in devtools — that's the point.
+ * It makes the reviewer *aware* they're identified; the tiled watermark
+ * baked into the page pixels server-side is the layer that actually
+ * survives a capture.
+ */
+function WatermarkOverlay({ email }: { email: string }) {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  return (
+    <div className="pointer-events-none fixed bottom-3 right-3 z-50 rounded bg-black/60 px-2.5 py-1 text-[11px] text-white/90 shadow-sm">
+      {email} · {now.toLocaleString()}
+    </div>
+  );
+}
+
+export function SecureDocumentViewer({
+  versionId,
+  reviewerEmail,
+}: {
+  versionId: string;
+  reviewerEmail: string;
+}) {
   const manifestQuery = useQuery({
     queryKey: ["reviewer-manifest", versionId],
     queryFn: () => getReviewerPageManifest(versionId),
@@ -147,6 +241,8 @@ export function SecureDocumentViewer({ versionId }: { versionId: string }) {
   const refreshToken = useCallback(() => {
     void manifestQuery.refetch();
   }, [manifestQuery]);
+
+  const { blanked, blockClipboard } = useCaptureGuards(versionId);
 
   if (manifestQuery.isPending) {
     return (
@@ -184,16 +280,28 @@ export function SecureDocumentViewer({ versionId }: { versionId: string }) {
   const manifest = manifestQuery.data;
 
   return (
-    <div className="space-y-3">
-      {manifest.pages.map((page) => (
-        <PageCanvas
-          key={page.pageNumber}
-          versionId={versionId}
-          page={page}
-          token={manifest.pageToken}
-          onTokenRejected={refreshToken}
-        />
-      ))}
+    <div className="relative" onCopy={blockClipboard} onCut={blockClipboard}>
+      <style>{"@media print { .reviewer-secure-pages { display: none !important; } }"}</style>
+      <div className="reviewer-secure-pages space-y-3">
+        {manifest.pages.map((page) => (
+          <PageCanvas
+            key={page.pageNumber}
+            versionId={versionId}
+            page={page}
+            token={manifest.pageToken}
+            onTokenRejected={refreshToken}
+          />
+        ))}
+      </div>
+      {blanked && (
+        <div className="absolute inset-0 z-40 grid place-items-center rounded-md bg-background/95 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
+            <EyeOff className="h-6 w-6" />
+            <span>Content hidden</span>
+          </div>
+        </div>
+      )}
+      <WatermarkOverlay email={reviewerEmail} />
     </div>
   );
 }
