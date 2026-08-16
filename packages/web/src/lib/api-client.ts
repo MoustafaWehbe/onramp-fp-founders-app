@@ -8,6 +8,14 @@ export const apiClient = axios.create({
 
 let refreshPromise: Promise<unknown> | null = null;
 
+function postRefresh(): Promise<unknown> {
+  const doPost = () => axios.post("/api/v1/auth/refresh", null, { withCredentials: true });
+  if (typeof navigator !== "undefined" && "locks" in navigator) {
+    return navigator.locks.request("fp:auth-refresh", doPost);
+  }
+  return doPost();
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
@@ -20,11 +28,9 @@ apiClient.interceptors.response.use(
 
       try {
         if (!refreshPromise) {
-          refreshPromise = axios
-            .post("/api/v1/auth/refresh", null, { withCredentials: true })
-            .finally(() => {
-              refreshPromise = null;
-            });
+          refreshPromise = postRefresh().finally(() => {
+            refreshPromise = null;
+          });
         }
         await refreshPromise;
         return apiClient(originalRequest);

@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { OAuth2Client } from "google-auth-library";
+import type { RefreshToken } from "@prisma/client";
 import {
   hashPassword,
   verifyPassword,
@@ -48,6 +49,8 @@ interface LoginInput {
 
 const OTP_TTL_MS = 10 * 60 * 1_000;
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1_000;
+const REFRESH_REUSE_GRACE_MS = 10_000;
+const REFRESH_REUSE_MAX_HOPS = 5;
 const MAX_OTP_ATTEMPTS = 5;
 
 export class AuthService {
@@ -245,30 +248,47 @@ export class AuthService {
     const tokenHash = hashToken(rawToken);
     const now = new Date();
 
-    const stored = await prisma.refreshToken.findUnique({ where: { tokenHash } });
-    if (!stored) {
+    const initial = await prisma.refreshToken.findUnique({ where: { tokenHash } });
+    if (!initial) {
       throw createError("Invalid refresh token", 401, "INVALID_TOKEN");
     }
+    let stored: RefreshToken = initial;
 
-    // REPLAY ATTACK DETECTION if token was already revoked, revoke entire family
-    if (stored.revokedAt !== null) {
-      if (stored.familyId) {
-        await prisma.refreshToken.updateMany({
-          where: { familyId: stored.familyId, revokedAt: null },
-          data: { revokedAt: new Date() },
-        });
-      } else {
-        // No familyId fall back to revoking all sessions for this user
-        await prisma.refreshToken.updateMany({
-          where: { userId: stored.userId, revokedAt: null },
-          data: { revokedAt: new Date() },
-        });
+    let hops = 0;
+    while (stored.revokedAt !== null) {
+      const withinGrace =
+        stored.replacedById != null &&
+        now.getTime() - stored.revokedAt.getTime() <= REFRESH_REUSE_GRACE_MS &&
+        hops < REFRESH_REUSE_MAX_HOPS;
+
+      if (!withinGrace) {
+        if (stored.familyId) {
+          await prisma.refreshToken.updateMany({
+            where: { familyId: stored.familyId, revokedAt: null },
+            data: { revokedAt: new Date() },
+          });
+        } else {
+          // No familyId fall back to revoking all sessions for this user
+          await prisma.refreshToken.updateMany({
+            where: { userId: stored.userId, revokedAt: null },
+            data: { revokedAt: new Date() },
+          });
+        }
+        throw createError(
+          "Security alert: token reuse detected. All sessions revoked.",
+          401,
+          "TOKEN_REUSE_DETECTED",
+        );
       }
-      throw createError(
-        "Security alert: token reuse detected. All sessions revoked.",
-        401,
-        "TOKEN_REUSE_DETECTED",
-      );
+
+      const next: RefreshToken | null = await prisma.refreshToken.findUnique({
+        where: { id: stored.replacedById! },
+      });
+      if (!next) {
+        throw createError("Invalid refresh token", 401, "INVALID_TOKEN");
+      }
+      stored = next;
+      hops += 1;
     }
 
     if (stored.expiresAt < now) {
@@ -282,23 +302,24 @@ export class AuthService {
     const { raw: rawRefresh, hash: refreshHash } = generateRefreshToken();
     const accessToken = generateAccessToken(user.id, familyId, user.email);
     const expiresAt = new Date(Date.now() + THIRTY_DAYS_MS);
+    const rotatingFrom = stored;
 
-    await prisma.$transaction([
-      prisma.refreshToken.update({
-        where: { id: stored.id },
-        data: { revokedAt: now },
-      }),
-      prisma.refreshToken.create({
+    await prisma.$transaction(async (tx) => {
+      const created = await tx.refreshToken.create({
         data: {
           userId: user.id,
           tokenHash: refreshHash,
           familyId,
-          deviceInfo: stored.deviceInfo,
-          ipAddress: stored.ipAddress,
+          deviceInfo: rotatingFrom.deviceInfo,
+          ipAddress: rotatingFrom.ipAddress,
           expiresAt,
         },
-      }),
-    ]);
+      });
+      await tx.refreshToken.update({
+        where: { id: rotatingFrom.id },
+        data: { revokedAt: now, replacedById: created.id },
+      });
+    });
 
     return { accessToken, refreshToken: rawRefresh };
   }
