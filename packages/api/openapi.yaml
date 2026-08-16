@@ -2377,6 +2377,20 @@ components:
           $ref: "#/components/schemas/ReviewerInvitationStatus"
         allowDownload:
           type: boolean
+        watermarkEnabled:
+          type: boolean
+        allowPrint:
+          type: boolean
+        screenshotGuard:
+          type: boolean
+        requireNda:
+          type: boolean
+        hasPassword:
+          type: boolean
+        allowedEmailDomains:
+          type: array
+          items:
+            type: string
         personalMessage:
           type: string
           nullable: true
@@ -2415,6 +2429,32 @@ components:
           format: uuid
         allowDownload:
           type: boolean
+        watermarkEnabled:
+          type: boolean
+          default: true
+        allowPrint:
+          type: boolean
+          default: false
+        screenshotGuard:
+          type: boolean
+          default: true
+        requireNda:
+          type: boolean
+          default: false
+        ndaText:
+          type: string
+          description: Required when requireNda is true.
+        password:
+          type: string
+          minLength: 6
+          maxLength: 100
+          description: Optional second factor checked before an OTP is sent.
+        allowedEmailDomains:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+          description: Reject creating the invitation unless the email's domain is in this list.
         personalMessage:
           type: string
         expiresInDays:
@@ -7389,6 +7429,8 @@ paths:
         Validates the token and, if valid and not expired/revoked, emails a
         fresh 6-digit OTP (10-minute TTL) to the invitation's address. Does
         NOT grant access by itself call POST /reviewer-portal/verify next.
+        If the invitation has a password set, it must be supplied here and is
+        checked before the OTP is sent (401 PASSWORD_REQUIRED / PASSWORD_INVALID).
       requestBody:
         required: true
         content:
@@ -7399,9 +7441,17 @@ paths:
               properties:
                 token:
                   type: string
+                password:
+                  type: string
       responses:
         "200":
           description: OTP sent
+        "401":
+          description: Password required or incorrect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /reviewer-portal/verify:
     post:
@@ -7457,7 +7507,23 @@ paths:
         - reviewerSessionAuth: []
       responses:
         "200":
-          description: Workspace
+          description: >
+            Workspace. Includes requireNda/ndaText/ndaAccepted so the client
+            can render the acceptance gate before it ever needs page content.
+
+  /reviewer-portal/nda/accept:
+    post:
+      tags: [Reviewer Portal]
+      summary: Accept the invitation's NDA
+      description: >
+        Idempotent. Required before any manifest/page/download endpoint will
+        serve content once the invitation has requireNda set.
+      operationId: reviewerPortalAcceptNda
+      security:
+        - reviewerSessionAuth: []
+      responses:
+        "204":
+          description: Accepted
 
   /reviewer-portal/documents/{versionId}/manifest:
     get:
@@ -7508,7 +7574,8 @@ paths:
         "409":
           description: >
             Version is not viewable RENDER_PENDING, RENDER_FAILED, or
-            RENDER_UNSUPPORTED.
+            RENDER_UNSUPPORTED and other 409, NDA_REQUIRED when the
+            invitation requires NDA acceptance that hasn't happened yet.
 
   /reviewer-portal/pages/{versionId}/{pageNumber}:
     get:
@@ -7559,6 +7626,8 @@ paths:
           description: Page token invalid or expired
         "404":
           description: Page not found or version not shared
+        "409":
+          description: NDA_REQUIRED — invitation requires NDA acceptance that hasn't happened yet.
 
   /reviewer-portal/documents/{versionId}/download:
     get:
@@ -7567,7 +7636,9 @@ paths:
       description: >
         The only route by which a source file leaves the server, and only when
         the founder set allowDownload on the invitation. Streamed through the
-        API so the object's storage location is never exposed.
+        API so the object's storage location is never exposed. When the
+        invitation has watermarkEnabled on, the returned PDF is stamped with
+        the reviewer's email, the link id, and the date before it is sent.
       operationId: reviewerPortalDownload
       security:
         - reviewerSessionAuth: []
@@ -7580,7 +7651,7 @@ paths:
             format: uuid
       responses:
         "200":
-          description: File bytes
+          description: File bytes (watermarked PDF when watermarkEnabled is on)
           content:
             application/pdf:
               schema:
@@ -7590,6 +7661,8 @@ paths:
           description: Downloads are disabled for this invitation
         "404":
           description: Version is not shared with this invitation
+        "409":
+          description: NDA_REQUIRED — invitation requires NDA acceptance that hasn't happened yet.
 
   /reviewer-portal/comments:
     get:

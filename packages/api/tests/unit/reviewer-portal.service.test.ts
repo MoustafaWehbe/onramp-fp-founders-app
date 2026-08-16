@@ -7,6 +7,7 @@ jest.mock("../../src/db/prisma", () => ({
     reviewerSession: {
       create: jest.fn(),
       findFirst: jest.fn(),
+      findUnique: jest.fn(),
       update: jest.fn(),
     },
     reviewerInvitationDocument: {
@@ -26,6 +27,7 @@ jest.mock("../../src/db/prisma", () => ({
     },
     reviewerVisit: {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
       upsert: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
@@ -54,11 +56,19 @@ jest.mock("../../src/services/watermark.service", () => ({
   watermarkService: {
     getWatermarkedPage: jest.fn(),
   },
+  shortLinkId: jest.fn(() => "FPF-ABCDEF"),
+}));
+
+jest.mock("../../src/services/pdf-watermark.service", () => ({
+  pdfWatermarkService: {
+    watermarkPdf: jest.fn(),
+  },
 }));
 
 jest.mock("../../src/services/notification.service", () => ({
   notificationService: {
     notifyReviewerOpened: jest.fn(),
+    notifyForwardSuspected: jest.fn(),
   },
 }));
 
@@ -66,6 +76,22 @@ jest.mock("../../src/utils/auth", () => ({
   hashToken: jest.fn((v: string) => `hash:${v}`),
   hashOTP: jest.fn((v: string) => `otp:${v}`),
   generateOTP: jest.fn(() => ({ raw: "123456", hash: "otp:123456" })),
+  hashForwardSignal: jest.fn((v: string) => `fwd:${v}`),
+  verifyPassword: jest.fn(),
+}));
+
+jest.mock("ua-parser-js", () => ({
+  // A regular `function`, not an arrow function: the service calls this with
+  // `new`, and only a function that can act as a constructor supports that.
+  UAParser: jest.fn().mockImplementation(function (ua: string) {
+    return {
+      getResult: () => ({
+        device: { type: ua.includes("Mobile") ? "mobile" : undefined },
+        os: { name: ua.includes("iOS") ? "iOS" : "macOS" },
+        browser: { name: ua.includes("Safari") ? "Safari" : "Chrome" },
+      }),
+    };
+  }),
 }));
 
 import { prisma } from "../../src/db/prisma";
@@ -73,7 +99,9 @@ import { emailQueue } from "../../src/jobs/queue";
 import { reviewerPortalService } from "../../src/services/reviewer-portal.service";
 import { storageService } from "../../src/services/storage.service";
 import { watermarkService } from "../../src/services/watermark.service";
+import { pdfWatermarkService } from "../../src/services/pdf-watermark.service";
 import { notificationService } from "../../src/services/notification.service";
+import { verifyPassword } from "../../src/utils/auth";
 
 const mockPrisma = prisma as jest.Mocked<typeof prisma>;
 const INVITE_ID = "00000000-0000-0000-0000-000000000010";
@@ -112,6 +140,67 @@ describe("ReviewerPortalService.requestAccess", () => {
 
     expect(result.emailHint).toContain("***");
     expect(emailQueue.add).toHaveBeenCalled();
+    expect(mockPrisma.reviewerSession.create).toHaveBeenCalled();
+  });
+
+  it("requires a password before minting an OTP when the invitation has one set", async () => {
+    mockPrisma.reviewerInvitation.findUnique.mockResolvedValue({
+      id: INVITE_ID,
+      status: "pending",
+      expiresAt: new Date(Date.now() + 86_400_000),
+      revokedAt: null,
+      emailNormalized: "vc@example.com",
+      passwordHash: "hashed-password",
+      documents: [],
+    } as never);
+
+    await expect(
+      reviewerPortalService.requestAccess({ token: "raw-token-value-1234567890" }, {}),
+    ).rejects.toMatchObject({ code: "PASSWORD_REQUIRED" });
+    expect(mockPrisma.reviewerSession.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects an incorrect password before minting an OTP", async () => {
+    mockPrisma.reviewerInvitation.findUnique.mockResolvedValue({
+      id: INVITE_ID,
+      status: "pending",
+      expiresAt: new Date(Date.now() + 86_400_000),
+      revokedAt: null,
+      emailNormalized: "vc@example.com",
+      passwordHash: "hashed-password",
+      documents: [],
+    } as never);
+    (verifyPassword as jest.Mock).mockResolvedValue(false);
+
+    await expect(
+      reviewerPortalService.requestAccess(
+        { token: "raw-token-value-1234567890", password: "wrong" },
+        {},
+      ),
+    ).rejects.toMatchObject({ code: "PASSWORD_INVALID" });
+    expect(mockPrisma.reviewerSession.create).not.toHaveBeenCalled();
+  });
+
+  it("proceeds to OTP once the correct password is supplied", async () => {
+    mockPrisma.reviewerInvitation.findUnique.mockResolvedValue({
+      id: INVITE_ID,
+      status: "pending",
+      expiresAt: new Date(Date.now() + 86_400_000),
+      revokedAt: null,
+      emailNormalized: "vc@example.com",
+      passwordHash: "hashed-password",
+      documents: [],
+    } as never);
+    (verifyPassword as jest.Mock).mockResolvedValue(true);
+    mockPrisma.reviewerSession.create.mockResolvedValue({ id: "sess-1" } as never);
+    mockPrisma.reviewerInvitation.update.mockResolvedValue({} as never);
+
+    const result = await reviewerPortalService.requestAccess(
+      { token: "raw-token-value-1234567890", password: "correct" },
+      {},
+    );
+
+    expect(result.emailHint).toContain("***");
     expect(mockPrisma.reviewerSession.create).toHaveBeenCalled();
   });
 
@@ -191,6 +280,29 @@ describe("ReviewerPortalService.getPageManifest", () => {
     await expect(
       reviewerPortalService.getPageManifest(INVITE_ID, SESSION_ID, VERSION_ID, STARTUP_ID),
     ).rejects.toMatchObject({ code: "RENDER_PENDING" });
+  });
+
+  it("blocks the manifest when the NDA is required but not yet accepted", async () => {
+    await expect(
+      reviewerPortalService.getPageManifest(INVITE_ID, SESSION_ID, VERSION_ID, STARTUP_ID, {
+        requireNda: true,
+        ndaAccepted: false,
+      }),
+    ).rejects.toMatchObject({ code: "NDA_REQUIRED" });
+    // Refused before the pinned-version lookup even runs.
+    expect(mockPrisma.reviewerInvitationDocument.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("serves the manifest once the NDA has been accepted", async () => {
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(pinnedVersion() as never);
+    mockPrisma.documentPage.findMany.mockResolvedValue([] as never);
+
+    await expect(
+      reviewerPortalService.getPageManifest(INVITE_ID, SESSION_ID, VERSION_ID, STARTUP_ID, {
+        requireNda: true,
+        ndaAccepted: true,
+      }),
+    ).resolves.toMatchObject({ versionId: VERSION_ID });
   });
 
   it("notifies the founder once per session when notifyOnOpen is enabled", async () => {
@@ -345,6 +457,25 @@ describe("ReviewerPortalService.getPageImage", () => {
     expect(result.body.toString()).toBe("thumb-bytes");
   });
 
+  it("blocks the page image when the NDA is required but not yet accepted", async () => {
+    const token = await tokenFor(SESSION_ID, VERSION_ID);
+
+    await expect(
+      reviewerPortalService.getPageImage({
+        invitationId: INVITE_ID,
+        sessionId: SESSION_ID,
+        versionId: VERSION_ID,
+        pageNumber: 1,
+        token,
+        kind: "view",
+        email: "vc@example.com",
+        watermarkEnabled: false,
+        requireNda: true,
+        ndaAccepted: false,
+      }),
+    ).rejects.toMatchObject({ code: "NDA_REQUIRED" });
+  });
+
   it("rejects a token minted for a different session", async () => {
     const token = await tokenFor("00000000-0000-0000-0000-0000000000ff", VERSION_ID);
 
@@ -447,23 +578,65 @@ describe("ReviewerPortalService.logEvent", () => {
 });
 
 describe("ReviewerPortalService.getDownload", () => {
+  function downloadInput(overrides: Record<string, unknown> = {}) {
+    return {
+      invitationId: INVITE_ID,
+      startupId: STARTUP_ID,
+      sessionId: SESSION_ID,
+      allowDownload: true,
+      watermarkEnabled: false,
+      requireNda: false,
+      ndaAccepted: true,
+      versionId: VERSION_ID,
+      email: "vc@example.com",
+      ...overrides,
+    };
+  }
+
   it("blocks downloads when allowDownload is false", async () => {
     await expect(
-      reviewerPortalService.getDownload(INVITE_ID, false, VERSION_ID),
+      reviewerPortalService.getDownload(downloadInput({ allowDownload: false })),
     ).rejects.toMatchObject({ code: "DOWNLOAD_FORBIDDEN" });
     // Refused before any lookup, so a disabled download cannot even confirm
     // whether the version exists.
     expect(mockPrisma.reviewerInvitationDocument.findFirst).not.toHaveBeenCalled();
   });
 
+  it("blocks downloads when the NDA is required but not yet accepted", async () => {
+    await expect(
+      reviewerPortalService.getDownload(downloadInput({ requireNda: true, ndaAccepted: false })),
+    ).rejects.toMatchObject({ code: "NDA_REQUIRED" });
+    expect(mockPrisma.reviewerInvitationDocument.findFirst).not.toHaveBeenCalled();
+  });
+
   it("streams the original only when the founder enabled downloads", async () => {
     mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(pinnedVersion() as never);
     (storageService.readObject as jest.Mock).mockResolvedValue(Buffer.from("%PDF-1.4"));
+    mockPrisma.reviewerEvent.create.mockResolvedValue({} as never);
+    mockPrisma.reviewerInvitation.update.mockResolvedValue({} as never);
 
-    const result = await reviewerPortalService.getDownload(INVITE_ID, true, VERSION_ID);
+    const result = await reviewerPortalService.getDownload(downloadInput());
     expect(result.originalFilename).toBe("deck.pdf");
     // Never a signed storage URL — the bytes go through us.
     expect(storageService.createSignedReadUrl).not.toHaveBeenCalled();
+    expect(mockPrisma.reviewerEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: "download_completed" }) }),
+    );
+  });
+
+  it("watermarks the PDF when the invitation has watermarking enabled", async () => {
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(pinnedVersion() as never);
+    (storageService.readObject as jest.Mock).mockResolvedValue(Buffer.from("%PDF-1.4"));
+    mockPrisma.reviewerEvent.create.mockResolvedValue({} as never);
+    mockPrisma.reviewerInvitation.update.mockResolvedValue({} as never);
+    (pdfWatermarkService.watermarkPdf as jest.Mock).mockResolvedValue(
+      Buffer.from("watermarked-pdf-bytes"),
+    );
+
+    const result = await reviewerPortalService.getDownload(downloadInput({ watermarkEnabled: true }));
+
+    expect(pdfWatermarkService.watermarkPdf).toHaveBeenCalled();
+    expect(result.body.toString()).toBe("watermarked-pdf-bytes");
   });
 });
 
@@ -562,6 +735,86 @@ describe("ReviewerPortalService.recordTelemetry", () => {
         completionPct: 20, // 2 / 10 pages
       },
     });
+  });
+});
+
+describe("ReviewerPortalService forwarding detection (recordTelemetry)", () => {
+  function pinnedForTelemetry(pageCount = 10) {
+    return [{ documentVersionId: VERSION_ID, documentVersion: { pageCount } }];
+  }
+
+  beforeEach(() => {
+    mockPrisma.reviewerInvitationDocument.findMany.mockResolvedValue(
+      pinnedForTelemetry() as never,
+    );
+    mockPrisma.reviewerPageView.upsert.mockResolvedValue({} as never);
+    mockPrisma.reviewerPageView.count.mockResolvedValue(1 as never);
+    mockPrisma.reviewerPageView.aggregate
+      .mockResolvedValueOnce({ _max: { pageNumber: 1 } } as never)
+      .mockResolvedValueOnce({ _sum: { activeMs: 1_000 } } as never);
+    mockPrisma.reviewerVisit.update.mockResolvedValue({} as never);
+    // First telemetry flush of a brand-new session — no visit row yet.
+    mockPrisma.reviewerVisit.findUnique.mockResolvedValue(null);
+    mockPrisma.reviewerSession.findUnique.mockResolvedValue({
+      ipAddress: "203.0.113.9",
+      userAgent: "Mozilla/5.0 (Macintosh) Safari",
+    } as never);
+  });
+
+  it("does not flag or alert when only one device/IP has been seen", async () => {
+    mockPrisma.reviewerVisit.upsert.mockResolvedValue({ id: "visit-1" } as never);
+    mockPrisma.reviewerVisit.findMany.mockResolvedValue([
+      { deviceHash: "fwd:Mozilla/5.0 (Macintosh) Safari", ipHash: "fwd:203.0.113.9" },
+    ] as never);
+
+    await reviewerPortalService.recordTelemetry(STARTUP_ID, INVITE_ID, SESSION_ID, {
+      pages: [{ documentVersionId: VERSION_ID, pageNumber: 1, activeMs: 1_000 }],
+    });
+
+    expect(mockPrisma.reviewerVisit.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: { suspectedForward: true } }),
+    );
+    expect(notificationService.notifyForwardSuspected).not.toHaveBeenCalled();
+  });
+
+  it("flags the visit and alerts the founder once a second device/IP shows up", async () => {
+    mockPrisma.reviewerVisit.upsert.mockResolvedValue({ id: "visit-2" } as never);
+    mockPrisma.reviewerVisit.findMany.mockResolvedValue([
+      { deviceHash: "fwd:existing-ua", ipHash: "fwd:203.0.113.1" },
+      { deviceHash: "fwd:Mozilla/5.0 (Macintosh) Safari", ipHash: "fwd:203.0.113.9" },
+    ] as never);
+    mockPrisma.reviewerInvitation.findUnique.mockResolvedValue({
+      createdBy: "founder-1",
+      reviewerName: "Ada Investor",
+      emailNormalized: "ada@vc.example",
+    } as never);
+
+    await reviewerPortalService.recordTelemetry(STARTUP_ID, INVITE_ID, SESSION_ID, {
+      pages: [{ documentVersionId: VERSION_ID, pageNumber: 1, activeMs: 1_000 }],
+    });
+
+    expect(mockPrisma.reviewerVisit.update).toHaveBeenCalledWith({
+      where: { id: "visit-2" },
+      data: { suspectedForward: true },
+    });
+    expect(mockPrisma.reviewerEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: "forward_suspected" }) }),
+    );
+    expect(notificationService.notifyForwardSuspected).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "founder-1", invitationId: INVITE_ID }),
+    );
+  });
+
+  it("skips the device/IP computation entirely when a visit already exists for the session", async () => {
+    mockPrisma.reviewerVisit.findUnique.mockResolvedValue({ id: "existing-visit" } as never);
+    mockPrisma.reviewerVisit.upsert.mockResolvedValue({ id: "existing-visit" } as never);
+
+    await reviewerPortalService.recordTelemetry(STARTUP_ID, INVITE_ID, SESSION_ID, {
+      pages: [{ documentVersionId: VERSION_ID, pageNumber: 1, activeMs: 1_000 }],
+    });
+
+    expect(mockPrisma.reviewerSession.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.reviewerVisit.findMany).not.toHaveBeenCalled();
   });
 });
 

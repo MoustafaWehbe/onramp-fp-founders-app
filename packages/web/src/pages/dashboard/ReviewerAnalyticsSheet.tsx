@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Clock, Copy, Eye, Printer, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Clock, Copy, Eye, FileWarning, Lock, Printer, ShieldCheck } from "lucide-react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import {
@@ -26,6 +26,8 @@ const SECURITY_META: Record<string, { label: string; icon: typeof Copy }> = {
   copy_attempt: { label: "Copy attempts", icon: Copy },
   print_attempt: { label: "Print attempts", icon: Printer },
   screenshot_attempt: { label: "Screenshot attempts", icon: Eye },
+  forward_suspected: { label: "Forwarding signals", icon: AlertTriangle },
+  download_completed: { label: "Downloads", icon: FileWarning },
 };
 
 export function ReviewerAnalyticsSheet({
@@ -69,12 +71,39 @@ export function ReviewerAnalyticsSheet({
           </div>
         ) : !data ? null : (
           <div className="space-y-5">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge className={`${reviewerStatusClass(data.invitation.status)} border-0 capitalize`}>
                 {data.invitation.status.replace("_", " ")}
               </Badge>
               <span className="text-xs text-muted-foreground">{data.invitation.email}</span>
+              {data.invitation.requireNda && (
+                <Badge variant="outline" className="gap-1 text-xs">
+                  <FileWarning className="h-3 w-3" /> NDA required
+                </Badge>
+              )}
+              {data.invitation.hasPassword && (
+                <Badge variant="outline" className="gap-1 text-xs">
+                  <Lock className="h-3 w-3" /> Password set
+                </Badge>
+              )}
+              {data.invitation.allowPrint && (
+                <Badge variant="outline" className="gap-1 text-xs">
+                  <Printer className="h-3 w-3" /> Print allowed
+                </Badge>
+              )}
             </div>
+
+            {data.forwarding.suspected && (
+              <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  Opened from {data.forwarding.distinctDevices} device
+                  {data.forwarding.distinctDevices === 1 ? "" : "s"}
+                  {data.forwarding.distinctIps > 1 ? ` across ${data.forwarding.distinctIps} locations` : ""}.
+                  This is a signal, not proof the link was forwarded — worth a look.
+                </span>
+              </div>
+            )}
 
             {data.summary.visitCount === 0 ? (
               <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border/70 py-10 text-center">
@@ -132,7 +161,17 @@ export function ReviewerAnalyticsSheet({
                         key={visit.id}
                         className="flex items-center justify-between rounded-md border border-border/70 px-3 py-2 text-xs"
                       >
-                        <span>{formatDate(visit.startedAt)}</span>
+                        <span className="flex items-center gap-1.5">
+                          {visit.suspectedForward && (
+                            <AlertTriangle className="h-3.5 w-3.5 text-warning" />
+                          )}
+                          {formatDate(visit.startedAt)}
+                          {(visit.deviceType || visit.os || visit.browser) && (
+                            <span className="text-muted-foreground">
+                              · {[visit.deviceType, visit.os, visit.browser].filter(Boolean).join(" · ")}
+                            </span>
+                          )}
+                        </span>
                         <span className="text-muted-foreground">
                           {formatDuration(visit.totalActiveMs)} · {visit.pagesViewed} pages ·{" "}
                           {visit.completionPct}%

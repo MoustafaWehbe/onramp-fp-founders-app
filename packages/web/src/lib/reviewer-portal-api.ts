@@ -12,6 +12,11 @@ export type ReviewerWorkspace = {
     id: string;
     status: string;
     allowDownload: boolean;
+    allowPrint: boolean;
+    screenshotGuard: boolean;
+    requireNda: boolean;
+    ndaText: string | null;
+    ndaAccepted: boolean;
     personalMessage: string | null;
     expiresAt: string;
     reviewerName: string | null;
@@ -42,10 +47,10 @@ export type ReviewerPageManifest = {
   pageTokenExpiresInSeconds: number;
 };
 
-export async function requestReviewerAccess(token: string) {
+export async function requestReviewerAccess(token: string, password?: string) {
   const { data } = await reviewerPortalClient.post<{
     data: { emailHint: string; expiresInSeconds: number };
-  }>("/access", { token });
+  }>("/access", { token, password });
   return data.data;
 }
 
@@ -68,6 +73,10 @@ export async function verifyReviewerAccess(token: string, otp: string) {
 export async function getReviewerWorkspace() {
   const { data } = await reviewerPortalClient.get<{ data: ReviewerWorkspace }>("/workspace");
   return data.data;
+}
+
+export async function acceptReviewerNda() {
+  await reviewerPortalClient.post("/nda/accept");
 }
 
 export async function getReviewerPageManifest(versionId: string) {

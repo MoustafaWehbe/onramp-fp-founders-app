@@ -11,19 +11,26 @@ import { requestReviewerAccess, verifyReviewerAccess } from "../../lib/reviewer-
 export function ReviewerAccess() {
   const { token = "" } = useParams();
   const navigate = useNavigate();
-  const [step, setStep] = useState<"request" | "verify">("request");
+  const [step, setStep] = useState<"request" | "password" | "verify">("request");
+  const [password, setPassword] = useState("");
   const [emailHint, setEmailHint] = useState("");
   const [otp, setOtp] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const requestCode = async () => {
+  const requestCode = async (withPassword?: string) => {
     setBusy(true);
     try {
-      const result = await requestReviewerAccess(token);
+      const result = await requestReviewerAccess(token, withPassword);
       setEmailHint(result.emailHint);
       setStep("verify");
       toast.success("Verification code sent");
     } catch (error) {
+      const code = (error as { response?: { data?: { code?: string } } })?.response?.data?.code;
+      if (code === "PASSWORD_REQUIRED" || code === "PASSWORD_INVALID") {
+        setStep("password");
+        if (code === "PASSWORD_INVALID") toast.error("Incorrect password");
+        return;
+      }
       toast.error(apiErrorMessage(error, "Could not start review access"));
       navigate("/review/expired", { replace: true });
     } finally {
@@ -68,6 +75,29 @@ export function ReviewerAccess() {
               {busy ? "Sending…" : "Email me a verification code"}
             </Button>
           </div>
+        ) : step === "password" ? (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              This document requires a password to continue.
+            </p>
+            <div>
+              <Label htmlFor="access-password">Password</Label>
+              <Input
+                id="access-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="mt-1.5"
+              />
+            </div>
+            <Button
+              className="w-full"
+              disabled={busy || !password}
+              onClick={() => void requestCode(password)}
+            >
+              {busy ? "Verifying…" : "Continue"}
+            </Button>
+          </div>
         ) : (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
@@ -87,7 +117,12 @@ export function ReviewerAccess() {
             <Button className="w-full" disabled={busy || otp.length !== 6} onClick={() => void verify()}>
               {busy ? "Verifying…" : "Continue"}
             </Button>
-            <Button variant="ghost" className="w-full" disabled={busy} onClick={() => void requestCode()}>
+            <Button
+              variant="ghost"
+              className="w-full"
+              disabled={busy}
+              onClick={() => void requestCode(password || undefined)}
+            >
               Resend code
             </Button>
           </div>

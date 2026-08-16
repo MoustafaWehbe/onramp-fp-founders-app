@@ -2,6 +2,7 @@ import { randomBytes, createHash } from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
+import { hashPassword } from "../utils/auth";
 import { emailQueue } from "../jobs/queue";
 import { getAppUrl } from "../config/env";
 import { recordAuditEvent } from "./audit-writer";
@@ -67,6 +68,12 @@ export class ReviewerInvitationService {
         email: row.emailNormalized,
         status: deriveStatus(row),
         allowDownload: row.allowDownload,
+        watermarkEnabled: row.watermarkEnabled,
+        allowPrint: row.allowPrint,
+        screenshotGuard: row.screenshotGuard,
+        requireNda: row.requireNda,
+        hasPassword: Boolean(row.passwordHash),
+        allowedEmailDomains: row.allowedEmailDomains,
         personalMessage: row.personalMessage,
         expiresAt: row.expiresAt,
         completedAt: row.completedAt,
@@ -82,6 +89,21 @@ export class ReviewerInvitationService {
 
   async createInvitation(startupId: string, userId: string, input: CreateReviewerInvitationInput) {
     const emailNormalized = normalizeEmail(input.email);
+
+    // A per-invitation guard, not a startup-wide setting: the founder can
+    // require that *this* invite's fixed email land on an approved domain
+    // (e.g. reject a personal Gmail address for an institutional data room).
+    if (input.allowedEmailDomains && input.allowedEmailDomains.length > 0) {
+      const emailDomain = emailNormalized.split("@")[1];
+      if (!emailDomain || !input.allowedEmailDomains.includes(emailDomain)) {
+        throw createError(
+          "This email's domain is not in the allowed list for this invitation",
+          400,
+          "EMAIL_DOMAIN_NOT_ALLOWED",
+        );
+      }
+    }
+
     const versions = await prisma.documentVersion.findMany({
       where: {
         id: { in: input.documentVersionIds },
@@ -130,6 +152,7 @@ export class ReviewerInvitationService {
 
     const rawToken = randomBytes(32).toString("base64url");
     const expiresAt = new Date(Date.now() + input.expiresInDays * 24 * 60 * 60 * 1000);
+    const passwordHash = input.password ? await hashPassword(input.password) : undefined;
 
     const invitation = await prisma.reviewerInvitation.create({
       data: {
@@ -140,6 +163,13 @@ export class ReviewerInvitationService {
         tokenHash: hashToken(rawToken),
         status: "pending",
         allowDownload: input.allowDownload ?? false,
+        watermarkEnabled: input.watermarkEnabled ?? true,
+        allowPrint: input.allowPrint ?? false,
+        screenshotGuard: input.screenshotGuard ?? true,
+        requireNda: input.requireNda ?? false,
+        ndaText: input.requireNda ? input.ndaText : undefined,
+        passwordHash,
+        allowedEmailDomains: input.allowedEmailDomains ?? [],
         personalMessage: input.personalMessage,
         expiresAt,
         createdBy: userId,
@@ -216,6 +246,12 @@ export class ReviewerInvitationService {
         revokedAt: true,
         expiresAt: true,
         allowDownload: true,
+        watermarkEnabled: true,
+        allowPrint: true,
+        screenshotGuard: true,
+        requireNda: true,
+        passwordHash: true,
+        allowedEmailDomains: true,
         lastActivityAt: true,
       },
     });
@@ -241,6 +277,12 @@ export class ReviewerInvitationService {
         pagesViewed: true,
         maxPageReached: true,
         completionPct: true,
+        deviceType: true,
+        os: true,
+        browser: true,
+        suspectedForward: true,
+        deviceHash: true,
+        ipHash: true,
       },
     });
 
@@ -252,6 +294,14 @@ export class ReviewerInvitationService {
         null,
       ),
       completionPct: visits.reduce((max, v) => Math.max(max, v.completionPct), 0),
+    };
+
+    // A signal, not proof — the plan is explicit that this is presented as
+    // "opened from 2 devices", never as an accusation of leaking the link.
+    const forwarding = {
+      distinctDevices: new Set(visits.map((v) => v.deviceHash).filter(Boolean)).size,
+      distinctIps: new Set(visits.map((v) => v.ipHash).filter(Boolean)).size,
+      suspected: visits.some((v) => v.suspectedForward),
     };
 
     // Skip the page-view query entirely when there are no visits — an empty
@@ -301,12 +351,19 @@ export class ReviewerInvitationService {
         email: invitation.emailNormalized,
         status: deriveStatus(invitation),
         allowDownload: invitation.allowDownload,
+        watermarkEnabled: invitation.watermarkEnabled,
+        allowPrint: invitation.allowPrint,
+        screenshotGuard: invitation.screenshotGuard,
+        requireNda: invitation.requireNda,
+        hasPassword: Boolean(invitation.passwordHash),
+        allowedEmailDomains: invitation.allowedEmailDomains,
         expiresAt: invitation.expiresAt,
         lastActivityAt: invitation.lastActivityAt,
       },
       summary,
+      forwarding,
       documents,
-      visits,
+      visits: visits.map(({ deviceHash: _deviceHash, ipHash: _ipHash, ...visit }) => visit),
       security: {
         counts: Object.fromEntries(eventCounts.map((row) => [row.type, row._count._all])),
         recent: recentEvents,

@@ -20,6 +20,58 @@ describe("createReviewerInvitationSchema", () => {
       }).success,
     ).toBe(true);
   });
+
+  it("requires ndaText when requireNda is set", () => {
+    expect(
+      createReviewerInvitationSchema.safeParse({
+        email: "a@b.com",
+        documentVersionIds: [UUID],
+        requireNda: true,
+      }).success,
+    ).toBe(false);
+    expect(
+      createReviewerInvitationSchema.safeParse({
+        email: "a@b.com",
+        documentVersionIds: [UUID],
+        requireNda: true,
+        ndaText: "Standard mutual NDA terms…",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("validates domain format in allowedEmailDomains", () => {
+    expect(
+      createReviewerInvitationSchema.safeParse({
+        email: "a@b.com",
+        documentVersionIds: [UUID],
+        allowedEmailDomains: ["not a domain"],
+      }).success,
+    ).toBe(false);
+    expect(
+      createReviewerInvitationSchema.safeParse({
+        email: "a@b.com",
+        documentVersionIds: [UUID],
+        allowedEmailDomains: ["acme.com"],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects a password shorter than 6 characters", () => {
+    expect(
+      createReviewerInvitationSchema.safeParse({
+        email: "a@b.com",
+        documentVersionIds: [UUID],
+        password: "abc",
+      }).success,
+    ).toBe(false);
+    expect(
+      createReviewerInvitationSchema.safeParse({
+        email: "a@b.com",
+        documentVersionIds: [UUID],
+        password: "abcdef",
+      }).success,
+    ).toBe(true);
+  });
 });
 
 describe("listReviewerInvitationsQuerySchema", () => {
@@ -37,6 +89,12 @@ describe("reviewer portal schemas", () => {
   it("accepts access token", () => {
     expect(
       reviewerAccessSchema.safeParse({ token: "a".repeat(32) }).success,
+    ).toBe(true);
+  });
+
+  it("accepts an optional password on access", () => {
+    expect(
+      reviewerAccessSchema.safeParse({ token: "a".repeat(32), password: "hunter2" }).success,
     ).toBe(true);
   });
 

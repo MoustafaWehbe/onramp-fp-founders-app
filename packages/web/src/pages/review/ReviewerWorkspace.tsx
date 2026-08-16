@@ -9,6 +9,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { EmptyState } from "../../components/shared/EmptyState";
 import { apiErrorMessage } from "../../lib/api-error";
 import {
+  acceptReviewerNda,
   completeReviewerSession,
   createReviewerComment,
   downloadReviewerDocument,
@@ -86,6 +87,12 @@ export function ReviewerWorkspace() {
     onSuccess: () => navigate("/review/expired", { replace: true }),
   });
 
+  const ndaMutation = useMutation({
+    mutationFn: acceptReviewerNda,
+    onSuccess: () => void workspaceQuery.refetch(),
+    onError: (error) => toast.error(apiErrorMessage(error, "Could not record NDA acceptance")),
+  });
+
   const activeDoc = useMemo(
     () => documents.find((doc) => doc.documentId === activeDocumentId) ?? null,
     [activeDocumentId, documents],
@@ -106,6 +113,36 @@ export function ReviewerWorkspace() {
   }
 
   const workspace = workspaceQuery.data!;
+
+  if (workspace.invitation.requireNda && !workspace.invitation.ndaAccepted) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-6">
+        <div className="card-elevated flex max-h-[80vh] w-full max-w-lg flex-col gap-4 p-6">
+          <div className="flex items-center gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+              <Shield className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="font-display text-lg font-semibold">Confidentiality agreement</h1>
+              <p className="text-sm text-muted-foreground">
+                You must accept this NDA before viewing {workspace.startup.name}'s documents.
+              </p>
+            </div>
+          </div>
+          <div className="scrollbar-slim flex-1 overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-surface/40 p-4 text-sm">
+            {workspace.invitation.ndaText}
+          </div>
+          <Button
+            className="w-full"
+            disabled={ndaMutation.isPending}
+            onClick={() => ndaMutation.mutate()}
+          >
+            {ndaMutation.isPending ? "Recording…" : "I agree"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -210,6 +247,8 @@ export function ReviewerWorkspace() {
                 key={activeDoc.versionId}
                 versionId={activeDoc.versionId}
                 reviewerEmail={workspace.invitation.email}
+                allowPrint={workspace.invitation.allowPrint}
+                screenshotGuard={workspace.invitation.screenshotGuard}
               />
 
               <div className="border-t border-border pt-4">

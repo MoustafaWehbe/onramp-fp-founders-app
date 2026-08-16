@@ -163,7 +163,7 @@ function PageCanvas({
  * impossible — see the honesty table in reviewer-secure-viewer-plan.md §6 —
  * but each one is real enough to be worth the logged event it fires.
  */
-function useCaptureGuards(versionId: string) {
+function useCaptureGuards(versionId: string, screenshotGuard: boolean, allowPrint: boolean) {
   const [blanked, setBlanked] = useState(false);
 
   useEffect(() => {
@@ -173,7 +173,9 @@ function useCaptureGuards(versionId: string) {
 
     // Suppresses the print dialog for the keyboard path so `beforeprint`
     // (below) only fires — and only logs — for the menu/UI print path.
+    // Skipped entirely when the invitation allows printing.
     const onKeyDown = (event: KeyboardEvent) => {
+      if (allowPrint) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p") {
         event.preventDefault();
       }
@@ -182,6 +184,7 @@ function useCaptureGuards(versionId: string) {
     // Windows/Chromium only: PrintScreen delivers a keyup, rarely a keydown,
     // and macOS's Cmd+Shift+3/4/5 never reaches the browser at all.
     const onKeyUp = (event: KeyboardEvent) => {
+      if (!screenshotGuard) return;
       if (event.key !== "PrintScreen") return;
       blank();
       window.setTimeout(unblank, 1500);
@@ -190,35 +193,39 @@ function useCaptureGuards(versionId: string) {
     };
 
     const onBeforePrint = () => {
+      if (allowPrint) return;
       blank();
       void logReviewerEvent("print_attempt", { documentVersionId: versionId });
     };
 
-    window.addEventListener("blur", blank);
-    window.addEventListener("focus", unblank);
-    document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("beforeprint", onBeforePrint);
     window.addEventListener("afterprint", unblank);
+    if (screenshotGuard) {
+      window.addEventListener("blur", blank);
+      window.addEventListener("focus", unblank);
+      document.addEventListener("visibilitychange", onVisibility);
+    }
 
     return () => {
-      window.removeEventListener("blur", blank);
-      window.removeEventListener("focus", unblank);
-      document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("beforeprint", onBeforePrint);
       window.removeEventListener("afterprint", unblank);
+      window.removeEventListener("blur", blank);
+      window.removeEventListener("focus", unblank);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [versionId]);
+  }, [versionId, screenshotGuard, allowPrint]);
 
   const blockClipboard = useCallback(
     (event: React.ClipboardEvent) => {
+      if (!screenshotGuard) return;
       event.preventDefault();
       void logReviewerEvent("copy_attempt", { documentVersionId: versionId });
     },
-    [versionId],
+    [versionId, screenshotGuard],
   );
 
   return { blanked, blockClipboard };
@@ -316,9 +323,13 @@ function WatermarkOverlay({ email }: { email: string }) {
 export function SecureDocumentViewer({
   versionId,
   reviewerEmail,
+  allowPrint,
+  screenshotGuard,
 }: {
   versionId: string;
   reviewerEmail: string;
+  allowPrint: boolean;
+  screenshotGuard: boolean;
 }) {
   const manifestQuery = useQuery({
     queryKey: ["reviewer-manifest", versionId],
@@ -333,7 +344,7 @@ export function SecureDocumentViewer({
     void manifestQuery.refetch();
   }, [manifestQuery]);
 
-  const { blanked, blockClipboard } = useCaptureGuards(versionId);
+  const { blanked, blockClipboard } = useCaptureGuards(versionId, screenshotGuard, allowPrint);
   const { reportIntersection } = useEngagementHeartbeat(versionId);
 
   if (manifestQuery.isPending) {
@@ -373,7 +384,9 @@ export function SecureDocumentViewer({
 
   return (
     <div className="relative" onCopy={blockClipboard} onCut={blockClipboard}>
-      <style>{"@media print { .reviewer-secure-pages { display: none !important; } }"}</style>
+      {!allowPrint && (
+        <style>{"@media print { .reviewer-secure-pages { display: none !important; } }"}</style>
+      )}
       <div className="reviewer-secure-pages space-y-3">
         {manifest.pages.map((page) => (
           <PageCanvas

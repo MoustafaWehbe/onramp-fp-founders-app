@@ -38,12 +38,22 @@ export const reviewerPortalController = {
     res.json({ data: result });
   }),
 
+  acceptNda: asyncHandler(async (req, res) => {
+    await reviewerPortalService.acceptNda(
+      req.reviewer!.invitationId,
+      req.reviewer!.startupId,
+      req.reviewer!.sessionId,
+    );
+    res.status(204).send();
+  }),
+
   getPageManifest: asyncHandler(async (req, res) => {
     const result = await reviewerPortalService.getPageManifest(
       req.reviewer!.invitationId,
       req.reviewer!.sessionId,
       req.params.versionId as string,
       req.reviewer!.startupId,
+      { requireNda: req.reviewer!.requireNda, ndaAccepted: req.reviewer!.ndaAccepted },
     );
     res.set("Cache-Control", "private, no-store, max-age=0");
     res.json({ data: result });
@@ -62,6 +72,8 @@ export const reviewerPortalController = {
       kind,
       email: req.reviewer!.email,
       watermarkEnabled: req.reviewer!.watermarkEnabled,
+      requireNda: req.reviewer!.requireNda,
+      ndaAccepted: req.reviewer!.ndaAccepted,
     });
 
     // no-store keeps page images out of the browser's on-disk cache, so there
@@ -77,11 +89,17 @@ export const reviewerPortalController = {
   }),
 
   getDownload: asyncHandler(async (req, res) => {
-    const { body, mimeType, originalFilename } = await reviewerPortalService.getDownload(
-      req.reviewer!.invitationId,
-      req.reviewer!.allowDownload,
-      req.params.versionId as string,
-    );
+    const { body, mimeType, originalFilename } = await reviewerPortalService.getDownload({
+      invitationId: req.reviewer!.invitationId,
+      startupId: req.reviewer!.startupId,
+      sessionId: req.reviewer!.sessionId,
+      allowDownload: req.reviewer!.allowDownload,
+      watermarkEnabled: req.reviewer!.watermarkEnabled,
+      requireNda: req.reviewer!.requireNda,
+      ndaAccepted: req.reviewer!.ndaAccepted,
+      versionId: req.params.versionId as string,
+      email: req.reviewer!.email,
+    });
 
     res.set({
       "Content-Type": mimeType,

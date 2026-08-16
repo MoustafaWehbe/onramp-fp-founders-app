@@ -60,3 +60,18 @@ export function generateOTP(): { raw: string; hash: string } {
   return { raw, hash: hashOTP(raw) };
 }
 
+// Forwarding detection
+
+/**
+ * Coarse, non-reversible signal used to tell distinct devices/IPs apart on a
+ * reviewer invitation (see reviewer-portal.service.ts recordTelemetry). Reuses
+ * the OTP secret rather than a dedicated env var — it's already a required
+ * server secret with no other exposure surface.
+ */
+export function hashForwardSignal(value: string): string {
+  return crypto
+    .createHmac("sha256", process.env.OTP_HMAC_SECRET!)
+    .update(value)
+    .digest("hex");
+}
+

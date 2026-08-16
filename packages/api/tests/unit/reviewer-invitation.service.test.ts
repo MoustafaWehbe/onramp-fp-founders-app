@@ -16,6 +16,9 @@ jest.mock("../../src/db/prisma", () => ({
       groupBy: jest.fn(),
       findMany: jest.fn(),
     },
+    documentVersion: {
+      findMany: jest.fn(),
+    },
   },
 }));
 
@@ -45,6 +48,34 @@ function baseInvitation(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => jest.clearAllMocks());
+
+describe("ReviewerInvitationService.createInvitation", () => {
+  it("rejects the invitation before touching document versions when the email's domain isn't allowlisted", async () => {
+    await expect(
+      reviewerInvitationService.createInvitation("startup-1", "user-1", {
+        email: "founder@gmail.com",
+        allowedEmailDomains: ["acme.com"],
+        documentVersionIds: ["00000000-0000-0000-0000-000000000030"],
+        expiresInDays: 14,
+      } as never),
+    ).rejects.toMatchObject({ code: "EMAIL_DOMAIN_NOT_ALLOWED" });
+    expect(mockPrisma.documentVersion.findMany).not.toHaveBeenCalled();
+  });
+
+  it("allows an email whose domain is in the allowlist through to the version lookup", async () => {
+    mockPrisma.documentVersion.findMany.mockResolvedValue([]);
+
+    await expect(
+      reviewerInvitationService.createInvitation("startup-1", "user-1", {
+        email: "investor@acme.com",
+        allowedEmailDomains: ["acme.com"],
+        documentVersionIds: ["00000000-0000-0000-0000-000000000030"],
+        expiresInDays: 14,
+      } as never),
+    ).rejects.toMatchObject({ code: "INVALID_DOCUMENT_VERSIONS" });
+    expect(mockPrisma.documentVersion.findMany).toHaveBeenCalled();
+  });
+});
 
 describe("ReviewerInvitationService.getInvitationAnalytics", () => {
   it("404s on an invitation that does not belong to this startup", async () => {
@@ -146,5 +177,53 @@ describe("ReviewerInvitationService.getInvitationAnalytics", () => {
     expect(capTablePages).toEqual([{ pageNumber: 1, activeMs: 500, viewCount: 1 }]);
 
     expect(result.security.counts).toEqual({ copy_attempt: 3, screenshot_attempt: 1 });
+  });
+
+  it("summarizes distinct devices/IPs into a forwarding signal and strips the raw hashes from visits", async () => {
+    mockPrisma.reviewerInvitation.findUnique.mockResolvedValue(baseInvitation() as never);
+    mockPrisma.reviewerInvitationDocument.findMany.mockResolvedValue([]);
+    mockPrisma.reviewerVisit.findMany.mockResolvedValue([
+      {
+        id: "visit-1",
+        startedAt: new Date(),
+        lastSeenAt: new Date(),
+        endedAt: null,
+        totalActiveMs: 1_000,
+        pagesViewed: 1,
+        maxPageReached: 1,
+        completionPct: 10,
+        deviceType: "desktop",
+        os: "macOS",
+        browser: "Chrome",
+        suspectedForward: true,
+        deviceHash: "hash-a",
+        ipHash: "ip-a",
+      },
+      {
+        id: "visit-2",
+        startedAt: new Date(),
+        lastSeenAt: new Date(),
+        endedAt: null,
+        totalActiveMs: 1_000,
+        pagesViewed: 1,
+        maxPageReached: 1,
+        completionPct: 10,
+        deviceType: "mobile",
+        os: "iOS",
+        browser: "Safari",
+        suspectedForward: true,
+        deviceHash: "hash-b",
+        ipHash: "ip-a",
+      },
+    ] as never);
+    mockPrisma.reviewerEvent.groupBy.mockResolvedValue([]);
+    mockPrisma.reviewerEvent.findMany.mockResolvedValue([]);
+
+    const result = await reviewerInvitationService.getInvitationAnalytics(STARTUP_ID, INVITE_ID);
+
+    expect(result.forwarding).toEqual({ distinctDevices: 2, distinctIps: 1, suspected: true });
+    expect(result.visits[0]).not.toHaveProperty("deviceHash");
+    expect(result.visits[0]).not.toHaveProperty("ipHash");
+    expect(result.visits[0]).toMatchObject({ deviceType: "desktop", suspectedForward: true });
   });
 });

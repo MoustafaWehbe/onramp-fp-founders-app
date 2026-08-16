@@ -1,12 +1,14 @@
 import { randomBytes } from "crypto";
 import type { Response } from "express";
+import { UAParser } from "ua-parser-js";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
-import { generateOTP, hashOTP, hashToken } from "../utils/auth";
+import { generateOTP, hashOTP, hashToken, hashForwardSignal, verifyPassword } from "../utils/auth";
 import { createPageToken, verifyPageToken, PAGE_TOKEN_TTL_SECONDS } from "../utils/page-token";
 import { emailQueue } from "../jobs/queue";
 import { storageService } from "./storage.service";
-import { watermarkService } from "./watermark.service";
+import { watermarkService, shortLinkId } from "./watermark.service";
+import { pdfWatermarkService } from "./pdf-watermark.service";
 import { notificationService } from "./notification.service";
 import { reviewerOtpEmail } from "../emails/templates/reviewer-otp";
 import type {
@@ -90,6 +92,16 @@ export class ReviewerPortalService {
     const invitation = await invitationFromToken(input.token);
     if (!invitation) throw createError("Invitation not found", 404, "INVITATION_NOT_FOUND");
     assertInvitationActive(invitation);
+
+    if (invitation.passwordHash) {
+      if (!input.password) {
+        throw createError("This link requires a password", 401, "PASSWORD_REQUIRED");
+      }
+      const valid = await verifyPassword(input.password, invitation.passwordHash);
+      if (!valid) {
+        throw createError("Incorrect password", 401, "PASSWORD_INVALID");
+      }
+    }
 
     const { raw, hash } = generateOTP();
     const session = await prisma.reviewerSession.create({
@@ -223,6 +235,11 @@ export class ReviewerPortalService {
         id: invitation.id,
         status: invitation.status,
         allowDownload: invitation.allowDownload,
+        allowPrint: invitation.allowPrint,
+        screenshotGuard: invitation.screenshotGuard,
+        requireNda: invitation.requireNda,
+        ndaText: invitation.requireNda ? invitation.ndaText : null,
+        ndaAccepted: invitation.ndaAcceptedAt !== null,
         personalMessage: invitation.personalMessage,
         expiresAt: invitation.expiresAt,
         reviewerName: invitation.reviewerName,
@@ -245,12 +262,46 @@ export class ReviewerPortalService {
   }
 
   /**
+   * Idempotent: re-accepting an already-accepted NDA just no-ops rather than
+   * erroring, since the client may call this defensively before every
+   * gated request.
+   */
+  async acceptNda(invitationId: string, startupId: string, sessionId: string) {
+    const invitation = await prisma.reviewerInvitation.findUnique({
+      where: { id: invitationId },
+      select: { requireNda: true, ndaAcceptedAt: true },
+    });
+    if (!invitation) throw createError("Invitation not found", 404, "INVITATION_NOT_FOUND");
+    if (!invitation.requireNda || invitation.ndaAcceptedAt) return;
+
+    await prisma.reviewerInvitation.update({
+      where: { id: invitationId },
+      data: { ndaAcceptedAt: new Date(), lastActivityAt: new Date() },
+    });
+    await prisma.reviewerEvent.create({
+      data: { startupId, invitationId, sessionId, type: "nda_accepted" },
+    });
+  }
+
+  /**
    * Resolves a version the invitation is actually pinned to.
    *
    * Every page/download path goes through here rather than trusting a client
    * supplied id: the query is anchored on `invitationId`, so a version
    * belonging to another invitation (or another startup) simply does not match.
    */
+  /**
+   * Enforced server-side on every content-bearing endpoint, not just
+   * surfaced as a UI gate: `getWorkspace` returns the NDA text unconditionally
+   * so the client can render the prompt, but a reviewer who never calls
+   * `acceptNda` must not be able to reach a page, manifest, or download.
+   */
+  private assertNdaAccepted(requireNda: boolean, ndaAccepted: boolean) {
+    if (requireNda && !ndaAccepted) {
+      throw createError("You must accept the NDA before viewing this document", 409, "NDA_REQUIRED");
+    }
+  }
+
   private async requirePinnedVersion(invitationId: string, versionId: string) {
     const pinned = await prisma.reviewerInvitationDocument.findFirst({
       where: { invitationId, documentVersionId: versionId },
@@ -277,7 +328,9 @@ export class ReviewerPortalService {
     sessionId: string,
     versionId: string,
     startupId: string,
+    ndaGate: { requireNda: boolean; ndaAccepted: boolean } = { requireNda: false, ndaAccepted: true },
   ) {
+    this.assertNdaAccepted(ndaGate.requireNda, ndaGate.ndaAccepted);
     const pinned = await this.requirePinnedVersion(invitationId, versionId);
     const version = pinned.documentVersion;
 
@@ -354,7 +407,11 @@ export class ReviewerPortalService {
     kind: "view" | "thumb";
     email: string;
     watermarkEnabled: boolean;
+    requireNda: boolean;
+    ndaAccepted: boolean;
   }) {
+    this.assertNdaAccepted(input.requireNda, input.ndaAccepted);
+
     const claims = verifyPageToken(input.token);
     if (
       !claims ||
@@ -404,18 +461,49 @@ export class ReviewerPortalService {
    * Streams through the API rather than handing back a signed storage URL, so
    * the object's location is never exposed and the transfer stays attributable.
    */
-  async getDownload(invitationId: string, allowDownload: boolean, versionId: string) {
-    if (!allowDownload) {
+  async getDownload(input: {
+    invitationId: string;
+    startupId: string;
+    sessionId: string;
+    allowDownload: boolean;
+    watermarkEnabled: boolean;
+    requireNda: boolean;
+    ndaAccepted: boolean;
+    versionId: string;
+    email: string;
+  }) {
+    if (!input.allowDownload) {
       throw createError("Downloads are disabled for this invitation", 403, "DOWNLOAD_FORBIDDEN");
     }
+    this.assertNdaAccepted(input.requireNda, input.ndaAccepted);
 
-    const pinned = await this.requirePinnedVersion(invitationId, versionId);
+    const pinned = await this.requirePinnedVersion(input.invitationId, input.versionId);
     const version = pinned.documentVersion;
     if (version.processingStatus === "pending_upload") {
       throw createError("Document is not ready", 409, "NOT_READY");
     }
 
-    const body = await storageService.readObject(version.storageKey, version.storageProvider);
+    let body = await storageService.readObject(version.storageKey, version.storageProvider);
+    if (input.watermarkEnabled) {
+      const date = new Date().toISOString().slice(0, 10);
+      const text = `${input.email} · ${shortLinkId(input.invitationId)} · ${date}`;
+      body = await pdfWatermarkService.watermarkPdf(body, text);
+    }
+
+    await prisma.reviewerEvent.create({
+      data: {
+        startupId: input.startupId,
+        invitationId: input.invitationId,
+        sessionId: input.sessionId,
+        type: "download_completed",
+        documentVersionId: input.versionId,
+      },
+    });
+    await prisma.reviewerInvitation.update({
+      where: { id: input.invitationId },
+      data: { lastActivityAt: new Date() },
+    });
+
     return {
       body,
       mimeType: version.mimeType,
@@ -519,11 +607,46 @@ export class ReviewerPortalService {
     if (validEntries.length === 0) return;
 
     const now = new Date();
+    const existingVisit = await prisma.reviewerVisit.findUnique({
+      where: { sessionId },
+      select: { id: true },
+    });
+
+    // Device/IP signature only needs computing once per session, at the
+    // point the visit row is first created — it can't change mid-session.
+    const deviceSignal = existingVisit
+      ? null
+      : await (async () => {
+          const session = await prisma.reviewerSession.findUnique({
+            where: { id: sessionId },
+            select: { ipAddress: true, userAgent: true },
+          });
+          const parsed = session?.userAgent ? new UAParser(session.userAgent).getResult() : null;
+          return {
+            deviceType: parsed?.device.type ?? "desktop",
+            os: parsed?.os.name ?? null,
+            browser: parsed?.browser.name ?? null,
+            deviceHash: session?.userAgent ? hashForwardSignal(session.userAgent) : null,
+            ipHash: session?.ipAddress ? hashForwardSignal(session.ipAddress) : null,
+          };
+        })();
+
     const visit = await prisma.reviewerVisit.upsert({
       where: { sessionId },
-      create: { startupId, invitationId, sessionId, startedAt: now, lastSeenAt: now },
+      create: {
+        startupId,
+        invitationId,
+        sessionId,
+        startedAt: now,
+        lastSeenAt: now,
+        ...deviceSignal,
+      },
       update: { lastSeenAt: now },
     });
+
+    if (!existingVisit) {
+      await this.checkForwarding(startupId, invitationId, sessionId, visit.id);
+    }
 
     await prisma.$transaction(
       validEntries.map((entry) =>
@@ -567,6 +690,56 @@ export class ReviewerPortalService {
         completionPct: totalPages > 0 ? Math.round((pagesViewed / totalPages) * 100) : 0,
       },
     });
+  }
+
+  /**
+   * Runs once per new visit, never per heartbeat. Flags the invitation's
+   * newest visit and alerts the founder the moment a second distinct
+   * device or IP shows up under one link — a signal the link may have been
+   * forwarded, not proof of it (see reviewer-secure-viewer-plan.md §7).
+   */
+  private async checkForwarding(
+    startupId: string,
+    invitationId: string,
+    sessionId: string,
+    visitId: string,
+  ) {
+    const visits = await prisma.reviewerVisit.findMany({
+      where: { invitationId },
+      select: { deviceHash: true, ipHash: true },
+    });
+    const distinctDevices = new Set(visits.map((v) => v.deviceHash).filter(Boolean)).size;
+    const distinctIps = new Set(visits.map((v) => v.ipHash).filter(Boolean)).size;
+    if (distinctDevices < 2 && distinctIps < 2) return;
+
+    await prisma.reviewerVisit.update({
+      where: { id: visitId },
+      data: { suspectedForward: true },
+    });
+    await prisma.reviewerEvent.create({
+      data: {
+        startupId,
+        invitationId,
+        sessionId,
+        type: "forward_suspected",
+        metadata: { distinctDevices, distinctIps },
+      },
+    });
+
+    const invitation = await prisma.reviewerInvitation.findUnique({
+      where: { id: invitationId },
+      select: { createdBy: true, reviewerName: true, emailNormalized: true },
+    });
+    if (invitation) {
+      void notificationService.notifyForwardSuspected({
+        userId: invitation.createdBy,
+        startupId,
+        invitationId,
+        reviewerLabel: invitation.reviewerName || invitation.emailNormalized,
+        distinctDevices,
+        distinctIps,
+      });
+    }
   }
 
   async complete(invitationId: string) {

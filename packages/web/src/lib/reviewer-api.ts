@@ -14,6 +14,12 @@ export type ReviewerInvitation = {
   email: string;
   status: string;
   allowDownload: boolean;
+  watermarkEnabled: boolean;
+  allowPrint: boolean;
+  screenshotGuard: boolean;
+  requireNda: boolean;
+  hasPassword: boolean;
+  allowedEmailDomains: string[];
   personalMessage: string | null;
   expiresAt: string;
   completedAt: string | null;
@@ -42,6 +48,13 @@ export async function createReviewerInvitation(
     reviewerName?: string;
     startupInvestorId?: string;
     allowDownload?: boolean;
+    watermarkEnabled?: boolean;
+    allowPrint?: boolean;
+    screenshotGuard?: boolean;
+    requireNda?: boolean;
+    ndaText?: string;
+    password?: string;
+    allowedEmailDomains?: string[];
     personalMessage?: string;
     expiresInDays?: number;
     documentVersionIds: string[];
@@ -68,6 +81,12 @@ export type ReviewerInvitationAnalytics = {
     email: string;
     status: string;
     allowDownload: boolean;
+    watermarkEnabled: boolean;
+    allowPrint: boolean;
+    screenshotGuard: boolean;
+    requireNda: boolean;
+    hasPassword: boolean;
+    allowedEmailDomains: string[];
     expiresAt: string;
     lastActivityAt: string | null;
   };
@@ -76,6 +95,11 @@ export type ReviewerInvitationAnalytics = {
     totalActiveMs: number;
     lastSeenAt: string | null;
     completionPct: number;
+  };
+  forwarding: {
+    distinctDevices: number;
+    distinctIps: number;
+    suspected: boolean;
   };
   documents: Array<{
     documentId: string;
@@ -93,6 +117,10 @@ export type ReviewerInvitationAnalytics = {
     pagesViewed: number;
     maxPageReached: number;
     completionPct: number;
+    deviceType: string | null;
+    os: string | null;
+    browser: string | null;
+    suspectedForward: boolean;
   }>;
   security: {
     counts: Record<string, number>;

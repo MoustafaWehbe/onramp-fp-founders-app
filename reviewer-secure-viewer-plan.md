@@ -15,22 +15,30 @@ carries their identity.
   is gone; there is no route from the portal to a signed storage URL.
 - **Phase 2 — shipped.** Server-side tiled watermark (`sharp` + Redis cache), client
   capture guards (copy/print/screenshot), `ReviewerEvent` logging, `watermarkEnabled`
-  toggle. **Deferred out of Phase 2**, not yet built: the watermarked download PDF
-  (`pdf-lib`) — `getDownload` still streams the original file unmodified when
-  `allowDownload` is on; the devtools-open heuristic (plan's own §6 table rates it too
-  noisy for v1); the document-level CSP (`frame-ancestors 'none'`) — `packages/web` has
-  no hosting config in this repo yet, so there's nowhere to attach the header. Revisit
-  once hosting is decided.
-- **Phase 3 — backend only, shipped.** `ReviewerVisit` / `ReviewerPageView`, the
+  toggle. **Still deferred**: the devtools-open heuristic (plan's own §6 table rates it
+  too noisy for v1); the document-level CSP (`frame-ancestors 'none'`) — `packages/web`
+  has no hosting config in this repo yet, so there's nowhere to attach the header.
+  Revisit once hosting is decided. (The watermarked download PDF originally deferred
+  here shipped as part of Phase 4 below.)
+- **Phase 3 — shipped.** `ReviewerVisit` / `ReviewerPageView`, the
   `POST /reviewer-portal/telemetry` endpoint, and the client heartbeat that feeds it. A
   visit maps 1:1 to a `ReviewerSession` (server-resolved from the session, not a
   client-supplied id) rather than the plan's original `visitId`-in-payload shape.
-  Device/geo/forwarding columns on `ReviewerVisit` were intentionally left off — that's
-  Phase 4 territory. **Not built yet**: both founder-facing Analytics tabs and the
-  `notifyOnOpen` notification — the dashboard has no per-invitation or per-document
-  detail view at all today (just flat list pages) and no Tabs UI primitive exists in the
-  codebase, so that's a separate follow-up pass once there's real data to show.
-- **Phase 4, Phase 5 — not started.**
+  Founder-facing Invitation and Document Analytics sheets, the per-page time chart, and
+  the `notifyOnOpen` "reading right now" notification are all in place.
+- **Phase 4 — shipped.** NDA gate (`requireNda`/`ndaText`/`ndaAcceptedAt`, enforced
+  server-side on every manifest/page/download call, not just as a UI gate), an optional
+  invitation password checked before an OTP is issued, a founder-side email-domain
+  allowlist enforced at invite-creation time (invitations stay single-recipient — no
+  self-serve/multi-reviewer-per-link flow), `allowPrint`/`screenshotGuard` per-link
+  toggles wired into the client capture guards, and a watermarked download PDF via
+  `pdf-lib` (`pdf-watermark.service.ts`). Forwarding detection: `ua-parser-js` +
+  HMAC'd device/IP signals on `ReviewerVisit`, flips `suspectedForward` and fires a
+  cooldown-gated founder notification once a second distinct device/IP shows up under
+  one invitation — deliberately no geoip dependency, so country/city are not populated.
+  Invite dialog now also exposes `allowDownload`/`watermarkEnabled`, which were wired
+  server-side since Phase 2/3 but never reachable from the UI until now.
+- **Phase 5 — not started.**
 
 ---
 
@@ -513,9 +521,9 @@ Update `packages/api/openapi.yaml` in the same change, then regenerate
 - [ ] `notifyOnOpen` real-time notification.
 
 **Phase 4 — Link controls.**
-- [ ] NDA gate, optional password, email-domain allowlist, print/download policy.
-- [ ] Forwarding detection + founder alert.
-- [ ] Watermarked download PDF via `pdf-lib`.
+- [x] NDA gate, optional password, email-domain allowlist, print/download policy.
+- [x] Forwarding detection + founder alert.
+- [x] Watermarked download PDF via `pdf-lib`.
 
 **Phase 5 — Scale and hardening.**
 - [ ] LibreOffice-headless conversion for DOCX/PPTX → PDF → raster.

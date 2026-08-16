@@ -1,7 +1,11 @@
 import { Router } from "express";
 import { validate } from "../utils/validate";
 import { requireReviewerSession } from "../middleware/reviewer-auth";
-import { reviewerEventRateLimiter, reviewerTelemetryRateLimiter } from "../middleware/rate-limiter";
+import {
+  reviewerAccessRateLimiter,
+  reviewerEventRateLimiter,
+  reviewerTelemetryRateLimiter,
+} from "../middleware/rate-limiter";
 import {
   reviewerAccessSchema,
   reviewerCommentSchema,
@@ -18,17 +22,21 @@ const router = Router();
 
 router.post(
   "/access",
+  reviewerAccessRateLimiter,
   validate(reviewerAccessSchema),
   reviewerPortalController.requestAccess,
 );
 
 router.post(
   "/verify",
+  reviewerAccessRateLimiter,
   validate(reviewerVerifySchema),
   reviewerPortalController.verifyAccess,
 );
 
 router.get("/workspace", requireReviewerSession, reviewerPortalController.getWorkspace);
+
+router.post("/nda/accept", requireReviewerSession, reviewerPortalController.acceptNda);
 
 // Page images replace any form of file access. There is deliberately no route
 // from this router to a signed URL for a source object — see getPageManifest.

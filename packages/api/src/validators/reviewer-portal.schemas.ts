@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const reviewerAccessSchema = z.object({
   token: z.string().trim().min(20).max(200),
+  password: z.string().trim().min(1).max(100).optional(),
 });
 
 export const reviewerVerifySchema = z.object({

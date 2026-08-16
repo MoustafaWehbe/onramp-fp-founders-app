@@ -9,6 +9,8 @@ export type ReviewerAuthContext = {
   startupId: string;
   allowDownload: boolean;
   watermarkEnabled: boolean;
+  requireNda: boolean;
+  ndaAccepted: boolean;
   email: string;
   reviewerName: string | null;
 };
@@ -38,6 +40,8 @@ export async function requireReviewerSession(req: Request, _res: Response, next:
             revokedAt: true,
             allowDownload: true,
             watermarkEnabled: true,
+            requireNda: true,
+            ndaAcceptedAt: true,
             emailNormalized: true,
             reviewerName: true,
           },
@@ -67,6 +71,8 @@ export async function requireReviewerSession(req: Request, _res: Response, next:
       startupId: invitation.startupId,
       allowDownload: invitation.allowDownload,
       watermarkEnabled: invitation.watermarkEnabled,
+      requireNda: invitation.requireNda,
+      ndaAccepted: invitation.ndaAcceptedAt !== null,
       email: invitation.emailNormalized,
       reviewerName: invitation.reviewerName,
     };

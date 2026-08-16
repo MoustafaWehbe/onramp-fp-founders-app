@@ -7,10 +7,12 @@ import { StatTile } from "../../components/shared/StatTile";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Checkbox } from "../../components/ui/checkbox";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { MultiSelect } from "../../components/ui/multi-select";
 import { Skeleton } from "../../components/ui/skeleton";
+import { Textarea } from "../../components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -49,7 +51,29 @@ export function Reviewers() {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [selectedVersionIds, setSelectedVersionIds] = useState<string[]>([]);
+  const [allowDownload, setAllowDownload] = useState(false);
+  const [watermarkEnabled, setWatermarkEnabled] = useState(true);
+  const [allowPrint, setAllowPrint] = useState(false);
+  const [screenshotGuard, setScreenshotGuard] = useState(true);
+  const [requireNda, setRequireNda] = useState(false);
+  const [ndaText, setNdaText] = useState("");
+  const [password, setPassword] = useState("");
+  const [allowedDomains, setAllowedDomains] = useState("");
   const [analyticsInvitationId, setAnalyticsInvitationId] = useState<string | null>(null);
+
+  const resetInviteForm = () => {
+    setEmail("");
+    setName("");
+    setSelectedVersionIds([]);
+    setAllowDownload(false);
+    setWatermarkEnabled(true);
+    setAllowPrint(false);
+    setScreenshotGuard(true);
+    setRequireNda(false);
+    setNdaText("");
+    setPassword("");
+    setAllowedDomains("");
+  };
 
   const invitesQuery = useQuery({
     queryKey: ["reviewer-invitations", startupId],
@@ -92,18 +116,33 @@ export function Reviewers() {
         reviewerName: name || undefined,
         documentVersionIds: selectedVersionIds,
         expiresInDays: 14,
+        allowDownload,
+        watermarkEnabled,
+        allowPrint,
+        screenshotGuard,
+        requireNda,
+        ndaText: requireNda ? ndaText.trim() : undefined,
+        password: password.trim() || undefined,
+        allowedEmailDomains: allowedDomains
+          .split(",")
+          .map((d) => d.trim().toLowerCase())
+          .filter(Boolean),
       }),
     onSuccess: async (result) => {
+      const hadPassword = Boolean(password.trim());
       setInviteOpen(false);
-      setEmail("");
-      setName("");
-      setSelectedVersionIds([]);
+      resetInviteForm();
       void queryClient.invalidateQueries({ queryKey: ["reviewer-invitations", startupId] });
       try {
         await navigator.clipboard.writeText(result.accessUrl);
         toast.success("Invitation created — access link copied");
       } catch {
         toast.success("Invitation created", { description: result.accessUrl });
+      }
+      if (hadPassword) {
+        toast.message("Share the password separately", {
+          description: "It won't be shown again — send it through a different channel than the link.",
+        });
       }
     },
     onError: (error) => toast.error(apiErrorMessage(error, "Could not create invitation")),
@@ -279,6 +318,66 @@ export function Reviewers() {
                 )}
               </div>
             </div>
+
+            <div className="space-y-2.5 rounded-md border border-border p-3">
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={allowDownload} onChange={(e) => setAllowDownload(e.target.checked)} />
+                Allow download (returns a watermarked PDF)
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={watermarkEnabled} onChange={(e) => setWatermarkEnabled(e.target.checked)} />
+                Watermark pages with reviewer identity
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={allowPrint} onChange={(e) => setAllowPrint(e.target.checked)} />
+                Allow printing
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={screenshotGuard} onChange={(e) => setScreenshotGuard(e.target.checked)} />
+                Screenshot / capture deterrence
+              </label>
+            </div>
+
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={requireNda} onChange={(e) => setRequireNda(e.target.checked)} />
+                Require NDA acceptance before viewing
+              </label>
+              {requireNda && (
+                <Textarea
+                  placeholder="Paste the NDA text reviewers must accept…"
+                  value={ndaText}
+                  onChange={(e) => setNdaText(e.target.value)}
+                  rows={4}
+                />
+              )}
+            </div>
+
+            <div>
+              <Label htmlFor="reviewer-password">Access password (optional)</Label>
+              <Input
+                id="reviewer-password"
+                type="text"
+                placeholder="Second factor beyond the emailed code"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="mt-1.5"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="reviewer-domains">Allowed email domains (optional)</Label>
+              <Input
+                id="reviewer-domains"
+                placeholder="acme.com, fund.vc"
+                value={allowedDomains}
+                onChange={(e) => setAllowedDomains(e.target.value)}
+                className="mt-1.5"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Reject creating this invitation unless the reviewer's email matches one of these domains.
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setInviteOpen(false)}>
@@ -286,7 +385,10 @@ export function Reviewers() {
             </Button>
             <Button
               disabled={
-                !email.trim() || selectedVersionIds.length === 0 || inviteMutation.isPending
+                !email.trim() ||
+                selectedVersionIds.length === 0 ||
+                (requireNda && !ndaText.trim()) ||
+                inviteMutation.isPending
               }
               onClick={() => inviteMutation.mutate()}
             >

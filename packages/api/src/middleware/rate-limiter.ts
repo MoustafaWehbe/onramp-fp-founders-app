@@ -100,6 +100,24 @@ export const scheduleMeetingRateLimiter = rateLimit({
 });
 
 /**
+ * Guards `/access` and `/verify`. These were unrated before an invitation
+ * could carry a password — a brute-forceable secret checked entirely
+ * server-side, with no OTP delivery step to slow an attacker down. IP-keyed
+ * since there's no session yet at this point.
+ */
+export const reviewerAccessRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1_000,
+  max: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  store: makeStore("reviewer-access"),
+  keyGenerator: (req) => req.ip ?? "unknown",
+  message: {
+    error: "Too many attempts, please wait before retrying.",
+  },
+});
+
+/**
  * Reviewer capture-deterrent events (copy/print/screenshot attempts) come
  * from an unauthenticated-by-us client script, not a trusted app a hostile
  * reviewer could script a flood of "attempts" to fill the log with noise.

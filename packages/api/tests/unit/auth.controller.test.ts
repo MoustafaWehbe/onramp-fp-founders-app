@@ -7,6 +7,7 @@ jest.mock("../../src/middleware/rate-limiter", () => ({
   credentialRateLimiter: (_req: any, _res: any, next: any) => next(),
   emailSendRateLimiter: (_req: any, _res: any, next: any) => next(),
   scheduleMeetingRateLimiter: (_req: any, _res: any, next: any) => next(),
+  reviewerAccessRateLimiter: (_req: any, _res: any, next: any) => next(),
   reviewerEventRateLimiter: (_req: any, _res: any, next: any) => next(),
   reviewerTelemetryRateLimiter: (_req: any, _res: any, next: any) => next(),
 }));
