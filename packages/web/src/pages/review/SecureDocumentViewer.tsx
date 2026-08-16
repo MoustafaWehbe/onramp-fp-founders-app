@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, Clock, EyeOff, FileWarning, Loader2 } from "lucide-react";
+import {
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  EyeOff,
+  FileWarning,
+  Loader2,
+} from "lucide-react";
 import {
   fetchReviewerPage,
   flushEngagement,
@@ -41,6 +49,12 @@ function PageCanvas({
   // Tracks which token the current pixels were drawn with, so a token refresh
   // does not force an already-rendered page to be fetched again.
   const drawnTokenRef = useRef<string | null>(null);
+  // Tracks whether a fetch is in flight, outside React state. Kept as a ref
+  // (not the `status` state) so the effect below doesn't depend on `status`
+  // and self-abort itself: setStatus("loading") would otherwise change a
+  // dependency the same effect reads, causing React to tear down the
+  // in-flight request it had just started before it ever resolved.
+  const loadingRef = useRef(false);
 
   useEffect(() => {
     const node = wrapperRef.current;
@@ -78,14 +92,15 @@ function PageCanvas({
 
   useEffect(() => {
     if (!visible) return;
-    if (drawnTokenRef.current === token && status === "ready") return;
-    if (status === "loading") return;
+    if (drawnTokenRef.current === token) return;
+    if (loadingRef.current) return;
 
     const controller = new AbortController();
     let bitmap: ImageBitmap | null = null;
+    loadingRef.current = true;
+    setStatus("loading");
 
     (async () => {
-      setStatus("loading");
       try {
         const blob = await fetchReviewerPage(
           versionId,
@@ -117,14 +132,18 @@ function PageCanvas({
         }
         setStatus("error");
       } finally {
+        loadingRef.current = false;
         // createImageBitmap consumes the blob directly, so there is no object
         // URL to revoke — releasing the bitmap is the whole cleanup.
         bitmap?.close();
       }
     })();
 
-    return () => controller.abort();
-  }, [visible, token, versionId, page.pageNumber, status, onTokenRejected]);
+    return () => {
+      controller.abort();
+      loadingRef.current = false;
+    };
+  }, [visible, token, versionId, page.pageNumber, onTokenRejected]);
 
   return (
     <div
@@ -354,6 +373,13 @@ export function SecureDocumentViewer({
 
   const { blanked, blockClipboard } = useCaptureGuards(versionId, screenshotGuard, allowPrint);
   const { reportIntersection } = useEngagementHeartbeat(versionId);
+  const [pageIndex, setPageIndex] = useState(0);
+
+  // A version switch (or a document swapped out from under the same
+  // component instance) should always land back on page one.
+  useEffect(() => {
+    setPageIndex(0);
+  }, [versionId]);
 
   if (manifestQuery.isPending) {
     return (
@@ -387,6 +413,9 @@ export function SecureDocumentViewer({
   }
 
   const manifest = manifestQuery.data;
+  const totalPages = manifest.pages.length;
+  const currentIndex = Math.min(pageIndex, totalPages - 1);
+  const currentPage = manifest.pages[currentIndex];
 
   return (
     <div className="relative" onCopy={blockClipboard} onCut={blockClipboard}>
@@ -394,16 +423,41 @@ export function SecureDocumentViewer({
         <style>{"@media print { .reviewer-secure-pages { display: none !important; } }"}</style>
       )}
       <div className="reviewer-secure-pages space-y-3">
-        {manifest.pages.map((page) => (
+        {currentPage && (
           <PageCanvas
-            key={page.pageNumber}
+            key={currentPage.pageNumber}
             versionId={versionId}
-            page={page}
+            page={currentPage}
             token={manifest.pageToken}
             onTokenRejected={refreshToken}
             onIntersect={reportIntersection}
           />
-        ))}
+        )}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-4">
+            <button
+              type="button"
+              onClick={() => setPageIndex((index) => Math.max(0, index - 1))}
+              disabled={currentIndex === 0}
+              className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-40 hover:bg-surface/60"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Previous
+            </button>
+            <span className="text-sm text-muted-foreground">
+              Page {currentIndex + 1} of {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPageIndex((index) => Math.min(totalPages - 1, index + 1))}
+              disabled={currentIndex === totalPages - 1}
+              className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-40 hover:bg-surface/60"
+            >
+              Next
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </div>
       {blanked && (
         <div className="absolute inset-0 z-40 grid place-items-center rounded-md bg-background/95 backdrop-blur-sm">
