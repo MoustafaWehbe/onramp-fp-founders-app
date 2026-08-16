@@ -1,0 +1,39 @@
+# syntax=docker/dockerfile:1
+#
+# Image for the BullMQ job worker only (src/jobs/workers/index.ts) — NOT the
+# api server. It exists as a separate image solely because the rasterize
+# queue's DOCX/PPTX-to-PDF step (office-convert.service.ts) needs the
+# LibreOffice headless binary installed on the host running it; bundling
+# that into the plain api image would bloat every deploy that never touches
+# it. Build from the repo root: `docker build -f Dockerfile.worker .`
+
+FROM node:20-slim AS build
+WORKDIR /app
+# npm workspaces need every package.json present before `npm ci` can resolve
+# and hoist dependencies correctly, even though only @starter-kit/api gets built.
+COPY package.json package-lock.json ./
+COPY packages/api/package.json packages/api/package.json
+COPY packages/web/package.json packages/web/package.json
+RUN npm ci
+COPY . .
+RUN npm run build -w @starter-kit/api
+
+FROM node:20-slim AS runtime
+# fonts-liberation gives LibreOffice metric-compatible substitutes for the
+# Arial/Times/Courier fonts most DOCX/PPTX files actually use, so converted
+# PDFs don't silently reflow onto a different page count than the original.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends libreoffice fonts-liberation \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+ENV NODE_ENV=production
+# npm workspaces hoist dependencies to the repo-root node_modules; Node's
+# module resolution walks up from packages/api/dist and finds them there.
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/packages/api/dist ./packages/api/dist
+COPY --from=build /app/packages/api/package.json ./packages/api/package.json
+
+WORKDIR /app/packages/api
+CMD ["node", "dist/src/jobs/workers/index.js"]

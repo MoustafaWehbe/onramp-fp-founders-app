@@ -2,6 +2,7 @@ jest.mock("../../src/db/prisma", () => ({
   prisma: {
     reviewerInvitation: {
       findUnique: jest.fn(),
+      create: jest.fn(),
     },
     reviewerInvitationDocument: {
       findMany: jest.fn(),
@@ -19,7 +20,18 @@ jest.mock("../../src/db/prisma", () => ({
     documentVersion: {
       findMany: jest.fn(),
     },
+    startup: {
+      findUnique: jest.fn(),
+    },
   },
+}));
+
+jest.mock("../../src/jobs/queue", () => ({
+  emailQueue: { add: jest.fn() },
+}));
+
+jest.mock("../../src/services/audit-writer", () => ({
+  recordAuditEvent: jest.fn(),
 }));
 
 import { prisma } from "../../src/db/prisma";
@@ -74,6 +86,53 @@ describe("ReviewerInvitationService.createInvitation", () => {
       } as never),
     ).rejects.toMatchObject({ code: "INVALID_DOCUMENT_VERSIONS" });
     expect(mockPrisma.documentVersion.findMany).toHaveBeenCalled();
+  });
+
+  it("still rejects a format LibreOffice can't convert, like XLSX", async () => {
+    mockPrisma.documentVersion.findMany.mockResolvedValue([
+      {
+        id: VERSION_A,
+        documentId: "doc-1",
+        mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        renderStatus: "unsupported",
+      },
+    ] as never);
+
+    await expect(
+      reviewerInvitationService.createInvitation(STARTUP_ID, "user-1", {
+        email: "investor@acme.com",
+        documentVersionIds: [VERSION_A],
+        expiresInDays: 14,
+      } as never),
+    ).rejects.toMatchObject({ code: "UNSUPPORTED_SHARE_FORMAT" });
+  });
+
+  it("allows a DOCX version through the format gate now that Phase 5 converts it", async () => {
+    mockPrisma.documentVersion.findMany.mockResolvedValue([
+      {
+        id: VERSION_A,
+        documentId: "doc-1",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        renderStatus: "pending",
+      },
+    ] as never);
+    mockPrisma.reviewerInvitation.create.mockResolvedValue({
+      id: INVITE_ID,
+      emailNormalized: "investor@acme.com",
+      status: "pending",
+      expiresAt: new Date(Date.now() + 14 * 86_400_000),
+      documents: [{ id: "join-1" }],
+    } as never);
+    mockPrisma.startup.findUnique.mockResolvedValue({ name: "Acme" } as never);
+
+    const result = await reviewerInvitationService.createInvitation(STARTUP_ID, "user-1", {
+      email: "investor@acme.com",
+      documentVersionIds: [VERSION_A],
+      expiresInDays: 14,
+    } as never);
+
+    expect(result.invitation.email).toBe("investor@acme.com");
+    expect(mockPrisma.reviewerInvitation.create).toHaveBeenCalled();
   });
 });
 

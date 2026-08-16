@@ -2,6 +2,7 @@ import type { Job } from "bullmq";
 import { prisma } from "../../db/prisma";
 import { rasterizePdf } from "../../services/pdf-rasterize";
 import { storageService } from "../../services/storage.service";
+import { isOfficeConvertible, officeConvertService } from "../../services/office-convert.service";
 
 export interface DocumentRasterizeJobData {
   startupId: string;
@@ -26,7 +27,9 @@ export const documentRasterizeJob = {
     const version = await prisma.documentVersion.findUnique({ where: { id: versionId } });
     if (!version) return { pageCount: 0 };
 
-    if (version.mimeType !== "application/pdf") {
+    const isPdf = version.mimeType === "application/pdf";
+    const isConvertible = isOfficeConvertible(version.mimeType);
+    if (!isPdf && !isConvertible) {
       await prisma.documentVersion.update({
         where: { id: versionId },
         data: { renderStatus: "unsupported", renderError: null, pageCount: null },
@@ -40,8 +43,15 @@ export const documentRasterizeJob = {
         data: { renderStatus: "rendering", renderError: null },
       });
 
-      const buffer = await storageService.readObject(version.storageKey, version.storageProvider);
+      let buffer = await storageService.readObject(version.storageKey, version.storageProvider);
       const provider = storageService.currentProvider();
+
+      // DOCX/PPTX get converted to PDF first (LibreOffice headless, only
+      // available in the worker image — see Dockerfile.worker), then flow
+      // through the exact same rasterizer as a native PDF upload.
+      if (isConvertible) {
+        buffer = await officeConvertService.convertToPdf(buffer, version.mimeType);
+      }
 
       // Re-rendering a version replaces its pages wholesale; a partial set left
       // behind by a failed earlier run would otherwise show up as gaps.

@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
 import { hashPassword } from "../utils/auth";
+import { isOfficeConvertible } from "./office-convert.service";
 import { emailQueue } from "../jobs/queue";
 import { getAppUrl } from "../config/env";
 import { recordAuditEvent } from "./audit-writer";
@@ -120,14 +121,19 @@ export class ReviewerInvitationService {
       );
     }
 
-    // The secure viewer serves rendered page images, and only PDFs can be
-    // rendered today. Enforced here rather than in the UI because letting a
-    // non-PDF through would leave the reviewer with a document they can open
-    // but not view — or worse, tempt a fallback that ships the source file.
-    const unsupported = versions.filter((version) => version.mimeType !== "application/pdf");
+    // The secure viewer serves rendered page images, never the source file.
+    // PDFs render directly; DOCX/PPTX render via a LibreOffice conversion
+    // step in the rasterize worker (Phase 5). Anything else — XLSX, TXT —
+    // has no rendering path and would sit stuck at renderStatus "unsupported"
+    // forever, so it's rejected here rather than in the UI: letting it
+    // through would leave the reviewer with a document they can open but
+    // never view, or worse, tempt a fallback that ships the source file.
+    const unsupported = versions.filter(
+      (version) => version.mimeType !== "application/pdf" && !isOfficeConvertible(version.mimeType),
+    );
     if (unsupported.length > 0) {
       throw createError(
-        "Only PDF documents can be shared with reviewers. Convert the file to PDF and upload a new version.",
+        "Only PDF, Word, and PowerPoint documents can be shared with reviewers. Convert the file and upload a new version.",
         400,
         "UNSUPPORTED_SHARE_FORMAT",
       );
