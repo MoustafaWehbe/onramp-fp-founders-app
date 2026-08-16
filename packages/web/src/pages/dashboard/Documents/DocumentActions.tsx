@@ -1,4 +1,4 @@
-import { Download, Eye, History, MoreHorizontal, Pencil, Trash2, Upload } from "lucide-react";
+import { BarChart3, Download, Eye, History, MoreHorizontal, Pencil, Trash2, Upload } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import {
   DropdownMenu,
@@ -20,6 +20,7 @@ type DocumentActionsProps = {
   onUploadVersion: (doc: VaultDocument) => void;
   onEdit: (doc: VaultDocument) => void;
   onViewVersions: (doc: VaultDocument) => void;
+  onViewAnalytics: (doc: VaultDocument) => void;
   onDelete: (doc: VaultDocument) => void;
   /**
    * Table rows have no other affordance for these, so the menu is the only
@@ -40,6 +41,7 @@ export function DocumentActions({
   onUploadVersion,
   onEdit,
   onViewVersions,
+  onViewAnalytics,
   onDelete,
   includeQuickActions = true,
 }: DocumentActionsProps) {
@@ -65,6 +67,9 @@ export function DocumentActions({
 
         <DropdownMenuItem onSelect={() => onViewVersions(document)}>
           <History className="mr-2 h-4 w-4" /> Version history
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onViewAnalytics(document)}>
+          <BarChart3 className="mr-2 h-4 w-4" /> Analytics
         </DropdownMenuItem>
 
         {canUpdate && (

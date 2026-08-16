@@ -25,6 +25,7 @@ type DocumentsCardListProps = {
   onUploadVersion: (doc: VaultDocument) => void;
   onEdit: (doc: VaultDocument) => void;
   onViewVersions: (doc: VaultDocument) => void;
+  onViewAnalytics: (doc: VaultDocument) => void;
   onDelete: (doc: VaultDocument) => void;
 };
 
@@ -40,6 +41,7 @@ export function DocumentsCardList({
   onUploadVersion,
   onEdit,
   onViewVersions,
+  onViewAnalytics,
   onDelete,
 }: DocumentsCardListProps) {
   const selectionActive = selectedIds !== null;
@@ -96,6 +98,7 @@ export function DocumentsCardList({
                   onUploadVersion={onUploadVersion}
                   onEdit={onEdit}
                   onViewVersions={onViewVersions}
+                  onViewAnalytics={onViewAnalytics}
                   onDelete={onDelete}
                   includeQuickActions={false}
                 />

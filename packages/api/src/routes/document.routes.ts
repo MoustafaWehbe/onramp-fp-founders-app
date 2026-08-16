@@ -44,6 +44,15 @@ router.get(
   documentController.getDocument,
 );
 
+router.get(
+  "/:documentId/analytics",
+  authenticate,
+  validate(documentIdParamSchema, "params"),
+  requireMember,
+  requirePermission("documents", "read"),
+  documentController.getAnalytics,
+);
+
 router.patch(
   "/:documentId",
   authenticate,

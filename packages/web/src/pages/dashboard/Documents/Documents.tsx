@@ -24,6 +24,7 @@ import {
   type DocumentVersion,
   type VaultDocument,
 } from "../../../lib/document-api";
+import { DocumentAnalyticsSheet } from "./DocumentAnalyticsSheet";
 import { DocumentFormDialog, type DocumentFormValues } from "./DocumentFormDialog";
 import { DocumentVersionsSheet } from "./DocumentVersionsSheet";
 import { DocumentsCardList } from "./DocumentsCardList";
@@ -48,6 +49,7 @@ export function Documents() {
   const [editingDoc, setEditingDoc] = useState<VaultDocument | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<VaultDocument | null>(null);
   const [versionsSheetDocId, setVersionsSheetDocId] = useState<string | null>(null);
+  const [analyticsSheetDocId, setAnalyticsSheetDocId] = useState<string | null>(null);
 
   const queryKey = ["documents", startupId, search, filters.documentType];
 
@@ -363,6 +365,7 @@ export function Documents() {
                 }}
                 onEdit={setEditingDoc}
                 onViewVersions={(doc) => setVersionsSheetDocId(doc.id)}
+                onViewAnalytics={(doc) => setAnalyticsSheetDocId(doc.id)}
                 onDelete={setDeleteTarget}
               />
             </div>
@@ -383,6 +386,7 @@ export function Documents() {
               }}
               onEdit={setEditingDoc}
               onViewVersions={(doc) => setVersionsSheetDocId(doc.id)}
+              onViewAnalytics={(doc) => setAnalyticsSheetDocId(doc.id)}
               onDelete={setDeleteTarget}
             />
           </div>
@@ -417,6 +421,12 @@ export function Documents() {
         onOpenChange={(next) => !next && setVersionsSheetDocId(null)}
         onPreview={(version) => openVersion(version, "preview")}
         onDownload={(version) => openVersion(version, "download")}
+      />
+
+      <DocumentAnalyticsSheet
+        startupId={startupId}
+        documentId={analyticsSheetDocId}
+        onOpenChange={(next) => !next && setAnalyticsSheetDocId(null)}
       />
 
       <ConfirmDialog

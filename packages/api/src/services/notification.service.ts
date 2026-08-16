@@ -16,6 +16,7 @@ export const NOTIFICATION_TYPES = {
   DEAL_NO_NEXT_STEP: "deal_no_next_step",
   CHAT_MENTION: "chat_mention",
   DIRECT_MESSAGE: "direct_message",
+  REVIEWER_OPENED: "reviewer_opened",
 } as const;
 
 /**
@@ -394,6 +395,42 @@ export class NotificationService {
       });
     } catch (err) {
       console.error("[notifyDirectMessage] failed:", err);
+    }
+  }
+
+  /**
+   * "X is reading your deck right now" fires once per reviewer session (the
+   * caller gates this on whether a ReviewerVisit already exists for the
+   * session), not deduped further here — each session opening the portal is
+   * new information, the same treatment as a mention or a DM.
+   */
+  async notifyReviewerOpened(input: {
+    userId: string;
+    startupId: string;
+    invitationId: string;
+    reviewerLabel: string;
+    documentTitle: string;
+  }): Promise<void> {
+    try {
+      const created = await prisma.notification.create({
+        data: {
+          userId: input.userId,
+          startupId: input.startupId,
+          type: NOTIFICATION_TYPES.REVIEWER_OPENED,
+          title: `${input.reviewerLabel} is reading ${input.documentTitle}`,
+          body: null,
+          entityType: "reviewer_invitation",
+          entityId: input.invitationId,
+        },
+        select: { id: true, type: true, title: true, body: true },
+      });
+
+      notificationBus.publish(input.userId, {
+        type: "notification.created",
+        notification: created,
+      });
+    } catch (err) {
+      console.error("[notifyReviewerOpened] failed:", err);
     }
   }
 

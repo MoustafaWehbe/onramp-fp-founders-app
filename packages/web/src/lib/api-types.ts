@@ -1493,6 +1493,23 @@ export interface paths {
         patch: operations["updateDocument"];
         trace?: never;
     };
+    "/startups/{startupId}/documents/{documentId}/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Engagement analytics across every reviewer who has seen this document */
+        get: operations["getDocumentAnalytics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/startups/{startupId}/documents/{documentId}/versions/upload-sessions": {
         parameters: {
             query?: never;
@@ -8239,6 +8256,27 @@ export interface operations {
         };
         responses: {
             /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getDocumentAnalytics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                documentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Analytics */
             200: {
                 headers: {
                     [name: string]: unknown;

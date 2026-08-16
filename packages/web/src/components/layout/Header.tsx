@@ -1,5 +1,5 @@
 import { useState, type ComponentType } from "react";
-import { AlertTriangle, Bell, CheckCheck, ClipboardCheck, Clock, Crown, LogOut, Menu, MessageSquare, Plus, Search, Shield, Sparkles, Users, Wallet } from "lucide-react";
+import { AlertTriangle, Bell, CheckCheck, ClipboardCheck, Clock, Crown, Eye, LogOut, Menu, MessageSquare, Plus, Search, Shield, Sparkles, Users, Wallet } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useNotifications, type NotificationRow } from "../../hooks/useNotifications";
@@ -79,6 +79,7 @@ const iconMap: Record<string, ComponentType<{ className?: string }>> = {
   deal_no_next_step: AlertTriangle,
   chat_mention: MessageSquare,
   direct_message: MessageSquare,
+  reviewer_opened: Eye,
 };
 
 function NotificationsMenu() {

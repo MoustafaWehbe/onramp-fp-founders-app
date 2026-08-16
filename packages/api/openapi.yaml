@@ -7075,6 +7075,30 @@ paths:
         "204":
           description: Deleted
 
+  /startups/{startupId}/documents/{documentId}/analytics:
+    get:
+      tags: [Documents]
+      summary: Engagement analytics across every reviewer who has seen this document
+      operationId: getDocumentAnalytics
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Analytics
+
   /startups/{startupId}/documents/{documentId}/versions/upload-sessions:
     post:
       tags: [Document Versions]

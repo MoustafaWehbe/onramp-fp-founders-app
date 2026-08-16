@@ -256,6 +256,7 @@ model ReviewerInvitation {
   status            String    @default("pending")
   allowDownload     Boolean   @default(false) @map("allow_download")
   watermarkEnabled  Boolean   @default(true) @map("watermark_enabled")
+  notifyOnOpen      Boolean   @default(true) @map("notify_on_open")
   personalMessage   String?   @map("personal_message")
   expiresAt         DateTime  @map("expires_at")
   completedAt       DateTime? @map("completed_at")

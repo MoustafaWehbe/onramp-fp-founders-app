@@ -7,6 +7,7 @@ import { createPageToken, verifyPageToken, PAGE_TOKEN_TTL_SECONDS } from "../uti
 import { emailQueue } from "../jobs/queue";
 import { storageService } from "./storage.service";
 import { watermarkService } from "./watermark.service";
+import { notificationService } from "./notification.service";
 import { reviewerOtpEmail } from "../emails/templates/reviewer-otp";
 import type {
   ReviewerAccessInput,
@@ -271,7 +272,12 @@ export class ReviewerPortalService {
    * source object. The manifest is the only way to discover that a version has
    * pages at all, and reaching it already required a verified session.
    */
-  async getPageManifest(invitationId: string, sessionId: string, versionId: string) {
+  async getPageManifest(
+    invitationId: string,
+    sessionId: string,
+    versionId: string,
+    startupId: string,
+  ) {
     const pinned = await this.requirePinnedVersion(invitationId, versionId);
     const version = pinned.documentVersion;
 
@@ -294,6 +300,31 @@ export class ReviewerPortalService {
       orderBy: { pageNumber: "asc" },
       select: { pageNumber: true, width: true, height: true },
     });
+
+    // "X is reading right now": fires once per session, gated on whether a
+    // visit already exists for it (visits are created lazily by telemetry,
+    // so the very first manifest fetch of a session always precedes one).
+    // Never awaited past the lookup — a slow or failing notification must
+    // not add latency to the page the reviewer is waiting on.
+    const existingVisit = await prisma.reviewerVisit.findUnique({
+      where: { sessionId },
+      select: { id: true },
+    });
+    if (!existingVisit) {
+      const invitation = await prisma.reviewerInvitation.findUnique({
+        where: { id: invitationId },
+        select: { createdBy: true, notifyOnOpen: true, reviewerName: true, emailNormalized: true },
+      });
+      if (invitation?.notifyOnOpen) {
+        void notificationService.notifyReviewerOpened({
+          userId: invitation.createdBy,
+          startupId,
+          invitationId,
+          reviewerLabel: invitation.reviewerName || invitation.emailNormalized,
+          documentTitle: pinned.document.title,
+        });
+      }
+    }
 
     return {
       versionId,

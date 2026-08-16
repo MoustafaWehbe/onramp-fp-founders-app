@@ -24,6 +24,7 @@ type DocumentsTableProps = {
   onUploadVersion: (doc: VaultDocument) => void;
   onEdit: (doc: VaultDocument) => void;
   onViewVersions: (doc: VaultDocument) => void;
+  onViewAnalytics: (doc: VaultDocument) => void;
   onDelete: (doc: VaultDocument) => void;
 };
 
@@ -39,6 +40,7 @@ export function DocumentsTable({
   onUploadVersion,
   onEdit,
   onViewVersions,
+  onViewAnalytics,
   onDelete,
 }: DocumentsTableProps) {
   const selectionActive = selectedIds !== null;
@@ -132,6 +134,7 @@ export function DocumentsTable({
                     onUploadVersion={onUploadVersion}
                     onEdit={onEdit}
                     onViewVersions={onViewVersions}
+                    onViewAnalytics={onViewAnalytics}
                     onDelete={onDelete}
                   />
                 </td>

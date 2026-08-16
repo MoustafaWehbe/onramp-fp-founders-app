@@ -25,6 +25,7 @@ jest.mock("../../src/db/prisma", () => ({
       create: jest.fn(),
     },
     reviewerVisit: {
+      findUnique: jest.fn(),
       upsert: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
@@ -55,6 +56,12 @@ jest.mock("../../src/services/watermark.service", () => ({
   },
 }));
 
+jest.mock("../../src/services/notification.service", () => ({
+  notificationService: {
+    notifyReviewerOpened: jest.fn(),
+  },
+}));
+
 jest.mock("../../src/utils/auth", () => ({
   hashToken: jest.fn((v: string) => `hash:${v}`),
   hashOTP: jest.fn((v: string) => `otp:${v}`),
@@ -66,9 +73,11 @@ import { emailQueue } from "../../src/jobs/queue";
 import { reviewerPortalService } from "../../src/services/reviewer-portal.service";
 import { storageService } from "../../src/services/storage.service";
 import { watermarkService } from "../../src/services/watermark.service";
+import { notificationService } from "../../src/services/notification.service";
 
 const mockPrisma = prisma as jest.Mocked<typeof prisma>;
 const INVITE_ID = "00000000-0000-0000-0000-000000000010";
+const STARTUP_ID = "00000000-0000-0000-0000-000000000001";
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -77,6 +86,10 @@ beforeEach(() => {
   (mockPrisma.$transaction as jest.Mock).mockImplementation(
     (ops: Promise<unknown>[]) => Promise.all(ops),
   );
+  // Default: a visit already exists, so getPageManifest's notifyOnOpen check
+  // short-circuits without touching reviewerInvitation.findUnique. Tests
+  // that specifically exercise the notification path override this.
+  mockPrisma.reviewerVisit.findUnique.mockResolvedValue({ id: "existing-visit" } as never);
 });
 
 describe("ReviewerPortalService.requestAccess", () => {
@@ -151,6 +164,7 @@ describe("ReviewerPortalService.getPageManifest", () => {
       INVITE_ID,
       SESSION_ID,
       VERSION_ID,
+      STARTUP_ID,
     );
 
     expect(result.pageCount).toBe(2);
@@ -165,7 +179,7 @@ describe("ReviewerPortalService.getPageManifest", () => {
     mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(null as never);
 
     await expect(
-      reviewerPortalService.getPageManifest(INVITE_ID, SESSION_ID, OTHER_VERSION_ID),
+      reviewerPortalService.getPageManifest(INVITE_ID, SESSION_ID, OTHER_VERSION_ID, STARTUP_ID),
     ).rejects.toMatchObject({ code: "NOT_SHARED" });
   });
 
@@ -175,8 +189,57 @@ describe("ReviewerPortalService.getPageManifest", () => {
     );
 
     await expect(
-      reviewerPortalService.getPageManifest(INVITE_ID, SESSION_ID, VERSION_ID),
+      reviewerPortalService.getPageManifest(INVITE_ID, SESSION_ID, VERSION_ID, STARTUP_ID),
     ).rejects.toMatchObject({ code: "RENDER_PENDING" });
+  });
+
+  it("notifies the founder once per session when notifyOnOpen is enabled", async () => {
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(pinnedVersion() as never);
+    mockPrisma.documentPage.findMany.mockResolvedValue([] as never);
+    mockPrisma.reviewerVisit.findUnique.mockResolvedValue(null); // no visit yet this session
+    mockPrisma.reviewerInvitation.findUnique.mockResolvedValue({
+      createdBy: "founder-1",
+      notifyOnOpen: true,
+      reviewerName: "Ada Investor",
+      emailNormalized: "ada@vc.example",
+    } as never);
+
+    await reviewerPortalService.getPageManifest(INVITE_ID, SESSION_ID, VERSION_ID, STARTUP_ID);
+
+    expect(notificationService.notifyReviewerOpened).toHaveBeenCalledWith({
+      userId: "founder-1",
+      startupId: STARTUP_ID,
+      invitationId: INVITE_ID,
+      reviewerLabel: "Ada Investor",
+      documentTitle: "Seed Deck",
+    });
+  });
+
+  it("does not notify again once a visit already exists for the session", async () => {
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(pinnedVersion() as never);
+    mockPrisma.documentPage.findMany.mockResolvedValue([] as never);
+    mockPrisma.reviewerVisit.findUnique.mockResolvedValue({ id: "visit-1" } as never);
+
+    await reviewerPortalService.getPageManifest(INVITE_ID, SESSION_ID, VERSION_ID, STARTUP_ID);
+
+    expect(mockPrisma.reviewerInvitation.findUnique).not.toHaveBeenCalled();
+    expect(notificationService.notifyReviewerOpened).not.toHaveBeenCalled();
+  });
+
+  it("does not notify when notifyOnOpen is disabled for the invitation", async () => {
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(pinnedVersion() as never);
+    mockPrisma.documentPage.findMany.mockResolvedValue([] as never);
+    mockPrisma.reviewerVisit.findUnique.mockResolvedValue(null);
+    mockPrisma.reviewerInvitation.findUnique.mockResolvedValue({
+      createdBy: "founder-1",
+      notifyOnOpen: false,
+      reviewerName: "Ada Investor",
+      emailNormalized: "ada@vc.example",
+    } as never);
+
+    await reviewerPortalService.getPageManifest(INVITE_ID, SESSION_ID, VERSION_ID, STARTUP_ID);
+
+    expect(notificationService.notifyReviewerOpened).not.toHaveBeenCalled();
   });
 });
 
@@ -190,6 +253,7 @@ describe("ReviewerPortalService.getPageImage", () => {
       INVITE_ID,
       sessionId,
       versionId,
+      STARTUP_ID,
     );
     return pageToken;
   }
@@ -334,8 +398,6 @@ describe("ReviewerPortalService.getPageImage", () => {
     ).rejects.toMatchObject({ code: "NOT_SHARED" });
   });
 });
-
-const STARTUP_ID = "00000000-0000-0000-0000-000000000001";
 
 describe("ReviewerPortalService.logEvent", () => {
   it("writes an event with no document context", async () => {

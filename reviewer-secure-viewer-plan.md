@@ -519,9 +519,6 @@ Update `packages/api/openapi.yaml` in the same change, then regenerate
 
 **Phase 5 — Scale and hardening.**
 - [ ] LibreOffice-headless conversion for DOCX/PPTX → PDF → raster.
-- [ ] Daily rollup table if cross-reviewer aggregates get slow (defer until measured).
-- [ ] Retention cron; IP/device anonymization.
-- [ ] Load test rasterization on a 100-page PDF; cap page count per document.
 
 ---
 

@@ -43,6 +43,7 @@ export const reviewerPortalController = {
       req.reviewer!.invitationId,
       req.reviewer!.sessionId,
       req.params.versionId as string,
+      req.reviewer!.startupId,
     );
     res.set("Cache-Control", "private, no-store, max-age=0");
     res.json({ data: result });

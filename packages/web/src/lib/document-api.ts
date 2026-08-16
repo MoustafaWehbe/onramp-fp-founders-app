@@ -141,6 +141,33 @@ export async function getDocumentFileAccess(startupId: string, documentId: strin
   return data.data;
 }
 
+export type DocumentAnalytics = {
+  document: {
+    id: string;
+    title: string;
+    versionId: string | null;
+    versionNumber: number | null;
+    pageCount: number | null;
+  };
+  summary: { viewerCount: number; totalActiveMs: number; avgCompletionPct: number };
+  dropOff: Array<{ pageNumber: number; reachedPct: number }>;
+  pageAverages: Array<{ pageNumber: number; avgActiveMs: number }>;
+  leaderboard: Array<{
+    invitationId: string;
+    reviewerName: string | null;
+    email: string;
+    totalActiveMs: number;
+    completionPct: number;
+  }>;
+};
+
+export async function getDocumentAnalytics(startupId: string, documentId: string) {
+  const { data } = await apiClient.get<{ data: DocumentAnalytics }>(
+    `/startups/${startupId}/documents/${documentId}/analytics`,
+  );
+  return data.data;
+}
+
 export async function deleteDocument(startupId: string, documentId: string) {
   await apiClient.delete(`/startups/${startupId}/documents/${documentId}`);
 }
