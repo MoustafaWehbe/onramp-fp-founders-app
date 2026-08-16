@@ -40,13 +40,16 @@ RUN npm prune --omit=dev --workspace=@starter-kit/api
 FROM base AS runtime
 WORKDIR /app
 
-# Install runtime OS dependencies with robust mirror fallback & process init
+# Install runtime OS dependencies with robust mirror fallback & process init.
+# The whole update+install sequence is wrapped in the fallback check — not just
+# the libreoffice install — since a bad mirror can just as easily time out on
+# the initial index fetch as it can serve a corrupt package.
 RUN set -ex; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends dumb-init ca-certificates; \
-    \
-    # Attempt install via default mirrors first, falling back to Debian Snapshot if broken
-    if ! apt-get install -y --no-install-recommends libreoffice fonts-liberation; then \
+    install_pkgs() { \
+        apt-get update && apt-get install -y --no-install-recommends \
+          dumb-init ca-certificates libreoffice fonts-liberation; \
+    }; \
+    if ! install_pkgs; then \
         echo "Primary mirror failed; falling back to Debian Snapshot archive..."; \
         sed -i \
           -e 's|URIs: http://deb.debian.org/debian$|URIs: http://snapshot.debian.org/archive/debian/20260803T000000Z|' \
@@ -54,8 +57,7 @@ RUN set -ex; \
           /etc/apt/sources.list.d/debian.sources; \
         echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until; \
         echo 'Acquire::http::Pipeline-Depth "0";' >> /etc/apt/apt.conf.d/99no-check-valid-until; \
-        apt-get update; \
-        apt-get install -y --no-install-recommends libreoffice fonts-liberation; \
+        install_pkgs; \
     fi; \
     rm -rf /var/lib/apt/lists/*
 
