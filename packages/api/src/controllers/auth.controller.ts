@@ -82,7 +82,9 @@ export const authController = {
   }),
 
   logout: asyncHandler(async (req, res) => {
-    if (req.user?.sessionId) await authService.logout(req.user.sessionId);
+    if (req.user?.sessionId) {
+      await authService.logout(req.user.userId, req.user.sessionId, { ipAddress: req.ip });
+    }
     clearAuthCookies(res);
     res.json({ data: { message: "Logged out successfully" } });
   }),
@@ -93,7 +95,7 @@ export const authController = {
   }),
 
   resetPassword: asyncHandler(async (req, res) => {
-    const result = await authService.resetPassword(req.body);
+    const result = await authService.resetPassword(req.body, { ipAddress: req.ip });
     res.json({ data: result });
   }),
 

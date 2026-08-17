@@ -11,6 +11,7 @@ import type {
   ToggleReactionInput,
   NotifyLevelInput,
   StartDirectMessageInput,
+  ArchiveConversationInput,
 } from "../validators/chat.schemas";
 
 export const chatController = {
@@ -83,6 +84,28 @@ export const chatController = {
       req.params.messageId as string,
       req.member!.id,
       emoji,
+    );
+    res.json(result);
+  }),
+
+  deleteMessage: asyncHandler(async (req, res) => {
+    const result = await chatService.deleteMessage(
+      req.params.startupId as string,
+      req.params.messageId as string,
+      req.member!.id,
+      req.user!.userId,
+    );
+    res.json(result);
+  }),
+
+  setConversationArchived: asyncHandler(async (req, res) => {
+    const { archived } = req.body as ArchiveConversationInput;
+    const result = await chatService.setConversationArchived(
+      req.params.startupId as string,
+      req.params.conversationId as string,
+      archived,
+      req.member!.id,
+      req.user!.userId,
     );
     res.json(result);
   }),

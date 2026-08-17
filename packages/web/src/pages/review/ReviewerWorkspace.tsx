@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Download, Eye, FileText, LogOut, MessageSquare, Shield } from "lucide-react";
+import { Download, FileText, LogOut, MessageSquare, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -9,13 +9,15 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { EmptyState } from "../../components/shared/EmptyState";
 import { apiErrorMessage } from "../../lib/api-error";
 import {
+  acceptReviewerNda,
   completeReviewerSession,
   createReviewerComment,
-  getReviewerFileAccess,
+  downloadReviewerDocument,
   getReviewerWorkspace,
   listReviewerComments,
   logoutReviewerSession,
 } from "../../lib/reviewer-portal-api";
+import { SecureDocumentViewer } from "./SecureDocumentViewer";
 import { formatDate } from "../../lib/utils";
 
 export function ReviewerWorkspace() {
@@ -39,30 +41,21 @@ export function ReviewerWorkspace() {
     enabled: Boolean(workspaceQuery.data),
   });
 
-  const openFile = async (documentId: string, disposition: "preview" | "download") => {
-    const previewTab = disposition === "preview" ? window.open("about:blank", "_blank") : null;
+  // Downloads are the one path by which an original file may leave the server,
+  // and only when the founder enabled them. Viewing never touches this.
+  const download = async (versionId: string) => {
     try {
-      const access = await getReviewerFileAccess(documentId, disposition);
-      const fileRes = await fetch(access.url);
-      if (!fileRes.ok) throw new Error(`Could not fetch file (${fileRes.status})`);
-      const blob = await fileRes.blob();
-      const objectUrl = URL.createObjectURL(
-        new Blob([blob], { type: access.mimeType || blob.type || "application/octet-stream" }),
-      );
-      if (disposition === "download") {
-        const a = document.createElement("a");
-        a.href = objectUrl;
-        a.download = access.originalFilename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      } else if (previewTab) {
-        previewTab.location.href = objectUrl;
-      }
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      const { blob, filename } = await downloadReviewerDocument(versionId);
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
     } catch (error) {
-      previewTab?.close();
-      toast.error(apiErrorMessage(error, "Could not open file"));
+      toast.error(apiErrorMessage(error, "Could not download file"));
     }
   };
 
@@ -94,6 +87,12 @@ export function ReviewerWorkspace() {
     onSuccess: () => navigate("/review/expired", { replace: true }),
   });
 
+  const ndaMutation = useMutation({
+    mutationFn: acceptReviewerNda,
+    onSuccess: () => void workspaceQuery.refetch(),
+    onError: (error) => toast.error(apiErrorMessage(error, "Could not record NDA acceptance")),
+  });
+
   const activeDoc = useMemo(
     () => documents.find((doc) => doc.documentId === activeDocumentId) ?? null,
     [activeDocumentId, documents],
@@ -114,6 +113,36 @@ export function ReviewerWorkspace() {
   }
 
   const workspace = workspaceQuery.data!;
+
+  if (workspace.invitation.requireNda && !workspace.invitation.ndaAccepted) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-6">
+        <div className="card-elevated flex max-h-[80vh] w-full max-w-lg flex-col gap-4 p-6">
+          <div className="flex items-center gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+              <Shield className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="font-display text-lg font-semibold">Confidentiality agreement</h1>
+              <p className="text-sm text-muted-foreground">
+                You must accept this NDA before viewing {workspace.startup.name}'s documents.
+              </p>
+            </div>
+          </div>
+          <div className="scrollbar-slim flex-1 overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-surface/40 p-4 text-sm">
+            {workspace.invitation.ndaText}
+          </div>
+          <Button
+            className="w-full"
+            disabled={ndaMutation.isPending}
+            onClick={() => ndaMutation.mutate()}
+          >
+            {ndaMutation.isPending ? "Recording…" : "I agree"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -168,7 +197,10 @@ export function ReviewerWorkspace() {
                 <FileText className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>
                   <span className="block font-medium">{doc.title}</span>
-                  <span className="text-xs text-muted-foreground">v{doc.version.versionNumber}</span>
+                  <span className="text-xs text-muted-foreground">
+                    v{doc.versionNumber}
+                    {doc.renderStatus !== "ready" ? " · preparing…" : ""}
+                  </span>
                 </span>
               </button>
             ))}
@@ -185,29 +217,39 @@ export function ReviewerWorkspace() {
           ) : (
             <div className="card-elevated space-y-4 p-5">
               <div>
-                <h2 className="font-display text-xl font-semibold">{activeDoc.title}</h2>
-                <p className="text-sm text-muted-foreground">
-                  {activeDoc.version.originalFilename} · updated {formatDate(workspace.invitation.expiresAt)}
-                </p>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="font-display text-xl font-semibold">{activeDoc.title}</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Version {activeDoc.versionNumber}
+                      {activeDoc.pageCount ? ` · ${activeDoc.pageCount} pages` : ""} · access
+                      expires {formatDate(workspace.invitation.expiresAt)}
+                    </p>
+                  </div>
+                  {workspace.invitation.allowDownload && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void download(activeDoc.versionId)}
+                    >
+                      <Download className="mr-1.5 h-4 w-4" /> Download
+                    </Button>
+                  )}
+                </div>
                 {workspace.invitation.personalMessage && (
                   <p className="mt-3 rounded-md border border-border bg-surface/50 p-3 text-sm">
                     {workspace.invitation.personalMessage}
                   </p>
                 )}
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => void openFile(activeDoc.documentId, "preview")}>
-                  <Eye className="mr-1.5 h-4 w-4" /> Preview
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={!workspace.invitation.allowDownload}
-                  onClick={() => void openFile(activeDoc.documentId, "download")}
-                >
-                  <Download className="mr-1.5 h-4 w-4" /> Download
-                </Button>
-              </div>
+
+              <SecureDocumentViewer
+                key={activeDoc.versionId}
+                versionId={activeDoc.versionId}
+                reviewerEmail={workspace.invitation.email}
+                allowPrint={workspace.invitation.allowPrint}
+                screenshotGuard={workspace.invitation.screenshotGuard}
+              />
 
               <div className="border-t border-border pt-4">
                 <div className="mb-3 flex items-center gap-2 text-sm font-medium">

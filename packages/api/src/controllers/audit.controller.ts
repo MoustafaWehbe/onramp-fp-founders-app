@@ -11,11 +11,19 @@ export const auditController = {
     res.json(result);
   }),
 
+  facets: asyncHandler(async (req, res) => {
+    const result = await auditService.facets(req.params.startupId as string);
+    res.json({ data: result });
+  }),
+
   exportLogs: asyncHandler(async (req, res) => {
     const query = req.query as unknown as ListAuditLogsQuery;
     const csv = await auditService.exportCsv(req.params.startupId as string, {
       search: query.search,
       entityType: query.entityType,
+      action: query.action,
+      from: query.from,
+      to: query.to,
     });
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader(

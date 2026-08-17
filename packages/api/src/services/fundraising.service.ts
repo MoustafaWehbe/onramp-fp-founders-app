@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
+import { AUDIT_ACTIONS, recordAuditEvent } from "./audit-writer";
 import type {
   CreateCommitmentInput,
   CreateFundraisingRoundInput,
@@ -108,26 +109,46 @@ export class FundraisingService {
     return serializeRound(round);
   }
 
-  async createRound(startupId: string, input: CreateFundraisingRoundInput) {
+  async createRound(startupId: string, input: CreateFundraisingRoundInput, userId: string) {
     const round = await prisma.fundraisingRound.create({
       data: { startupId, ...input },
       select: ROUND_SELECT,
     });
+
+    await recordAuditEvent({
+      startupId,
+      userId,
+      action: AUDIT_ACTIONS.CREATE,
+      entityType: "fundraising_round",
+      entityId: round.id,
+      changes: { roundName: round.roundName, targetAmount: asNumber(round.targetAmount), currency: round.currency },
+    });
+
     return serializeRound(round);
   }
 
-  async updateRound(startupId: string, roundId: string, input: UpdateFundraisingRoundInput) {
+  async updateRound(startupId: string, roundId: string, input: UpdateFundraisingRoundInput, userId: string) {
     await this.getRound(startupId, roundId);
     const round = await prisma.fundraisingRound.update({
       where: { id: roundId },
       data: input,
       select: ROUND_SELECT,
     });
+
+    await recordAuditEvent({
+      startupId,
+      userId,
+      action: AUDIT_ACTIONS.UPDATE,
+      entityType: "fundraising_round",
+      entityId: roundId,
+      changes: input,
+    });
+
     return serializeRound(round);
   }
 
-  async deleteRound(startupId: string, roundId: string) {
-    await this.getRound(startupId, roundId);
+  async deleteRound(startupId: string, roundId: string, userId: string) {
+    const existing = await this.getRound(startupId, roundId);
     const [pipelineCount, commitmentCount] = await Promise.all([
       prisma.pipeline.count({ where: { startupId, roundId } }),
       prisma.commitment.count({ where: { startupId, roundId } }),
@@ -140,6 +161,15 @@ export class FundraisingService {
       );
     }
     await prisma.fundraisingRound.delete({ where: { id: roundId } });
+
+    await recordAuditEvent({
+      startupId,
+      userId,
+      action: AUDIT_ACTIONS.DELETE,
+      entityType: "fundraising_round",
+      entityId: roundId,
+      changes: { roundName: existing.roundName },
+    });
   }
 
   async listCommitments(startupId: string, query: ListCommitmentsQuery, roundId?: string) {
@@ -240,6 +270,18 @@ export class FundraisingService {
 
       return created;
     });
+
+    if (userId) {
+      await recordAuditEvent({
+        startupId,
+        userId,
+        action: AUDIT_ACTIONS.CREATE,
+        entityType: "commitment",
+        entityId: commitment.id,
+        changes: { investorId: input.investorId, roundId: input.roundId, amount: input.amount, status: commitment.status },
+      });
+    }
+
     return serializeCommitment(commitment);
   }
 
@@ -327,6 +369,18 @@ export class FundraisingService {
 
       return updated;
     });
+
+    if (userId) {
+      await recordAuditEvent({
+        startupId,
+        userId,
+        action: AUDIT_ACTIONS.UPDATE,
+        entityType: "commitment",
+        entityId: commitmentId,
+        changes: input,
+      });
+    }
+
     return serializeCommitment(commitment);
   }
 
@@ -346,6 +400,17 @@ export class FundraisingService {
         }
       }
     });
+
+    if (userId) {
+      await recordAuditEvent({
+        startupId,
+        userId,
+        action: AUDIT_ACTIONS.DELETE,
+        entityType: "commitment",
+        entityId: commitmentId,
+        changes: { investorId: existing.investorId, amount: existing.amount, status: existing.status },
+      });
+    }
   }
 
   /**

@@ -5,7 +5,7 @@ jest.mock("../../src/db/prisma", () => ({
   prisma: {
     user: { findUnique: jest.fn(), update: jest.fn(), create: jest.fn() },
     refreshToken: { create: jest.fn(), updateMany: jest.fn() },
-    startupMember: { findMany: jest.fn(), updateMany: jest.fn() },
+    startupMember: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
     $transaction: jest.fn(),
   },
 }));
@@ -196,7 +196,7 @@ describe("AuthService.logout", () => {
   it("revokes all tokens in the session family", async () => {
     mockPrisma.refreshToken.updateMany.mockResolvedValue({ count: 2 } as never);
 
-    await service.logout("family-123");
+    await service.logout("user-1", "family-123");
 
     expect(mockPrisma.refreshToken.updateMany).toHaveBeenCalledWith({
       where: { familyId: "family-123", revokedAt: null },

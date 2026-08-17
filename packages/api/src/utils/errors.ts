@@ -20,7 +20,6 @@ export function asyncHandler(fn: AsyncFn): RequestHandler {
   return (req, res, next) => fn(req, res, next).catch(next);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function errorHandler(
   err: AppError,
   _req: Request,

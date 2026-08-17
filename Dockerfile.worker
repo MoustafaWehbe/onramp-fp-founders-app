@@ -1,0 +1,77 @@
+# syntax=docker/dockerfile:1.4
+
+# ==========================================
+# Base Stage: Shared Environment & Apt Setup
+# ==========================================
+FROM node:24-slim AS base
+WORKDIR /app
+ENV NODE_ENV=production
+
+# ==========================================
+# Dependencies Stage: Prune & Install
+# ==========================================
+FROM base AS deps
+WORKDIR /app
+
+# Copy lockfiles and workspace manifests first for optimal caching
+COPY package.json package-lock.json ./
+COPY packages/api/package.json packages/api/package.json
+COPY packages/web/package.json packages/web/package.json
+COPY packages/api/prisma packages/api/prisma
+
+# Install all dependencies (including devDependencies required for build)
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --include=dev
+
+# ==========================================
+# Build Stage: Compile Application Code
+# ==========================================
+FROM deps AS build
+WORKDIR /app
+COPY . .
+RUN npm run build -w @starter-kit/api
+
+# Prune devDependencies to keep runtime node_modules lightweight
+RUN npm prune --omit=dev --workspace=@starter-kit/api
+
+# ==========================================
+# Runtime Stage: Isolated Worker Runner
+# ==========================================
+FROM base AS runtime
+WORKDIR /app
+
+# Install runtime OS dependencies with robust mirror fallback & process init.
+# The whole update+install sequence is wrapped in the fallback check — not just
+# the libreoffice install — since a bad mirror can just as easily time out on
+# the initial index fetch as it can serve a corrupt package.
+RUN set -ex; \
+    install_pkgs() { \
+        apt-get update && apt-get install -y --no-install-recommends \
+          dumb-init ca-certificates libreoffice fonts-liberation; \
+    }; \
+    if ! install_pkgs; then \
+        echo "Primary mirror failed; falling back to Debian Snapshot archive..."; \
+        sed -i \
+          -e 's|URIs: http://deb.debian.org/debian$|URIs: http://snapshot.debian.org/archive/debian/20260803T000000Z|' \
+          -e 's|URIs: http://deb.debian.org/debian-security|URIs: http://snapshot.debian.org/archive/debian-security/20260803T000000Z|' \
+          /etc/apt/sources.list.d/debian.sources; \
+        echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until; \
+        echo 'Acquire::http::Pipeline-Depth "0";' >> /etc/apt/apt.conf.d/99no-check-valid-until; \
+        install_pkgs; \
+    fi; \
+    rm -rf /var/lib/apt/lists/*
+
+# Run as non-root user for security
+USER node
+
+# Copy pruned workspace dependencies and built output
+COPY --chown=node:node --from=build /app/node_modules ./node_modules
+COPY --chown=node:node --from=build /app/package.json ./package.json
+COPY --chown=node:node --from=build /app/packages/api/dist ./packages/api/dist
+COPY --chown=node:node --from=build /app/packages/api/package.json ./packages/api/package.json
+
+WORKDIR /app/packages/api
+
+# Use dumb-init to properly forward SIGTERM signals to BullMQ worker threads
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["node", "dist/src/jobs/workers/index.js"]

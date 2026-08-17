@@ -15,12 +15,17 @@ jest.mock("../../src/db/prisma", () => ({
       updateMany: jest.fn(),
     },
     aiAnalysis: { findMany: jest.fn() },
+    reviewerInvitationDocument: { findMany: jest.fn() },
+    reviewerVisit: { findMany: jest.fn() },
+    reviewerPageView: { findMany: jest.fn() },
+    reviewerInvitation: { findMany: jest.fn() },
     $transaction: jest.fn(),
   },
 }));
 
 jest.mock("../../src/jobs/queue", () => ({
   documentProcessingQueue: { add: jest.fn() },
+  documentRasterizeQueue: { add: jest.fn() },
 }));
 
 jest.mock("../../src/services/audit-writer", () => ({
@@ -37,13 +42,14 @@ jest.mock("../../src/services/storage.service", () => ({
 }));
 
 import { prisma } from "../../src/db/prisma";
-import { documentProcessingQueue } from "../../src/jobs/queue";
+import { documentProcessingQueue, documentRasterizeQueue } from "../../src/jobs/queue";
 import { documentService } from "../../src/services/document.service";
 import { storageService } from "../../src/services/storage.service";
 
 const mockPrisma = prisma as jest.Mocked<typeof prisma>;
 const mockStorage = storageService as jest.Mocked<typeof storageService>;
 const mockQueue = documentProcessingQueue as jest.Mocked<typeof documentProcessingQueue>;
+const mockRasterizeQueue = documentRasterizeQueue as jest.Mocked<typeof documentRasterizeQueue>;
 
 const STARTUP_ID = "00000000-0000-0000-0000-000000000002";
 const USER_ID = "00000000-0000-0000-0000-000000000001";
@@ -152,6 +158,13 @@ describe("DocumentService.confirmVersion", () => {
       documentId: DOC_ID,
       versionId: VER_ID,
     });
+    // Rasterization is queued alongside text extraction so the version becomes
+    // viewable in the reviewer portal without a second founder action.
+    expect(mockRasterizeQueue.add).toHaveBeenCalledWith("rasterize-version", {
+      startupId: STARTUP_ID,
+      documentId: DOC_ID,
+      versionId: VER_ID,
+    });
   });
 
   it("rejects when uploaded object is missing", async () => {
@@ -168,6 +181,73 @@ describe("DocumentService.confirmVersion", () => {
     await expect(documentService.confirmVersion(STARTUP_ID, DOC_ID, VER_ID)).rejects.toMatchObject({
       statusCode: 400,
       code: "OBJECT_NOT_FOUND",
+    });
+  });
+});
+
+describe("DocumentService.getDocument", () => {
+  it("resolves uploaderName from the joined uploader, and null when a version has none", async () => {
+    mockPrisma.document.findUnique.mockResolvedValue({
+      id: DOC_ID,
+      startupId: STARTUP_ID,
+      title: "Pitch deck",
+      documentType: "pitch_deck",
+      createdBy: "user-1",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      versions: [
+        {
+          id: VER_ID,
+          documentId: DOC_ID,
+          versionNumber: 2,
+          isCurrent: true,
+          fileSize: 100,
+          mimeType: "application/pdf",
+          originalFilename: "deck.pdf",
+          processingStatus: "ready",
+          processingError: null,
+          summary: null,
+          uploadedBy: "user-1",
+          createdAt: new Date(),
+          storageProvider: "local",
+          storageKey: "key-2",
+          uploader: { firstName: "Ada", lastName: "Lovelace" },
+        },
+        {
+          id: "ver-1",
+          documentId: DOC_ID,
+          versionNumber: 1,
+          isCurrent: false,
+          fileSize: 90,
+          mimeType: "application/pdf",
+          originalFilename: "deck-v1.pdf",
+          processingStatus: "ready",
+          processingError: null,
+          summary: null,
+          uploadedBy: "deleted-user",
+          createdAt: new Date(),
+          storageProvider: "local",
+          storageKey: "key-1",
+          uploader: null,
+        },
+      ],
+    } as never);
+
+    const result = await documentService.getDocument(STARTUP_ID, DOC_ID);
+
+    expect(result.versions).toHaveLength(2);
+    expect(result.versions[0].uploaderName).toBe("Ada Lovelace");
+    expect(result.versions[1].uploaderName).toBeNull();
+    // The joined uploader object itself is an internal detail never returned.
+    expect(result.versions[0]).not.toHaveProperty("uploader");
+  });
+
+  it("throws DOCUMENT_NOT_FOUND when the document does not exist", async () => {
+    mockPrisma.document.findUnique.mockResolvedValue(null);
+
+    await expect(documentService.getDocument(STARTUP_ID, DOC_ID)).rejects.toMatchObject({
+      statusCode: 404,
+      code: "DOCUMENT_NOT_FOUND",
     });
   });
 });
@@ -192,5 +272,101 @@ describe("DocumentService.getSignedReadUrl", () => {
     const result = await documentService.getSignedReadUrl(STARTUP_ID, DOC_ID, VER_ID);
     expect(result.url).toContain("local-download");
     expect(result.mimeType).toBe("text/plain");
+  });
+});
+
+describe("DocumentService.getDocumentAnalytics", () => {
+  const INVITE_A = "00000000-0000-0000-0000-0000000000a1";
+  const INVITE_B = "00000000-0000-0000-0000-0000000000a2";
+
+  it("404s when the document does not belong to this startup", async () => {
+    mockPrisma.document.findUnique.mockResolvedValue(null);
+
+    await expect(documentService.getDocumentAnalytics(STARTUP_ID, DOC_ID)).rejects.toMatchObject({
+      code: "DOCUMENT_NOT_FOUND",
+    });
+  });
+
+  it("returns a zeroed response when nobody has been pinned to the current version", async () => {
+    mockPrisma.document.findUnique.mockResolvedValue({ id: DOC_ID, title: "Seed Deck" } as never);
+    mockPrisma.documentVersion.findFirst.mockResolvedValue({
+      id: VER_ID,
+      versionNumber: 3,
+      pageCount: 10,
+    } as never);
+    mockPrisma.reviewerInvitationDocument.findMany.mockResolvedValue([] as never);
+
+    const result = await documentService.getDocumentAnalytics(STARTUP_ID, DOC_ID);
+
+    expect(result.summary).toEqual({ viewerCount: 0, totalActiveMs: 0, avgCompletionPct: 0 });
+    expect(result.dropOff).toEqual([]);
+    expect(result.leaderboard).toEqual([]);
+    expect(mockPrisma.reviewerVisit.findMany).not.toHaveBeenCalled();
+  });
+
+  it("computes drop-off, per-page averages, and a leaderboard across two invitations", async () => {
+    mockPrisma.document.findUnique.mockResolvedValue({ id: DOC_ID, title: "Seed Deck" } as never);
+    mockPrisma.documentVersion.findFirst.mockResolvedValue({
+      id: VER_ID,
+      versionNumber: 1,
+      pageCount: 4,
+    } as never);
+    mockPrisma.reviewerInvitationDocument.findMany.mockResolvedValue([
+      { invitationId: INVITE_A },
+      { invitationId: INVITE_B },
+    ] as never);
+    mockPrisma.reviewerVisit.findMany.mockResolvedValue([
+      { id: "visit-a", invitationId: INVITE_A },
+      { id: "visit-b", invitationId: INVITE_B },
+    ] as never);
+    mockPrisma.reviewerInvitation.findMany.mockResolvedValue([
+      { id: INVITE_A, reviewerName: "Ada Investor", emailNormalized: "ada@vc.example" },
+      { id: INVITE_B, reviewerName: null, emailNormalized: "bo@vc.example" },
+    ] as never);
+    // A reached all 4 pages (2s each), B only reached page 2 (10s, more
+    // engaged per-page but dropped off earlier) — a good check that
+    // "reached further" and "spent more time" aren't conflated.
+    mockPrisma.reviewerPageView.findMany.mockResolvedValue([
+      { visitId: "visit-a", pageNumber: 1, activeMs: 2000 },
+      { visitId: "visit-a", pageNumber: 2, activeMs: 2000 },
+      { visitId: "visit-a", pageNumber: 3, activeMs: 2000 },
+      { visitId: "visit-a", pageNumber: 4, activeMs: 2000 },
+      { visitId: "visit-b", pageNumber: 1, activeMs: 5000 },
+      { visitId: "visit-b", pageNumber: 2, activeMs: 5000 },
+    ] as never);
+
+    const result = await documentService.getDocumentAnalytics(STARTUP_ID, DOC_ID);
+
+    expect(result.summary).toEqual({ viewerCount: 2, totalActiveMs: 18000, avgCompletionPct: 75 });
+    // Both reached pages 1-2 (100%); only A reached 3-4 (50%).
+    expect(result.dropOff).toEqual([
+      { pageNumber: 1, reachedPct: 100 },
+      { pageNumber: 2, reachedPct: 100 },
+      { pageNumber: 3, reachedPct: 50 },
+      { pageNumber: 4, reachedPct: 50 },
+    ]);
+    expect(result.pageAverages).toEqual([
+      { pageNumber: 1, avgActiveMs: 3500 },
+      { pageNumber: 2, avgActiveMs: 3500 },
+      { pageNumber: 3, avgActiveMs: 2000 },
+      { pageNumber: 4, avgActiveMs: 2000 },
+    ]);
+    // Sorted by total time descending B spent more despite reaching fewer pages.
+    expect(result.leaderboard).toEqual([
+      {
+        invitationId: INVITE_B,
+        reviewerName: null,
+        email: "bo@vc.example",
+        totalActiveMs: 10000,
+        completionPct: 50,
+      },
+      {
+        invitationId: INVITE_A,
+        reviewerName: "Ada Investor",
+        email: "ada@vc.example",
+        totalActiveMs: 8000,
+        completionPct: 100,
+      },
+    ]);
   });
 });

@@ -17,15 +17,24 @@ export const fundraisingController = {
     res.json({ data: await fundraisingService.getRound(req.params.startupId as string, req.params.roundId as string) });
   }),
   createRound: asyncHandler(async (req, res) => {
-    const round = await fundraisingService.createRound(req.params.startupId as string, req.body as CreateFundraisingRoundInput);
+    const round = await fundraisingService.createRound(
+      req.params.startupId as string,
+      req.body as CreateFundraisingRoundInput,
+      req.user!.userId,
+    );
     res.status(201).json({ data: round });
   }),
   updateRound: asyncHandler(async (req, res) => {
-    const round = await fundraisingService.updateRound(req.params.startupId as string, req.params.roundId as string, req.body as UpdateFundraisingRoundInput);
+    const round = await fundraisingService.updateRound(
+      req.params.startupId as string,
+      req.params.roundId as string,
+      req.body as UpdateFundraisingRoundInput,
+      req.user!.userId,
+    );
     res.json({ data: round });
   }),
   deleteRound: asyncHandler(async (req, res) => {
-    await fundraisingService.deleteRound(req.params.startupId as string, req.params.roundId as string);
+    await fundraisingService.deleteRound(req.params.startupId as string, req.params.roundId as string, req.user!.userId);
     res.json({ message: "Fundraising round removed" });
   }),
   getRoundMetrics: asyncHandler(async (req, res) => {

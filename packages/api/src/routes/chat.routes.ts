@@ -17,6 +17,7 @@ import {
   toggleReactionSchema,
   notifyLevelSchema,
   startDirectMessageSchema,
+  archiveConversationSchema,
 } from "../validators/chat.schemas";
 import { chatController } from "../controllers/chat.controller";
 
@@ -115,6 +116,20 @@ router.patch(
   chatController.setNotifyLevel,
 );
 
+// PATCH /api/v1/startups/:startupId/chat/conversations/:conversationId/archived chat:manage
+// Channels are workspace-wide, so archiving one is a moderation call on a
+// shared room gated the same as removing someone else's message, not by
+// mere membership. Rejects DMs inside the service (400 CANNOT_ARCHIVE_DM).
+router.patch(
+  "/conversations/:conversationId/archived",
+  authenticate,
+  validate(conversationIdParamSchema, "params"),
+  requireMember,
+  requirePermission("chat", "manage"),
+  validate(archiveConversationSchema),
+  chatController.setConversationArchived,
+);
+
 // POST /api/v1/startups/:startupId/chat/conversations/:conversationId/typing chat:create
 // Fire-and-forget presence ping, gated the same as actually posting.
 router.post(
@@ -136,6 +151,18 @@ router.post(
   requirePermission("chat", "create"),
   validate(toggleReactionSchema),
   chatController.toggleReaction,
+);
+
+// DELETE /api/v1/startups/:startupId/chat/messages/:messageId chat:create
+// Self-serve only: retracts the caller's own message. ChatService.deleteMessage
+// 403s if the message belongs to someone else — there is no moderator override.
+router.delete(
+  "/messages/:messageId",
+  authenticate,
+  validate(reactionIdParamSchema, "params"),
+  requireMember,
+  requirePermission("chat", "create"),
+  chatController.deleteMessage,
 );
 
 // GET /api/v1/startups/:startupId/chat/mentionables chat:read

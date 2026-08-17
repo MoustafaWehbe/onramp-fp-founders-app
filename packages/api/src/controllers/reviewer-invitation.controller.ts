@@ -23,6 +23,14 @@ export const reviewerInvitationController = {
     res.status(201).json({ data: result });
   }),
 
+  getAnalytics: asyncHandler(async (req, res) => {
+    const result = await reviewerInvitationService.getInvitationAnalytics(
+      req.params.startupId as string,
+      req.params.invitationId as string,
+    );
+    res.json({ data: result });
+  }),
+
   revokeInvitation: asyncHandler(async (req, res) => {
     await reviewerInvitationService.revokeInvitation(
       req.params.startupId as string,

@@ -7,6 +7,9 @@ jest.mock("../../src/middleware/rate-limiter", () => ({
   credentialRateLimiter: (_req: any, _res: any, next: any) => next(),
   emailSendRateLimiter: (_req: any, _res: any, next: any) => next(),
   scheduleMeetingRateLimiter: (_req: any, _res: any, next: any) => next(),
+  reviewerAccessRateLimiter: (_req: any, _res: any, next: any) => next(),
+  reviewerEventRateLimiter: (_req: any, _res: any, next: any) => next(),
+  reviewerTelemetryRateLimiter: (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../src/db/prisma", () => ({ prisma: {} }));
 jest.mock("../../src/config/email", () => ({ resend: {} }));
@@ -457,7 +460,7 @@ describe("POST /api/v1/auth/logout", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.message).toBe("Logged out successfully");
-    expect(mock.logout).toHaveBeenCalledWith("session-1");
+    expect(mock.logout).toHaveBeenCalledWith("uuid-1", "session-1", { ipAddress: expect.any(String) });
     const cookies = res.headers["set-cookie"] as unknown as string[];
     expect(cookies.some((c: string) => c.startsWith("accessToken=;"))).toBe(true);
   });

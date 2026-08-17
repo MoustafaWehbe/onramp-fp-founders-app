@@ -24,6 +24,9 @@ jest.mock("../../src/db/prisma", () => ({
       update: jest.fn(),
       updateMany: jest.fn(),
     },
+    auditLog: {
+      create: jest.fn(),
+    },
     $transaction: jest.fn(),
   },
 }));
@@ -98,7 +101,7 @@ describe("StartupService.updateStartup", () => {
     mockPrisma.startup.findUnique.mockResolvedValue({ id: STARTUP_ID } as never);
     mockPrisma.startup.update.mockResolvedValue({ ...STARTUP, name: "Renamed" } as never);
 
-    const result = await service.updateStartup(STARTUP_ID, { name: "Renamed" });
+    const result = await service.updateStartup(STARTUP_ID, { name: "Renamed" }, USER_ID);
 
     expect(result.name).toBe("Renamed");
     expect(mockPrisma.startup.update).toHaveBeenCalledWith({
@@ -111,7 +114,7 @@ describe("StartupService.updateStartup", () => {
   it("throws 404 when startup does not exist", async () => {
     mockPrisma.startup.findUnique.mockResolvedValue(null);
 
-    await expect(service.updateStartup(STARTUP_ID, { name: "X" })).rejects.toMatchObject({
+    await expect(service.updateStartup(STARTUP_ID, { name: "X" }, USER_ID)).rejects.toMatchObject({
       statusCode: 404,
     });
   });
@@ -290,10 +293,11 @@ describe("StartupService.createRole", () => {
       }),
     );
 
-    const result = await service.createRole(STARTUP_ID, {
-      name: "finance-lead",
-      permissions: ["financial:read"],
-    });
+    const result = await service.createRole(
+      STARTUP_ID,
+      { name: "finance-lead", permissions: ["financial:read"] },
+      USER_ID,
+    );
 
     expect(result).toMatchObject({ id: "role-new", name: "finance-lead", isSystemRole: false, permissions: ["financial:read"] });
   });
@@ -302,7 +306,7 @@ describe("StartupService.createRole", () => {
     mockPrisma.permission.findMany.mockResolvedValue(PERMISSION_ROWS as never);
 
     await expect(
-      service.createRole(STARTUP_ID, { name: "x", permissions: ["financial:read", "bogus:action"] }),
+      service.createRole(STARTUP_ID, { name: "x", permissions: ["financial:read", "bogus:action"] }, USER_ID),
     ).rejects.toMatchObject({ statusCode: 400, code: "UNKNOWN_PERMISSION" });
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
@@ -317,7 +321,7 @@ describe("StartupService.createRole", () => {
     );
 
     await expect(
-      service.createRole(STARTUP_ID, { name: "collaborator", permissions: ["financial:read"] }),
+      service.createRole(STARTUP_ID, { name: "collaborator", permissions: ["financial:read"] }, USER_ID),
     ).rejects.toMatchObject({ statusCode: 409, code: "ROLE_NAME_TAKEN" });
   });
 });
@@ -346,10 +350,12 @@ describe("StartupService.updateRole", () => {
       }),
     );
 
-    const result = await service.updateRole(STARTUP_ID, "role-collab", {
-      description: "Updated",
-      permissions: ["financial:read"],
-    });
+    const result = await service.updateRole(
+      STARTUP_ID,
+      "role-collab",
+      { description: "Updated", permissions: ["financial:read"] },
+      USER_ID,
+    );
 
     expect(roleUpdate).toHaveBeenCalledWith({ where: { id: "role-collab" }, data: { description: "Updated" } });
     expect(deleteMany).toHaveBeenCalledWith({ where: { roleId: "role-collab" } });
@@ -361,7 +367,7 @@ describe("StartupService.updateRole", () => {
     mockPrisma.role.findUnique.mockResolvedValue({ id: "role-owner", startupId: STARTUP_ID, name: "owner" } as never);
 
     await expect(
-      service.updateRole(STARTUP_ID, "role-owner", { permissions: ["financial:read"] }),
+      service.updateRole(STARTUP_ID, "role-owner", { permissions: ["financial:read"] }, USER_ID),
     ).rejects.toMatchObject({ statusCode: 403, code: "OWNER_ROLE_LOCKED" });
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
@@ -370,7 +376,7 @@ describe("StartupService.updateRole", () => {
     mockPrisma.role.findUnique.mockResolvedValue({ id: "role-x", startupId: "other-startup", name: "collaborator" } as never);
 
     await expect(
-      service.updateRole(STARTUP_ID, "role-x", { description: "x" }),
+      service.updateRole(STARTUP_ID, "role-x", { description: "x" }, USER_ID),
     ).rejects.toMatchObject({ statusCode: 404, code: "ROLE_NOT_FOUND" });
   });
 });
@@ -384,7 +390,7 @@ describe("StartupService.deleteRole", () => {
       _count: { members: 0 },
     } as never);
 
-    await expect(service.deleteRole(STARTUP_ID, "role-viewer")).rejects.toMatchObject({
+    await expect(service.deleteRole(STARTUP_ID, "role-viewer", USER_ID)).rejects.toMatchObject({
       statusCode: 403,
       code: "SYSTEM_ROLE",
     });
@@ -399,7 +405,7 @@ describe("StartupService.deleteRole", () => {
       _count: { members: 3 },
     } as never);
 
-    await expect(service.deleteRole(STARTUP_ID, "role-custom")).rejects.toMatchObject({
+    await expect(service.deleteRole(STARTUP_ID, "role-custom", USER_ID)).rejects.toMatchObject({
       statusCode: 409,
       code: "ROLE_IN_USE",
     });
@@ -415,7 +421,7 @@ describe("StartupService.deleteRole", () => {
     } as never);
     (mockPrisma.role.delete as jest.Mock).mockResolvedValue({});
 
-    await service.deleteRole(STARTUP_ID, "role-custom");
+    await service.deleteRole(STARTUP_ID, "role-custom", USER_ID);
 
     expect(mockPrisma.role.delete).toHaveBeenCalledWith({ where: { id: "role-custom" } });
   });

@@ -11,44 +11,75 @@ import { Label } from "../../components/ui/label";
 import { useAuth } from "../../hooks/useAuth";
 import { useWorkspace } from "../../hooks/useWorkspace";
 import { apiErrorMessage } from "../../lib/api-error";
-import { prepareProfileImage } from "../../lib/profile-image";
+import { prepareProfileImage, type PreparedAvatar } from "../../lib/profile-image";
 import { getInitials } from "../../lib/utils";
 
 export function Profile() {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, uploadAvatar, removeAvatar } = useAuth();
   const { activeStartup } = useWorkspace();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [firstName, setFirstName] = useState(user?.firstName ?? "");
   const [lastName, setLastName] = useState(user?.lastName ?? "");
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(user?.avatarUrl ?? null);
+  // A newly chosen photo, staged locally until Save — not uploaded yet.
+  const [pendingPhoto, setPendingPhoto] = useState<PreparedAvatar | null>(null);
+  // User clicked Remove; the existing photo goes away on Save.
+  const [photoRemoved, setPhotoRemoved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
 
   useEffect(() => {
     setFirstName(user?.firstName ?? "");
     setLastName(user?.lastName ?? "");
-    setAvatarUrl(user?.avatarUrl ?? null);
+    // The server response is the source of truth once it arrives; drop any
+    // staged-but-unsaved photo state (and its object URL) rather than let it
+    // linger out of sync with what's now persisted.
+    setPendingPhoto((prev) => {
+      if (prev) URL.revokeObjectURL(prev.previewUrl);
+      return null;
+    });
+    setPhotoRemoved(false);
   }, [user]);
+
+  // Revoke on unmount too, in case the user navigates away mid-edit.
+  useEffect(() => {
+    return () => {
+      if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!user) return null;
 
   const displayName = `${firstName} ${lastName}`.trim() || user.email;
-  const isDirty =
-    firstName.trim() !== user.firstName ||
-    lastName.trim() !== user.lastName ||
-    avatarUrl !== (user.avatarUrl ?? null);
+  const avatarSrc = pendingPhoto ? pendingPhoto.previewUrl : photoRemoved ? undefined : (user.avatarUrl ?? undefined);
+  const canRemovePhoto = Boolean(pendingPhoto) || (!photoRemoved && Boolean(user.avatarUrl));
+  const nameChanged = firstName.trim() !== user.firstName || lastName.trim() !== user.lastName;
+  const isDirty = nameChanged || Boolean(pendingPhoto) || photoRemoved;
 
   async function choosePhoto(file: File | undefined) {
     if (!file) return;
     setIsProcessingPhoto(true);
     try {
-      setAvatarUrl(await prepareProfileImage(file));
+      const prepared = await prepareProfileImage(file);
+      setPendingPhoto((prev) => {
+        if (prev) URL.revokeObjectURL(prev.previewUrl);
+        return prepared;
+      });
+      setPhotoRemoved(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not process that photo");
     } finally {
       setIsProcessingPhoto(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  }
+
+  function removePhoto() {
+    setPendingPhoto((prev) => {
+      if (prev) URL.revokeObjectURL(prev.previewUrl);
+      return null;
+    });
+    setPhotoRemoved(true);
   }
 
   async function saveProfile() {
@@ -59,11 +90,18 @@ export function Profile() {
 
     setIsSaving(true);
     try {
-      await updateProfile({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        avatarUrl,
-      });
+      // Sequential, not parallel: both calls end in setUser(fullUserObject),
+      // and running them together risks whichever response lands last
+      // clobbering the other's field in the client's in-memory user — a
+      // transient UI glitch even though both would be correctly persisted.
+      if (pendingPhoto) {
+        await uploadAvatar(pendingPhoto.blob);
+      } else if (photoRemoved) {
+        await removeAvatar();
+      }
+      if (nameChanged) {
+        await updateProfile({ firstName: firstName.trim(), lastName: lastName.trim() });
+      }
       toast.success("Profile updated");
     } catch (error) {
       toast.error(apiErrorMessage(error, "Could not update your profile"));
@@ -84,7 +122,7 @@ export function Profile() {
         <div className="relative flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:p-8">
           <div className="relative w-fit shrink-0">
             <Avatar className="h-28 w-28 border-4 border-card shadow-xl">
-              <AvatarImage src={avatarUrl ?? undefined} alt={displayName} className="object-cover" />
+              <AvatarImage src={avatarSrc} alt={displayName} className="object-cover" />
               <AvatarFallback className="bg-primary/15 font-display text-2xl font-semibold text-primary">
                 {getInitials(displayName)}
               </AvatarFallback>
@@ -110,8 +148,8 @@ export function Profile() {
               <Camera className="mr-2 h-4 w-4" />
               {isProcessingPhoto ? "Processing…" : "Change photo"}
             </Button>
-            {avatarUrl && (
-              <Button type="button" variant="ghost" className="text-destructive" onClick={() => setAvatarUrl(null)}>
+            {canRemovePhoto && (
+              <Button type="button" variant="ghost" className="text-destructive" onClick={removePhoto}>
                 <Trash2 className="mr-2 h-4 w-4" /> Remove
               </Button>
             )}

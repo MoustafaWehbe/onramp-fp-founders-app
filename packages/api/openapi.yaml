@@ -286,6 +286,10 @@ components:
           format: uri
           nullable: true
           example: https://cdn.example.com/avatars/123.png
+          description: >
+            A served URL a self-uploaded photo (see PUT /users/me/avatar) or
+            an external one (currently only Google's picture claim). Never a
+            data URL; resolve which source wins server-side.
         emailVerifiedAt:
           type: string
           format: date-time
@@ -319,12 +323,6 @@ components:
           type: string
           minLength: 1
           maxLength: 100
-        avatarUrl:
-          type: string
-          format: uri
-          nullable: true
-          maxLength: 750000
-          description: An http(s) image URL or compact JPEG, PNG, or WebP data URL; null removes the photo.
 
     ChangePasswordBody:
       type: object
@@ -1690,6 +1688,13 @@ components:
           type: string
           enum: [all, mentions, none]
 
+    ArchiveConversationBody:
+      type: object
+      required: [archived]
+      properties:
+        archived:
+          type: boolean
+
     MentionTargetType:
       type: string
       enum: [member, investor, deal, task, round, document]
@@ -2302,6 +2307,10 @@ components:
         uploadedBy:
           type: string
           format: uuid
+        uploaderName:
+          type: string
+          nullable: true
+          description: Joined only where the caller actually needs to attribute a version to someone (currently GET .../documents/{documentId}); null on the create/version-upload/confirm responses, where the uploader is trivially the caller.
         createdAt:
           type: string
           format: date-time
@@ -2368,6 +2377,20 @@ components:
           $ref: "#/components/schemas/ReviewerInvitationStatus"
         allowDownload:
           type: boolean
+        watermarkEnabled:
+          type: boolean
+        allowPrint:
+          type: boolean
+        screenshotGuard:
+          type: boolean
+        requireNda:
+          type: boolean
+        hasPassword:
+          type: boolean
+        allowedEmailDomains:
+          type: array
+          items:
+            type: string
         personalMessage:
           type: string
           nullable: true
@@ -2406,6 +2429,32 @@ components:
           format: uuid
         allowDownload:
           type: boolean
+        watermarkEnabled:
+          type: boolean
+          default: true
+        allowPrint:
+          type: boolean
+          default: false
+        screenshotGuard:
+          type: boolean
+          default: true
+        requireNda:
+          type: boolean
+          default: false
+        ndaText:
+          type: string
+          description: Required when requireNda is true.
+        password:
+          type: string
+          minLength: 6
+          maxLength: 100
+          description: Optional second factor checked before an OTP is sent.
+        allowedEmailDomains:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+          description: Reject creating the invitation unless the email's domain is in this list.
         personalMessage:
           type: string
         expiresInDays:
@@ -2921,6 +2970,73 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /users/me/avatar:
+    put:
+      tags: [Users]
+      summary: Upload or replace the current user's profile photo
+      description: >
+        Raw image bytes, not JSON or multipart — the client resizes to 512px
+        and encodes as WebP (falling back to PNG on browsers whose canvas
+        cannot encode WebP) before sending. Server-mediated to a storage
+        bucket rather than a signed direct-upload URL, since avatars are
+        small and non-sensitive, unlike documents. Replaces and deletes any
+        previous photo.
+      operationId: uploadAvatar
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          image/webp:
+            schema: { type: string, format: binary }
+          image/png:
+            schema: { type: string, format: binary }
+      responses:
+        "200":
+          description: Avatar updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/User"
+        "400":
+          description: Unsupported image type or file too large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [Users]
+      summary: Remove the current user's profile photo
+      description: Clears both a self-uploaded photo and any external one (e.g. Google's picture claim); the user falls back to initials.
+      operationId: removeAvatar
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Avatar removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ════════════════════════════════════════════════════════════════
   #  STARTUPS
@@ -5929,6 +6045,86 @@ paths:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
 
+  /startups/{startupId}/chat/conversations/{conversationId}/archived:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: conversationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: [Chat]
+      summary: Archive or unarchive a channel
+      description: >-
+        Channels are workspace-wide, so this is a moderation action gated by
+        chat:manage, not something every member can do to a room they share.
+        DMs cannot be archived (400 CANNOT_ARCHIVE_DM) there is no shared
+        room to moderate, only two people's own conversation.
+      operationId: setConversationArchived
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveConversationBody"
+      responses:
+        "200":
+          description: The conversation's new archived state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      archivedAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+        "400":
+          description: CANNOT_ARCHIVE_DM
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, or missing chat:manage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: CONVERSATION_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
   /startups/{startupId}/chat/conversations/{conversationId}/typing:
     parameters:
       - name: startupId
@@ -6044,6 +6240,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
+
+  /startups/{startupId}/chat/messages/{messageId}:
+    parameters:
+      - name: startupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: messageId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Chat]
+      summary: Delete a message (soft-delete / tombstone)
+      description: >-
+        Never a hard delete deletedAt is set and the row survives for the
+        audit trail, but the response and every other client's view have the
+        body, reactions, and attachments blanked. Self-serve only: retracts
+        the caller's own message. There is no moderator override.
+      operationId: deleteMessage
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: The now-tombstoned message
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Message"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an active member, missing chat:create, or the message belongs to someone else
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: MESSAGE_NOT_FOUND or CONVERSATION_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: MESSAGE_ALREADY_DELETED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /startups/{startupId}/chat/mentionables:
     parameters:
@@ -6859,6 +7115,30 @@ paths:
         "204":
           description: Deleted
 
+  /startups/{startupId}/documents/{documentId}/analytics:
+    get:
+      tags: [Documents]
+      summary: Engagement analytics across every reviewer who has seen this document
+      operationId: getDocumentAnalytics
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Analytics
+
   /startups/{startupId}/documents/{documentId}/versions/upload-sessions:
     post:
       tags: [Document Versions]
@@ -7005,6 +7285,30 @@ paths:
         "204":
           description: Revoked
 
+  /startups/{startupId}/reviewer-invitations/{invitationId}/analytics:
+    get:
+      tags: [Reviewer Invitations]
+      summary: Per-invitation engagement and security analytics
+      operationId: getReviewerInvitationAnalytics
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: invitationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Analytics
+
   /startups/{startupId}/audit-logs:
     get:
       tags: [Audit]
@@ -7027,11 +7331,45 @@ paths:
             type: string
         - name: entityType
           in: query
+          description: Comma-separated list of entity types to include.
           schema:
             type: string
+        - name: action
+          in: query
+          description: Comma-separated list of actions to include.
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
       responses:
         "200":
           description: List
+
+  /startups/{startupId}/audit-logs/facets:
+    get:
+      tags: [Audit]
+      summary: Distinct action/entityType values present in this startup's audit log
+      operationId: getAuditLogFacets
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Facets
 
   /startups/{startupId}/audit-logs/export:
     get:
@@ -7053,8 +7391,24 @@ paths:
             type: string
         - name: entityType
           in: query
+          description: Comma-separated list of entity types to include.
           schema:
             type: string
+        - name: action
+          in: query
+          description: Comma-separated list of actions to include.
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
       responses:
         "200":
           description: CSV file
@@ -7075,6 +7429,8 @@ paths:
         Validates the token and, if valid and not expired/revoked, emails a
         fresh 6-digit OTP (10-minute TTL) to the invitation's address. Does
         NOT grant access by itself call POST /reviewer-portal/verify next.
+        If the invitation has a password set, it must be supplied here and is
+        checked before the OTP is sent (401 PASSWORD_REQUIRED / PASSWORD_INVALID).
       requestBody:
         required: true
         content:
@@ -7085,9 +7441,17 @@ paths:
               properties:
                 token:
                   type: string
+                password:
+                  type: string
       responses:
         "200":
           description: OTP sent
+        "401":
+          description: Password required or incorrect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /reviewer-portal/verify:
     post:
@@ -7143,30 +7507,162 @@ paths:
         - reviewerSessionAuth: []
       responses:
         "200":
-          description: Workspace
+          description: >
+            Workspace. Includes requireNda/ndaText/ndaAccepted so the client
+            can render the acceptance gate before it ever needs page content.
 
-  /reviewer-portal/documents/{documentId}/file-access:
+  /reviewer-portal/nda/accept:
     post:
       tags: [Reviewer Portal]
-      summary: Signed file access for pinned document
-      operationId: reviewerPortalFileAccess
+      summary: Accept the invitation's NDA
+      description: >
+        Idempotent. Required before any manifest/page/download endpoint will
+        serve content once the invitation has requireNda set.
+      operationId: reviewerPortalAcceptNda
+      security:
+        - reviewerSessionAuth: []
+      responses:
+        "204":
+          description: Accepted
+
+  /reviewer-portal/documents/{versionId}/manifest:
+    get:
+      tags: [Reviewer Portal]
+      summary: Page manifest for a pinned document version
+      description: >
+        Returns page geometry plus a short-lived token for reading page images.
+        Reviewers are never given the source file or its storage location the
+        rendered pages are the only representation the portal exposes.
+      operationId: reviewerPortalPageManifest
       security:
         - reviewerSessionAuth: []
       parameters:
-        - name: documentId
+        - name: versionId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: disposition
+      responses:
+        "200":
+          description: Page manifest
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      versionId: { type: string, format: uuid }
+                      documentId: { type: string, format: uuid }
+                      title: { type: string }
+                      versionNumber: { type: integer }
+                      pageCount: { type: integer }
+                      pages:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            pageNumber: { type: integer }
+                            width: { type: integer }
+                            height: { type: integer }
+                      pageToken: { type: string }
+                      pageTokenExpiresInSeconds: { type: integer }
+        "404":
+          description: Version is not shared with this invitation
+        "409":
+          description: >
+            Version is not viewable RENDER_PENDING, RENDER_FAILED, or
+            RENDER_UNSUPPORTED and other 409, NDA_REQUIRED when the
+            invitation requires NDA acceptance that hasn't happened yet.
+
+  /reviewer-portal/pages/{versionId}/{pageNumber}:
+    get:
+      tags: [Reviewer Portal]
+      summary: Read one rendered page image
+      description: >
+        Requires both the reviewer session cookie and a page token from the
+        manifest; the token's session must match the cookie's. Served
+        no-store so no copy persists in the browser cache.
+      operationId: reviewerPortalPageImage
+      security:
+        - reviewerSessionAuth: []
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: pageNumber
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: t
+          in: query
+          required: true
+          description: Page token issued by the manifest endpoint.
+          schema:
+            type: string
+        - name: kind
           in: query
           schema:
             type: string
-            enum: [preview, download]
+            enum: [view, thumb]
+            default: view
       responses:
         "200":
-          description: Access
+          description: WebP page image
+          content:
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        "403":
+          description: Page token invalid or expired
+        "404":
+          description: Page not found or version not shared
+        "409":
+          description: NDA_REQUIRED — invitation requires NDA acceptance that hasn't happened yet.
+
+  /reviewer-portal/documents/{versionId}/download:
+    get:
+      tags: [Reviewer Portal]
+      summary: Download the original file
+      description: >
+        The only route by which a source file leaves the server, and only when
+        the founder set allowDownload on the invitation. Streamed through the
+        API so the object's storage location is never exposed. When the
+        invitation has watermarkEnabled on, the returned PDF is stamped with
+        the reviewer's email, the link id, and the date before it is sent.
+      operationId: reviewerPortalDownload
+      security:
+        - reviewerSessionAuth: []
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: File bytes (watermarked PDF when watermarkEnabled is on)
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "403":
+          description: Downloads are disabled for this invitation
+        "404":
+          description: Version is not shared with this invitation
+        "409":
+          description: NDA_REQUIRED — invitation requires NDA acceptance that hasn't happened yet.
 
   /reviewer-portal/comments:
     get:
@@ -7187,6 +7683,28 @@ paths:
       responses:
         "201":
           description: Created
+
+  /reviewer-portal/events:
+    post:
+      tags: [Reviewer Portal]
+      summary: Report a capture-deterrent event (copy, print, or screenshot attempt)
+      operationId: reviewerPortalLogEvent
+      security:
+        - reviewerSessionAuth: []
+      responses:
+        "204":
+          description: Recorded
+
+  /reviewer-portal/telemetry:
+    post:
+      tags: [Reviewer Portal]
+      summary: Report per-page dwell time for the current visit
+      operationId: reviewerPortalRecordTelemetry
+      security:
+        - reviewerSessionAuth: []
+      responses:
+        "204":
+          description: Recorded
 
   /reviewer-portal/complete:
     post:

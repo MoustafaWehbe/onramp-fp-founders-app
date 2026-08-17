@@ -98,3 +98,57 @@ export const scheduleMeetingRateLimiter = rateLimit({
     error: "Too many meetings scheduled please wait before scheduling more.",
   },
 });
+
+/**
+ * Guards `/access` and `/verify`. These were unrated before an invitation
+ * could carry a password — a brute-forceable secret checked entirely
+ * server-side, with no OTP delivery step to slow an attacker down. IP-keyed
+ * since there's no session yet at this point.
+ */
+export const reviewerAccessRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1_000,
+  max: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  store: makeStore("reviewer-access"),
+  keyGenerator: (req) => req.ip ?? "unknown",
+  message: {
+    error: "Too many attempts, please wait before retrying.",
+  },
+});
+
+/**
+ * Reviewer capture-deterrent events (copy/print/screenshot attempts) come
+ * from an unauthenticated-by-us client script, not a trusted app a hostile
+ * reviewer could script a flood of "attempts" to fill the log with noise.
+ * These are discrete user actions, not a heartbeat stream, so the cap is
+ * generous relative to the global limiter but still bounded per session.
+ */
+export const reviewerEventRateLimiter = rateLimit({
+  windowMs: 5 * 60 * 1_000,
+  max: 60,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  store: makeStore("reviewer-event"),
+  keyGenerator: (req) => req.reviewer?.sessionId ?? req.ip ?? "unknown",
+  message: {
+    error: "Too many events reported, please wait before retrying.",
+  },
+});
+
+/**
+ * Engagement heartbeat flushes land roughly every 10s, so ~30/5min is the
+ * legitimate ceiling; 60 leaves slack for pagehide/visibility flushes firing
+ * close together without opening the door to a flood.
+ */
+export const reviewerTelemetryRateLimiter = rateLimit({
+  windowMs: 5 * 60 * 1_000,
+  max: 60,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  store: makeStore("reviewer-telemetry"),
+  keyGenerator: (req) => req.reviewer?.sessionId ?? req.ip ?? "unknown",
+  message: {
+    error: "Too many telemetry updates, please wait before retrying.",
+  },
+});

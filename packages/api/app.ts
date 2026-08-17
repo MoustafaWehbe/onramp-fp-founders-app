@@ -12,6 +12,8 @@ import { getTrustProxy } from "./src/config/env";
 import { rateLimiter } from "./src/middleware/rate-limiter";
 import { router } from "./src/routes";
 import { documentController } from "./src/controllers/document.controller";
+import { userController } from "./src/controllers/user.controller";
+import { authenticate } from "./src/middleware/auth";
 
 const app = express();
 
@@ -35,6 +37,18 @@ app.put(
   "/api/v1/documents/local-upload/:token",
   express.raw({ type: () => true, limit: "21mb" }),
   documentController.localUpload,
+);
+
+// Same reason: the browser PUTs raw image bytes, not JSON. Unlike the
+// token-gated route above this is a normal authenticated write, so it gets
+// its own rate-limit call registering it ahead of the global limiter means
+// it would otherwise run unthrottled.
+app.put(
+  "/api/v1/users/me/avatar",
+  rateLimiter,
+  authenticate,
+  express.raw({ type: () => true, limit: "2mb" }),
+  userController.uploadAvatar,
 );
 
 // Body parsing

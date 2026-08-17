@@ -1,6 +1,7 @@
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["postgresqlExtensions"]
+  binaryTargets   = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -18,6 +19,7 @@ model User {
   email               String    @unique
   passwordHash        String?   @map("password_hash")
   avatarUrl           String?   @map("avatar_url")
+  avatarStorageKey    String?   @map("avatar_storage_key")
   authProvider        String    @default("local") @map("auth_provider")
   googleId            String?   @unique @map("google_id")
   emailVerifiedAt     DateTime? @map("email_verified_at")
@@ -254,6 +256,15 @@ model ReviewerInvitation {
   /// pending | opened | in_review | completed | revoked
   status            String    @default("pending")
   allowDownload     Boolean   @default(false) @map("allow_download")
+  watermarkEnabled  Boolean   @default(true) @map("watermark_enabled")
+  notifyOnOpen      Boolean   @default(true) @map("notify_on_open")
+  allowPrint        Boolean   @default(false) @map("allow_print")
+  screenshotGuard   Boolean   @default(true) @map("screenshot_guard")
+  requireNda        Boolean   @default(false) @map("require_nda")
+  ndaText           String?   @map("nda_text")
+  ndaAcceptedAt     DateTime? @map("nda_accepted_at")
+  passwordHash      String?   @map("password_hash")
+  allowedEmailDomains String[] @default([]) @map("allowed_email_domains")
   personalMessage   String?   @map("personal_message")
   expiresAt         DateTime  @map("expires_at")
   completedAt       DateTime? @map("completed_at")
@@ -268,6 +279,8 @@ model ReviewerInvitation {
   creator         User                         @relation(fields: [createdBy], references: [id])
   documents       ReviewerInvitationDocument[]
   sessions        ReviewerSession[]
+  events          ReviewerEvent[]
+  visits          ReviewerVisit[]
 
   @@index([startupId, status])
   @@index([startupId, emailNormalized])
@@ -330,6 +343,70 @@ model ReviewerComment {
   chunk    DocumentChunk?  @relation(fields: [chunkId], references: [id])
 
   @@map("reviewer_comments")
+}
+
+model ReviewerEvent {
+  id                String   @id @default(uuid())
+  startupId         String   @map("startup_id")
+  invitationId      String   @map("invitation_id")
+  sessionId         String   @map("session_id")
+  /// copy_attempt | print_attempt | screenshot_attempt
+  type              String
+  documentVersionId String?  @map("document_version_id")
+  pageNumber        Int?     @map("page_number")
+  metadata          Json?
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  invitation ReviewerInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+
+  @@index([invitationId, createdAt])
+  @@index([startupId, type, createdAt])
+  @@map("reviewer_events")
+}
+
+model ReviewerVisit {
+  id             String    @id @default(uuid())
+  startupId      String    @map("startup_id")
+  invitationId   String    @map("invitation_id")
+  sessionId      String    @unique @map("session_id")
+  startedAt      DateTime  @default(now()) @map("started_at")
+  lastSeenAt     DateTime  @map("last_seen_at")
+  endedAt        DateTime? @map("ended_at")
+  totalActiveMs  Int       @default(0) @map("total_active_ms")
+  pagesViewed    Int       @default(0) @map("pages_viewed")
+  maxPageReached Int       @default(0) @map("max_page_reached")
+  completionPct  Int       @default(0) @map("completion_pct")
+  deviceType       String?  @map("device_type")
+  os               String?  @map("os")
+  browser          String?  @map("browser")
+  deviceHash       String?  @map("device_hash")
+  ipHash           String?  @map("ip_hash")
+  referrer         String?  @map("referrer")
+  suspectedForward Boolean  @default(false) @map("suspected_forward")
+
+  invitation ReviewerInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  pageViews  ReviewerPageView[]
+
+  @@index([invitationId, startedAt])
+  @@index([startupId, startedAt])
+  @@map("reviewer_visits")
+}
+
+model ReviewerPageView {
+  id                String   @id @default(uuid())
+  visitId           String   @map("visit_id")
+  documentVersionId String   @map("document_version_id")
+  pageNumber        Int      @map("page_number")
+  firstViewedAt     DateTime @map("first_viewed_at")
+  lastViewedAt      DateTime @map("last_viewed_at")
+  activeMs          Int      @default(0) @map("active_ms")
+  viewCount         Int      @default(1) @map("view_count")
+
+  visit ReviewerVisit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+
+  @@unique([visitId, documentVersionId, pageNumber])
+  @@index([documentVersionId, pageNumber])
+  @@map("reviewer_page_views")
 }
 
 // ─── CRM ──────────────────────────────────────────────────────────────────────
@@ -586,6 +663,9 @@ model DocumentVersion {
   /// pending_upload | processing | ready | failed
   processingStatus String   @default("pending_upload") @map("processing_status")
   processingError  String?  @map("processing_error")
+  renderStatus     String   @default("pending") @map("render_status")
+  renderError      String?  @map("render_error")
+  pageCount        Int?     @map("page_count")
   summary          String?
   uploadedBy       String   @map("uploaded_by")
   createdAt        DateTime @default(now()) @map("created_at")
@@ -593,12 +673,31 @@ model DocumentVersion {
   document   Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
   uploader   User            @relation(fields: [uploadedBy], references: [id])
   chunks     DocumentChunk[]
+  pages      DocumentPage[]
   aiAnalyses AiAnalysis[]
   reviewerInvitationDocuments ReviewerInvitationDocument[]
 
   @@unique([documentId, versionNumber])
   @@unique([documentId, id])
   @@map("document_versions")
+}
+
+model DocumentPage {
+  id                String   @id @default(uuid())
+  documentVersionId String   @map("document_version_id")
+  pageNumber        Int      @map("page_number")
+  width             Int
+  height            Int
+  storageKey        String   @map("storage_key")
+  thumbStorageKey   String   @map("thumb_storage_key")
+  storageProvider   String   @default("local") @map("storage_provider")
+  byteSize          Int?     @map("byte_size")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  documentVersion DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([documentVersionId, pageNumber])
+  @@map("document_pages")
 }
 
 model DocumentChunk {

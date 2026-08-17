@@ -36,6 +36,15 @@ export async function requireMember(
   }
 }
 
+/** Same check the middleware below runs, exposed for services that need a finer-grained decision than "gate the whole route" (e.g. delete-your-own-message-or-be-a-moderator). */
+export async function hasPermission(roleId: string, resource: string, action: string): Promise<boolean> {
+  const found = await prisma.rolePermission.findFirst({
+    where: { roleId, permission: { resource, action } },
+    include: { permission: true },
+  });
+  return found !== null;
+}
+
 export function requirePermission(resource: string, action: string) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -44,15 +53,7 @@ export function requirePermission(resource: string, action: string) {
         return;
       }
 
-      const found = await prisma.rolePermission.findFirst({
-        where: {
-          roleId: req.member.roleId,
-          permission: { resource, action },
-        },
-        include: { permission: true },
-      });
-
-      if (!found) {
+      if (!(await hasPermission(req.member.roleId, resource, action))) {
         res.status(403).json({ error: "Insufficient permissions", code: "FORBIDDEN" });
         return;
       }

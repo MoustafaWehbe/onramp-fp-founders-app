@@ -1,7 +1,6 @@
 import { AuthService } from "../../src/services/auth.service";
 import { hashPassword } from "../../src/utils/auth";
 
-// eslint-disable-next-line
 const crypto = require("crypto");
 function hashToken(s: string): string {
   return crypto.createHash("sha256").update(s).digest("hex");
@@ -13,7 +12,7 @@ jest.mock("../../src/db/prisma", () => ({
     refreshToken: { findUnique: jest.fn(), create: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
     passwordReset: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), deleteMany: jest.fn() },
     pendingRegistration: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn(), deleteMany: jest.fn() },
-    startupMember: { findMany: jest.fn(), updateMany: jest.fn() },
+    startupMember: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
     $transaction: jest.fn(),
   },
 }));
@@ -41,9 +40,7 @@ jest.mock("google-auth-library", () => ({
 import { prisma } from "../../src/db/prisma";
 import { sendPasswordReset } from "../../src/services/email.service";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockPrisma = prisma as any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockSendPasswordReset = sendPasswordReset as any;
 const service = new AuthService();
 
@@ -98,9 +95,10 @@ describe("AuthService.refresh", () => {
   it("rotates tokens in a transaction when token is valid", async () => {
     mockPrisma.refreshToken.findUnique.mockResolvedValue(STORED_TOKEN as never);
     mockPrisma.user.findUnique.mockResolvedValue(USER as never);
+    mockPrisma.refreshToken.create.mockResolvedValue({ id: "rt-2" } as never);
     mockPrisma.$transaction.mockImplementation(async (ops: unknown) => {
       if (Array.isArray(ops)) return ops;
-      return ops;
+      return (ops as (tx: unknown) => unknown)(mockPrisma);
     });
 
     const result = await service.refresh("valid-refresh-token");
@@ -112,9 +110,10 @@ describe("AuthService.refresh", () => {
   it("revokes old token and creates new one in the same family", async () => {
     mockPrisma.refreshToken.findUnique.mockResolvedValue(STORED_TOKEN as never);
     mockPrisma.user.findUnique.mockResolvedValue(USER as never);
+    mockPrisma.refreshToken.create.mockResolvedValue({ id: "rt-2" } as never);
     mockPrisma.$transaction.mockImplementation(async (ops: unknown) => {
       if (Array.isArray(ops)) return ops;
-      return ops;
+      return (ops as (tx: unknown) => unknown)(mockPrisma);
     });
 
     await service.refresh("valid-refresh-token");
@@ -122,7 +121,7 @@ describe("AuthService.refresh", () => {
     expect(mockPrisma.refreshToken.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "rt-1" },
-        data: { revokedAt: expect.any(Date) },
+        data: { revokedAt: expect.any(Date), replacedById: "rt-2" },
       }),
     );
     expect(mockPrisma.refreshToken.create).toHaveBeenCalledWith(
@@ -156,6 +155,57 @@ describe("AuthService.refresh", () => {
 
   it("revokes entire family on replay attack and throws TOKEN_REUSE_DETECTED", async () => {
     mockPrisma.refreshToken.findUnique.mockResolvedValue(STORED_TOKEN_REVOKED as never);
+    mockPrisma.refreshToken.updateMany.mockResolvedValue({ count: 3 } as never);
+
+    await expect(service.refresh("revoked-refresh-token")).rejects.toMatchObject({
+      statusCode: 401,
+      code: "TOKEN_REUSE_DETECTED",
+    });
+
+    expect(mockPrisma.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: { familyId: "family-revoked", revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    });
+  });
+
+  it("follows the rotation chain instead of revoking when the old token was reused within the grace window", async () => {
+    const replacement = { ...STORED_TOKEN, id: "rt-2", revokedAt: null };
+    const raced = {
+      ...STORED_TOKEN,
+      id: "rt-1",
+      revokedAt: new Date(Date.now() - 2_000),
+      replacedById: "rt-2",
+    };
+    mockPrisma.refreshToken.findUnique.mockImplementation(({ where }: { where: { tokenHash?: string; id?: string } }) => {
+      if (where.id === "rt-2") return Promise.resolve(replacement);
+      return Promise.resolve(raced);
+    });
+    mockPrisma.user.findUnique.mockResolvedValue(USER as never);
+    mockPrisma.refreshToken.create.mockResolvedValue({ id: "rt-3" } as never);
+    mockPrisma.$transaction.mockImplementation(async (ops: unknown) => {
+      if (Array.isArray(ops)) return ops;
+      return (ops as (tx: unknown) => unknown)(mockPrisma);
+    });
+
+    const result = await service.refresh("valid-refresh-token");
+
+    expect(result.accessToken).toBe("access.jwt");
+    expect(mockPrisma.refreshToken.updateMany).not.toHaveBeenCalled();
+    expect(mockPrisma.refreshToken.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "rt-2" },
+        data: { revokedAt: expect.any(Date), replacedById: "rt-3" },
+      }),
+    );
+  });
+
+  it("treats a reuse outside the grace window as a replay attack even with a successor to follow", async () => {
+    const raced = {
+      ...STORED_TOKEN_REVOKED,
+      revokedAt: new Date(Date.now() - 60_000),
+      replacedById: "rt-2",
+    };
+    mockPrisma.refreshToken.findUnique.mockResolvedValue(raced as never);
     mockPrisma.refreshToken.updateMany.mockResolvedValue({ count: 3 } as never);
 
     await expect(service.refresh("revoked-refresh-token")).rejects.toMatchObject({

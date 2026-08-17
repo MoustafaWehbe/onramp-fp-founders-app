@@ -20,7 +20,7 @@ import { AiInsights } from "../pages/dashboard/AiInsights/AiInsights";
 import { Team } from "../pages/dashboard/Team/Team";
 import { Settings } from "../pages/dashboard/Settings";
 import { Reviewers } from "../pages/dashboard/Reviewers";
-import { Audit } from "../pages/dashboard/Audit";
+import { Audit } from "../pages/dashboard/Audit/Audit";
 import { Startup } from "../pages/dashboard/Startup";
 import { Profile } from "../pages/dashboard/Profile";
 import { NotFound } from "../pages/NotFound";

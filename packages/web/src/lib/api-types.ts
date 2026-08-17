@@ -209,6 +209,30 @@ export interface paths {
         patch: operations["updateMe"];
         trace?: never;
     };
+    "/users/me/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upload or replace the current user's profile photo
+         * @description Raw image bytes, not JSON or multipart — the client resizes to 512px and encodes as WebP (falling back to PNG on browsers whose canvas cannot encode WebP) before sending. Server-mediated to a storage bucket rather than a signed direct-upload URL, since avatars are small and non-sensitive, unlike documents. Replaces and deletes any previous photo.
+         */
+        put: operations["uploadAvatar"];
+        post?: never;
+        /**
+         * Remove the current user's profile photo
+         * @description Clears both a self-uploaded photo and any external one (e.g. Google's picture claim); the user falls back to initials.
+         */
+        delete: operations["removeAvatar"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/startups": {
         parameters: {
             query?: never;
@@ -1106,6 +1130,29 @@ export interface paths {
         patch: operations["setNotifyLevel"];
         trace?: never;
     };
+    "/startups/{startupId}/chat/conversations/{conversationId}/archived": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Archive or unarchive a channel
+         * @description Channels are workspace-wide, so this is a moderation action gated by chat:manage, not something every member can do to a room they share. DMs cannot be archived (400 CANNOT_ARCHIVE_DM) there is no shared room to moderate, only two people's own conversation.
+         */
+        patch: operations["setConversationArchived"];
+        trace?: never;
+    };
     "/startups/{startupId}/chat/conversations/{conversationId}/typing": {
         parameters: {
             query?: never;
@@ -1147,6 +1194,29 @@ export interface paths {
          */
         post: operations["toggleReaction"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/chat/messages/{messageId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a message (soft-delete / tombstone)
+         * @description Never a hard delete deletedAt is set and the row survives for the audit trail, but the response and every other client's view have the body, reactions, and attachments blanked. Self-serve only: retracts the caller's own message. There is no moderator override.
+         */
+        delete: operations["deleteMessage"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1423,6 +1493,23 @@ export interface paths {
         patch: operations["updateDocument"];
         trace?: never;
     };
+    "/startups/{startupId}/documents/{documentId}/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Engagement analytics across every reviewer who has seen this document */
+        get: operations["getDocumentAnalytics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/startups/{startupId}/documents/{documentId}/versions/upload-sessions": {
         parameters: {
             query?: never;
@@ -1511,6 +1598,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/startups/{startupId}/reviewer-invitations/{invitationId}/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Per-invitation engagement and security analytics */
+        get: operations["getReviewerInvitationAnalytics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/startups/{startupId}/audit-logs": {
         parameters: {
             query?: never;
@@ -1520,6 +1624,23 @@ export interface paths {
         };
         /** List audit logs */
         get: operations["listAuditLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/audit-logs/facets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Distinct action/entityType values present in this startup's audit log */
+        get: operations["getAuditLogFacets"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1599,17 +1720,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/reviewer-portal/documents/{documentId}/file-access": {
+    "/reviewer-portal/documents/{versionId}/manifest": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Page manifest for a pinned document version
+         * @description Returns page geometry plus a short-lived token for reading page images. Reviewers are never given the source file or its storage location the rendered pages are the only representation the portal exposes.
+         */
+        get: operations["reviewerPortalPageManifest"];
         put?: never;
-        /** Signed file access for pinned document */
-        post: operations["reviewerPortalFileAccess"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviewer-portal/pages/{versionId}/{pageNumber}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one rendered page image
+         * @description Requires both the reviewer session cookie and a page token from the manifest; the token's session must match the cookie's. Served no-store so no copy persists in the browser cache.
+         */
+        get: operations["reviewerPortalPageImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviewer-portal/documents/{versionId}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the original file
+         * @description The only route by which a source file leaves the server, and only when the founder set allowDownload on the invitation. Streamed through the API so the object's storage location is never exposed.
+         */
+        get: operations["reviewerPortalDownload"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1628,6 +1792,40 @@ export interface paths {
         put?: never;
         /** Create reviewer comment */
         post: operations["reviewerPortalCreateComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviewer-portal/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report a capture-deterrent event (copy, print, or screenshot attempt) */
+        post: operations["reviewerPortalLogEvent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviewer-portal/telemetry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report per-page dwell time for the current visit */
+        post: operations["reviewerPortalRecordTelemetry"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1804,6 +2002,7 @@ export interface components {
             email?: string;
             /**
              * Format: uri
+             * @description A served URL a self-uploaded photo (see PUT /users/me/avatar) or an external one (currently only Google's picture claim). Never a data URL; resolve which source wins server-side.
              * @example https://cdn.example.com/avatars/123.png
              */
             avatarUrl?: string | null;
@@ -1828,11 +2027,6 @@ export interface components {
         UpdateUserBody: {
             firstName?: string;
             lastName?: string;
-            /**
-             * Format: uri
-             * @description An http(s) image URL or compact JPEG, PNG, or WebP data URL; null removes the photo.
-             */
-            avatarUrl?: string | null;
         };
         ChangePasswordBody: {
             /** @example Password1 */
@@ -2632,6 +2826,9 @@ export interface components {
             /** @enum {string} */
             level: "all" | "mentions" | "none";
         };
+        ArchiveConversationBody: {
+            archived: boolean;
+        };
         /**
          * @description What a `@[Label](type:id)` reference token inside a message body points at. "deal" is a Pipeline entry investor + round together.
          * @example deal
@@ -2981,6 +3178,8 @@ export interface components {
             summary?: string | null;
             /** Format: uuid */
             uploadedBy?: string;
+            /** @description Joined only where the caller actually needs to attribute a version to someone (currently GET .../documents/{documentId}); null on the create/version-upload/confirm responses, where the uploader is trivially the caller. */
+            uploaderName?: string | null;
             /** Format: date-time */
             createdAt?: string;
             hasFile?: boolean;
@@ -3564,6 +3763,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    uploadAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "image/webp": string;
+                "image/png": string;
+            };
+        };
+        responses: {
+            /** @description Avatar updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["User"];
+                    };
+                };
+            };
+            /** @description Unsupported image type or file too large */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    removeAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Avatar removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["User"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -6860,6 +7135,85 @@ export interface operations {
             };
         };
     };
+    setConversationArchived: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveConversationBody"];
+            };
+        };
+        responses: {
+            /** @description The conversation's new archived state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: {
+                            /** Format: uuid */
+                            id?: string;
+                            /** Format: date-time */
+                            archivedAt?: string | null;
+                        };
+                    };
+                };
+            };
+            /** @description CANNOT_ARCHIVE_DM */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, or missing chat:manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CONVERSATION_NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
     notifyTyping: {
         parameters: {
             query?: never;
@@ -6973,6 +7327,67 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The now-tombstoned message */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Message"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not an active member, missing chat:create, or the message belongs to someone else */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description MESSAGE_NOT_FOUND or CONVERSATION_NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description MESSAGE_ALREADY_DELETED */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -7849,6 +8264,27 @@ export interface operations {
             };
         };
     };
+    getDocumentAnalytics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                documentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Analytics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     createDocumentVersionUploadSession: {
         parameters: {
             query?: never;
@@ -7984,6 +8420,27 @@ export interface operations {
             };
         };
     };
+    getReviewerInvitationAnalytics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                invitationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Analytics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     listAuditLogs: {
         parameters: {
             query?: {
@@ -7992,7 +8449,12 @@ export interface operations {
                 /** @description Number of items per page */
                 limit?: components["parameters"]["LimitParam"];
                 search?: string;
+                /** @description Comma-separated list of entity types to include. */
                 entityType?: string;
+                /** @description Comma-separated list of actions to include. */
+                action?: string;
+                from?: string;
+                to?: string;
             };
             header?: never;
             path: {
@@ -8011,11 +8473,36 @@ export interface operations {
             };
         };
     };
+    getAuditLogFacets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Facets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     exportAuditLogs: {
         parameters: {
             query?: {
                 search?: string;
+                /** @description Comma-separated list of entity types to include. */
                 entityType?: string;
+                /** @description Comma-separated list of actions to include. */
+                action?: string;
+                from?: string;
+                to?: string;
             };
             header?: never;
             path: {
@@ -8126,21 +8613,129 @@ export interface operations {
             };
         };
     };
-    reviewerPortalFileAccess: {
+    reviewerPortalPageManifest: {
         parameters: {
-            query?: {
-                disposition?: "preview" | "download";
-            };
+            query?: never;
             header?: never;
             path: {
-                documentId: string;
+                versionId: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Access */
+            /** @description Page manifest */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: {
+                            /** Format: uuid */
+                            versionId?: string;
+                            /** Format: uuid */
+                            documentId?: string;
+                            title?: string;
+                            versionNumber?: number;
+                            pageCount?: number;
+                            pages?: {
+                                pageNumber?: number;
+                                width?: number;
+                                height?: number;
+                            }[];
+                            pageToken?: string;
+                            pageTokenExpiresInSeconds?: number;
+                        };
+                    };
+                };
+            };
+            /** @description Version is not shared with this invitation */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version is not viewable RENDER_PENDING, RENDER_FAILED, or RENDER_UNSUPPORTED. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reviewerPortalPageImage: {
+        parameters: {
+            query: {
+                /** @description Page token issued by the manifest endpoint. */
+                t: string;
+                kind?: "view" | "thumb";
+            };
+            header?: never;
+            path: {
+                versionId: string;
+                pageNumber: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description WebP page image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/webp": string;
+                };
+            };
+            /** @description Page token invalid or expired */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Page not found or version not shared */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reviewerPortalDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description File bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description Downloads are disabled for this invitation */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version is not shared with this invitation */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8177,6 +8772,42 @@ export interface operations {
         responses: {
             /** @description Created */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reviewerPortalLogEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recorded */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reviewerPortalRecordTelemetry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recorded */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };

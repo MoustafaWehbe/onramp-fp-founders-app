@@ -27,6 +27,14 @@ export const documentController = {
     res.json({ data: document });
   }),
 
+  getAnalytics: asyncHandler(async (req, res) => {
+    const result = await documentService.getDocumentAnalytics(
+      req.params.startupId as string,
+      req.params.documentId as string,
+    );
+    res.json({ data: result });
+  }),
+
   createUploadSession: asyncHandler(async (req, res) => {
     const result = await documentService.createUploadSession(
       req.params.startupId as string,

@@ -1,23 +1,25 @@
 import { useState } from "react";
-import { MessagesSquare, SmilePlus } from "lucide-react";
+import { MessagesSquare, SmilePlus, Trash2 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { REACTION_EMOJIS } from "../../lib/mentions";
 
 type MessageHoverActionsProps = {
   onReact?: (emoji: string) => void;
   onOpenThread?: () => void;
+  /** Present only on the caller's own message — no moderator override to delete someone else's. */
+  onDelete?: () => void;
 };
 
 /**
- * The react/reply affordances float over the message's top-right corner and
- * stay invisible until the row is hovered or focused the message itself
- * (and any reactions/replies it already has) is the content; these are just
- * entry points for adding more, so they shouldn't compete for attention at
- * rest. Requires a `group` class on the message row this is nested in.
+ * The react/reply/delete affordances float over the message's top-right
+ * corner and stay invisible until the row is hovered or focused the message
+ * itself (and any reactions/replies it already has) is the content; these are
+ * just entry points for adding more, so they shouldn't compete for attention
+ * at rest. Requires a `group` class on the message row this is nested in.
  */
-export function MessageHoverActions({ onReact, onOpenThread }: MessageHoverActionsProps) {
+export function MessageHoverActions({ onReact, onOpenThread, onDelete }: MessageHoverActionsProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
-  if (!onReact && !onOpenThread) return null;
+  if (!onReact && !onOpenThread && !onDelete) return null;
 
   return (
     <div
@@ -63,6 +65,16 @@ export function MessageHoverActions({ onReact, onOpenThread }: MessageHoverActio
           className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
         >
           <MessagesSquare className="h-3.5 w-3.5" />
+        </button>
+      )}
+      {onDelete && (
+        <button
+          type="button"
+          aria-label="Delete message"
+          onClick={onDelete}
+          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
         </button>
       )}
     </div>

@@ -9,6 +9,7 @@ jest.mock("../../src/db/prisma", () => {
     pipelineStageEvent: { create: jest.fn() },
     commitment: { findFirst: jest.fn(), findMany: jest.fn(), count: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
     commitmentStatusEvent: { create: jest.fn(), findMany: jest.fn() },
+    auditLog: { create: jest.fn() },
   };
   // Commitment writes now move the linked deal in the same transaction; hand
   // the callback the same mock client so assertions still see the calls.
@@ -24,6 +25,7 @@ const STARTUP_ID = "00000000-0000-0000-0000-000000000001";
 const INVESTOR_ID = "00000000-0000-0000-0000-000000000002";
 const ROUND_ID = "00000000-0000-0000-0000-000000000003";
 const PIPELINE_ID = "00000000-0000-0000-0000-000000000004";
+const USER_ID = "00000000-0000-0000-0000-000000000006";
 
 const investor = { id: INVESTOR_ID, startupId: STARTUP_ID, fullName: "Ada", email: null, ventureFirm: null, investorType: null, sectorFocus: null, investmentStagePreference: null, linkedinUrl: null, notes: null, source: null, createdAt: new Date(), updatedAt: new Date() };
 const commitment = { id: "00000000-0000-0000-0000-000000000005", startupId: STARTUP_ID, startupInvestorId: INVESTOR_ID, pipelineId: PIPELINE_ID, roundId: ROUND_ID, amount: new Prisma.Decimal(50000), status: "hard_circled", expectedCloseDate: null, createdAt: new Date(), updatedAt: new Date(), startupInvestor: investor };
@@ -105,7 +107,7 @@ describe("FundraisingService round close dates", () => {
     const target = new Date("2026-12-01T00:00:00.000Z");
     mockPrisma.fundraisingRound.create.mockResolvedValue({ id: ROUND_ID, targetAmount: null, minimumTicketSize: null, equityOfferedPercentage: null } as never);
 
-    await service.createRound(STARTUP_ID, { roundName: "Seed", targetAmount: 500000, currency: "USD", firstCloseDate: first, targetCloseDate: target } as never);
+    await service.createRound(STARTUP_ID, { roundName: "Seed", targetAmount: 500000, currency: "USD", firstCloseDate: first, targetCloseDate: target } as never, USER_ID);
 
     expect(mockPrisma.fundraisingRound.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ firstCloseDate: first, targetCloseDate: target }) }));
   });

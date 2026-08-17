@@ -19,11 +19,11 @@ function makeReq(overrides: Record<string, unknown> = {}) {
     user: { userId: "user-1", email: "test@example.com", sessionId: "session-1" },
     member: undefined,
     ...overrides,
-  } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  } as any;
 }
 
 function makeRes() {
-  const res = {} as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const res = {} as any;
   res.status = jest.fn().mockReturnValue(res);
   res.json = jest.fn().mockReturnValue(res);
   return res;

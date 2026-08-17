@@ -9,6 +9,7 @@ export type NotificationType =
   | "task_assigned"
   | "lead_stale"
   | "deal_no_next_step"
+  | "reviewer_opened"
   | (string & {});
 
 export type AppNotification = {

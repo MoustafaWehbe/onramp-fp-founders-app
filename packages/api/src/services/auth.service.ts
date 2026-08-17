@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { OAuth2Client } from "google-auth-library";
+import type { RefreshToken } from "@prisma/client";
 import {
   hashPassword,
   verifyPassword,
@@ -13,7 +14,9 @@ import { sendOTP, sendPasswordReset } from "./email.service";
 import { prisma } from "../db/prisma";
 import { createError, type AppError } from "../utils/errors";
 import { inviteService } from "./invite.service";
+import { storageService } from "./storage.service";
 import { getAppUrl } from "../config/env";
+import { AUDIT_ACTIONS, recordAccountAuditEvent } from "./audit-writer";
 
 const USER_SELECT = {
   id: true,
@@ -21,7 +24,14 @@ const USER_SELECT = {
   firstName: true,
   lastName: true,
   avatarUrl: true,
+  avatarStorageKey: true,
 } as const;
+
+/** A self-uploaded photo (avatarStorageKey) always wins over an external URL
+ * (avatarUrl, e.g. Google's picture claim) — same rule as user.service.ts. */
+function resolvedAvatarUrl(user: { avatarUrl: string | null; avatarStorageKey: string | null }): string | null {
+  return storageService.resolveAvatarUrl(user.avatarStorageKey, user.avatarUrl);
+}
 
 interface RegisterInitiateInput {
   first_name: string;
@@ -39,6 +49,8 @@ interface LoginInput {
 
 const OTP_TTL_MS = 10 * 60 * 1_000;
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1_000;
+const REFRESH_REUSE_GRACE_MS = 10_000;
+const REFRESH_REUSE_MAX_HOPS = 5;
 const MAX_OTP_ATTEMPTS = 5;
 
 export class AuthService {
@@ -210,13 +222,22 @@ export class AuthService {
       },
     });
 
+    await recordAccountAuditEvent({
+      userId: user.id,
+      action: AUDIT_ACTIONS.LOGIN,
+      entityType: "session",
+      entityId: user.id,
+      changes: { method: "password" },
+      ipAddress: input.ipAddress ?? null,
+    });
+
     return {
       user: {
         id: user.id,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        avatarUrl: user.avatarUrl,
+        avatarUrl: resolvedAvatarUrl(user),
       },
       accessToken,
       refreshToken: rawRefresh,
@@ -227,30 +248,47 @@ export class AuthService {
     const tokenHash = hashToken(rawToken);
     const now = new Date();
 
-    const stored = await prisma.refreshToken.findUnique({ where: { tokenHash } });
-    if (!stored) {
+    const initial = await prisma.refreshToken.findUnique({ where: { tokenHash } });
+    if (!initial) {
       throw createError("Invalid refresh token", 401, "INVALID_TOKEN");
     }
+    let stored: RefreshToken = initial;
 
-    // REPLAY ATTACK DETECTION if token was already revoked, revoke entire family
-    if (stored.revokedAt !== null) {
-      if (stored.familyId) {
-        await prisma.refreshToken.updateMany({
-          where: { familyId: stored.familyId, revokedAt: null },
-          data: { revokedAt: new Date() },
-        });
-      } else {
-        // No familyId fall back to revoking all sessions for this user
-        await prisma.refreshToken.updateMany({
-          where: { userId: stored.userId, revokedAt: null },
-          data: { revokedAt: new Date() },
-        });
+    let hops = 0;
+    while (stored.revokedAt !== null) {
+      const withinGrace =
+        stored.replacedById != null &&
+        now.getTime() - stored.revokedAt.getTime() <= REFRESH_REUSE_GRACE_MS &&
+        hops < REFRESH_REUSE_MAX_HOPS;
+
+      if (!withinGrace) {
+        if (stored.familyId) {
+          await prisma.refreshToken.updateMany({
+            where: { familyId: stored.familyId, revokedAt: null },
+            data: { revokedAt: new Date() },
+          });
+        } else {
+          // No familyId fall back to revoking all sessions for this user
+          await prisma.refreshToken.updateMany({
+            where: { userId: stored.userId, revokedAt: null },
+            data: { revokedAt: new Date() },
+          });
+        }
+        throw createError(
+          "Security alert: token reuse detected. All sessions revoked.",
+          401,
+          "TOKEN_REUSE_DETECTED",
+        );
       }
-      throw createError(
-        "Security alert: token reuse detected. All sessions revoked.",
-        401,
-        "TOKEN_REUSE_DETECTED",
-      );
+
+      const next: RefreshToken | null = await prisma.refreshToken.findUnique({
+        where: { id: stored.replacedById! },
+      });
+      if (!next) {
+        throw createError("Invalid refresh token", 401, "INVALID_TOKEN");
+      }
+      stored = next;
+      hops += 1;
     }
 
     if (stored.expiresAt < now) {
@@ -264,23 +302,24 @@ export class AuthService {
     const { raw: rawRefresh, hash: refreshHash } = generateRefreshToken();
     const accessToken = generateAccessToken(user.id, familyId, user.email);
     const expiresAt = new Date(Date.now() + THIRTY_DAYS_MS);
+    const rotatingFrom = stored;
 
-    await prisma.$transaction([
-      prisma.refreshToken.update({
-        where: { id: stored.id },
-        data: { revokedAt: now },
-      }),
-      prisma.refreshToken.create({
+    await prisma.$transaction(async (tx) => {
+      const created = await tx.refreshToken.create({
         data: {
           userId: user.id,
           tokenHash: refreshHash,
           familyId,
-          deviceInfo: stored.deviceInfo,
-          ipAddress: stored.ipAddress,
+          deviceInfo: rotatingFrom.deviceInfo,
+          ipAddress: rotatingFrom.ipAddress,
           expiresAt,
         },
-      }),
-    ]);
+      });
+      await tx.refreshToken.update({
+        where: { id: rotatingFrom.id },
+        data: { revokedAt: now, replacedById: created.id },
+      });
+    });
 
     return { accessToken, refreshToken: rawRefresh };
   }
@@ -329,7 +368,7 @@ export class AuthService {
     };
   }
 
-  async resetPassword(input: { token: string; new_password: string }) {
+  async resetPassword(input: { token: string; new_password: string }, meta: { ipAddress?: string } = {}) {
     const tokenHash = hashToken(input.token);
     const now = new Date();
 
@@ -371,6 +410,14 @@ export class AuthService {
       }),
     ]);
 
+    await recordAccountAuditEvent({
+      userId: reset.userId,
+      action: AUDIT_ACTIONS.UPDATE,
+      entityType: "password",
+      entityId: reset.userId,
+      ipAddress: meta.ipAddress ?? null,
+    });
+
     return {
       message: "Password reset successful. Please log in with your new password.",
     };
@@ -396,7 +443,14 @@ export class AuthService {
     }
 
     let isNewUser = false;
-    type AuthUser = { id: string; email: string; firstName: string; lastName: string };
+    type AuthUser = {
+      id: string;
+      email: string;
+      firstName: string;
+      lastName: string;
+      avatarUrl: string | null;
+      avatarStorageKey: string | null;
+    };
     let user: AuthUser | null = await prisma.user.findUnique({
       where: { googleId: payload.sub },
       select: USER_SELECT,
@@ -478,13 +532,36 @@ export class AuthService {
       },
     });
 
-    return { user, accessToken, refreshToken: rawRefresh, isNewUser };
+    await recordAccountAuditEvent({
+      userId: user.id,
+      action: AUDIT_ACTIONS.LOGIN,
+      entityType: "session",
+      entityId: user.id,
+      changes: { method: "google", isNewUser },
+      ipAddress: input.ipAddress ?? null,
+    });
+
+    const { avatarStorageKey, ...restUser } = user;
+    return {
+      user: { ...restUser, avatarUrl: resolvedAvatarUrl(user) },
+      accessToken,
+      refreshToken: rawRefresh,
+      isNewUser,
+    };
   }
 
-  async logout(familyId: string) {
+  async logout(userId: string, familyId: string, meta: { ipAddress?: string } = {}) {
     await prisma.refreshToken.updateMany({
       where: { familyId, revokedAt: null },
       data: { revokedAt: new Date() },
+    });
+
+    await recordAccountAuditEvent({
+      userId,
+      action: AUDIT_ACTIONS.LOGOUT,
+      entityType: "session",
+      entityId: userId,
+      ipAddress: meta.ipAddress ?? null,
     });
   }
 
@@ -497,13 +574,15 @@ export class AuthService {
         firstName: true,
         lastName: true,
         avatarUrl: true,
+        avatarStorageKey: true,
         emailVerifiedAt: true,
         createdAt: true,
         lastActiveStartupId: true,
       },
     });
     if (!user) throw createError("User not found", 404);
-    return user;
+    const { avatarStorageKey, ...rest } = user;
+    return { ...rest, avatarUrl: resolvedAvatarUrl(user) };
   }
 }
 

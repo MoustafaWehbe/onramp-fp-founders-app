@@ -15,7 +15,7 @@ const documentTypeEnum = z.enum(DOCUMENT_TYPES, {
 });
 
 const mimeEnum = z.enum(ACCEPTED_MIME_TYPES as unknown as [string, ...string[]], {
-  errorMap: () => ({ message: "Unsupported file type. Allowed: PDF, DOCX, XLSX, TXT" }),
+  errorMap: () => ({ message: "Unsupported file type. Allowed: PDF, DOCX, XLSX, PPTX, TXT" }),
 });
 
 export const listDocumentsQuerySchema = z.object({

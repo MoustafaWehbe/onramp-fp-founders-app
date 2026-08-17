@@ -147,7 +147,13 @@ export const inviteController = {
     const startupId = req.params.startupId as string;
     const memberId = req.params.memberId as string;
     const input = req.body as ChangeRoleInput;
-    const result = await inviteService.changeRole(startupId, memberId, input, req.member!.id);
+    const result = await inviteService.changeRole(
+      startupId,
+      memberId,
+      input,
+      req.member!.id,
+      req.user!.userId,
+    );
     res.json(result);
   }),
 

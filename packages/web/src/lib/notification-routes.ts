@@ -20,6 +20,10 @@ export function notificationHref(n: AppNotification): string | null {
       return "/pipeline";
     case "startup_member":
       return "/dashboard";
+    // No per-invitation detail route exists yet the list page is the
+    // honest destination, same reasoning as the "task" case above.
+    case "reviewer_invitation":
+      return "/reviewers";
     default:
       return null;
   }

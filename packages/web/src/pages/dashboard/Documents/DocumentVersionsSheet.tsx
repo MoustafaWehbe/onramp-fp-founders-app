@@ -1,0 +1,133 @@
+import { useQuery } from "@tanstack/react-query";
+import { Download, Eye, FileText } from "lucide-react";
+import { Button } from "../../../components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "../../../components/ui/sheet";
+import { Skeleton } from "../../../components/ui/skeleton";
+import { apiErrorMessage } from "../../../lib/api-error";
+import { getDocument, type DocumentVersion } from "../../../lib/document-api";
+import { cn, formatDate } from "../../../lib/utils";
+import { DocumentStatusBadge } from "./DocumentStatusBadge";
+import { formatFileSize, statusOf } from "./document-types";
+
+type DocumentVersionsSheetProps = {
+  startupId: string;
+  documentId: string | null;
+  onOpenChange: (open: boolean) => void;
+  onPreview: (version: DocumentVersion) => void;
+  onDownload: (version: DocumentVersion) => void;
+};
+
+/**
+ * Every prior version stays in storage and in the database — GET
+ * .../documents/:id has always returned the full list, but nothing in the
+ * app called it, so uploading a new version made every earlier one
+ * permanently unreachable from the UI even though it was never actually gone.
+ */
+export function DocumentVersionsSheet({
+  startupId,
+  documentId,
+  onOpenChange,
+  onPreview,
+  onDownload,
+}: DocumentVersionsSheetProps) {
+  const open = documentId !== null;
+
+  const query = useQuery({
+    queryKey: ["documents", startupId, "detail", documentId],
+    queryFn: () => getDocument(startupId, documentId as string),
+    enabled: open,
+  });
+
+  const doc = query.data;
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Version history</SheetTitle>
+          <SheetDescription>{doc ? doc.title : "Every uploaded version of this document."}</SheetDescription>
+        </SheetHeader>
+
+        {query.isPending ? (
+          <div className="space-y-3">
+            {Array.from({ length: 3 }, (_, index) => (
+              <Skeleton key={index} className="h-20 w-full" />
+            ))}
+          </div>
+        ) : query.isError ? (
+          <p className="text-sm text-destructive">{apiErrorMessage(query.error, "Could not load version history.")}</p>
+        ) : (
+          <ul className="space-y-2">
+            {doc?.versions.map((version) => {
+              const status = statusOf(version);
+              const canOpen = status === "ready";
+              return (
+                <li
+                  key={version.id}
+                  className={cn(
+                    "rounded-lg border border-border p-3",
+                    version.isCurrent && "border-primary/40 bg-primary/[0.04]",
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+                        <FileText className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-medium">Version {version.versionNumber}</span>
+                          {version.isCurrent && (
+                            <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                              Current
+                            </span>
+                          )}
+                        </div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {version.uploaderName ?? "Unknown uploader"} · {formatDate(version.createdAt)} ·{" "}
+                          {formatFileSize(version.fileSize)}
+                        </div>
+                      </div>
+                    </div>
+                    <DocumentStatusBadge status={status} />
+                  </div>
+
+                  {version.processingError && (
+                    <p className="mt-2 line-clamp-2 text-xs text-destructive">{version.processingError}</p>
+                  )}
+
+                  <div className="mt-2.5 flex gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 flex-1 text-xs"
+                      disabled={!canOpen}
+                      onClick={() => onPreview(version)}
+                    >
+                      <Eye className="mr-1 h-3.5 w-3.5" /> Preview
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 flex-1 text-xs"
+                      disabled={!canOpen}
+                      onClick={() => onDownload(version)}
+                    >
+                      <Download className="mr-1 h-3.5 w-3.5" /> Download
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}

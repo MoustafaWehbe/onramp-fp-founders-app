@@ -29,6 +29,30 @@ services:
       timeout: 5s
       retries: 5
 
+  # Runs the BullMQ job worker (including DOCX/PPTX->PDF rasterization) with
+  # LibreOffice installed — see Dockerfile.worker. Not part of the default
+  # local dev loop (`npm run dev`/`npm run worker` run the worker on the host
+  # instead, without office-document conversion); start this explicitly with
+  # `docker compose up worker` when you need to exercise that path.
+  # Requires packages/api/.env to exist, same as the host `worker` script.
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    env_file:
+      - packages/api/.env
+    environment:
+      # Overrides the host-oriented values from packages/api/.env — inside
+      # the compose network, postgres/redis are reachable by service name.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-starter_kit}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   redis_data:

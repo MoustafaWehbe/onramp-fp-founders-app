@@ -26,6 +26,7 @@ export const startupController = {
     const startup = await startupService.updateStartup(
       req.params.startupId as string,
       req.body as UpdateStartupInput,
+      req.user!.userId,
     );
     res.json({ data: { startup } });
   }),
@@ -46,7 +47,11 @@ export const startupController = {
   }),
 
   createRole: asyncHandler(async (req, res) => {
-    const role = await startupService.createRole(req.params.startupId as string, req.body as CreateRoleInput);
+    const role = await startupService.createRole(
+      req.params.startupId as string,
+      req.body as CreateRoleInput,
+      req.user!.userId,
+    );
     res.status(201).json({ data: { role } });
   }),
 
@@ -55,12 +60,13 @@ export const startupController = {
       req.params.startupId as string,
       req.params.roleId as string,
       req.body as UpdateRoleInput,
+      req.user!.userId,
     );
     res.json({ data: { role } });
   }),
 
   deleteRole: asyncHandler(async (req, res) => {
-    await startupService.deleteRole(req.params.startupId as string, req.params.roleId as string);
+    await startupService.deleteRole(req.params.startupId as string, req.params.roleId as string, req.user!.userId);
     res.status(204).send();
   }),
 

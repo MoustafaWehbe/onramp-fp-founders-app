@@ -13,7 +13,21 @@
     "cellpadding",
     "tabular",
     "Segoe",
-    "Neue"
+    "Neue",
+    "HMAC",
+    "rasterize",
+    "Rasterize",
+    "Rasterizing",
+    "rasterization",
+    "webp",
+    "napi",
+    "pdftoppm",
+    "poppler",
+    "contextmenu",
+    "sendBeacon",
+    "devtools",
+    "Foundersuite",
+    "unpinned"
   ],
   "ignorePaths": ["node_modules", "dist", "*.lock"]
 }

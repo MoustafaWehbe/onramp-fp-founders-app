@@ -9,6 +9,7 @@ jest.mock("../../src/db/prisma", () => ({
       deleteMany: jest.fn(),
     },
     user: { findUnique: jest.fn() },
+    auditLog: { create: jest.fn() },
     $transaction: jest.fn(),
   },
 }));

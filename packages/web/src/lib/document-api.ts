@@ -20,6 +20,9 @@ export type DocumentVersion = {
   processingError: string | null;
   summary: string | null;
   uploadedBy: string;
+  // Joined only on getDocument's version history; null from the
+  // create/version-upload/confirm responses, where the uploader is the caller.
+  uploaderName: string | null;
   createdAt: string;
   hasFile: boolean;
 };
@@ -42,6 +45,25 @@ export type PaginationMeta = {
   total: number;
   totalPages: number;
 };
+
+export async function getDocument(startupId: string, documentId: string) {
+  const { data } = await apiClient.get<{ data: VaultDocument & { versions: DocumentVersion[] } }>(
+    `/startups/${startupId}/documents/${documentId}`,
+  );
+  return data.data;
+}
+
+export async function updateDocument(
+  startupId: string,
+  documentId: string,
+  body: { title?: string; documentType?: DocumentType },
+) {
+  const { data } = await apiClient.patch<{ data: VaultDocument }>(
+    `/startups/${startupId}/documents/${documentId}`,
+    body,
+  );
+  return data.data;
+}
 
 export async function listDocuments(
   startupId: string,
@@ -116,6 +138,33 @@ export async function getDocumentFileAccess(startupId: string, documentId: strin
   }>(`/startups/${startupId}/documents/${documentId}/file-access`, undefined, {
     params: versionId ? { versionId } : undefined,
   });
+  return data.data;
+}
+
+export type DocumentAnalytics = {
+  document: {
+    id: string;
+    title: string;
+    versionId: string | null;
+    versionNumber: number | null;
+    pageCount: number | null;
+  };
+  summary: { viewerCount: number; totalActiveMs: number; avgCompletionPct: number };
+  dropOff: Array<{ pageNumber: number; reachedPct: number }>;
+  pageAverages: Array<{ pageNumber: number; avgActiveMs: number }>;
+  leaderboard: Array<{
+    invitationId: string;
+    reviewerName: string | null;
+    email: string;
+    totalActiveMs: number;
+    completionPct: number;
+  }>;
+};
+
+export async function getDocumentAnalytics(startupId: string, documentId: string) {
+  const { data } = await apiClient.get<{ data: DocumentAnalytics }>(
+    `/startups/${startupId}/documents/${documentId}/analytics`,
+  );
   return data.data;
 }
 

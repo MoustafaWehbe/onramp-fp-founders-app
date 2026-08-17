@@ -2,6 +2,8 @@ import "dotenv/config";
 
 import { promises as fs } from "fs";
 import path from "path";
+import { createHash } from "crypto";
+import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/utils/auth";
 import { PERMISSIONS, ROLE_TEMPLATES } from "../src/config/permissions";
@@ -44,6 +46,8 @@ const G = {
   MESSAGE: 20,
   MESSAGE_MENTION: 21,
   MESSAGE_REACTION: 22,
+  REVIEWER_INVITATION: 23,
+  REVIEWER_INVITATION_DOCUMENT: 24,
 } as const;
 
 const uid = (group: number, n: number): string =>
@@ -1810,6 +1814,37 @@ async function seedChat(
   return { general, fundraising, dm, mentionMessageId: g3.id, dmLastMessageId: dm2.id };
 }
 
+// ─── Reviewer portal fixtures ──────────────────────────────────────────────────
+
+/** sha256 hex, same as the local hashToken() in reviewer-invitation/portal services. */
+const hashToken = (raw: string): string => createHash("sha256").update(raw).digest("hex");
+
+/**
+ * A flat placeholder "page" WebP no rasterize worker actually runs during
+ * seeding, so DocumentPage rows are written directly with the same shape the
+ * worker would have produced for a real upload. Good enough to prove the
+ * canvas viewer (Phase 1) renders something real for a seeded invitation.
+ */
+async function placeholderPage(
+  width: number,
+  height: number,
+  label: string,
+  pageNumber: number,
+  accent: string,
+): Promise<Buffer> {
+  const svg = `
+    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      <rect width="100%" height="100%" fill="#ffffff" />
+      <rect width="100%" height="${Math.round(height * 0.05)}" fill="${accent}" />
+      <text x="50%" y="50%" font-family="sans-serif" font-size="${Math.round(height / 14)}"
+        fill="#1f2937" text-anchor="middle" dominant-baseline="middle">${label}</text>
+      <text x="50%" y="${Math.round(height * 0.9)}" font-family="sans-serif" font-size="${Math.round(height / 28)}"
+        fill="#6b7280" text-anchor="middle">Page ${pageNumber}</text>
+    </svg>
+  `;
+  return sharp(Buffer.from(svg)).webp({ quality: 80 }).toBuffer();
+}
+
 // ─── Seed ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -1830,9 +1865,13 @@ async function main() {
     await tx.aiGapAnalysis.deleteMany();
     await tx.aiAnalysis.deleteMany();
     await tx.reviewerComment.deleteMany();
+    await tx.reviewerPageView.deleteMany();
+    await tx.reviewerVisit.deleteMany();
+    await tx.reviewerEvent.deleteMany();
     await tx.reviewerSession.deleteMany();
     await tx.reviewerInvitationDocument.deleteMany();
     await tx.reviewerInvitation.deleteMany();
+    await tx.documentPage.deleteMany();
     await tx.documentChunk.deleteMany();
     await tx.documentVersion.deleteMany();
     await tx.document.deleteMany();
@@ -2238,6 +2277,483 @@ Notes: figures are illustrative seed data for local demos.
     });
   }
 
+  // 9. A rendered PDF and a "converted" PPTX so the secure reviewer viewer has
+  //    real pages to show. No rasterize worker actually runs during seeding —
+  //    DocumentPage rows are written directly with placeholder WebP tiles,
+  //    exactly the shape the worker would have produced for a real upload
+  //    (the PPTX row simulates what Phase 5's LibreOffice conversion leaves
+  //    behind: renderStatus "ready" with no trace of the original format).
+  async function seedRenderedDocument(spec: {
+    title: string;
+    documentType: string;
+    filename: string;
+    mimeType: string;
+    pageSize: { width: number; height: number };
+    pageCount: number;
+    accent: string;
+  }) {
+    documentCount += 1;
+    const documentId = uid(G.DOCUMENT, documentCount);
+    const versionId = uid(G.DOCUMENT_VERSION, documentCount);
+    const prefix = `startups/${northbeam.startup.id}/documents/${documentId}/${versionId}`;
+    const sourceKey = `${prefix}/${spec.filename}`;
+
+    // The reviewer portal never opens the source file (that's the point of
+    // Phase 1) — a small stand-in is enough for it to exist on disk for
+    // allowDownload invitations, and for the founder's own Documents page.
+    const sourceBuffer = Buffer.from(`Seed placeholder for ${spec.title}`, "utf8");
+    const sourcePath = path.resolve(process.cwd(), ".uploads", sourceKey);
+    await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+    await fs.writeFile(sourcePath, sourceBuffer);
+
+    await prisma.document.create({
+      data: {
+        id: documentId,
+        startupId: northbeam.startup.id,
+        title: spec.title,
+        documentType: spec.documentType,
+        createdBy: muhamad.id,
+        versions: {
+          create: {
+            id: versionId,
+            versionNumber: 1,
+            isCurrent: true,
+            storageProvider: "local",
+            storageKey: sourceKey,
+            mimeType: spec.mimeType,
+            originalFilename: spec.filename,
+            fileSize: sourceBuffer.length,
+            processingStatus: "ready",
+            renderStatus: "ready",
+            pageCount: spec.pageCount,
+            summary: "Seeded demo document",
+            uploadedBy: muhamad.id,
+          },
+        },
+      },
+    });
+
+    for (let pageNumber = 1; pageNumber <= spec.pageCount; pageNumber++) {
+      const view = await placeholderPage(
+        spec.pageSize.width,
+        spec.pageSize.height,
+        spec.title,
+        pageNumber,
+        spec.accent,
+      );
+      const thumbHeight = Math.round((spec.pageSize.height / spec.pageSize.width) * 220);
+      const thumb = await placeholderPage(220, thumbHeight, spec.title, pageNumber, spec.accent);
+
+      const storageKey = `${prefix}/pages/${pageNumber}.webp`;
+      const thumbStorageKey = `${prefix}/thumbs/${pageNumber}.webp`;
+      const pagePath = path.resolve(process.cwd(), ".uploads", storageKey);
+      const thumbPath = path.resolve(process.cwd(), ".uploads", thumbStorageKey);
+      await fs.mkdir(path.dirname(pagePath), { recursive: true });
+      await fs.mkdir(path.dirname(thumbPath), { recursive: true });
+      await fs.writeFile(pagePath, view);
+      await fs.writeFile(thumbPath, thumb);
+
+      await prisma.documentPage.create({
+        data: {
+          documentVersionId: versionId,
+          pageNumber,
+          width: spec.pageSize.width,
+          height: spec.pageSize.height,
+          storageKey,
+          thumbStorageKey,
+          storageProvider: "local",
+          byteSize: view.length,
+        },
+      });
+    }
+
+    return { documentId, versionId, pageCount: spec.pageCount };
+  }
+
+  const deckDoc = await seedRenderedDocument({
+    title: "Northbeam Series Seed Deck",
+    documentType: "pitch_deck",
+    filename: "northbeam-seed-deck.pdf",
+    mimeType: "application/pdf",
+    pageSize: { width: 1600, height: 900 },
+    pageCount: 4,
+    accent: "#4f46e5",
+  });
+  const teaserDoc = await seedRenderedDocument({
+    title: "Northbeam Product Teaser",
+    documentType: "other",
+    filename: "northbeam-product-teaser.pptx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    pageSize: { width: 1600, height: 900 },
+    pageCount: 2,
+    accent: "#0d9488",
+  });
+
+  // 10. Reviewer invitations exercising every link control from Phases 1-5:
+  //     rendered pages to view, watermarking, download/print/screenshot
+  //     policy, an NDA gate, a password-protected link, and forwarding
+  //     detection (two sessions from different devices on the same invite).
+  const reviewerPassword = "Reviewer1234!";
+  const reviewerPasswordHash = await hashPassword(reviewerPassword);
+  const sarahReviewerContact = northbeam.contactsByKey.get("sarah")!;
+  const elenaReviewerContact = northbeam.contactsByKey.get("elena")!;
+  const hiroshiReviewerContact = northbeam.contactsByKey.get("hiroshi")!;
+
+  async function createInvitation(input: {
+    key: string;
+    reviewerName: string;
+    email: string;
+    startupInvestorId?: string;
+    status: string;
+    createdAt: Date;
+    expiresAt: Date;
+    revokedAt?: Date;
+    lastActivityAt?: Date;
+    allowDownload?: boolean;
+    watermarkEnabled?: boolean;
+    notifyOnOpen?: boolean;
+    allowPrint?: boolean;
+    screenshotGuard?: boolean;
+    requireNda?: boolean;
+    ndaText?: string;
+    ndaAcceptedAt?: Date;
+    passwordHash?: string;
+    allowedEmailDomains?: string[];
+    documents: Array<{ documentId: string; versionId: string }>;
+  }) {
+    return prisma.reviewerInvitation.create({
+      data: {
+        id: nextId(G.REVIEWER_INVITATION),
+        startupId: northbeam.startup.id,
+        startupInvestorId: input.startupInvestorId,
+        reviewerName: input.reviewerName,
+        emailNormalized: input.email,
+        tokenHash: hashToken(`seed-token-${input.key}`),
+        status: input.status,
+        allowDownload: input.allowDownload ?? false,
+        watermarkEnabled: input.watermarkEnabled ?? true,
+        notifyOnOpen: input.notifyOnOpen ?? true,
+        allowPrint: input.allowPrint ?? false,
+        screenshotGuard: input.screenshotGuard ?? true,
+        requireNda: input.requireNda ?? false,
+        ndaText: input.ndaText,
+        ndaAcceptedAt: input.ndaAcceptedAt,
+        passwordHash: input.passwordHash,
+        allowedEmailDomains: input.allowedEmailDomains ?? [],
+        expiresAt: input.expiresAt,
+        revokedAt: input.revokedAt,
+        lastActivityAt: input.lastActivityAt,
+        createdBy: muhamad.id,
+        createdAt: input.createdAt,
+        documents: {
+          create: input.documents.map((doc, index) => ({
+            id: nextId(G.REVIEWER_INVITATION_DOCUMENT),
+            documentId: doc.documentId,
+            documentVersionId: doc.versionId,
+            displayOrder: index,
+            addedBy: muhamad.id,
+            addedAt: input.createdAt,
+          })),
+        },
+      },
+    });
+  }
+
+  async function createVerifiedSession(input: {
+    invitationId: string;
+    ip: string;
+    userAgent: string;
+    verifiedAt: Date;
+    accessedAt: Date;
+    expiresAt: Date;
+  }) {
+    return prisma.reviewerSession.create({
+      data: {
+        invitationId: input.invitationId,
+        sessionTokenHash: hashToken(`seed-session-${input.invitationId}-${input.ip}`),
+        verifiedAt: input.verifiedAt,
+        accessedAt: input.accessedAt,
+        expiresAt: input.expiresAt,
+        ipAddress: input.ip,
+        userAgent: input.userAgent,
+      },
+    });
+  }
+
+  async function createVisitWithPageViews(input: {
+    invitationId: string;
+    sessionId: string;
+    startedAt: Date;
+    lastSeenAt: Date;
+    deviceType: string;
+    os: string;
+    browser: string;
+    deviceHash: string;
+    ipHash: string;
+    suspectedForward?: boolean;
+    totalPages: number;
+    pages: Array<{ versionId: string; pageNumber: number; activeMs: number }>;
+  }) {
+    const visit = await prisma.reviewerVisit.create({
+      data: {
+        startupId: northbeam.startup.id,
+        invitationId: input.invitationId,
+        sessionId: input.sessionId,
+        startedAt: input.startedAt,
+        lastSeenAt: input.lastSeenAt,
+        deviceType: input.deviceType,
+        os: input.os,
+        browser: input.browser,
+        deviceHash: input.deviceHash,
+        ipHash: input.ipHash,
+        suspectedForward: input.suspectedForward ?? false,
+        pagesViewed: input.pages.length,
+        maxPageReached: Math.max(...input.pages.map((p) => p.pageNumber)),
+        totalActiveMs: input.pages.reduce((sum, p) => sum + p.activeMs, 0),
+        completionPct: Math.round((input.pages.length / input.totalPages) * 100),
+      },
+    });
+
+    for (const page of input.pages) {
+      await prisma.reviewerPageView.create({
+        data: {
+          visitId: visit.id,
+          documentVersionId: page.versionId,
+          pageNumber: page.pageNumber,
+          firstViewedAt: input.startedAt,
+          lastViewedAt: input.lastSeenAt,
+          activeMs: page.activeMs,
+        },
+      });
+    }
+
+    return visit;
+  }
+
+  async function createReviewerEvent(input: {
+    invitationId: string;
+    sessionId: string;
+    type: string;
+    documentVersionId?: string;
+    pageNumber?: number;
+    metadata?: object;
+    createdAt: Date;
+  }) {
+    return prisma.reviewerEvent.create({
+      data: {
+        startupId: northbeam.startup.id,
+        invitationId: input.invitationId,
+        sessionId: input.sessionId,
+        type: input.type,
+        documentVersionId: input.documentVersionId,
+        pageNumber: input.pageNumber,
+        metadata: input.metadata,
+        createdAt: input.createdAt,
+      },
+    });
+  }
+
+  // 10a. Sarah Chen (Sequoia) — the flagship row: in review, download +
+  // watermark on, opened from two different devices a week apart, which
+  // trips the forwarding signal the same way recordTelemetry does live.
+  const sarahInvitation = await createInvitation({
+    key: "sarah-in-review",
+    reviewerName: sarahReviewerContact.fullName,
+    email: "sarah.chen@sequoiacap.example.com",
+    startupInvestorId: sarahReviewerContact.id,
+    status: "in_review",
+    createdAt: days(-6),
+    expiresAt: days(8),
+    lastActivityAt: days(-3),
+    allowDownload: true,
+    watermarkEnabled: true,
+    notifyOnOpen: true,
+    allowPrint: false,
+    screenshotGuard: true,
+    documents: [
+      { documentId: deckDoc.documentId, versionId: deckDoc.versionId },
+      { documentId: teaserDoc.documentId, versionId: teaserDoc.versionId },
+    ],
+  });
+
+  const sarahSessionMac = await createVerifiedSession({
+    invitationId: sarahInvitation.id,
+    ip: "203.0.113.10",
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15",
+    verifiedAt: days(-6),
+    accessedAt: days(-5.7),
+    expiresAt: hours(2),
+  });
+  await createVisitWithPageViews({
+    invitationId: sarahInvitation.id,
+    sessionId: sarahSessionMac.id,
+    startedAt: days(-6),
+    lastSeenAt: days(-5.7),
+    deviceType: "desktop",
+    os: "macOS",
+    browser: "Chrome",
+    deviceHash: hashToken("seed-device-sarah-macbook"),
+    ipHash: hashToken("seed-ip-sarah-office"),
+    suspectedForward: true,
+    totalPages: deckDoc.pageCount,
+    pages: [
+      { versionId: deckDoc.versionId, pageNumber: 1, activeMs: 42_000 },
+      { versionId: deckDoc.versionId, pageNumber: 2, activeMs: 38_000 },
+      { versionId: deckDoc.versionId, pageNumber: 3, activeMs: 51_000 },
+      { versionId: deckDoc.versionId, pageNumber: 4, activeMs: 12_000 },
+    ],
+  });
+  await createReviewerEvent({
+    invitationId: sarahInvitation.id,
+    sessionId: sarahSessionMac.id,
+    type: "copy_attempt",
+    documentVersionId: deckDoc.versionId,
+    pageNumber: 2,
+    createdAt: days(-5.9),
+  });
+  await createReviewerEvent({
+    invitationId: sarahInvitation.id,
+    sessionId: sarahSessionMac.id,
+    type: "print_attempt",
+    documentVersionId: deckDoc.versionId,
+    createdAt: days(-5.8),
+  });
+  await createReviewerEvent({
+    invitationId: sarahInvitation.id,
+    sessionId: sarahSessionMac.id,
+    type: "download_completed",
+    documentVersionId: deckDoc.versionId,
+    createdAt: days(-5.7),
+  });
+
+  const sarahSessionIphone = await createVerifiedSession({
+    invitationId: sarahInvitation.id,
+    ip: "198.51.100.42",
+    userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1",
+    verifiedAt: days(-3),
+    accessedAt: days(-3),
+    expiresAt: hours(6),
+  });
+  await createVisitWithPageViews({
+    invitationId: sarahInvitation.id,
+    sessionId: sarahSessionIphone.id,
+    startedAt: days(-3),
+    lastSeenAt: days(-2.95),
+    deviceType: "mobile",
+    os: "iOS",
+    browser: "Safari",
+    deviceHash: hashToken("seed-device-sarah-iphone"),
+    ipHash: hashToken("seed-ip-sarah-mobile"),
+    suspectedForward: true,
+    totalPages: deckDoc.pageCount,
+    pages: [
+      { versionId: deckDoc.versionId, pageNumber: 1, activeMs: 15_000 },
+      { versionId: deckDoc.versionId, pageNumber: 2, activeMs: 9_000 },
+    ],
+  });
+  await createReviewerEvent({
+    invitationId: sarahInvitation.id,
+    sessionId: sarahSessionIphone.id,
+    type: "screenshot_attempt",
+    documentVersionId: deckDoc.versionId,
+    pageNumber: 1,
+    createdAt: days(-2.98),
+  });
+  await createReviewerEvent({
+    invitationId: sarahInvitation.id,
+    sessionId: sarahSessionIphone.id,
+    type: "forward_suspected",
+    metadata: { distinctDevices: 2, distinctIps: 2 },
+    createdAt: days(-3),
+  });
+
+  // 10b. Elena Fischer (Balderton) — NDA required and already accepted;
+  // printing is allowed for this link, screenshots still guarded.
+  const elenaNdaAcceptedAt = days(-2);
+  const elenaInvitation = await createInvitation({
+    key: "elena-nda",
+    reviewerName: elenaReviewerContact.fullName,
+    email: "elena.fischer@balderton.example.com",
+    startupInvestorId: elenaReviewerContact.id,
+    status: "opened",
+    createdAt: days(-4),
+    expiresAt: days(10),
+    lastActivityAt: elenaNdaAcceptedAt,
+    allowDownload: false,
+    watermarkEnabled: true,
+    notifyOnOpen: true,
+    allowPrint: true,
+    screenshotGuard: true,
+    requireNda: true,
+    ndaText:
+      "This mutual non-disclosure agreement covers all materials shared through this data room. " +
+      "By continuing, you agree not to disclose the contents to any third party without Northbeam's written consent.",
+    ndaAcceptedAt: elenaNdaAcceptedAt,
+    documents: [{ documentId: deckDoc.documentId, versionId: deckDoc.versionId }],
+  });
+  const elenaSession = await createVerifiedSession({
+    invitationId: elenaInvitation.id,
+    ip: "192.0.2.77",
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Edg/124.0",
+    verifiedAt: days(-4),
+    accessedAt: elenaNdaAcceptedAt,
+    expiresAt: hours(4),
+  });
+  await createReviewerEvent({
+    invitationId: elenaInvitation.id,
+    sessionId: elenaSession.id,
+    type: "nda_accepted",
+    createdAt: elenaNdaAcceptedAt,
+  });
+  await createVisitWithPageViews({
+    invitationId: elenaInvitation.id,
+    sessionId: elenaSession.id,
+    startedAt: elenaNdaAcceptedAt,
+    lastSeenAt: days(-1.9),
+    deviceType: "desktop",
+    os: "Windows",
+    browser: "Edge",
+    deviceHash: hashToken("seed-device-elena-laptop"),
+    ipHash: hashToken("seed-ip-elena"),
+    totalPages: deckDoc.pageCount,
+    pages: [
+      { versionId: deckDoc.versionId, pageNumber: 1, activeMs: 20_000 },
+      { versionId: deckDoc.versionId, pageNumber: 2, activeMs: 18_000 },
+    ],
+  });
+
+  // 10c. Hiroshi Sato (Global Brain) — access revoked before he opened it.
+  await createInvitation({
+    key: "hiroshi-revoked",
+    reviewerName: hiroshiReviewerContact.fullName,
+    email: "h.sato@globalbrain.example.com",
+    startupInvestorId: hiroshiReviewerContact.id,
+    status: "revoked",
+    createdAt: days(-10),
+    expiresAt: days(4),
+    revokedAt: days(-1),
+    allowDownload: false,
+    notifyOnOpen: false,
+    documents: [{ documentId: deckDoc.documentId, versionId: deckDoc.versionId }],
+  });
+
+  // 10d. A password-protected link for a corp-dev contact outside the CRM,
+  // restricted to their company's email domain, never opened yet — exercises
+  // the "pending" empty state in the Reviewers list and Analytics sheet.
+  await createInvitation({
+    key: "marcus-pending",
+    reviewerName: "Marcus Webb",
+    email: "marcus.webb@bigcorp.example.com",
+    status: "pending",
+    createdAt: days(-1),
+    expiresAt: days(13),
+    allowDownload: false,
+    passwordHash: reviewerPasswordHash,
+    allowedEmailDomains: ["bigcorp.example"],
+    documents: [{ documentId: teaserDoc.documentId, versionId: teaserDoc.versionId }],
+  });
+
   const totalContacts = NORTHBEAM_CONTACTS.length + DRIFT_CONTACTS.length;
 
   console.info("─── Seed complete ───────────────────────────────────────");
@@ -2264,7 +2780,11 @@ Notes: figures are illustrative seed data for local demos.
   console.info(`  Chat:          #general + #fundraising, a DM with Raymond (unread), reactions + a reply thread`);
   console.info(`  Notifications: ${NOTIFICATIONS.length} (7 unread)`);
   console.info(`  Audit logs:    ${AUDITS.length} entries`);
-  console.info(`  Documents:     ${documentCount} ready TXT files in data room`);
+  console.info(`  Documents:     ${documentCount} in data room (2 TXT, 1 rendered PDF, 1 rendered PPTX)`);
+  console.info(
+    "  Reviewers:     4 invitations — in-review w/ forwarding flagged, NDA-gated, revoked, password-protected pending",
+  );
+  console.info(`                 password link: ${reviewerPassword}`);
   console.info("─────────────────────────────────────────────────────────");
 }
 

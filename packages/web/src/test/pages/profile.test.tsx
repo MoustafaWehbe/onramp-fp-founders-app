@@ -3,6 +3,8 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const updateProfile = vi.fn();
+const uploadAvatar = vi.fn();
+const removeAvatar = vi.fn();
 const PROFILE_USER = {
   id: "user-1",
   email: "ada@example.com",
@@ -15,6 +17,8 @@ vi.mock("../../hooks/useAuth", () => ({
   useAuth: () => ({
     user: PROFILE_USER,
     updateProfile,
+    uploadAvatar,
+    removeAvatar,
   }),
 }));
 
@@ -29,7 +33,7 @@ import { Profile } from "../../pages/dashboard/Profile";
 beforeEach(() => vi.clearAllMocks());
 
 describe("Profile", () => {
-  it("saves edited names with the current profile photo", async () => {
+  it("saves edited names without touching the photo", async () => {
     const user = userEvent.setup();
     render(<Profile />);
 
@@ -38,20 +42,21 @@ describe("Profile", () => {
     await user.type(firstName, "Augusta");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
-    expect(updateProfile).toHaveBeenCalledWith({
-      firstName: "Augusta",
-      lastName: "Lovelace",
-      avatarUrl: "https://images.example.com/ada.jpg",
-    });
+    expect(updateProfile).toHaveBeenCalledWith({ firstName: "Augusta", lastName: "Lovelace" });
+    expect(uploadAvatar).not.toHaveBeenCalled();
+    expect(removeAvatar).not.toHaveBeenCalled();
   });
 
-  it("can stage removal of the current profile photo", async () => {
+  it("removes the current profile photo on save", async () => {
     const user = userEvent.setup();
     render(<Profile />);
 
     await user.click(screen.getByRole("button", { name: "Remove" }));
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
-    expect(updateProfile).toHaveBeenCalledWith(expect.objectContaining({ avatarUrl: null }));
+    expect(removeAvatar).toHaveBeenCalledOnce();
+    expect(uploadAvatar).not.toHaveBeenCalled();
+    // Names were untouched, so there's nothing for updateProfile to do.
+    expect(updateProfile).not.toHaveBeenCalled();
   });
 });

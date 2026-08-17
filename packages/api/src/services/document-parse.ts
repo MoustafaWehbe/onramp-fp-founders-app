@@ -1,5 +1,14 @@
 import { createError } from "../utils/errors";
 
+// LlamaCloud API keys are region-locked (created under either the default US
+// org or an EU org) and the wrong endpoint for a given key fails with a 401
+// "Invalid API Key. Please check your region" — not a bad-key error. Override
+// via LLAMA_CLOUD_BASE_URL for an EU key (https://api.cloud.eu.llamaindex.ai).
+// See https://developers.llamaindex.ai/python/cloud/general/regions.
+function llamaCloudBaseUrl(): string {
+  return process.env.LLAMA_CLOUD_BASE_URL?.replace(/\/+$/, "") || "https://api.cloud.llamaindex.ai";
+}
+
 /**
  * Extract structured markdown from an uploaded vault file.
  * Prefer LlamaParse when LLAMA_CLOUD_API_KEY is set; TXT falls back to utf8;
@@ -17,18 +26,19 @@ export async function extractDocumentMarkdown(input: {
   const apiKey = process.env.LLAMA_CLOUD_API_KEY;
   if (!apiKey) {
     throw createError(
-      "LLAMA_CLOUD_API_KEY is not configured — cannot parse PDF/DOCX/XLSX in this environment",
+      "LLAMA_CLOUD_API_KEY is not configured — cannot parse PDF/DOCX/XLSX/PPTX in this environment",
       503,
       "PARSE_UNAVAILABLE",
     );
   }
+  const baseUrl = llamaCloudBaseUrl();
 
   const form = new FormData();
   const blob = new Blob([input.buffer], { type: input.mimeType });
   form.append("file", blob, input.originalFilename);
   form.append("result_type", "markdown");
 
-  const uploadRes = await fetch("https://api.cloud.llamaindex.ai/api/v1/parsing/upload", {
+  const uploadRes = await fetch(`${baseUrl}/api/v1/parsing/upload`, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}` },
     body: form,
@@ -45,7 +55,7 @@ export async function extractDocumentMarkdown(input: {
   for (let attempt = 0; attempt < 40; attempt++) {
     await new Promise((r) => setTimeout(r, 1500));
     const statusRes = await fetch(
-      `https://api.cloud.llamaindex.ai/api/v1/parsing/job/${uploaded.id}`,
+      `${baseUrl}/api/v1/parsing/job/${uploaded.id}`,
       { headers: { Authorization: `Bearer ${apiKey}` } },
     );
     if (!statusRes.ok) continue;
@@ -58,7 +68,7 @@ export async function extractDocumentMarkdown(input: {
   }
 
   const resultRes = await fetch(
-    `https://api.cloud.llamaindex.ai/api/v1/parsing/job/${uploaded.id}/result/markdown`,
+    `${baseUrl}/api/v1/parsing/job/${uploaded.id}/result/markdown`,
     { headers: { Authorization: `Bearer ${apiKey}` } },
   );
   if (!resultRes.ok) {

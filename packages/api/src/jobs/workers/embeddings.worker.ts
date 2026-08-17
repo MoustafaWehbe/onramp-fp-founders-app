@@ -45,10 +45,9 @@ export const embeddingsJob = {
     }
 
     if (entityType === "document_chunk") {
-      // pgvector column is Unsupported in Prisma — persist via parameterized raw SQL.
       const vectorLiteral = `[${embedding.join(",")}]`;
       await prisma.$executeRawUnsafe(
-        `UPDATE "document_chunks" SET "embedding" = $1::vector WHERE "id" = $2::uuid`,
+        `UPDATE "document_chunks" SET "embedding" = $1::vector WHERE "id" = $2`,
         vectorLiteral,
         entityId,
       );

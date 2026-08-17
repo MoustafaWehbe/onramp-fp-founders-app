@@ -16,7 +16,14 @@ export const NOTIFICATION_TYPES = {
   DEAL_NO_NEXT_STEP: "deal_no_next_step",
   CHAT_MENTION: "chat_mention",
   DIRECT_MESSAGE: "direct_message",
+  REVIEWER_OPENED: "reviewer_opened",
+  FORWARD_SUSPECTED: "forward_suspected",
 } as const;
+
+/** How long a forward-suspected alert suppresses the next one for the same
+ * invitation — a third and fourth device showing up shouldn't re-page the
+ * founder every heartbeat, but it should eventually surface again. */
+const FORWARD_ALERT_COOLDOWN_HOURS = 24;
 
 /**
  * How long a deal reminder suppresses the next one for the same deal. Unlike
@@ -394,6 +401,97 @@ export class NotificationService {
       });
     } catch (err) {
       console.error("[notifyDirectMessage] failed:", err);
+    }
+  }
+
+  /**
+   * "X is reading your deck right now" fires once per reviewer session (the
+   * caller gates this on whether a ReviewerVisit already exists for the
+   * session), not deduped further here — each session opening the portal is
+   * new information, the same treatment as a mention or a DM.
+   */
+  async notifyReviewerOpened(input: {
+    userId: string;
+    startupId: string;
+    invitationId: string;
+    reviewerLabel: string;
+    documentTitle: string;
+  }): Promise<void> {
+    try {
+      const created = await prisma.notification.create({
+        data: {
+          userId: input.userId,
+          startupId: input.startupId,
+          type: NOTIFICATION_TYPES.REVIEWER_OPENED,
+          title: `${input.reviewerLabel} is reading ${input.documentTitle}`,
+          body: null,
+          entityType: "reviewer_invitation",
+          entityId: input.invitationId,
+        },
+        select: { id: true, type: true, title: true, body: true },
+      });
+
+      notificationBus.publish(input.userId, {
+        type: "notification.created",
+        notification: created,
+      });
+    } catch (err) {
+      console.error("[notifyReviewerOpened] failed:", err);
+    }
+  }
+
+  /**
+   * "Opened from 2 devices" — a signal the link may have been forwarded,
+   * never presented as proof (see reviewer-secure-viewer-plan.md §7). Cooldown
+   * mirrors notifyDeal below: a third or fourth device showing up shouldn't
+   * re-page the founder on every heartbeat.
+   */
+  async notifyForwardSuspected(input: {
+    userId: string;
+    startupId: string;
+    invitationId: string;
+    reviewerLabel: string;
+    distinctDevices: number;
+    distinctIps: number;
+  }): Promise<void> {
+    try {
+      const cooldownStart = new Date(Date.now() - FORWARD_ALERT_COOLDOWN_HOURS * 60 * 60 * 1000);
+      const recent = await prisma.notification.findFirst({
+        where: {
+          userId: input.userId,
+          type: NOTIFICATION_TYPES.FORWARD_SUSPECTED,
+          entityType: "reviewer_invitation",
+          entityId: input.invitationId,
+          createdAt: { gte: cooldownStart },
+        },
+        select: { id: true },
+      });
+      if (recent) return;
+
+      const signal =
+        input.distinctDevices >= 2
+          ? `${input.distinctDevices} devices`
+          : `${input.distinctIps} locations`;
+
+      const created = await prisma.notification.create({
+        data: {
+          userId: input.userId,
+          startupId: input.startupId,
+          type: NOTIFICATION_TYPES.FORWARD_SUSPECTED,
+          title: `${input.reviewerLabel}'s link may have been forwarded`,
+          body: `Opened from ${signal}. This is a signal, not proof — worth a look.`,
+          entityType: "reviewer_invitation",
+          entityId: input.invitationId,
+        },
+        select: { id: true, type: true, title: true, body: true },
+      });
+
+      notificationBus.publish(input.userId, {
+        type: "notification.created",
+        notification: created,
+      });
+    } catch (err) {
+      console.error("[notifyForwardSuspected] failed:", err);
     }
   }
 

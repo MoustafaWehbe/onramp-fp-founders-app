@@ -106,4 +106,23 @@ describe("api-client refresh handling", () => {
     await expect(onRejected(alreadyRetried)).rejects.toBe(alreadyRetried);
     expect(axiosPost).not.toHaveBeenCalled();
   });
+
+  it("serializes the refresh call through navigator.locks when available, so a second tab waits its turn", async () => {
+    const locksRequest = vi.fn((_name: string, fn: () => Promise<unknown>) => fn());
+    // @ts-expect-error jsdom doesn't implement the Web Locks API
+    globalThis.navigator.locks = { request: locksRequest };
+
+    await import("../../lib/api-client");
+
+    axiosPost.mockResolvedValueOnce({});
+    instanceCall.mockResolvedValue({ data: "retried" });
+
+    await onRejected(unauthorized({ _retry: undefined }));
+
+    expect(locksRequest).toHaveBeenCalledWith("fp:auth-refresh", expect.any(Function));
+    expect(axiosPost).toHaveBeenCalledTimes(1);
+
+    // @ts-expect-error cleanup so other tests see the same jsdom-default navigator
+    delete globalThis.navigator.locks;
+  });
 });

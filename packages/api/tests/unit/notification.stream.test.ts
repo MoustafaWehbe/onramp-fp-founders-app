@@ -36,7 +36,6 @@ function makeReqRes() {
 
 function open() {
   const ctx = makeReqRes();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   notificationController.stream(ctx.req as any, ctx.res as any);
   return ctx;
 }

@@ -1,6 +1,8 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
+import { storageService } from "./storage.service";
+import { AUDIT_ACTIONS, recordAuditEvent } from "./audit-writer";
 import type { CreateStartupInput, UpdateStartupInput } from "../validators/startup.schemas";
 import type { CreateRoleInput, UpdateRoleInput } from "../validators/role.schemas";
 import { ROLE_DEFINITIONS, ROLE_TEMPLATES } from "../config/permissions";
@@ -177,15 +179,26 @@ export class StartupService {
     };
   }
 
-  async updateStartup(startupId: string, input: UpdateStartupInput) {
+  async updateStartup(startupId: string, input: UpdateStartupInput, userId: string) {
     const existing = await prisma.startup.findUnique({ where: { id: startupId }, select: { id: true } });
     if (!existing) throw createError("Startup not found", 404, "NOT_FOUND");
 
-    return prisma.startup.update({
+    const startup = await prisma.startup.update({
       where: { id: startupId },
       data: input,
       select: STARTUP_SELECT,
     });
+
+    await recordAuditEvent({
+      startupId,
+      userId,
+      action: AUDIT_ACTIONS.UPDATE,
+      entityType: "startup",
+      entityId: startupId,
+      changes: input,
+    });
+
+    return startup;
   }
 
   async deleteStartup(startupId: string) {
@@ -245,12 +258,13 @@ export class StartupService {
     return unique.map((k) => byKey.get(k)!);
   }
 
-  async createRole(startupId: string, input: CreateRoleInput) {
+  async createRole(startupId: string, input: CreateRoleInput, userId: string) {
     const permissionIds = await this.resolvePermissionIds(input.permissions);
 
+    let role: { id: string; name: string; description: string | null; isSystemRole: boolean; permissions: string[]; memberCount: number };
     try {
-      return await prisma.$transaction(async (tx) => {
-        const role = await tx.role.create({
+      role = await prisma.$transaction(async (tx) => {
+        const created = await tx.role.create({
           data: {
             startupId,
             name: input.name,
@@ -260,10 +274,10 @@ export class StartupService {
         });
 
         await tx.rolePermission.createMany({
-          data: permissionIds.map((permissionId) => ({ roleId: role.id, permissionId })),
+          data: permissionIds.map((permissionId) => ({ roleId: created.id, permissionId })),
         });
 
-        return { id: role.id, name: role.name, description: role.description, isSystemRole: false, permissions: input.permissions, memberCount: 0 };
+        return { id: created.id, name: created.name, description: created.description, isSystemRole: false, permissions: input.permissions, memberCount: 0 };
       });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
@@ -271,9 +285,20 @@ export class StartupService {
       }
       throw err;
     }
+
+    await recordAuditEvent({
+      startupId,
+      userId,
+      action: AUDIT_ACTIONS.CREATE,
+      entityType: "role",
+      entityId: role.id,
+      changes: { name: role.name, permissions: role.permissions },
+    });
+
+    return role;
   }
 
-  async updateRole(startupId: string, roleId: string, input: UpdateRoleInput) {
+  async updateRole(startupId: string, roleId: string, input: UpdateRoleInput, userId: string) {
     const role = await prisma.role.findUnique({ where: { id: roleId }, select: { id: true, startupId: true, name: true } });
     if (!role || role.startupId !== startupId) {
       throw createError("Role not found in this startup", 404, "ROLE_NOT_FOUND");
@@ -284,7 +309,7 @@ export class StartupService {
 
     const permissionIds = input.permissions ? await this.resolvePermissionIds(input.permissions) : null;
 
-    return prisma.$transaction(async (tx) => {
+    const updated = await prisma.$transaction(async (tx) => {
       if (input.description !== undefined) {
         await tx.role.update({ where: { id: roleId }, data: { description: input.description } });
       }
@@ -298,7 +323,7 @@ export class StartupService {
         }
       }
 
-      const updated = await tx.role.findUniqueOrThrow({
+      const row = await tx.role.findUniqueOrThrow({
         where: { id: roleId },
         select: {
           id: true,
@@ -311,20 +336,31 @@ export class StartupService {
       });
 
       return {
-        id: updated.id,
-        name: updated.name,
-        description: updated.description,
-        isSystemRole: updated.isSystemRole,
-        permissions: permissionKeys(updated.rolePermissions),
-        memberCount: updated._count.members,
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        isSystemRole: row.isSystemRole,
+        permissions: permissionKeys(row.rolePermissions),
+        memberCount: row._count.members,
       };
     });
+
+    await recordAuditEvent({
+      startupId,
+      userId,
+      action: AUDIT_ACTIONS.UPDATE,
+      entityType: "role",
+      entityId: roleId,
+      changes: { name: updated.name, permissions: updated.permissions },
+    });
+
+    return updated;
   }
 
-  async deleteRole(startupId: string, roleId: string) {
+  async deleteRole(startupId: string, roleId: string, userId: string) {
     const role = await prisma.role.findUnique({
       where: { id: roleId },
-      select: { id: true, startupId: true, isSystemRole: true, _count: { select: { members: true } } },
+      select: { id: true, startupId: true, name: true, isSystemRole: true, _count: { select: { members: true } } },
     });
     if (!role || role.startupId !== startupId) {
       throw createError("Role not found in this startup", 404, "ROLE_NOT_FOUND");
@@ -337,6 +373,15 @@ export class StartupService {
     }
 
     await prisma.role.delete({ where: { id: roleId } });
+
+    await recordAuditEvent({
+      startupId,
+      userId,
+      action: AUDIT_ACTIONS.DELETE,
+      entityType: "role",
+      entityId: roleId,
+      changes: { name: role.name },
+    });
   }
 
   async listMembers(startupId: string) {
@@ -352,6 +397,7 @@ export class StartupService {
             lastName: true,
             email: true,
             avatarUrl: true,
+            avatarStorageKey: true,
           },
         },
       },
@@ -374,7 +420,7 @@ export class StartupService {
             firstName: m.user.firstName,
             lastName: m.user.lastName,
             email: m.user.email,
-            avatarUrl: m.user.avatarUrl,
+            avatarUrl: storageService.resolveAvatarUrl(m.user.avatarStorageKey, m.user.avatarUrl),
           },
         };
       }
