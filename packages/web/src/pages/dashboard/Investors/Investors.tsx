@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Upload, Users } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { Button } from "../../../components/ui/button";
@@ -135,18 +135,26 @@ export function Investors() {
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
   const [quickEmailInvestor, setQuickEmailInvestor] = useState<InvestorRow | null>(null);
 
-  // A chat unfurl card or notification can deep-link straight to one contact
-  // via `?investor=` it may not be on the current filtered/paginated page,
-  // so it's fetched directly rather than looked up in `rows`.
-  const [deepLinkInvestorId] = useState(() => new URLSearchParams(window.location.search).get("investor"));
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkInvestorId = searchParams.get("investor");
   const deepLinkInvestorQuery = useQuery({
     queryKey: qk.investors(startupId, { deepLink: deepLinkInvestorId }),
     queryFn: () => getInvestor(startupId, deepLinkInvestorId!),
     enabled: deepLinkInvestorId !== null,
   });
   useEffect(() => {
-    if (deepLinkInvestorQuery.data) setViewing(mapContactToRow(deepLinkInvestorQuery.data));
-  }, [deepLinkInvestorQuery.data]);
+    if (!deepLinkInvestorId || !deepLinkInvestorQuery.data) return;
+    setViewing(mapContactToRow(deepLinkInvestorQuery.data));
+    setSearchParams(
+      (prev) => {
+        if (!prev.has("investor")) return prev;
+        const next = new URLSearchParams(prev);
+        next.delete("investor");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [deepLinkInvestorId, deepLinkInvestorQuery.data, setSearchParams]);
 
   // Typing shouldn't fire a request per keystroke now that search runs server-side.
   useEffect(() => {

@@ -1,6 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, Upload } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
 import { EmptyState } from "../../../components/shared/EmptyState";
@@ -38,6 +39,7 @@ export function Documents() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const versionInputRef = useRef<HTMLInputElement>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [versionTargetId, setVersionTargetId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -50,6 +52,29 @@ export function Documents() {
   const [deleteTarget, setDeleteTarget] = useState<VaultDocument | null>(null);
   const [versionsSheetDocId, setVersionsSheetDocId] = useState<string | null>(null);
   const [analyticsSheetDocId, setAnalyticsSheetDocId] = useState<string | null>(null);
+  const [focusedDocumentId, setFocusedDocumentId] = useState<string | null>(null);
+
+  // Header search deep-link: open that exact document's versions panel.
+  const deepLinkDocumentId = searchParams.get("document");
+  useEffect(() => {
+    if (!deepLinkDocumentId) return;
+    const id = deepLinkDocumentId;
+    setFocusedDocumentId(id);
+    // Force a clean open even if the sheet was already showing another doc.
+    setVersionsSheetDocId(null);
+    const timer = window.setTimeout(() => setVersionsSheetDocId(id), 0);
+    setSearchParams(
+      (prev) => {
+        if (!prev.has("document")) return prev;
+        const next = new URLSearchParams(prev);
+        next.delete("document");
+        next.delete("preview");
+        return next;
+      },
+      { replace: true },
+    );
+    return () => window.clearTimeout(timer);
+  }, [deepLinkDocumentId, setSearchParams]);
 
   const queryKey = ["documents", startupId, search, filters.documentType];
 
@@ -71,6 +96,14 @@ export function Documents() {
       return busy ? 3000 : false;
     },
   });
+
+  useEffect(() => {
+    if (!focusedDocumentId) return;
+    const node = window.document.querySelector(`[data-document-id="${focusedDocumentId}"]`);
+    node?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const timer = window.setTimeout(() => setFocusedDocumentId(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [focusedDocumentId, docsQuery.data?.data]);
 
   const allRows = docsQuery.data?.data ?? [];
   // Status has no server-side filter (the API only filters by type/search), so
@@ -208,14 +241,16 @@ export function Documents() {
       const fileRes = await fetch(access.url);
       if (!fileRes.ok) throw new Error(`Could not fetch file (${fileRes.status})`);
       const blob = await fileRes.blob();
-      const typed = new Blob([blob], { type: access.mimeType || blob.type || "application/octet-stream" });
+      const typed = new Blob([blob], {
+        type: access.mimeType || blob.type || "application/octet-stream",
+      });
       const objectUrl = URL.createObjectURL(typed);
 
       if (disposition === "download") {
-        const a = document.createElement("a");
+        const a = window.document.createElement("a");
         a.href = objectUrl;
         a.download = access.originalFilename || fallbackName;
-        document.body.appendChild(a);
+        window.document.body.appendChild(a);
         a.click();
         a.remove();
         window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
@@ -353,6 +388,7 @@ export function Documents() {
               <DocumentsTable
                 documents={rows}
                 selectedIds={selectedIds}
+                focusedDocumentId={focusedDocumentId}
                 onToggleOne={toggleOne}
                 canUpdate={canUpdate}
                 canDelete={canDelete}
@@ -374,6 +410,7 @@ export function Documents() {
             <DocumentsCardList
               documents={rows}
               selectedIds={selectedIds}
+              focusedDocumentId={focusedDocumentId}
               onToggleOne={toggleOne}
               canUpdate={canUpdate}
               canDelete={canDelete}

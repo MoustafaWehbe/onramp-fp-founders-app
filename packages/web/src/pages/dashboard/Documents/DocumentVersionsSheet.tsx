@@ -44,24 +44,31 @@ export function DocumentVersionsSheet({
     enabled: open,
   });
 
-  const doc = query.data;
+  // Never show a previous document while the next id is loading — that made
+  // every search selection look like "Northbeam Product Teaser".
+  const doc = query.data?.id === documentId ? query.data : undefined;
+  const showLoading = open && (query.isPending || query.isFetching) && !doc;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent>
+      <SheetContent key={documentId ?? "closed"}>
         <SheetHeader>
           <SheetTitle>Version history</SheetTitle>
-          <SheetDescription>{doc ? doc.title : "Every uploaded version of this document."}</SheetDescription>
+          <SheetDescription>
+            {doc ? doc.title : "Every uploaded version of this document."}
+          </SheetDescription>
         </SheetHeader>
 
-        {query.isPending ? (
+        {showLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 3 }, (_, index) => (
               <Skeleton key={index} className="h-20 w-full" />
             ))}
           </div>
         ) : query.isError ? (
-          <p className="text-sm text-destructive">{apiErrorMessage(query.error, "Could not load version history.")}</p>
+          <p className="text-sm text-destructive">
+            {apiErrorMessage(query.error, "Could not load version history.")}
+          </p>
         ) : (
           <ul className="space-y-2">
             {doc?.versions.map((version) => {
@@ -82,7 +89,9 @@ export function DocumentVersionsSheet({
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-sm font-medium">Version {version.versionNumber}</span>
+                          <span className="text-sm font-medium">
+                            {version.originalFilename || `Version ${version.versionNumber}`}
+                          </span>
                           {version.isCurrent && (
                             <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
                               Current
@@ -90,6 +99,8 @@ export function DocumentVersionsSheet({
                           )}
                         </div>
                         <div className="truncate text-xs text-muted-foreground">
+                          Version {version.versionNumber}
+                          {" · "}
                           {version.uploaderName ?? "Unknown uploader"} · {formatDate(version.createdAt)} ·{" "}
                           {formatFileSize(version.fileSize)}
                         </div>

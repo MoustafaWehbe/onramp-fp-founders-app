@@ -16,15 +16,19 @@ const HEARTBEAT_MS = 25_000;
 
 export const notificationController = {
   /**
-   * Server-sent events, chosen over WebSockets because the traffic is entirely
-   * server → client: it rides ordinary HTTP, so the existing cookie auth and
-   * trust-proxy setup apply unchanged, and the browser handles reconnection.
+   * Server-sent events to the browser. Events are produced via Redis pub/sub
+   * (see events/realtime-bus.ts) so workers / other API processes can publish
+   * and every process holding this user's open tabs delivers the frame.
+   *
+   * SSE is still the browser transport Redis cannot talk to the client
+   * directly. Chosen over WebSockets because traffic is entirely server →
+   * client: it rides ordinary HTTP, so cookie auth and trust-proxy apply
+   * unchanged, and the browser handles reconnection.
    *
    * Despite the route name, this stream carries every RealtimeEvent for the
-   * signed-in user, chat included see events/realtime-bus.ts. Multiplexing
-   * onto the one connection this endpoint already opens avoids a second
-   * EventSource per tab; an unrecognized `event:` name is simply ignored by
-   * whichever listeners haven't been added for it yet.
+   * signed-in user, chat included. Multiplexing onto one connection avoids a
+   * second EventSource per tab; an unrecognized `event:` name is simply
+   * ignored by listeners that have not registered for it.
    */
   stream: (req: Request, res: Response): void => {
     const userId = req.user!.userId;

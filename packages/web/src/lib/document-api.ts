@@ -127,7 +127,8 @@ export async function confirmDocumentVersion(
 }
 
 export async function getDocumentFileAccess(startupId: string, documentId: string, versionId?: string) {
-  const { data } = await apiClient.post<{
+  // No JSON body — Express rejects a literal `null` body (`entity.parse.failed`).
+  const { data } = await apiClient.request<{
     data: {
       url: string;
       expiresInSeconds: number;
@@ -135,7 +136,9 @@ export async function getDocumentFileAccess(startupId: string, documentId: strin
       originalFilename: string;
       versionId: string;
     };
-  }>(`/startups/${startupId}/documents/${documentId}/file-access`, undefined, {
+  }>({
+    method: "POST",
+    url: `/startups/${startupId}/documents/${documentId}/file-access`,
     params: versionId ? { versionId } : undefined,
   });
   return data.data;

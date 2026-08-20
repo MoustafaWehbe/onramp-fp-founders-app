@@ -1,5 +1,5 @@
 import { useState, type ComponentType } from "react";
-import { AlertTriangle, Bell, CheckCheck, ClipboardCheck, Clock, Crown, Eye, LogOut, Menu, MessageSquare, Plus, Search, Shield, Sparkles, Users, Wallet } from "lucide-react";
+import { AlertTriangle, Bell, CheckCheck, ClipboardCheck, Clock, Crown, Eye, LogOut, Menu, MessageSquare, Plus, Shield, Sparkles, Users, Wallet } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useNotifications, type NotificationRow } from "../../hooks/useNotifications";
@@ -13,6 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { GlobalSearch } from "./GlobalSearch";
 
 type HeaderProps = {
   onMenuClick?: () => void;
@@ -35,20 +36,7 @@ export function Header({ onMenuClick }: HeaderProps) {
       </Button>
 
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        <div className="relative hidden max-w-md flex-1 md:block">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            placeholder="Search investors, documents, notes…"
-            className="h-9 w-full rounded-md border border-border bg-surface pl-9 pr-16 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-          <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground lg:inline-block">
-            ⌘K
-          </kbd>
-        </div>
-
-        <Button type="button" variant="ghost" size="icon" aria-label="Search" className="md:hidden">
-          <Search className="h-4 w-4" />
-        </Button>
+        <GlobalSearch />
 
         <NotificationsMenu />
 

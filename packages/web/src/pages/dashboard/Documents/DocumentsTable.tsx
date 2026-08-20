@@ -15,6 +15,7 @@ function scoreColor(score: number) {
 type DocumentsTableProps = {
   documents: VaultDocument[];
   selectedIds: Set<string> | null;
+  focusedDocumentId?: string | null;
   onToggleOne: (id: string) => void;
   canUpdate: boolean;
   canDelete: boolean;
@@ -31,6 +32,7 @@ type DocumentsTableProps = {
 export function DocumentsTable({
   documents,
   selectedIds,
+  focusedDocumentId = null,
   onToggleOne,
   canUpdate,
   canDelete,
@@ -67,16 +69,19 @@ export function DocumentsTable({
             const version = doc.currentVersion;
             const status = statusOf(version);
             const selected = selectedIds?.has(doc.id) ?? false;
+            const focused = focusedDocumentId === doc.id;
 
             return (
               <tr
                 key={doc.id}
+                data-document-id={doc.id}
                 aria-selected={selectionActive ? selected : undefined}
                 onClick={selectionActive ? () => onToggleOne(doc.id) : undefined}
                 className={cn(
                   "transition-colors",
                   selectionActive ? "cursor-pointer hover:bg-surface-hover/50" : "hover:bg-surface-hover/50",
                   selected && "bg-primary/[0.06]",
+                  focused && "bg-primary/10 ring-1 ring-inset ring-primary/40",
                 )}
               >
                 <td className="px-4 py-3">
