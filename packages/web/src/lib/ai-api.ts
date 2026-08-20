@@ -99,6 +99,10 @@ export async function updateAiSession(startupId: string, sessionId: string, inpu
   return data.data;
 }
 
+export async function archiveAiSession(startupId: string, sessionId: string) {
+  await apiClient.delete(`/startups/${startupId}/ai/sessions/${sessionId}`);
+}
+
 export async function listAiMessages(startupId: string, sessionId: string) {
   const { data } = await apiClient.get<{ data: AiChatMessage[] }>(`/startups/${startupId}/ai/sessions/${sessionId}/messages`);
   return data.data;

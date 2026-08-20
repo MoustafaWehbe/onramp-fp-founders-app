@@ -1889,6 +1889,8 @@ async function main() {
     await tx.rolePermission.deleteMany();
     await tx.role.deleteMany();
     await tx.passwordReset.deleteMany();
+    // Auth middleware validates the session family on every request, so this
+    // makes any browser cookies from before a reseed invalid immediately.
     await tx.refreshToken.updateMany({ data: { replacedById: null } });
     await tx.refreshToken.deleteMany();
     await tx.pendingRegistration.deleteMany();

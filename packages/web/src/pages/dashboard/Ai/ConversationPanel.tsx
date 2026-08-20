@@ -96,9 +96,9 @@ export function ConversationPanel({ startupId, session, canCreate, prefill }: Pr
 
   if (!session) return <Welcome />;
   const activeAssistant = messages.find((message) => message.role === "assistant" && (message.status === "pending" || message.status === "streaming"));
-  return <main className="flex min-h-[460px] min-w-0 flex-col">
-    <div className="border-b px-5 py-4"><h2 className="truncate font-display text-base font-semibold">{session.title ?? "Untitled conversation"}</h2><p className="mt-0.5 text-xs text-muted-foreground">Private to you in this workspace</p></div>
-    <div className="scrollbar-slim flex-1 space-y-5 overflow-y-auto px-5 py-6">
+  return <main className="flex min-h-[460px] min-w-0 flex-col bg-gradient-to-b from-muted/[0.12] to-transparent">
+    <div className="border-b bg-card/75 px-5 py-4 backdrop-blur-sm"><div className="flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary"><Sparkles className="h-3.5 w-3.5" /></span><h2 className="truncate font-display text-base font-semibold">{session.title ?? "Untitled conversation"}</h2></div><p className="mt-1.5 text-xs text-muted-foreground">Private to you · grounded in this conversation’s context</p></div>
+    <div className="scrollbar-slim flex-1 space-y-6 overflow-y-auto px-5 py-6">
       {messagesQuery.isPending && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading conversation</div>}
       {messagesQuery.isError && <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">This conversation is unavailable with your current permissions.</div>}
       {messages.map((message) => <MessageBubble key={message.id} message={message} onRetry={message.role === "user" ? () => setDraft(message.content) : undefined} onStop={activeAssistant?.id === message.id ? () => cancelMutation.mutate(message.id) : undefined} stopping={cancelMutation.isPending} />)}
