@@ -65,6 +65,23 @@ export type AiStreamEvent = {
   payload: Record<string, unknown>;
 };
 
+export type AiAnalysis = {
+  id: string;
+  startupId: string;
+  documentVersionId: string;
+  sessionId: string | null;
+  status: "queued" | "processing" | "completed" | "failed" | "cancelled";
+  overallScore: number | null;
+  narrativeScore: number | null;
+  marketValidationScore: number | null;
+  financialScore: number | null;
+  confidenceScore: number | null;
+  summaryReport: string | null;
+  result: unknown;
+  errorMessage: string | null;
+  createdAt: string;
+};
+
 export async function listAiSessions(startupId: string) {
   const { data } = await apiClient.get<{ data: AiSession[] }>(`/startups/${startupId}/ai/sessions`);
   return data.data;
@@ -90,4 +107,18 @@ export async function createAiMessage(startupId: string, sessionId: string, cont
 
 export async function cancelAiMessage(startupId: string, sessionId: string, messageId: string) {
   await apiClient.post(`/startups/${startupId}/ai/sessions/${sessionId}/messages/${messageId}/cancel`);
+}
+
+export async function listAiAnalyses(startupId: string, documentVersionId?: string) {
+  const { data } = await apiClient.get<{ data: AiAnalysis[] }>(`/startups/${startupId}/ai/analyses`, { params: documentVersionId ? { documentVersionId } : undefined });
+  return data.data;
+}
+
+export async function createAiAnalysis(startupId: string, input: { documentVersionId: string; sessionId?: string }) {
+  const { data } = await apiClient.post<{ data: AiAnalysis }>(`/startups/${startupId}/ai/analyses`, input);
+  return data.data;
+}
+
+export async function cancelAiAnalysis(startupId: string, analysisId: string) {
+  await apiClient.post(`/startups/${startupId}/ai/analyses/${analysisId}/cancel`);
 }

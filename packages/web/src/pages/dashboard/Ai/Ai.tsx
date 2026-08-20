@@ -15,6 +15,7 @@ import { listFundraisingRounds } from "../../../lib/fundraising-api";
 import { qk } from "../../../lib/query-keys";
 import { cn, formatDate } from "../../../lib/utils";
 import { ConversationPanel } from "./ConversationPanel";
+import { AnalysisPanel } from "./AnalysisPanel";
 
 export function Ai() {
   const startupId = useActiveStartupId();
@@ -27,6 +28,7 @@ export function Ai() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [selectedVersionIds, setSelectedVersionIds] = useState<string[]>([]);
   const [roundId, setRoundId] = useState<string | undefined>();
+  const [analysisPrompt, setAnalysisPrompt] = useState<string | undefined>();
 
   const sessionsQuery = useQuery({
     queryKey: qk.aiSessions(startupId),
@@ -92,12 +94,12 @@ export function Ai() {
             {sessionsQuery.isPending ? <div className="space-y-2"><Skeleton className="h-14 w-full" /><Skeleton className="h-14 w-full" /></div> : sessionsQuery.isError ? <p className="px-1 text-sm text-muted-foreground">Could not load conversations.</p> : sessions.length === 0 ? <p className="px-1 text-sm text-muted-foreground">Start a private conversation to keep your work organized.</p> : <div className="space-y-1">{sessions.map((session) => <SessionButton key={session.id} session={session} selected={session.id === selectedSessionId} onClick={() => setSelectedSessionId(session.id)} />)}</div>}
           </aside>
 
-          <ConversationPanel startupId={startupId} session={selectedSession} canCreate={canCreateSession} />
+          <ConversationPanel startupId={startupId} session={selectedSession} canCreate={canCreateSession} prefill={analysisPrompt} />
 
           <aside className="p-4">
             <h2 className="font-display text-sm font-semibold">Conversation context</h2>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Select only information that should be available to a new conversation.</p>
-            {selectedSession ? <SelectedContext session={selectedSession} /> : <>
+            {selectedSession ? <><SelectedContext session={selectedSession} /><AnalysisPanel startupId={startupId} session={selectedSession} canCreate={canCreateSession} onAskFollowup={setAnalysisPrompt} /></> : <>
               {canReadDocuments && <div className="mt-5"><div className="flex items-center gap-2 text-sm font-medium"><FileText className="h-4 w-4 text-muted-foreground" /> Documents</div><div className="mt-2 max-h-44 space-y-2 overflow-y-auto pr-1">{readyDocuments.length === 0 ? <p className="text-xs text-muted-foreground">No ready documents available.</p> : readyDocuments.map((document) => { const version = document.currentVersion!; return <label key={version.id} className="flex cursor-pointer items-start gap-2 rounded-md p-1.5 hover:bg-muted"><Checkbox checked={selectedVersionIds.includes(version.id)} onChange={() => toggleVersion(version.id)} /><span className="min-w-0 text-xs"><span className="block truncate text-foreground">{document.title}</span><span className="text-muted-foreground">Version {version.versionNumber}</span></span></label>; })}</div></div>}
               {canReadFinancial && <div className="mt-5"><div className="flex items-center gap-2 text-sm font-medium"><Wallet className="h-4 w-4 text-muted-foreground" /> Round</div><Select className="mt-2" value={roundId ?? ""} onValueChange={(value) => setRoundId(value || undefined)} placeholder="No round selected" options={[{ value: "", label: "No round selected" }, ...rounds.map((round) => ({ value: round.id, label: round.roundName }))]} /></div>}
               {!canReadDocuments && !canReadFinancial && <p className="mt-5 rounded-md bg-muted p-3 text-xs text-muted-foreground">No optional workspace context is available with your current permissions.</p>}

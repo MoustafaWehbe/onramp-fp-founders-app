@@ -11,9 +11,9 @@ import { qk } from "../../../lib/query-keys";
 import { cn, formatDate } from "../../../lib/utils";
 import { AiArtifactRenderer } from "./artifacts/AiArtifactRenderer";
 
-type Props = { startupId: string; session: AiSession | null; canCreate: boolean };
+type Props = { startupId: string; session: AiSession | null; canCreate: boolean; prefill?: string };
 
-export function ConversationPanel({ startupId, session, canCreate }: Props) {
+export function ConversationPanel({ startupId, session, canCreate, prefill }: Props) {
   const queryClient = useQueryClient();
   const { open, close } = useAiStream();
   const [draft, setDraft] = useState("");
@@ -29,6 +29,7 @@ export function ConversationPanel({ startupId, session, canCreate }: Props) {
   useEffect(() => {
     setDraft(draftKey ? localStorage.getItem(draftKey) ?? "" : "");
   }, [draftKey]);
+  useEffect(() => { if (prefill) setDraft(prefill); }, [prefill]);
   useEffect(() => { if (draftKey) localStorage.setItem(draftKey, draft); }, [draft, draftKey]);
   useEffect(() => close, [close, session?.id]);
 
