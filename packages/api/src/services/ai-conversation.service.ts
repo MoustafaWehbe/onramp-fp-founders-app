@@ -8,10 +8,11 @@ import { aiArtifactService, aiCapabilityManifest } from "./ai-artifact.service";
 import { aiToolsService } from "./ai-tools.service";
 import type { AiToolName } from "./ai-capabilities.service";
 import type { CreateAiMessageInput, ListAiMessagesQuery } from "../validators/ai.schemas";
+import { getAiConfig } from "../config/ai";
 
 export interface AiConversationAccess { canReadDocuments: boolean; tools?: AiToolName[]; }
 
-const activeRuns = new Map<string, AbortController>();
+const activeRuns = new Map<string, { controller: AbortController; userId: string; runId?: string }>();
 
 export class AiConversationService {
   constructor(
@@ -86,8 +87,12 @@ export class AiConversationService {
     const replay = await aiStreamBroker.replayPersistent(messageId, lastSequence);
 
     if (message.status === "pending") {
+      const activeForUser = [...activeRuns.values()].filter((run) => run.userId === userId).length;
+      if (activeForUser >= getAiConfig().concurrentStreamsPerUser) {
+        throw createError("Too many AI responses are already in progress", 429, "AI_CONCURRENT_STREAM_LIMIT");
+      }
       const claimed = await prisma.aiChatMessage.updateMany({ where: { id: messageId, status: "pending" }, data: { status: "streaming" } });
-      if (claimed.count === 1) void this.runGeneration(session, messageId, access);
+      if (claimed.count === 1) void this.runGeneration(session, messageId, userId, access);
     }
     return { message, replay };
   }
@@ -96,20 +101,30 @@ export class AiConversationService {
     await this.ownedSession(startupId, userId, sessionId, false);
     const message = await prisma.aiChatMessage.findFirst({ where: { id: messageId, sessionId, role: "assistant", status: { in: ["pending", "streaming"] } }, select: { id: true } });
     if (!message) throw createError("AI message is not active", 409, "AI_MESSAGE_NOT_ACTIVE");
-    activeRuns.get(messageId)?.abort("cancelled");
+    activeRuns.get(messageId)?.controller.abort("cancelled");
     await prisma.aiChatMessage.update({ where: { id: messageId }, data: { status: "cancelled", completedAt: new Date() } });
+    await prisma.aiRun.updateMany({ where: { messageId, status: "started" }, data: { status: "cancelled", errorCode: "AI_CANCELLED", completedAt: new Date() } });
     aiStreamBroker.publish(sessionId, messageId, "message.cancelled", {});
   }
 
   subscribe(messageId: string, listener: (event: AiStreamEnvelope) => void) { return aiStreamBroker.subscribe(messageId, listener); }
 
-  private async runGeneration(session: any, messageId: string, access: AiConversationAccess): Promise<void> {
+  private async runGeneration(session: any, messageId: string, userId: string, access: AiConversationAccess): Promise<void> {
+    const startedAt = Date.now();
     const controller = new AbortController();
-    activeRuns.set(messageId, controller);
-    aiStreamBroker.publish(session.id, messageId, "message.started", {});
+    activeRuns.set(messageId, { controller, userId });
+    let runId: string | undefined;
     let content = "";
     let completed = false;
+    let timeToFirstTokenMs: number | undefined;
     try {
+      const run = await prisma.aiRun.create({ data: {
+        startupId: session.startupId, userId, sessionId: session.id, messageId,
+        operationType: "chat", provider: "openai", model: getAiConfig().chatModel,
+      } });
+      runId = run.id;
+      activeRuns.set(messageId, { controller, userId, runId });
+      aiStreamBroker.publish(session.id, messageId, "message.started", {});
       const history = await prisma.aiChatMessage.findMany({ where: { sessionId: session.id, status: { in: ["completed", "streaming"] } }, orderBy: { createdAt: "asc" }, take: 30, select: { role: true, content: true } });
       const selectedTools = aiToolsService.selectForPrompt(history.at(-1)?.content ?? "", access.tools ?? [], session.roundId);
       const toolResults = [] as Array<{ tool: AiToolName; result: unknown }>;
@@ -125,6 +140,7 @@ export class AiConversationService {
       }
       const versionIds = session.documents.map((document: any) => document.documentVersionId);
       const chunks = versionIds.length ? await this.retrieval.retrieveDocumentContext({ startupId: session.startupId, query: history.at(-1)?.content ?? "", pinnedDocumentVersionIds: versionIds, signal: controller.signal }) : [];
+      const retrievalScores = chunks.map((chunk) => chunk.score);
       if (chunks.length) {
         await prisma.aiCitation.createMany({
           data: chunks.map((chunk, sortOrder) => ({
@@ -157,11 +173,18 @@ export class AiConversationService {
         signal: controller.signal,
       })) {
         if (event.type === "delta") {
+          if (timeToFirstTokenMs === undefined) timeToFirstTokenMs = Date.now() - startedAt;
           content += event.text;
           aiStreamBroker.publish(session.id, messageId, "message.delta", { text: event.text });
         }
         if (event.type === "completed") {
-          await prisma.aiChatMessage.update({ where: { id: messageId }, data: { status: "completed", content, model: "configured", inputTokens: event.usage?.inputTokens, outputTokens: event.usage?.outputTokens, completedAt: new Date() } });
+          const completedAt = new Date();
+          await prisma.aiChatMessage.update({ where: { id: messageId }, data: { status: "completed", content, model: getAiConfig().chatModel, inputTokens: event.usage?.inputTokens, outputTokens: event.usage?.outputTokens, latencyMs: Date.now() - startedAt, completedAt } });
+          await prisma.aiRun.update({ where: { id: runId }, data: { status: "completed", providerRequestId: event.providerRequestId, inputTokens: event.usage?.inputTokens, cachedInputTokens: event.usage?.cachedInputTokens, outputTokens: event.usage?.outputTokens, latencyMs: Date.now() - startedAt, completedAt } });
+          // Keep this raw until deployments run the accompanying migration and
+          // regenerate their Prisma client. No prompt, document text, or tool
+          // result is ever written to telemetry.
+          await prisma.$executeRaw`UPDATE "ai_runs" SET "time_to_first_token_ms" = ${timeToFirstTokenMs ?? null}, "retrieval_result_count" = ${chunks.length}, "retrieval_min_score" = ${retrievalScores.length ? Math.min(...retrievalScores) : null}, "retrieval_max_score" = ${retrievalScores.length ? Math.max(...retrievalScores) : null} WHERE "id" = ${runId}`;
           await prisma.aiChatSession.update({ where: { id: session.id }, data: { lastMessageAt: new Date() } });
           if (chunks.length) {
             const artifact = await aiArtifactService.createReady({
@@ -193,9 +216,13 @@ export class AiConversationService {
       }
       if (!completed) throw new Error("AI provider stream ended without a completion event");
     } catch (error: any) {
+      const code = controller.signal.aborted ? "AI_CANCELLED" : error?.code ?? "AI_PROVIDER_ERROR";
+      const status = controller.signal.aborted ? "cancelled" : "failed";
+      const completedAt = new Date();
+      if (runId) await prisma.aiRun.update({ where: { id: runId }, data: { status, errorCode: code, latencyMs: Date.now() - startedAt, completedAt } });
       if (controller.signal.aborted) return;
-      await prisma.aiChatMessage.update({ where: { id: messageId }, data: { status: "failed", errorCode: error?.code ?? "AI_PROVIDER_ERROR", errorMessage: "The AI response could not be completed.", completedAt: new Date() } });
-      aiStreamBroker.publish(session.id, messageId, "message.failed", { code: error?.code ?? "AI_PROVIDER_ERROR" });
+      await prisma.aiChatMessage.update({ where: { id: messageId }, data: { status: "failed", errorCode: code, errorMessage: "The AI response could not be completed.", latencyMs: Date.now() - startedAt, completedAt } });
+      aiStreamBroker.publish(session.id, messageId, "message.failed", { code });
     } finally {
       activeRuns.delete(messageId);
     }

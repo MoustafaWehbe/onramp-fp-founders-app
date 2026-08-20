@@ -33,6 +33,19 @@ export class AiAnalysisService {
       const session = await prisma.aiChatSession.findFirst({ where: { id: input.sessionId, startupId, userId }, select: { id: true } });
       if (!session) throw createError("AI session not found", 404, "AI_SESSION_NOT_FOUND");
     }
+    const config = getAiConfig();
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const [todayCount, queuedCount] = await Promise.all([
+      prisma.aiAnalysis.count({ where: { startupId, createdAt: { gte: dayStart } } }),
+      prisma.aiAnalysis.count({ where: { startupId, status: { in: ["queued", "processing"] } } }),
+    ]);
+    if (todayCount >= config.analysesPerStartupPerDay) {
+      throw createError("Daily AI analysis limit reached", 429, "AI_ANALYSIS_DAILY_LIMIT");
+    }
+    if (queuedCount >= config.queuedAnalysesPerStartup) {
+      throw createError("Too many AI analyses are already queued", 429, "AI_ANALYSIS_QUEUE_LIMIT");
+    }
     const analysis = await prisma.aiAnalysis.create({ data: { startupId, documentVersionId: version.id, requestedBy: userId, ...(input.sessionId ? { sessionId: input.sessionId } : {}), analysisType: "pitch_deck", schemaVersion: PITCH_DECK_RUBRIC_VERSION, rubricVersion: PITCH_DECK_RUBRIC_VERSION, status: "queued" } });
     const { aiAnalysisQueue } = await import("../jobs/queue");
     await aiAnalysisQueue.add("analyze-pitch-deck", { analysisId: analysis.id }, { jobId: analysis.id });

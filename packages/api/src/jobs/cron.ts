@@ -4,6 +4,7 @@ import { notifyStaleLeadsAndIdleDeals } from "./pipeline-reminders";
 import { notifyOverdueAndDueTodayTasks } from "./task-notifications";
 import { calendarSyncQueue } from "./queue";
 import { isGoogleIntegrationEnabled } from "../config/env";
+import { getAiConfig } from "../config/ai";
 
 export function startCronJobs(): void {
   // Delete expired pending registrations every 30 minutes
@@ -17,6 +18,24 @@ export function startCronJobs(): void {
       console.error("[cron] Failed to clean up pending registrations:", err);
     }
   });
+
+  // Archived AI conversations contain user prompts and generated content.
+  // Retention stays disabled until a deployment explicitly sets a policy;
+  // deleting the session cascades its messages, citations, tools and artifacts.
+  const chatRetentionDays = getAiConfig().chatRetentionDays;
+  if (chatRetentionDays > 0) {
+    cron.schedule("15 3 * * *", async () => {
+      try {
+        const cutoff = new Date(Date.now() - chatRetentionDays * 24 * 60 * 60 * 1_000);
+        const { count } = await prisma.aiChatSession.deleteMany({
+          where: { archivedAt: { not: null, lt: cutoff } },
+        });
+        if (count > 0) console.info(`[cron] Deleted ${count} AI chat session(s) past retention`);
+      } catch (err) {
+        console.error("[cron] Failed to enforce AI chat retention:", err);
+      }
+    });
+  }
 
   // Once a day is enough notifyOverdueAndDueTodayTasks skips tasks it has
   // already notified about, so a missed or re-run tick never duplicates a

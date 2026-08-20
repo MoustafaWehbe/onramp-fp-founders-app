@@ -4,8 +4,10 @@ import { FakeAiProvider } from "../../src/services/ai-provider.service";
 
 jest.mock("../../src/db/prisma", () => ({
   prisma: {
+    $executeRaw: jest.fn(),
     aiChatSession: { findFirst: jest.fn(), update: jest.fn() },
     aiChatMessage: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn(), findMany: jest.fn() },
+    aiRun: { create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
   },
 }));
 

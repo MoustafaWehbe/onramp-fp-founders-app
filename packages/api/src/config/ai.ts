@@ -14,6 +14,14 @@ function optionalRatio(name: string, fallback: number): number {
   return value;
 }
 
+function optionalNonNegativeInt(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0) throw new Error(`${name} must be a non-negative integer`);
+  return value;
+}
+
 export interface AiConfig {
   enabled: boolean;
   chatModel: string;
@@ -27,6 +35,11 @@ export interface AiConfig {
   retrievalTokenBudget: number;
   minimumRetrievalScore: number;
   maxRetries: number;
+  messagesPerMinute: number;
+  concurrentStreamsPerUser: number;
+  analysesPerStartupPerDay: number;
+  queuedAnalysesPerStartup: number;
+  chatRetentionDays: number;
 }
 
 /** Reads configuration at call time so test suites can safely override it. */
@@ -45,6 +58,13 @@ export function getAiConfig(): AiConfig {
     retrievalTokenBudget: optionalPositiveInt("AI_RETRIEVAL_TOKEN_BUDGET", 4_500),
     minimumRetrievalScore: optionalRatio("AI_MIN_RETRIEVAL_SCORE", 0.2),
     maxRetries: optionalPositiveInt("AI_MAX_RETRIES", 1),
+    messagesPerMinute: optionalPositiveInt("AI_MESSAGES_PER_MINUTE", 20),
+    concurrentStreamsPerUser: optionalPositiveInt("AI_CONCURRENT_STREAMS_PER_USER", 2),
+    analysesPerStartupPerDay: optionalPositiveInt("AI_ANALYSES_PER_STARTUP_PER_DAY", 20),
+    queuedAnalysesPerStartup: optionalPositiveInt("AI_QUEUED_ANALYSES_PER_STARTUP", 4),
+    // Zero deliberately means "not configured". Retention must be an explicit
+    // deployment policy decision, never an accidental default deletion rule.
+    chatRetentionDays: optionalNonNegativeInt("AI_CHAT_RETENTION_DAYS", 0),
   };
   if (config.embeddingDimensions !== 1536) throw new Error("AI_EMBEDDING_DIMENSIONS must remain 1536 while document_chunks uses vector(1536)");
   if (enabled && !process.env.OPENAI_API_KEY?.trim()) throw new Error("OPENAI_API_KEY is required when AI_ENABLED is true");
