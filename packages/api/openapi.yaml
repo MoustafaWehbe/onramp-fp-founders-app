@@ -2633,6 +2633,7 @@ components:
         sourceId: { type: string }
         label: { type: string }
         excerpt: { type: string, nullable: true }
+        metadata: { type: object, nullable: true, additionalProperties: true }
         sortOrder: { type: integer }
     AiChatMessage:
       type: object

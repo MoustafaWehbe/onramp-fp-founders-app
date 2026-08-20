@@ -16,6 +16,7 @@ import { qk } from "../../../lib/query-keys";
 import { cn, formatDate } from "../../../lib/utils";
 import { ConversationPanel } from "./ConversationPanel";
 import { AnalysisPanel } from "./AnalysisPanel";
+import { Link } from "react-router-dom";
 
 export function Ai() {
   const startupId = useActiveStartupId();
@@ -128,5 +129,5 @@ function SessionButton({ session, selected, onClick }: { session: AiSession; sel
 
 function SelectedContext({ session }: { session: AiSession }) {
   const documentCount = session.documents?.length ?? 0;
-  return <div className="mt-5 space-y-4 text-sm"><div><div className="flex items-center gap-2 font-medium"><FileText className="h-4 w-4 text-muted-foreground" /> Documents</div><p className="mt-1 text-xs text-muted-foreground">{documentCount ? `${documentCount} selected document${documentCount === 1 ? "" : "s"}` : "No documents selected"}</p></div>{session.roundId && <div><div className="flex items-center gap-2 font-medium"><Wallet className="h-4 w-4 text-muted-foreground" /> Round</div><p className="mt-1 text-xs text-muted-foreground">Selected for this conversation</p></div>}{session.persona && <div className="rounded-md border border-primary/25 bg-primary/5 p-2"><p className="text-xs font-medium text-primary">Simulation: {session.persona.name ?? "Investor persona"}</p><p className="mt-1 text-xs text-muted-foreground">AI-generated rehearsal, not a real investor.</p></div>}</div>;
+  return <div className="mt-5 space-y-4 text-sm"><div><div className="flex items-center gap-2 font-medium"><FileText className="h-4 w-4 text-muted-foreground" /> Documents</div>{documentCount ? <div className="mt-1 space-y-1">{session.documents?.map((document) => <Link key={document.documentVersionId} className="block text-xs text-primary hover:underline" to={`/documents?documentId=${encodeURIComponent(document.documentId)}`}>{document.title} · v{document.versionNumber}</Link>)}</div> : <p className="mt-1 text-xs text-muted-foreground">No documents selected</p>}</div>{session.roundId && <div><div className="flex items-center gap-2 font-medium"><Wallet className="h-4 w-4 text-muted-foreground" /> Round</div><Link className="mt-1 block text-xs text-primary hover:underline" to={`/fundraising?round=${encodeURIComponent(session.roundId)}`}>Open selected round</Link></div>}{session.persona && <div className="rounded-md border border-primary/25 bg-primary/5 p-2"><p className="text-xs font-medium text-primary">Simulation: {session.persona.name ?? "Investor persona"}</p><p className="mt-1 text-xs text-muted-foreground">AI-generated rehearsal, not a real investor.</p></div>}</div>;
 }

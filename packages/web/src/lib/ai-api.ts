@@ -35,6 +35,7 @@ export type AiCitation = {
   sourceId: string;
   label: string;
   excerpt: string | null;
+  metadata: unknown;
   sortOrder: number;
 };
 

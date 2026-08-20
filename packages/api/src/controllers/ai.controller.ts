@@ -1,4 +1,5 @@
 import { hasPermission } from "../middleware/rbac";
+import { resolveAiCapabilities } from "../services/ai-capabilities.service";
 import { asyncHandler } from "../utils/errors";
 import { aiChatService } from "../services/ai-chat.service";
 import { aiConversationService } from "../services/ai-conversation.service";
@@ -8,11 +9,11 @@ import type { NextFunction, Request, Response } from "express";
 
 async function accessFor(req: Express.Request) {
   const roleId = req.member!.roleId;
-  const [canReadDocuments, canReadFinancial] = await Promise.all([
-    hasPermission(roleId, "documents", "read"),
-    hasPermission(roleId, "financial", "read"),
-  ]);
-  return { canReadDocuments, canReadFinancial };
+  const grants = (await Promise.all([
+    "startup:read", "documents:read", "financial:read", "pipeline:read", "ai_reports:read", "ai_reports:create",
+  ].map(async (grant) => { const [resource, action] = grant.split(":"); return (await hasPermission(roleId, resource, action)) ? grant : null; }))).filter((grant): grant is string => Boolean(grant));
+  const capabilities = resolveAiCapabilities(grants);
+  return { canReadDocuments: grants.includes("documents:read"), canReadFinancial: grants.includes("financial:read"), tools: capabilities.tools };
 }
 
 export const aiController = {

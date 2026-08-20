@@ -10,6 +10,8 @@ import { cancelAiMessage, createAiMessage, listAiMessages, type AiChatMessage, t
 import { qk } from "../../../lib/query-keys";
 import { cn, formatDate } from "../../../lib/utils";
 import { AiArtifactRenderer } from "./artifacts/AiArtifactRenderer";
+import { Link } from "react-router-dom";
+import { aiRecordLink } from "../../../lib/ai-record-link";
 
 type Props = { startupId: string; session: AiSession | null; canCreate: boolean; prefill?: string };
 
@@ -105,9 +107,14 @@ export function ConversationPanel({ startupId, session, canCreate, prefill }: Pr
   </main>;
 }
 
+function Citation({ citation }: { citation: AiCitation }) {
+  const link = aiRecordLink(citation.sourceType, citation.sourceId, citation.metadata);
+  return <details className="rounded-md border bg-background px-3 py-2 text-xs"><summary className="cursor-pointer font-medium">Source: {citation.label}</summary>{citation.excerpt && <p className="mt-1 text-muted-foreground">{citation.excerpt}</p>}{link && <Link className="mt-2 inline-block text-primary hover:underline" to={link}>Open source</Link>}</details>;
+}
+
 function Welcome() { return <main className="flex min-h-[460px] flex-col items-center justify-center px-6 py-12 text-center"><div className="grid h-12 w-12 place-items-center rounded-xl bg-primary/10 text-primary"><Sparkles className="h-6 w-6" /></div><h2 className="mt-4 font-display text-xl font-semibold">How can I help?</h2><p className="mt-2 max-w-md text-sm text-muted-foreground">Choose relevant context, then start a conversation. Copilot only uses information you are allowed to access.</p><div className="mt-6 flex max-w-xl flex-wrap justify-center gap-2">{["What should I improve in my pitch deck?", "Help me prepare for an investor meeting.", "Summarize the selected documents."].map((prompt) => <span key={prompt} className="rounded-full border px-3 py-1.5 text-xs text-muted-foreground">{prompt}</span>)}</div></main>; }
 
 function MessageBubble({ message, onRetry, onStop, stopping }: { message: AiChatMessage; onRetry?: () => void; onStop?: () => void; stopping: boolean }) {
   const assistant = message.role === "assistant";
-  return <article className={cn("max-w-[92%]", assistant ? "mr-auto" : "ml-auto")}><div className={cn("rounded-xl px-4 py-3 text-sm leading-relaxed", assistant ? "bg-muted/70 text-foreground" : "bg-primary text-primary-foreground")}>{message.content || (assistant && <span className="inline-flex items-center gap-2 text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Thinking…</span>)}</div>{assistant && message.artifacts.map((artifact) => <AiArtifactRenderer key={artifact.id} artifact={artifact} />)}<div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground"><span>{formatDate(message.createdAt)}</span>{message.status === "streaming" && <span>Streaming</span>}{onStop && <Button size="sm" variant="ghost" onClick={onStop} disabled={stopping}><OctagonX /> Stop</Button>}{message.status === "failed" && <span className="inline-flex items-center gap-1 text-destructive"><AlertCircle className="h-3.5 w-3.5" /> {message.errorMessage ?? "Response failed"}</span>}{onRetry && <Button size="sm" variant="ghost" onClick={onRetry}><RotateCcw /> Reuse</Button>}</div>{assistant && message.citations.length > 0 && <div className="mt-2 space-y-1">{message.citations.map((citation) => <details key={citation.id} className="rounded-md border bg-background px-3 py-2 text-xs"><summary className="cursor-pointer font-medium">Source: {citation.label}</summary>{citation.excerpt && <p className="mt-1 text-muted-foreground">{citation.excerpt}</p>}</details>)}</div>}</article>;
+  return <article className={cn("max-w-[92%]", assistant ? "mr-auto" : "ml-auto")}><div className={cn("rounded-xl px-4 py-3 text-sm leading-relaxed", assistant ? "bg-muted/70 text-foreground" : "bg-primary text-primary-foreground")}>{message.content || (assistant && <span className="inline-flex items-center gap-2 text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Thinking…</span>)}</div>{assistant && message.artifacts.map((artifact) => <AiArtifactRenderer key={artifact.id} artifact={artifact} />)}<div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground"><span>{formatDate(message.createdAt)}</span>{message.status === "streaming" && <span>Streaming</span>}{onStop && <Button size="sm" variant="ghost" onClick={onStop} disabled={stopping}><OctagonX /> Stop</Button>}{message.status === "failed" && <span className="inline-flex items-center gap-1 text-destructive"><AlertCircle className="h-3.5 w-3.5" /> {message.errorMessage ?? "Response failed"}</span>}{onRetry && <Button size="sm" variant="ghost" onClick={onRetry}><RotateCcw /> Reuse</Button>}</div>{assistant && message.citations.length > 0 && <div className="mt-2 space-y-1">{message.citations.map((citation) => <Citation key={citation.id} citation={citation} />)}</div>}</article>;
 }

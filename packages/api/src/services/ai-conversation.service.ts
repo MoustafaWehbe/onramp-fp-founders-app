@@ -5,9 +5,11 @@ import { OpenAiProvider } from "./ai-provider.service";
 import { AiRetrievalService } from "./ai-retrieval.service";
 import { aiStreamBroker, type AiStreamEnvelope } from "./ai-stream-broker.service";
 import { aiArtifactService, aiCapabilityManifest } from "./ai-artifact.service";
+import { aiToolsService } from "./ai-tools.service";
+import type { AiToolName } from "./ai-capabilities.service";
 import type { CreateAiMessageInput, ListAiMessagesQuery } from "../validators/ai.schemas";
 
-export interface AiConversationAccess { canReadDocuments: boolean; }
+export interface AiConversationAccess { canReadDocuments: boolean; tools?: AiToolName[]; }
 
 const activeRuns = new Map<string, AbortController>();
 
@@ -66,6 +68,7 @@ export class AiConversationService {
         sourceId: citation.sourceId,
         label: citation.label,
         excerpt: citation.excerpt,
+        metadata: citation.metadata,
         sortOrder: citation.sortOrder,
       })),
       artifacts: message.artifacts.map((artifact) => ({
@@ -108,6 +111,18 @@ export class AiConversationService {
     let completed = false;
     try {
       const history = await prisma.aiChatMessage.findMany({ where: { sessionId: session.id, status: { in: ["completed", "streaming"] } }, orderBy: { createdAt: "asc" }, take: 30, select: { role: true, content: true } });
+      const selectedTools = aiToolsService.selectForPrompt(history.at(-1)?.content ?? "", access.tools ?? [], session.roundId);
+      const toolResults = [] as Array<{ tool: AiToolName; result: unknown }>;
+      for (const selection of selectedTools) {
+        const startedAt = Date.now();
+        try {
+          const result = await aiToolsService.execute(session.startupId, selection.tool, selection.input, access.tools ?? []);
+          toolResults.push({ tool: selection.tool, result });
+          await prisma.aiToolCall.create({ data: { messageId, toolName: selection.tool, arguments: selection.input, status: "completed", durationMs: Date.now() - startedAt, resultSummary: result as object } });
+        } catch {
+          await prisma.aiToolCall.create({ data: { messageId, toolName: selection.tool, arguments: selection.input, status: "failed", durationMs: Date.now() - startedAt, errorCode: "AI_TOOL_FAILED" } });
+        }
+      }
       const versionIds = session.documents.map((document: any) => document.documentVersionId);
       const chunks = versionIds.length ? await this.retrieval.retrieveDocumentContext({ startupId: session.startupId, query: history.at(-1)?.content ?? "", pinnedDocumentVersionIds: versionIds, signal: controller.signal }) : [];
       if (chunks.length) {
@@ -133,6 +148,7 @@ export class AiConversationService {
         "Do not claim document facts without citing the supplied source labels in your response.",
         session.persona ? `This is a clearly labeled pitch simulation. Role-play only as the simulated investor persona \"${session.persona.personaName}\" using this investment lens: ${session.persona.description ?? "Ask rigorous, evidence-based investor questions."}. Never claim to be a real investor or have real-world knowledge beyond the supplied context.` : "",
         `Registered presentation types for this request: ${aiCapabilityManifest(access.canReadDocuments ? ["documents:read"] : [], { hasPinnedDocuments: versionIds.length > 0, hasRound: Boolean(session.roundId) }).artifactTypes.join(", ") || "none"}. Never emit markup, code, URLs, actions, or an artifact payload yourself.`,
+        toolResults.length ? `Trusted, server-computed application data follows. Explain these values faithfully; do not invent other records:\n${JSON.stringify(toolResults)}` : "",
         sources ? `Retrieved document data follows:\n<document_data>\n${sources}\n</document_data>` : "No document evidence was retrieved. State uncertainty rather than inventing facts.",
       ].join("\n\n");
       for await (const event of this.provider.streamConversation({

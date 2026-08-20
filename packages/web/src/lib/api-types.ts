@@ -3537,6 +3537,9 @@ export interface components {
             sourceId: string;
             label: string;
             excerpt?: string | null;
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
             sortOrder: number;
         };
         AiChatMessage: {
