@@ -53,6 +53,8 @@ tags:
     description: Public-facing endpoints used by external reviewers (token + OTP based, no cookieAuth)
   - name: Reviewer Comments
     description: Comments left by reviewers on documents/sections
+  - name: AI Copilot
+    description: Private, startup-scoped AI copilot sessions
 
 # ─── Reusable components ───────────────────────────────────────────────────────
 components:
@@ -2567,6 +2569,54 @@ components:
           minLength: 1
 
 # ─── Paths ─────────────────────────────────────────────────────────────────────
+    AiSession:
+      type: object
+      required: [id, startupId, contextMode, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        startupId: { type: string, format: uuid }
+        title: { type: string, nullable: true }
+        contextMode: { type: string, enum: [selected, workspace] }
+        roundId: { type: string, format: uuid, nullable: true }
+        lastMessageAt: { type: string, format: date-time, nullable: true }
+        archivedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        documents:
+          type: array
+          items:
+            type: object
+            properties:
+              documentId: { type: string, format: uuid }
+              documentVersionId: { type: string, format: uuid }
+              title: { type: string }
+              versionNumber: { type: integer }
+              processingStatus: { type: string }
+    CreateAiSessionBody:
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 160 }
+        contextMode: { type: string, enum: [selected, workspace], default: selected }
+        roundId: { type: string, format: uuid }
+        documentVersionIds:
+          type: array
+          maxItems: 10
+          items: { type: string, format: uuid }
+    UpdateAiSessionBody:
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 160 }
+        archived: { type: boolean }
+    CreateAiMessageBody:
+      type: object
+      required: [content, clientRequestId]
+      properties:
+        content: { type: string, minLength: 1, maxLength: 12000 }
+        clientRequestId:
+          type: string
+          format: uuid
+          description: Reuse this value when retrying a POST to prevent a duplicate model run.
+
 paths:
   # ════════════════════════════════════════════════════════════════
   #  AUTH
@@ -7727,3 +7777,202 @@ paths:
       responses:
         "204":
           description: Logged out
+
+  /startups/{startupId}/ai/sessions:
+    get:
+      tags: [AI Copilot]
+      summary: List the caller's private AI sessions
+      operationId: listAiSessions
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: archived
+          in: query
+          schema: { type: boolean, default: false }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 30 }
+      responses:
+        "200":
+          description: Sessions owned by the authenticated user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/AiSession" }
+        "403": { description: Missing ai_reports:read }
+    post:
+      tags: [AI Copilot]
+      summary: Create a private AI session
+      operationId: createAiSession
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAiSessionBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/AiSession" }
+        "403": { description: Missing AI or underlying context permission }
+        "400": { description: Invalid or unavailable document version }
+
+  /startups/{startupId}/ai/sessions/{sessionId}:
+    get:
+      tags: [AI Copilot]
+      summary: Get one private AI session
+      operationId: getAiSession
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/AiSession" }
+        "404": { description: Session is absent or not owned by the caller }
+
+  /startups/{startupId}/ai/sessions/{sessionId}/messages:
+    post:
+      tags: [AI Copilot]
+      summary: Persist a user message and pending assistant response
+      operationId: createAiMessage
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAiMessageBody" }
+      responses:
+        "202":
+          description: Assistant response is pending; open streamUrl to begin or reconnect.
+        "403": { description: Missing AI or document-context permission }
+
+  /startups/{startupId}/ai/sessions/{sessionId}/messages/{messageId}/stream:
+    get:
+      tags: [AI Copilot]
+      summary: Stream a pending assistant response using server-sent events
+      operationId: streamAiMessage
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: messageId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: Last-Event-ID
+          in: header
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: Application-owned SSE events, each carrying version, sessionId, messageId, sequence, timestamp, and payload.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "404": { description: Session or assistant message is absent or not owned by the caller }
+
+  /startups/{startupId}/ai/sessions/{sessionId}/messages/{messageId}/cancel:
+    post:
+      tags: [AI Copilot]
+      summary: Cancel a pending or streaming assistant response
+      operationId: cancelAiMessage
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: messageId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Cancelled }
+        "409": { description: Assistant message is already terminal }
+    patch:
+      tags: [AI Copilot]
+      summary: Rename, archive, or restore a private AI session
+      operationId: updateAiSession
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateAiSessionBody" }
+      responses:
+        "200": { description: Updated }
+        "404": { description: Session is absent or not owned by the caller }
+    delete:
+      tags: [AI Copilot]
+      summary: Archive a private AI session
+      operationId: archiveAiSession
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Archived }
+        "404": { description: Session is absent or not owned by the caller }

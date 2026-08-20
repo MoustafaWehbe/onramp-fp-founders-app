@@ -120,6 +120,15 @@ export function validateEnv(): void {
     problems.push("GOOGLE_TOKEN_ENCRYPTION_KEY must be a 64-character hex string (32 bytes)");
   }
 
+  try {
+    // Keep feature-flagged AI configuration invalid at boot rather than
+    // discovering it only after a user starts a request.
+    const { getAiConfig } = require("./ai") as typeof import("./ai");
+    getAiConfig();
+  } catch (err) {
+    problems.push((err as Error).message);
+  }
+
   if (problems.length > 0) {
     console.error(`Invalid environment configuration:\n  ${problems.join("\n  ")}`);
     process.exit(1);

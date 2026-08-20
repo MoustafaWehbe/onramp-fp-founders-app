@@ -1677,7 +1677,7 @@ export interface paths {
         put?: never;
         /**
          * Request OTP for invitation token
-         * @description Validates the token and, if valid and not expired/revoked, emails a fresh 6-digit OTP (10-minute TTL) to the invitation's address. Does NOT grant access by itself call POST /reviewer-portal/verify next.
+         * @description Validates the token and, if valid and not expired/revoked, emails a fresh 6-digit OTP (10-minute TTL) to the invitation's address. Does NOT grant access by itself call POST /reviewer-portal/verify next. If the invitation has a password set, it must be supplied here and is checked before the OTP is sent (401 PASSWORD_REQUIRED / PASSWORD_INVALID).
          */
         post: operations["reviewerPortalAccess"];
         delete?: never;
@@ -1714,6 +1714,26 @@ export interface paths {
         get: operations["reviewerPortalWorkspace"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviewer-portal/nda/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept the invitation's NDA
+         * @description Idempotent. Required before any manifest/page/download endpoint will serve content once the invitation has requireNda set.
+         */
+        post: operations["reviewerPortalAcceptNda"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1769,7 +1789,7 @@ export interface paths {
         };
         /**
          * Download the original file
-         * @description The only route by which a source file leaves the server, and only when the founder set allowDownload on the invitation. Streamed through the API so the object's storage location is never exposed.
+         * @description The only route by which a source file leaves the server, and only when the founder set allowDownload on the invitation. Streamed through the API so the object's storage location is never exposed. When the invitation has watermarkEnabled on, the returned PDF is stamped with the reviewer's email, the link id, and the date before it is sent.
          */
         get: operations["reviewerPortalDownload"];
         put?: never;
@@ -1864,6 +1884,94 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/ai/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the caller's private AI sessions */
+        get: operations["listAiSessions"];
+        put?: never;
+        /** Create a private AI session */
+        post: operations["createAiSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/ai/sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one private AI session */
+        get: operations["getAiSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/ai/sessions/{sessionId}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Persist a user message and pending assistant response */
+        post: operations["createAiMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/ai/sessions/{sessionId}/messages/{messageId}/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stream a pending assistant response using server-sent events */
+        get: operations["streamAiMessage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/ai/sessions/{sessionId}/messages/{messageId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a pending or streaming assistant response */
+        post: operations["cancelAiMessage"];
+        /** Archive a private AI session */
+        delete: operations["archiveAiSession"];
+        options?: never;
+        head?: never;
+        /** Rename, archive, or restore a private AI session */
+        patch: operations["updateAiSession"];
         trace?: never;
     };
 }
@@ -3212,6 +3320,12 @@ export interface components {
             email?: string;
             status?: components["schemas"]["ReviewerInvitationStatus"];
             allowDownload?: boolean;
+            watermarkEnabled?: boolean;
+            allowPrint?: boolean;
+            screenshotGuard?: boolean;
+            requireNda?: boolean;
+            hasPassword?: boolean;
+            allowedEmailDomains?: string[];
             personalMessage?: string | null;
             /** Format: date-time */
             expiresAt?: string;
@@ -3232,6 +3346,20 @@ export interface components {
             /** Format: uuid */
             startupInvestorId?: string;
             allowDownload?: boolean;
+            /** @default true */
+            watermarkEnabled: boolean;
+            /** @default false */
+            allowPrint: boolean;
+            /** @default true */
+            screenshotGuard: boolean;
+            /** @default false */
+            requireNda: boolean;
+            /** @description Required when requireNda is true. */
+            ndaText?: string;
+            /** @description Optional second factor checked before an OTP is sent. */
+            password?: string;
+            /** @description Reject creating the invitation unless the email's domain is in this list. */
+            allowedEmailDomains?: string[];
             personalMessage?: string;
             /** @default 14 */
             expiresInDays: number;
@@ -3289,6 +3417,57 @@ export interface components {
             /** Format: uuid */
             chunkId?: string | null;
             commentText: string;
+        };
+        AiSession: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            startupId: string;
+            title?: string | null;
+            /** @enum {string} */
+            contextMode: "selected" | "workspace";
+            /** Format: uuid */
+            roundId?: string | null;
+            /** Format: date-time */
+            lastMessageAt?: string | null;
+            /** Format: date-time */
+            archivedAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            documents?: {
+                /** Format: uuid */
+                documentId?: string;
+                /** Format: uuid */
+                documentVersionId?: string;
+                title?: string;
+                versionNumber?: number;
+                processingStatus?: string;
+            }[];
+        };
+        CreateAiSessionBody: {
+            title?: string;
+            /**
+             * @default selected
+             * @enum {string}
+             */
+            contextMode: "selected" | "workspace";
+            /** Format: uuid */
+            roundId?: string;
+            documentVersionIds?: string[];
+        };
+        UpdateAiSessionBody: {
+            title?: string;
+            archived?: boolean;
+        };
+        CreateAiMessageBody: {
+            content: string;
+            /**
+             * Format: uuid
+             * @description Reuse this value when retrying a POST to prevent a duplicate model run.
+             */
+            clientRequestId: string;
         };
     };
     responses: never;
@@ -8534,6 +8713,7 @@ export interface operations {
             content: {
                 "application/json": {
                     token: string;
+                    password?: string;
                 };
             };
         };
@@ -8544,6 +8724,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Password required or incorrect */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };
@@ -8604,8 +8793,26 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Workspace */
+            /** @description Workspace. Includes requireNda/ndaText/ndaAccepted so the client can render the acceptance gate before it ever needs page content. */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reviewerPortalAcceptNda: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8657,7 +8864,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Version is not viewable RENDER_PENDING, RENDER_FAILED, or RENDER_UNSUPPORTED. */
+            /** @description Version is not viewable RENDER_PENDING, RENDER_FAILED, or RENDER_UNSUPPORTED and other 409, NDA_REQUIRED when the invitation requires NDA acceptance that hasn't happened yet. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -8705,6 +8912,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description NDA_REQUIRED — invitation requires NDA acceptance that hasn't happened yet. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     reviewerPortalDownload: {
@@ -8718,7 +8932,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description File bytes */
+            /** @description File bytes (watermarked PDF when watermarkEnabled is on) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8736,6 +8950,13 @@ export interface operations {
             };
             /** @description Version is not shared with this invitation */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description NDA_REQUIRED — invitation requires NDA acceptance that hasn't happened yet. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8844,6 +9065,268 @@ export interface operations {
         responses: {
             /** @description Logged out */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listAiSessions: {
+        parameters: {
+            query?: {
+                archived?: boolean;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sessions owned by the authenticated user */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["AiSession"][];
+                    };
+                };
+            };
+            /** @description Missing ai_reports:read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createAiSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAiSessionBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["AiSession"];
+                    };
+                };
+            };
+            /** @description Invalid or unavailable document version */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing AI or underlying context permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getAiSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["AiSession"];
+                    };
+                };
+            };
+            /** @description Session is absent or not owned by the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createAiMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAiMessageBody"];
+            };
+        };
+        responses: {
+            /** @description Assistant response is pending; open streamUrl to begin or reconnect. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing AI or document-context permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    streamAiMessage: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Last-Event-ID"?: number;
+            };
+            path: {
+                startupId: string;
+                sessionId: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Application-owned SSE events, each carrying version, sessionId, messageId, sequence, timestamp, and payload. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /** @description Session or assistant message is absent or not owned by the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    cancelAiMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                sessionId: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancelled */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Assistant message is already terminal */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    archiveAiSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archived */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Session is absent or not owned by the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateAiSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAiSessionBody"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Session is absent or not owned by the caller */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

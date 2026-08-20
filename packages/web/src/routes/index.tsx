@@ -16,7 +16,7 @@ import { Investors } from "../pages/dashboard/Investors/Investors";
 import { Chat } from "../pages/dashboard/Chat/Chat";
 import { Fundraising } from "../pages/dashboard/Fundraising/Fundraising";
 import { Documents } from "../pages/dashboard/Documents/Documents";
-import { AiInsights } from "../pages/dashboard/AiInsights/AiInsights";
+import { Ai } from "../pages/dashboard/Ai/Ai";
 import { Team } from "../pages/dashboard/Team/Team";
 import { Settings } from "../pages/dashboard/Settings";
 import { Reviewers } from "../pages/dashboard/Reviewers";
@@ -77,7 +77,10 @@ export function AppRoutes() {
             <Route path="/chat" element={<Chat />} />
             <Route path="/fundraising" element={<Fundraising />} />
             <Route path="/documents" element={<Documents />} />
-            <Route path="/ai-insights" element={<AiInsights />} />
+            <Route path="/ai" element={<Ai />} />
+            <Route path="/ai/chat" element={<Navigate to="/ai" replace />} />
+            <Route path="/ai/analysis" element={<Navigate to="/ai" replace />} />
+            <Route path="/ai-insights" element={<Navigate to="/ai" replace />} />
             <Route path="/team" element={<Team />} />
             <Route path="/reviewers" element={<Reviewers />} />
             <Route path="/startup" element={<Startup />} />

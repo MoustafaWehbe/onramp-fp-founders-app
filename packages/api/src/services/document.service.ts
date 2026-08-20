@@ -95,7 +95,6 @@ export class DocumentService {
             where: { isCurrent: true },
             take: 1,
           },
-          aiChatSessions: false,
         },
       }),
     ]);
