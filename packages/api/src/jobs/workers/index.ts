@@ -8,6 +8,7 @@ import { documentProcessingJob } from "./document-processing.worker";
 import { documentRasterizeJob } from "./document-rasterize.worker";
 import { calendarSyncJob } from "./calendar-sync.worker";
 import { gmailLogRetryJob } from "./gmail-log-retry.worker";
+import { aiAnalysisJob } from "./ai-analysis.worker";
 
 interface WorkerDef {
   name: string;
@@ -22,6 +23,7 @@ const JOBS: WorkerDef[] = [
   documentRasterizeJob,
   calendarSyncJob,
   gmailLogRetryJob,
+  aiAnalysisJob,
 ];
 
 export function startWorkers(): Worker[] {

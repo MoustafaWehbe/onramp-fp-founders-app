@@ -28,6 +28,43 @@ export type CreateAiSessionInput = {
   documentVersionIds?: string[];
 };
 
+export type AiCitation = {
+  id: string;
+  sourceType: string;
+  sourceId: string;
+  label: string;
+  excerpt: string | null;
+  sortOrder: number;
+};
+
+export type AiChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  status: "pending" | "streaming" | "completed" | "failed" | "cancelled";
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  citations: AiCitation[];
+  artifacts: AiArtifact[];
+};
+
+export type AiArtifact = {
+  id: string;
+  type: string;
+  title: string | null;
+  status: "building" | "ready" | "failed" | string;
+  data: unknown;
+  createdAt: string;
+};
+
+export type AiStreamEvent = {
+  sequence: number;
+  type: "stream.ready" | "message.started" | "message.delta" | "citation.added" | "artifact.ready" | "artifact.failed" | "message.snapshot" | "message.completed" | "message.failed" | "message.cancelled";
+  payload: Record<string, unknown>;
+};
+
 export async function listAiSessions(startupId: string) {
   const { data } = await apiClient.get<{ data: AiSession[] }>(`/startups/${startupId}/ai/sessions`);
   return data.data;
@@ -36,4 +73,21 @@ export async function listAiSessions(startupId: string) {
 export async function createAiSession(startupId: string, input: CreateAiSessionInput) {
   const { data } = await apiClient.post<{ data: AiSession }>(`/startups/${startupId}/ai/sessions`, input);
   return data.data;
+}
+
+export async function listAiMessages(startupId: string, sessionId: string) {
+  const { data } = await apiClient.get<{ data: AiChatMessage[] }>(`/startups/${startupId}/ai/sessions/${sessionId}/messages`);
+  return data.data;
+}
+
+export async function createAiMessage(startupId: string, sessionId: string, content: string, clientRequestId: string) {
+  const { data } = await apiClient.post<{ data: { assistantMessageId: string; status: AiChatMessage["status"]; created: boolean; streamUrl: string } }>(
+    `/startups/${startupId}/ai/sessions/${sessionId}/messages`,
+    { content, clientRequestId },
+  );
+  return data.data;
+}
+
+export async function cancelAiMessage(startupId: string, sessionId: string, messageId: string) {
+  await apiClient.post(`/startups/${startupId}/ai/sessions/${sessionId}/messages/${messageId}/cancel`);
 }

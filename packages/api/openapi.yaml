@@ -2616,6 +2616,74 @@ components:
           type: string
           format: uuid
           description: Reuse this value when retrying a POST to prevent a duplicate model run.
+    AiCitation:
+      type: object
+      required: [id, sourceType, sourceId, label, sortOrder]
+      properties:
+        id: { type: string, format: uuid }
+        sourceType: { type: string }
+        sourceId: { type: string }
+        label: { type: string }
+        excerpt: { type: string, nullable: true }
+        sortOrder: { type: integer }
+    AiChatMessage:
+      type: object
+      required: [id, role, content, status, createdAt, citations, artifacts]
+      properties:
+        id: { type: string, format: uuid }
+        role: { type: string, enum: [user, assistant] }
+        content: { type: string }
+        status: { type: string, enum: [pending, streaming, completed, failed, cancelled] }
+        errorCode: { type: string, nullable: true }
+        errorMessage: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time, nullable: true }
+        citations:
+          type: array
+          items: { $ref: "#/components/schemas/AiCitation" }
+        artifacts:
+          type: array
+          items: { $ref: "#/components/schemas/AiArtifact" }
+    AiArtifact:
+      type: object
+      required: [id, type, status, data, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [source_answer.v1, comparison.v1] }
+        title: { type: string, nullable: true }
+        status: { type: string, enum: [building, ready, failed] }
+        data: { type: object, additionalProperties: true }
+        createdAt: { type: string, format: date-time }
+    CreateAiAnalysisBody:
+      type: object
+      required: [documentVersionId]
+      properties:
+        documentVersionId: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+    AiAnalysis:
+      type: object
+      required: [id, startupId, documentVersionId, status, rubricVersion, queuedAt, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        startupId: { type: string, format: uuid }
+        documentVersionId: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid, nullable: true }
+        status: { type: string, enum: [queued, processing, completed, failed, cancelled] }
+        overallScore: { type: integer, nullable: true }
+        narrativeScore: { type: integer, nullable: true }
+        marketValidationScore: { type: integer, nullable: true }
+        financialScore: { type: integer, nullable: true }
+        confidenceScore: { type: integer, nullable: true }
+        summaryReport: { type: string, nullable: true }
+        result: { type: object, nullable: true, additionalProperties: true }
+        rubricVersion: { type: string }
+        model: { type: string, nullable: true }
+        errorCode: { type: string, nullable: true }
+        errorMessage: { type: string, nullable: true }
+        queuedAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
 
 paths:
   # ════════════════════════════════════════════════════════════════
@@ -7778,6 +7846,65 @@ paths:
         "204":
           description: Logged out
 
+  /startups/{startupId}/ai/analyses:
+    get:
+      tags: [AI Copilot]
+      summary: List the caller's private deck analyses
+      operationId: listAiAnalyses
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: startupId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: documentVersionId, in: query, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 30 } }
+      responses:
+        "200":
+          description: Analyses
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/AiAnalysis" }
+    post:
+      tags: [AI Copilot]
+      summary: Queue a version-pinned pitch-deck analysis
+      operationId: createAiAnalysis
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: startupId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CreateAiAnalysisBody" } } }
+      responses:
+        "202": { description: Queued, content: { application/json: { schema: { type: object, properties: { data: { $ref: "#/components/schemas/AiAnalysis" } } } } } }
+        "400": { description: Document version is unavailable }
+  /startups/{startupId}/ai/analyses/{analysisId}:
+    get:
+      tags: [AI Copilot]
+      summary: Get one private deck analysis
+      operationId: getAiAnalysis
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: startupId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: analysisId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Analysis, content: { application/json: { schema: { type: object, properties: { data: { $ref: "#/components/schemas/AiAnalysis" } } } } } }
+        "404": { description: Analysis not found }
+  /startups/{startupId}/ai/analyses/{analysisId}/cancel:
+    post:
+      tags: [AI Copilot]
+      summary: Cancel a queued or processing deck analysis
+      operationId: cancelAiAnalysis
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: startupId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: analysisId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Cancelled }
+        "409": { description: Analysis is already terminal }
+
   /startups/{startupId}/ai/sessions:
     get:
       tags: [AI Copilot]
@@ -7861,6 +7988,36 @@ paths:
         "404": { description: Session is absent or not owned by the caller }
 
   /startups/{startupId}/ai/sessions/{sessionId}/messages:
+    get:
+      tags: [AI Copilot]
+      summary: List persisted messages in a private AI session
+      operationId: listAiMessages
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+      responses:
+        "200":
+          description: Messages owned by the authenticated user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/AiChatMessage" }
+        "403": { description: Missing AI or pinned-document permission }
+        "404": { description: Session is absent or not owned by the caller }
     post:
       tags: [AI Copilot]
       summary: Persist a user message and pending assistant response

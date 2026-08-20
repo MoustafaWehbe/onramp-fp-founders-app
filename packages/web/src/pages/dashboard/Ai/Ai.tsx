@@ -14,12 +14,7 @@ import { listDocuments } from "../../../lib/document-api";
 import { listFundraisingRounds } from "../../../lib/fundraising-api";
 import { qk } from "../../../lib/query-keys";
 import { cn, formatDate } from "../../../lib/utils";
-
-const starterPrompts = [
-  "What should I improve in my pitch deck?",
-  "Help me prepare for an investor meeting.",
-  "Summarize the selected documents.",
-];
+import { ConversationPanel } from "./ConversationPanel";
 
 export function Ai() {
   const startupId = useActiveStartupId();
@@ -97,13 +92,7 @@ export function Ai() {
             {sessionsQuery.isPending ? <div className="space-y-2"><Skeleton className="h-14 w-full" /><Skeleton className="h-14 w-full" /></div> : sessionsQuery.isError ? <p className="px-1 text-sm text-muted-foreground">Could not load conversations.</p> : sessions.length === 0 ? <p className="px-1 text-sm text-muted-foreground">Start a private conversation to keep your work organized.</p> : <div className="space-y-1">{sessions.map((session) => <SessionButton key={session.id} session={session} selected={session.id === selectedSessionId} onClick={() => setSelectedSessionId(session.id)} />)}</div>}
           </aside>
 
-          <main className="flex min-h-[360px] flex-col items-center justify-center border-b px-6 py-12 text-center lg:border-b-0">
-            <div className="grid h-12 w-12 place-items-center rounded-xl bg-primary/10 text-primary"><Sparkles className="h-6 w-6" /></div>
-            <h2 className="mt-4 font-display text-xl font-semibold">{selectedSession ? selectedSession.title ?? "Untitled conversation" : "How can I help?"}</h2>
-            <p className="mt-2 max-w-md text-sm text-muted-foreground">{selectedSession ? "The conversation interface is ready for your selected context." : "Choose relevant context, then start a conversation. Copilot only uses information you are allowed to access."}</p>
-            {!selectedSession && <div className="mt-6 flex max-w-xl flex-wrap justify-center gap-2">{starterPrompts.map((prompt) => <span key={prompt} className="rounded-full border px-3 py-1.5 text-xs text-muted-foreground">{prompt}</span>)}</div>}
-            <p className="mt-8 text-xs text-muted-foreground">Messaging and streamed answers arrive in the next workspace update.</p>
-          </main>
+          <ConversationPanel startupId={startupId} session={selectedSession} canCreate={canCreateSession} />
 
           <aside className="p-4">
             <h2 className="font-display text-sm font-semibold">Conversation context</h2>

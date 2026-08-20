@@ -18,6 +18,10 @@ export const listAiSessionsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(30),
 });
 
+export const listAiMessagesQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+});
+
 export const createAiSessionSchema = z.object({
   title: z.string().trim().min(1).max(160).optional(),
   contextMode: z.enum(["selected", "workspace"]).default("selected"),
@@ -35,7 +39,22 @@ export const createAiMessageSchema = z.object({
   clientRequestId: uuid,
 });
 
+export const createAiAnalysisSchema = z.object({
+  documentVersionId: uuid,
+  sessionId: uuid.optional(),
+});
+
+export const aiAnalysisIdParamSchema = z.object({ startupId: uuid, analysisId: uuid });
+
+export const listAiAnalysesQuerySchema = z.object({
+  documentVersionId: uuid.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+});
+
 export type CreateAiSessionInput = z.infer<typeof createAiSessionSchema>;
 export type UpdateAiSessionInput = z.infer<typeof updateAiSessionSchema>;
 export type ListAiSessionsQuery = z.infer<typeof listAiSessionsQuerySchema>;
+export type ListAiMessagesQuery = z.infer<typeof listAiMessagesQuerySchema>;
 export type CreateAiMessageInput = z.infer<typeof createAiMessageSchema>;
+export type CreateAiAnalysisInput = z.infer<typeof createAiAnalysisSchema>;
+export type ListAiAnalysesQuery = z.infer<typeof listAiAnalysesQuerySchema>;

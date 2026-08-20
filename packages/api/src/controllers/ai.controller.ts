@@ -2,7 +2,8 @@ import { hasPermission } from "../middleware/rbac";
 import { asyncHandler } from "../utils/errors";
 import { aiChatService } from "../services/ai-chat.service";
 import { aiConversationService } from "../services/ai-conversation.service";
-import type { CreateAiMessageInput, CreateAiSessionInput, ListAiSessionsQuery, UpdateAiSessionInput } from "../validators/ai.schemas";
+import { aiAnalysisService } from "../services/ai-analysis.service";
+import type { CreateAiAnalysisInput, CreateAiMessageInput, CreateAiSessionInput, ListAiAnalysesQuery, ListAiMessagesQuery, ListAiSessionsQuery, UpdateAiSessionInput } from "../validators/ai.schemas";
 import type { NextFunction, Request, Response } from "express";
 
 async function accessFor(req: Express.Request) {
@@ -35,6 +36,10 @@ export const aiController = {
     await aiChatService.archiveSession(req.params.startupId as string, req.user!.userId, req.params.sessionId as string);
     res.status(204).send();
   }),
+  listMessages: asyncHandler(async (req, res) => {
+    const messages = await aiConversationService.listMessages(req.params.startupId as string, req.user!.userId, req.params.sessionId as string, req.query as unknown as ListAiMessagesQuery, await accessFor(req));
+    res.json({ data: messages });
+  }),
   submitMessage: asyncHandler(async (req, res) => {
     const result = await aiConversationService.submitMessage(req.params.startupId as string, req.user!.userId, req.params.sessionId as string, req.body as CreateAiMessageInput, await accessFor(req));
     res.status(202).json({ data: { ...result, streamUrl: `/api/v1/startups/${req.params.startupId}/ai/sessions/${req.params.sessionId}/messages/${result.assistantMessageId}/stream` } });
@@ -61,6 +66,22 @@ export const aiController = {
   },
   cancelMessage: asyncHandler(async (req, res) => {
     await aiConversationService.cancel(req.params.startupId as string, req.user!.userId, req.params.sessionId as string, req.params.messageId as string);
+    res.status(204).send();
+  }),
+  createAnalysis: asyncHandler(async (req, res) => {
+    const analysis = await aiAnalysisService.create(req.params.startupId as string, req.user!.userId, req.body as CreateAiAnalysisInput);
+    res.status(202).json({ data: analysis });
+  }),
+  listAnalyses: asyncHandler(async (req, res) => {
+    const analyses = await aiAnalysisService.list(req.params.startupId as string, req.user!.userId, req.query as unknown as ListAiAnalysesQuery);
+    res.json({ data: analyses });
+  }),
+  getAnalysis: asyncHandler(async (req, res) => {
+    const analysis = await aiAnalysisService.get(req.params.startupId as string, req.user!.userId, req.params.analysisId as string);
+    res.json({ data: analysis });
+  }),
+  cancelAnalysis: asyncHandler(async (req, res) => {
+    await aiAnalysisService.cancel(req.params.startupId as string, req.user!.userId, req.params.analysisId as string);
     res.status(204).send();
   }),
 };

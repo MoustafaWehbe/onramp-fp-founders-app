@@ -1886,6 +1886,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/startups/{startupId}/ai/analyses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the caller's private deck analyses */
+        get: operations["listAiAnalyses"];
+        put?: never;
+        /** Queue a version-pinned pitch-deck analysis */
+        post: operations["createAiAnalysis"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/ai/analyses/{analysisId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one private deck analysis */
+        get: operations["getAiAnalysis"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/ai/analyses/{analysisId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a queued or processing deck analysis */
+        post: operations["cancelAiAnalysis"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/startups/{startupId}/ai/sessions": {
         parameters: {
             query?: never;
@@ -1928,7 +1980,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List persisted messages in a private AI session */
+        get: operations["listAiMessages"];
         put?: never;
         /** Persist a user message and pending assistant response */
         post: operations["createAiMessage"];
@@ -3468,6 +3521,85 @@ export interface components {
              * @description Reuse this value when retrying a POST to prevent a duplicate model run.
              */
             clientRequestId: string;
+        };
+        AiCitation: {
+            /** Format: uuid */
+            id: string;
+            sourceType: string;
+            sourceId: string;
+            label: string;
+            excerpt?: string | null;
+            sortOrder: number;
+        };
+        AiChatMessage: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            role: "user" | "assistant";
+            content: string;
+            /** @enum {string} */
+            status: "pending" | "streaming" | "completed" | "failed" | "cancelled";
+            errorCode?: string | null;
+            errorMessage?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            completedAt?: string | null;
+            citations: components["schemas"]["AiCitation"][];
+            artifacts: components["schemas"]["AiArtifact"][];
+        };
+        AiArtifact: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            type: "source_answer.v1" | "comparison.v1";
+            title?: string | null;
+            /** @enum {string} */
+            status: "building" | "ready" | "failed";
+            data: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CreateAiAnalysisBody: {
+            /** Format: uuid */
+            documentVersionId: string;
+            /** Format: uuid */
+            sessionId?: string;
+        };
+        AiAnalysis: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            startupId: string;
+            /** Format: uuid */
+            documentVersionId: string;
+            /** Format: uuid */
+            sessionId?: string | null;
+            /** @enum {string} */
+            status: "queued" | "processing" | "completed" | "failed" | "cancelled";
+            overallScore?: number | null;
+            narrativeScore?: number | null;
+            marketValidationScore?: number | null;
+            financialScore?: number | null;
+            confidenceScore?: number | null;
+            summaryReport?: string | null;
+            result?: {
+                [key: string]: unknown;
+            } | null;
+            rubricVersion: string;
+            model?: string | null;
+            errorCode?: string | null;
+            errorMessage?: string | null;
+            /** Format: date-time */
+            queuedAt: string;
+            /** Format: date-time */
+            startedAt?: string | null;
+            /** Format: date-time */
+            completedAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
         };
     };
     responses: never;
@@ -9072,6 +9204,128 @@ export interface operations {
             };
         };
     };
+    listAiAnalyses: {
+        parameters: {
+            query?: {
+                documentVersionId?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Analyses */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["AiAnalysis"][];
+                    };
+                };
+            };
+        };
+    };
+    createAiAnalysis: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAiAnalysisBody"];
+            };
+        };
+        responses: {
+            /** @description Queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["AiAnalysis"];
+                    };
+                };
+            };
+            /** @description Document version is unavailable */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getAiAnalysis: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                analysisId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Analysis */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["AiAnalysis"];
+                    };
+                };
+            };
+            /** @description Analysis not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    cancelAiAnalysis: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                analysisId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancelled */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Analysis is already terminal */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     listAiSessions: {
         parameters: {
             query?: {
@@ -9170,6 +9424,47 @@ export interface operations {
                         data?: components["schemas"]["AiSession"];
                     };
                 };
+            };
+            /** @description Session is absent or not owned by the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listAiMessages: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                startupId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Messages owned by the authenticated user */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["AiChatMessage"][];
+                    };
+                };
+            };
+            /** @description Missing AI or pinned-document permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Session is absent or not owned by the caller */
             404: {

@@ -12,6 +12,7 @@ import {
 } from "./workers/document-rasterize.worker";
 import { calendarSyncJob, type CalendarSyncJobData } from "./workers/calendar-sync.worker";
 import { gmailLogRetryJob, type GmailLogRetryJobData } from "./workers/gmail-log-retry.worker";
+import { aiAnalysisJob, type AiAnalysisJobData } from "./workers/ai-analysis.worker";
 
 // The Redis singleton now lives in db/redis so non-job callers (the rate
 // limiters) can share it without importing the workers. Re-exported here
@@ -45,3 +46,4 @@ export const documentRasterizeQueue = makeQueue<DocumentRasterizeJobData>(
 );
 export const calendarSyncQueue = makeQueue<CalendarSyncJobData>(calendarSyncJob.name);
 export const gmailLogRetryQueue = makeQueue<GmailLogRetryJobData>(gmailLogRetryJob.name);
+export const aiAnalysisQueue = makeQueue<AiAnalysisJobData>(aiAnalysisJob.name);
