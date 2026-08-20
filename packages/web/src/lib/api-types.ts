@@ -3563,7 +3563,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            type: "source_answer.v1" | "comparison.v1";
+            type: "source_answer.v1" | "comparison.v1" | "email_draft.v1" | "meeting_brief.v1";
             title?: string | null;
             /** @enum {string} */
             status: "building" | "ready" | "failed";

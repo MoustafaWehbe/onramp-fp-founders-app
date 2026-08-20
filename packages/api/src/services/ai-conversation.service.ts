@@ -174,6 +174,19 @@ export class AiConversationService {
             });
             aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "source_answer.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
           }
+          const prompt = history.at(-1)?.content.toLowerCase() ?? "";
+          const missingInvestorContext = true;
+          if (prompt.includes("follow-up") || prompt.includes("follow up") || prompt.includes("email draft")) {
+            const artifact = await aiArtifactService.createReady({ startupId: session.startupId, sessionId: session.id, messageId, type: "email_draft.v1", title: "Follow-up draft", data: { subject: "Follow-up", body: content, contextLabel: "No investor record selected", missingInvestorContext } });
+            aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "email_draft.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
+          }
+          if (prompt.includes("meeting brief") || prompt.includes("prepare me for") || prompt.includes("prepare for")) {
+            const talkingPoints = content.split(/\n+|(?<=[.!?])\s+/).map((item) => item.trim()).filter(Boolean).slice(0, 8);
+            if (talkingPoints.length) {
+              const artifact = await aiArtifactService.createReady({ startupId: session.startupId, sessionId: session.id, messageId, type: "meeting_brief.v1", title: "Meeting brief", data: { title: "Meeting preparation", talkingPoints, contextLabel: "No investor record selected", missingInvestorContext } });
+              aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "meeting_brief.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
+            }
+          }
           aiStreamBroker.publish(session.id, messageId, "message.completed", { content, providerRequestId: event.providerRequestId });
           completed = true;
         }

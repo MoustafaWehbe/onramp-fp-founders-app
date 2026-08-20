@@ -10,10 +10,14 @@ const comparisonSchema = z.object({
   title: z.string().min(1).max(160),
   fields: z.array(z.object({ label: z.string().min(1).max(120), left: z.string().max(2_000), right: z.string().max(2_000), changed: z.boolean() })).min(1).max(30),
 });
+const emailDraftSchema = z.object({ subject: z.string().min(1).max(240), body: z.string().min(1).max(20_000), contextLabel: z.string().min(1).max(300), missingInvestorContext: z.boolean() });
+const meetingBriefSchema = z.object({ title: z.string().min(1).max(240), talkingPoints: z.array(z.string().min(1).max(1_000)).min(1).max(10), contextLabel: z.string().min(1).max(300), missingInvestorContext: z.boolean() });
 
 export const AI_ARTIFACT_REGISTRY = {
   "source_answer.v1": { schema: sourceAnswerSchema, requiredPermissions: ["documents:read"] },
   "comparison.v1": { schema: comparisonSchema, requiredPermissions: ["documents:read"] },
+  "email_draft.v1": { schema: emailDraftSchema, requiredPermissions: [] },
+  "meeting_brief.v1": { schema: meetingBriefSchema, requiredPermissions: [] },
 } as const;
 
 export type AiArtifactType = keyof typeof AI_ARTIFACT_REGISTRY;
