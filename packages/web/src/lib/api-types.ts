@@ -9509,13 +9509,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Missing AI or document-context permission */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
         };
     };
     streamAiMessage: {

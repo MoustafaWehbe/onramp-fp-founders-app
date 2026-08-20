@@ -10,7 +10,7 @@ import type { AiToolName } from "./ai-capabilities.service";
 import type { CreateAiMessageInput, ListAiMessagesQuery } from "../validators/ai.schemas";
 import { getAiConfig } from "../config/ai";
 
-export interface AiConversationAccess { canReadDocuments: boolean; tools?: AiToolName[]; }
+export interface AiConversationAccess { canReadDocuments: boolean; canReadFinancial: boolean; tools?: AiToolName[]; }
 
 const activeRuns = new Map<string, { controller: AbortController; userId: string; runId?: string }>();
 
@@ -22,7 +22,7 @@ export class AiConversationService {
 
   async submitMessage(startupId: string, userId: string, sessionId: string, input: CreateAiMessageInput, access: AiConversationAccess) {
     const session = await this.ownedSession(startupId, userId, sessionId, true);
-    this.assertDocumentAccess(session, access);
+    this.assertContextAccess(session, access);
 
     const existing = await prisma.aiChatMessage.findFirst({ where: { sessionId, clientRequestId: input.clientRequestId, role: "user" }, select: { id: true } });
     if (existing) {
@@ -47,7 +47,7 @@ export class AiConversationService {
     const session = await this.ownedSession(startupId, userId, sessionId, true);
     // A historical answer can contain grounded facts from a pinned document, so
     // losing access to that document also removes access to its conversation.
-    this.assertDocumentAccess(session, access);
+    this.assertContextAccess(session, access);
     const messages = await prisma.aiChatMessage.findMany({
       where: { sessionId },
       orderBy: { createdAt: "asc" },
@@ -81,7 +81,7 @@ export class AiConversationService {
 
   async openStream(startupId: string, userId: string, sessionId: string, messageId: string, access: AiConversationAccess, lastSequence = 0) {
     const session = await this.ownedSession(startupId, userId, sessionId, true);
-    this.assertDocumentAccess(session, access);
+    this.assertContextAccess(session, access);
     const message = await prisma.aiChatMessage.findFirst({ where: { id: messageId, sessionId, role: "assistant" } });
     if (!message) throw createError("AI message not found", 404, "AI_MESSAGE_NOT_FOUND");
     const replay = await aiStreamBroker.replayPersistent(messageId, lastSequence);
@@ -234,8 +234,12 @@ export class AiConversationService {
     return { ...session, documents: ("documents" in session ? session.documents : []) as Array<{ documentVersionId: string }>, persona: ("persona" in session ? session.persona : null) as { id: string; personaName: string | null; description: string | null } | null };
   }
 
-  private assertDocumentAccess(session: { documents: unknown[] }, access: AiConversationAccess) {
+  private assertContextAccess(session: { documents: unknown[]; roundId?: string | null }, access: AiConversationAccess) {
     if (session.documents.length && !access.canReadDocuments) throw createError("Forbidden", 403, "FORBIDDEN");
+    // Historical responses may include a selected round's financial facts.
+    // Do not let a permission change become an oracle for round context, and
+    // never pass its ID to non-financial tools after access is revoked.
+    if (session.roundId && !access.canReadFinancial) throw createError("Forbidden", 403, "FORBIDDEN");
   }
 }
 

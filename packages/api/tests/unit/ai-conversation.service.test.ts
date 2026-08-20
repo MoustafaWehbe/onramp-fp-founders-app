@@ -11,7 +11,7 @@ jest.mock("../../src/db/prisma", () => ({
   },
 }));
 
-const access = { canReadDocuments: true };
+const access = { canReadDocuments: true, canReadFinancial: true };
 const session = { id: "session-1", startupId: "startup-1", userId: "user-1", documents: [] };
 
 describe("AI conversation persistence", () => {
@@ -51,8 +51,29 @@ describe("AI conversation persistence", () => {
     const service = new AiConversationService(new FakeAiProvider());
     await expect(service.submitMessage("startup-1", "user-1", "session-1", {
       content: "Summarize", clientRequestId: "00000000-0000-0000-0000-000000000001",
-    }, { canReadDocuments: false })).rejects.toMatchObject({ statusCode: 403, code: "FORBIDDEN" });
+    }, { canReadDocuments: false, canReadFinancial: true })).rejects.toMatchObject({ statusCode: 403, code: "FORBIDDEN" });
     expect(prisma.aiChatMessage.create).not.toHaveBeenCalled();
+  });
+
+  it("does not resume a round-context conversation after financial access is revoked", async () => {
+    (prisma.aiChatSession.findFirst as jest.Mock).mockResolvedValue({ ...session, roundId: "round-1" });
+    const service = new AiConversationService(new FakeAiProvider());
+    await expect(service.submitMessage("startup-1", "user-1", "session-1", {
+      content: "How is the round doing?", clientRequestId: "00000000-0000-0000-0000-000000000001",
+    }, { canReadDocuments: true, canReadFinancial: false })).rejects.toMatchObject({ statusCode: 403, code: "FORBIDDEN" });
+    expect(prisma.aiChatMessage.create).not.toHaveBeenCalled();
+  });
+
+  it("does not disclose historical messages or start a stream for a revoked round context", async () => {
+    (prisma.aiChatSession.findFirst as jest.Mock).mockResolvedValue({ ...session, roundId: "round-1" });
+    const service = new AiConversationService(new FakeAiProvider());
+    const revokedAccess = { canReadDocuments: true, canReadFinancial: false };
+    await expect(service.listMessages("startup-1", "user-1", "session-1", { limit: 50 }, revokedAccess))
+      .rejects.toMatchObject({ statusCode: 403, code: "FORBIDDEN" });
+    await expect(service.openStream("startup-1", "user-1", "session-1", "assistant-message", revokedAccess))
+      .rejects.toMatchObject({ statusCode: 403, code: "FORBIDDEN" });
+    expect(prisma.aiChatMessage.findMany).not.toHaveBeenCalled();
+    expect(prisma.aiChatMessage.findFirst).not.toHaveBeenCalled();
   });
 
   it("marks an active assistant message cancelled", async () => {

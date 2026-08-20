@@ -8049,7 +8049,7 @@ paths:
       responses:
         "202":
           description: Assistant response is pending; open streamUrl to begin or reconnect.
-        "403": { description: Missing AI or document-context permission }
+          "403": { description: Missing AI or protected-context permission }
 
   /startups/{startupId}/ai/sessions/{sessionId}/messages/{messageId}/stream:
     get:
