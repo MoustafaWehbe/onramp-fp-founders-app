@@ -13,9 +13,9 @@ import { AiArtifactRenderer } from "./artifacts/AiArtifactRenderer";
 import { Link } from "react-router-dom";
 import { aiRecordLink } from "../../../lib/ai-record-link";
 
-type Props = { startupId: string; session: AiSession | null; canCreate: boolean; prefill?: string };
+type Props = { startupId: string; session: AiSession | null; canCreate: boolean; prefill?: string; onStartWithPrompt?: (prompt: string) => void };
 
-export function ConversationPanel({ startupId, session, canCreate, prefill }: Props) {
+export function ConversationPanel({ startupId, session, canCreate, prefill, onStartWithPrompt }: Props) {
   const queryClient = useQueryClient();
   const { open, close } = useAiStream();
   const [draft, setDraft] = useState("");
@@ -94,7 +94,7 @@ export function ConversationPanel({ startupId, session, canCreate, prefill }: Pr
     if (content && !sendMutation.isPending && canCreate) sendMutation.mutate(content);
   }
 
-  if (!session) return <Welcome />;
+  if (!session) return <Welcome canCreate={canCreate} onSelectPrompt={onStartWithPrompt} />;
   const activeAssistant = messages.find((message) => message.role === "assistant" && (message.status === "pending" || message.status === "streaming"));
   return <main className="flex min-h-[460px] min-w-0 flex-col bg-gradient-to-b from-muted/[0.12] to-transparent">
     <div className="border-b bg-card/75 px-5 py-4 backdrop-blur-sm"><div className="flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary"><Sparkles className="h-3.5 w-3.5" /></span><h2 className="truncate font-display text-base font-semibold">{session.title ?? "Untitled conversation"}</h2></div><p className="mt-1.5 text-xs text-muted-foreground">Private to you · grounded in this conversation’s context</p></div>
@@ -112,7 +112,7 @@ function Citation({ citation }: { citation: AiCitation }) {
   return <details className="rounded-md border bg-background px-3 py-2 text-xs"><summary className="cursor-pointer font-medium">Source: {citation.label}</summary>{citation.excerpt && <p className="mt-1 text-muted-foreground">{citation.excerpt}</p>}{link && <Link className="mt-2 inline-block text-primary hover:underline" to={link}>Open source</Link>}</details>;
 }
 
-function Welcome() { return <main className="flex min-h-[460px] flex-col items-center justify-center px-6 py-12 text-center"><div className="grid h-12 w-12 place-items-center rounded-xl bg-primary/10 text-primary"><Sparkles className="h-6 w-6" /></div><h2 className="mt-4 font-display text-xl font-semibold">How can I help?</h2><p className="mt-2 max-w-md text-sm text-muted-foreground">Choose relevant context, then start a conversation. Copilot only uses information you are allowed to access.</p><div className="mt-6 flex max-w-xl flex-wrap justify-center gap-2">{["What should I improve in my pitch deck?", "Help me prepare for an investor meeting.", "Summarize the selected documents."].map((prompt) => <span key={prompt} className="rounded-full border px-3 py-1.5 text-xs text-muted-foreground">{prompt}</span>)}</div></main>; }
+function Welcome({ canCreate, onSelectPrompt }: { canCreate: boolean; onSelectPrompt?: (prompt: string) => void }) { return <main className="flex min-h-[460px] flex-col items-center justify-center px-6 py-12 text-center"><div className="grid h-12 w-12 place-items-center rounded-xl bg-primary/10 text-primary"><Sparkles className="h-6 w-6" /></div><h2 className="mt-4 font-display text-xl font-semibold">How can I help?</h2><p className="mt-2 max-w-md text-sm text-muted-foreground">Choose relevant context, then start a conversation. Copilot only uses information you are allowed to access.</p><div className="mt-6 flex max-w-xl flex-wrap justify-center gap-2">{["What should I improve in my pitch deck?", "Help me prepare for an investor meeting.", "Summarize the selected documents."].map((prompt) => <button key={prompt} type="button" disabled={!canCreate} onClick={() => onSelectPrompt?.(prompt)} className="rounded-full border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-transparent disabled:hover:text-muted-foreground">{prompt}</button>)}</div></main>; }
 
 function MessageBubble({ message, onRetry, onStop, stopping }: { message: AiChatMessage; onRetry?: () => void; onStop?: () => void; stopping: boolean }) {
   const assistant = message.role === "assistant";

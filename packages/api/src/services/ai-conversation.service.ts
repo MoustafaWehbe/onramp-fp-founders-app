@@ -125,7 +125,12 @@ export class AiConversationService {
       runId = run.id;
       activeRuns.set(messageId, { controller, userId, runId });
       aiStreamBroker.publish(session.id, messageId, "message.started", {});
-      const history = await prisma.aiChatMessage.findMany({ where: { sessionId: session.id, status: { in: ["completed", "streaming"] } }, orderBy: { createdAt: "asc" }, take: 30, select: { role: true, content: true } });
+      // The in-flight assistant placeholder (this very message) is excluded so it can
+      // never stand in for the user's latest turn; ordering by desc+take then reversing
+      // keeps the most recent messages instead of the oldest ones once a conversation
+      // exceeds the window.
+      const recentHistory = await prisma.aiChatMessage.findMany({ where: { sessionId: session.id, id: { not: messageId }, status: { in: ["completed", "streaming"] } }, orderBy: { createdAt: "desc" }, take: 30, select: { role: true, content: true } });
+      const history = recentHistory.reverse();
       const selectedTools = aiToolsService.selectForPrompt(history.at(-1)?.content ?? "", access.tools ?? [], session.roundId);
       const toolResults = [] as Array<{ tool: AiToolName; result: unknown }>;
       for (const selection of selectedTools) {
@@ -198,15 +203,20 @@ export class AiConversationService {
             aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "source_answer.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
           }
           const prompt = history.at(-1)?.content.toLowerCase() ?? "";
-          const missingInvestorContext = true;
+          // "Investor context" means a tool actually returned investor/deal-specific data
+          // this turn (get_investor_context or non-empty get_focus_deals), not just that a
+          // fundraising round is pinned — a round and an investor are different records.
+          const investorToolResult = toolResults.find((entry) => entry.tool === "get_investor_context" || entry.tool === "get_focus_deals")?.result as { data?: unknown[] } | null | undefined;
+          const missingInvestorContext = !investorToolResult || (Array.isArray(investorToolResult.data) && investorToolResult.data.length === 0);
+          const contextLabel = missingInvestorContext ? "No investor record selected" : "Grounded in this conversation's pipeline data";
           if (prompt.includes("follow-up") || prompt.includes("follow up") || prompt.includes("email draft")) {
-            const artifact = await aiArtifactService.createReady({ startupId: session.startupId, sessionId: session.id, messageId, type: "email_draft.v1", title: "Follow-up draft", data: { subject: "Follow-up", body: content, contextLabel: "No investor record selected", missingInvestorContext } });
+            const artifact = await aiArtifactService.createReady({ startupId: session.startupId, sessionId: session.id, messageId, type: "email_draft.v1", title: "Follow-up draft", data: { subject: "Follow-up", body: content, contextLabel, missingInvestorContext } });
             aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "email_draft.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
           }
           if (prompt.includes("meeting brief") || prompt.includes("prepare me for") || prompt.includes("prepare for")) {
             const talkingPoints = content.split(/\n+|(?<=[.!?])\s+/).map((item) => item.trim()).filter(Boolean).slice(0, 8);
             if (talkingPoints.length) {
-              const artifact = await aiArtifactService.createReady({ startupId: session.startupId, sessionId: session.id, messageId, type: "meeting_brief.v1", title: "Meeting brief", data: { title: "Meeting preparation", talkingPoints, contextLabel: "No investor record selected", missingInvestorContext } });
+              const artifact = await aiArtifactService.createReady({ startupId: session.startupId, sessionId: session.id, messageId, type: "meeting_brief.v1", title: "Meeting brief", data: { title: "Meeting preparation", talkingPoints, contextLabel, missingInvestorContext } });
               aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "meeting_brief.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
             }
           }

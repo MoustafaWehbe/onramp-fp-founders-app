@@ -14,8 +14,8 @@ const aiRead = [authenticate, validate(startupIdParamSchema, "params"), requireM
 router.get("/sessions", ...aiRead, validate(listAiSessionsQuerySchema, "query"), aiController.listSessions);
 router.post("/sessions", authenticate, validate(startupIdParamSchema, "params"), requireMember, requirePermission("ai_reports", "create"), requireAiEnabled, validate(createAiSessionSchema), aiController.createSession);
 router.get("/sessions/:sessionId", authenticate, validate(aiSessionIdParamSchema, "params"), requireMember, requirePermission("ai_reports", "read"), aiController.getSession);
-router.patch("/sessions/:sessionId", authenticate, validate(aiSessionIdParamSchema, "params"), requireMember, requirePermission("ai_reports", "read"), validate(updateAiSessionSchema), aiController.updateSession);
-router.delete("/sessions/:sessionId", authenticate, validate(aiSessionIdParamSchema, "params"), requireMember, requirePermission("ai_reports", "read"), aiController.deleteSession);
+router.patch("/sessions/:sessionId", authenticate, validate(aiSessionIdParamSchema, "params"), requireMember, requirePermission("ai_reports", "create"), validate(updateAiSessionSchema), aiController.updateSession);
+router.delete("/sessions/:sessionId", authenticate, validate(aiSessionIdParamSchema, "params"), requireMember, requirePermission("ai_reports", "create"), aiController.deleteSession);
 router.get("/sessions/:sessionId/messages", authenticate, validate(aiSessionIdParamSchema, "params"), requireMember, requirePermission("ai_reports", "read"), validate(listAiMessagesQuerySchema, "query"), aiController.listMessages);
 router.post("/sessions/:sessionId/messages", authenticate, validate(aiSessionIdParamSchema, "params"), requireMember, requirePermission("ai_reports", "create"), requireAiEnabled, aiMessageRateLimiter, validate(createAiMessageSchema), aiController.submitMessage);
 router.get("/sessions/:sessionId/messages/:messageId/stream", authenticate, validate(aiMessageStreamParamSchema, "params"), requireMember, requirePermission("ai_reports", "read"), requireAiEnabled, aiController.streamMessage);
