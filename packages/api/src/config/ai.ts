@@ -30,6 +30,7 @@ export interface AiConfig {
   embeddingDimensions: number;
   requestTimeoutMs: number;
   maxOutputTokens: number;
+  analysisMaxOutputTokens: number;
   maxToolRounds: number;
   retrievalResultCount: number;
   retrievalTokenBudget: number;
@@ -53,6 +54,10 @@ export function getAiConfig(): AiConfig {
     embeddingDimensions: optionalPositiveInt("AI_EMBEDDING_DIMENSIONS", 1536),
     requestTimeoutMs: optionalPositiveInt("AI_REQUEST_TIMEOUT_MS", 30_000),
     maxOutputTokens: optionalPositiveInt("AI_MAX_OUTPUT_TOKENS", 2_000),
+    // A pitch-deck analysis can legitimately need up to 12 gaps + 8 strengths + 4
+    // personas of real text, which chat's token budget above is far too small for
+    // (observed truncating mid-JSON at 2,000 tokens on an 18-chunk deck).
+    analysisMaxOutputTokens: optionalPositiveInt("AI_ANALYSIS_MAX_OUTPUT_TOKENS", 8_000),
     maxToolRounds: optionalPositiveInt("AI_MAX_TOOL_ROUNDS", 4),
     retrievalResultCount: optionalPositiveInt("AI_RETRIEVAL_RESULT_COUNT", 8),
     retrievalTokenBudget: optionalPositiveInt("AI_RETRIEVAL_TOKEN_BUDGET", 4_500),

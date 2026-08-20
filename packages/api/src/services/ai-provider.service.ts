@@ -19,7 +19,7 @@ interface OpenAiClient {
 }
 
 export class AiProviderError extends Error {
-  constructor(message: string, public readonly code: "AI_DISABLED" | "AI_TIMEOUT" | "AI_CANCELLED" | "AI_PROVIDER_ERROR" | "AI_MALFORMED_RESPONSE", public readonly retryable = false) {
+  constructor(message: string, public readonly code: "AI_DISABLED" | "AI_TIMEOUT" | "AI_CANCELLED" | "AI_PROVIDER_ERROR" | "AI_MALFORMED_RESPONSE" | "AI_RESPONSE_TRUNCATED", public readonly retryable = false) {
     super(message); this.name = "AiProviderError";
   }
 }
@@ -75,7 +75,17 @@ export class OpenAiProvider implements AiProvider {
 
   async generateStructuredObject(request: StructuredObjectRequest): Promise<StructuredObjectResult> {
     this.assertEnabled();
-    const response = await this.withRetries((signal) => this.client.responses.create({ model: this.config.analysisModel, instructions: request.instructions, input: request.input, max_output_tokens: this.config.maxOutputTokens, store: false, text: { format: { type: "json_schema", name: request.schemaName, strict: true, schema: request.schema } } }, { signal }), request.signal);
+    const response = await this.withRetries((signal) => this.client.responses.create({ model: this.config.analysisModel, instructions: request.instructions, input: request.input, max_output_tokens: this.config.analysisMaxOutputTokens, store: false, text: { format: { type: "json_schema", name: request.schemaName, strict: true, schema: request.schema } } }, { signal }), request.signal);
+    // A response cut off by the token budget is a distinct, actionable failure
+    // (JSON.parse would otherwise reject it with an opaque "invalid JSON" that
+    // looks identical to a genuine model malfunction) — surface it as its own
+    // retryable error so truncation is diagnosable without re-deriving it from
+    // provider internals every time.
+    const status = (response as { status?: string }).status;
+    if (status === "incomplete") {
+      const reason = (response as { incomplete_details?: { reason?: string } }).incomplete_details?.reason;
+      throw new AiProviderError(`AI response was truncated (${reason ?? "incomplete"})`, "AI_RESPONSE_TRUNCATED", true);
+    }
     const outputText = (response as { output_text?: unknown }).output_text;
     if (typeof outputText !== "string") throw new AiProviderError("AI provider returned no structured output", "AI_MALFORMED_RESPONSE");
     try { return { providerRequestId: (response as { id?: string }).id, value: JSON.parse(outputText), usage: usageOf(response) }; }

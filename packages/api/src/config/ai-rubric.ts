@@ -36,11 +36,14 @@ export const pitchDeckEvidenceSchema = z.object({
   excerpt: boundedText(600),
 });
 
+export const PITCH_DECK_GAP_STATUSES = ["supported", "partial", "missing", "conflicting"] as const;
+export const PITCH_DECK_SEVERITIES = ["low", "medium", "high", "critical"] as const;
+
 export const pitchDeckGapSchema = z.object({
   section: z.enum(PITCH_DECK_SECTIONS),
-  status: z.enum(["supported", "partial", "missing", "conflicting"]),
+  status: z.enum(PITCH_DECK_GAP_STATUSES),
   issue: boundedText(1_000),
-  severity: z.enum(["low", "medium", "high", "critical"]),
+  severity: z.enum(PITCH_DECK_SEVERITIES),
   recommendation: boundedText(1_000),
   // Missing-information findings are allowed to have no source evidence.
   evidence: z.array(pitchDeckEvidenceSchema).max(6),
