@@ -795,6 +795,7 @@ model InvestorPersona {
 
   analysis  AiAnalysis        @relation(fields: [analysisId], references: [id], onDelete: Cascade)
   questions PersonaQuestion[]
+  sessions  AiChatSession[]   @relation("AiSessionPersona")
 
   @@map("investor_personas")
 }
@@ -817,6 +818,7 @@ model AiChatSession {
   userId        String    @map("user_id")
   title         String?
   roundId       String?   @map("round_id")
+  personaId     String?   @map("persona_id")
   contextMode   String    @default("selected") @map("context_mode")
   lastMessageAt DateTime? @map("last_message_at")
   archivedAt    DateTime? @map("archived_at")
@@ -826,6 +828,7 @@ model AiChatSession {
   startup   Startup                 @relation(fields: [startupId], references: [id], onDelete: Cascade)
   user      User                    @relation(fields: [userId], references: [id])
   round     FundraisingRound?       @relation(fields: [roundId, startupId], references: [id, startupId], onDelete: Restrict)
+  persona   InvestorPersona?        @relation("AiSessionPersona", fields: [personaId], references: [id], onDelete: SetNull)
   messages  AiChatMessage[]
   documents AiChatSessionDocument[]
   analyses  AiAnalysis[]

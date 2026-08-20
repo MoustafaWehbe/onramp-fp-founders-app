@@ -9,7 +9,7 @@ import { Skeleton } from "../../../components/ui/skeleton";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { useActiveStartupId } from "../../../hooks/useWorkspace";
 import { apiErrorMessage } from "../../../lib/api-error";
-import { createAiSession, listAiSessions, type AiSession } from "../../../lib/ai-api";
+import { createAiSession, listAiSessions, updateAiSession, type AiSession } from "../../../lib/ai-api";
 import { listDocuments } from "../../../lib/document-api";
 import { listFundraisingRounds } from "../../../lib/fundraising-api";
 import { qk } from "../../../lib/query-keys";
@@ -59,6 +59,17 @@ export function Ai() {
     },
     onError: (error) => toast.error(apiErrorMessage(error, "Could not create a Copilot session")),
   });
+  const personaMutation = useMutation({
+    mutationFn: (personaId: string | null) => {
+      if (!selectedSession) throw new Error("Select a conversation first");
+      return updateAiSession(startupId, selectedSession.id, { personaId });
+    },
+    onSuccess: (session) => {
+      queryClient.setQueryData<AiSession[]>(qk.aiSessions(startupId), (current = []) => current.map((item) => item.id === session.id ? { ...item, ...session } : item));
+      toast.success(session.persona ? `Simulation enabled: ${session.persona.name ?? "investor persona"}` : "Investor simulation ended");
+    },
+    onError: (error) => toast.error(apiErrorMessage(error, "Could not update the investor simulation")),
+  });
 
   const sessions = sessionsQuery.data ?? [];
   const selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? null;
@@ -99,7 +110,7 @@ export function Ai() {
           <aside className="p-4">
             <h2 className="font-display text-sm font-semibold">Conversation context</h2>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Select only information that should be available to a new conversation.</p>
-            {selectedSession ? <><SelectedContext session={selectedSession} /><AnalysisPanel startupId={startupId} session={selectedSession} canCreate={canCreateSession} onAskFollowup={setAnalysisPrompt} /></> : <>
+            {selectedSession ? <><SelectedContext session={selectedSession} /><AnalysisPanel startupId={startupId} session={selectedSession} canCreate={canCreateSession} onAskFollowup={setAnalysisPrompt} onSelectPersona={(personaId) => personaMutation.mutate(personaId)} /></> : <>
               {canReadDocuments && <div className="mt-5"><div className="flex items-center gap-2 text-sm font-medium"><FileText className="h-4 w-4 text-muted-foreground" /> Documents</div><div className="mt-2 max-h-44 space-y-2 overflow-y-auto pr-1">{readyDocuments.length === 0 ? <p className="text-xs text-muted-foreground">No ready documents available.</p> : readyDocuments.map((document) => { const version = document.currentVersion!; return <label key={version.id} className="flex cursor-pointer items-start gap-2 rounded-md p-1.5 hover:bg-muted"><Checkbox checked={selectedVersionIds.includes(version.id)} onChange={() => toggleVersion(version.id)} /><span className="min-w-0 text-xs"><span className="block truncate text-foreground">{document.title}</span><span className="text-muted-foreground">Version {version.versionNumber}</span></span></label>; })}</div></div>}
               {canReadFinancial && <div className="mt-5"><div className="flex items-center gap-2 text-sm font-medium"><Wallet className="h-4 w-4 text-muted-foreground" /> Round</div><Select className="mt-2" value={roundId ?? ""} onValueChange={(value) => setRoundId(value || undefined)} placeholder="No round selected" options={[{ value: "", label: "No round selected" }, ...rounds.map((round) => ({ value: round.id, label: round.roundName }))]} /></div>}
               {!canReadDocuments && !canReadFinancial && <p className="mt-5 rounded-md bg-muted p-3 text-xs text-muted-foreground">No optional workspace context is available with your current permissions.</p>}
@@ -117,5 +128,5 @@ function SessionButton({ session, selected, onClick }: { session: AiSession; sel
 
 function SelectedContext({ session }: { session: AiSession }) {
   const documentCount = session.documents?.length ?? 0;
-  return <div className="mt-5 space-y-4 text-sm"><div><div className="flex items-center gap-2 font-medium"><FileText className="h-4 w-4 text-muted-foreground" /> Documents</div><p className="mt-1 text-xs text-muted-foreground">{documentCount ? `${documentCount} selected document${documentCount === 1 ? "" : "s"}` : "No documents selected"}</p></div>{session.roundId && <div><div className="flex items-center gap-2 font-medium"><Wallet className="h-4 w-4 text-muted-foreground" /> Round</div><p className="mt-1 text-xs text-muted-foreground">Selected for this conversation</p></div>}</div>;
+  return <div className="mt-5 space-y-4 text-sm"><div><div className="flex items-center gap-2 font-medium"><FileText className="h-4 w-4 text-muted-foreground" /> Documents</div><p className="mt-1 text-xs text-muted-foreground">{documentCount ? `${documentCount} selected document${documentCount === 1 ? "" : "s"}` : "No documents selected"}</p></div>{session.roundId && <div><div className="flex items-center gap-2 font-medium"><Wallet className="h-4 w-4 text-muted-foreground" /> Round</div><p className="mt-1 text-xs text-muted-foreground">Selected for this conversation</p></div>}{session.persona && <div className="rounded-md border border-primary/25 bg-primary/5 p-2"><p className="text-xs font-medium text-primary">Simulation: {session.persona.name ?? "Investor persona"}</p><p className="mt-1 text-xs text-muted-foreground">AI-generated rehearsal, not a real investor.</p></div>}</div>;
 }

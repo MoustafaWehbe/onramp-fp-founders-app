@@ -15,6 +15,7 @@ export type AiSession = {
   contextMode: "selected" | "workspace";
   roundId?: string;
   documents?: AiSessionDocument[];
+  persona?: { id: string; name: string | null; description: string | null } | null;
   lastMessageAt: string | null;
   archivedAt: string | null;
   createdAt: string;
@@ -92,6 +93,11 @@ export async function createAiSession(startupId: string, input: CreateAiSessionI
   return data.data;
 }
 
+export async function updateAiSession(startupId: string, sessionId: string, input: { personaId?: string | null }) {
+  const { data } = await apiClient.patch<{ data: AiSession }>(`/startups/${startupId}/ai/sessions/${sessionId}`, input);
+  return data.data;
+}
+
 export async function listAiMessages(startupId: string, sessionId: string) {
   const { data } = await apiClient.get<{ data: AiChatMessage[] }>(`/startups/${startupId}/ai/sessions/${sessionId}/messages`);
   return data.data;
@@ -121,4 +127,9 @@ export async function createAiAnalysis(startupId: string, input: { documentVersi
 
 export async function cancelAiAnalysis(startupId: string, analysisId: string) {
   await apiClient.post(`/startups/${startupId}/ai/analyses/${analysisId}/cancel`);
+}
+
+export async function getAiAnalysis(startupId: string, analysisId: string) {
+  const { data } = await apiClient.get<{ data: AiAnalysis & { personas: Array<{ id: string; personaName: string | null; description: string | null; questions: Array<{ id: string; questionText: string | null }> }> } }>(`/startups/${startupId}/ai/analyses/${analysisId}`);
+  return data.data;
 }

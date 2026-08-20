@@ -2592,6 +2592,13 @@ components:
               title: { type: string }
               versionNumber: { type: integer }
               processingStatus: { type: string }
+        persona:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string, nullable: true }
+            description: { type: string, nullable: true }
     CreateAiSessionBody:
       type: object
       properties:
@@ -2607,6 +2614,7 @@ components:
       properties:
         title: { type: string, minLength: 1, maxLength: 160 }
         archived: { type: boolean }
+        personaId: { type: string, format: uuid, nullable: true }
     CreateAiMessageBody:
       type: object
       required: [content, clientRequestId]

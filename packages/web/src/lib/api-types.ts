@@ -3498,6 +3498,12 @@ export interface components {
                 versionNumber?: number;
                 processingStatus?: string;
             }[];
+            persona?: {
+                /** Format: uuid */
+                id?: string;
+                name?: string | null;
+                description?: string | null;
+            } | null;
         };
         CreateAiSessionBody: {
             title?: string;
@@ -3513,6 +3519,8 @@ export interface components {
         UpdateAiSessionBody: {
             title?: string;
             archived?: boolean;
+            /** Format: uuid */
+            personaId?: string | null;
         };
         CreateAiMessageBody: {
             content: string;
