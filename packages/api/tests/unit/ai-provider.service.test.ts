@@ -18,6 +18,11 @@ const config: AiConfig = {
   retrievalTokenBudget: 4500,
   minimumRetrievalScore: 0.2,
   maxRetries: 1,
+  messagesPerMinute: 20,
+  concurrentStreamsPerUser: 2,
+  analysesPerStartupPerDay: 20,
+  queuedAnalysesPerStartup: 4,
+  chatRetentionDays: 0,
 };
 
 const streamOf = (...events: unknown[]) => ({

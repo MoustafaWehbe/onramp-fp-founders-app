@@ -10,6 +10,7 @@ const config: AiConfig = {
   enabled: true, chatModel: "chat", analysisModel: "analysis", embeddingModel: "embedding", embeddingDimensions: 1536,
   requestTimeoutMs: 30_000, maxOutputTokens: 2_000, maxToolRounds: 4, retrievalResultCount: 2,
   retrievalTokenBudget: 300, minimumRetrievalScore: 0.2, maxRetries: 1,
+  messagesPerMinute: 20, concurrentStreamsPerUser: 2, analysesPerStartupPerDay: 20, queuedAnalysesPerStartup: 4, chatRetentionDays: 0,
 };
 
 function row(overrides: Record<string, unknown> = {}) {

@@ -10,6 +10,7 @@
     "start": "node dist/server.js",
     "start:worker": "node dist/src/jobs/workers/index.js",
     "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.js --coverage --passWithNoTests",
+    "eval:ai": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.js --runInBand tests/unit/ai-evaluation.service.test.ts tests/unit/ai-rubric.test.ts",
     "lint": "eslint .",
     "clean": "rm -rf dist",
     "db:migrate": "prisma migrate deploy",
