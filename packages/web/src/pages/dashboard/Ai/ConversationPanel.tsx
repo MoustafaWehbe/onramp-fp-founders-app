@@ -42,11 +42,13 @@ export function ConversationPanel({ startupId, session, canCreate, prefill, onSt
       if (event.type === "message.snapshot") return { ...message, status: String(event.payload.status ?? message.status) as AiChatMessage["status"], content: String(event.payload.content ?? message.content) };
       if (event.type === "citation.added") {
         const citation = event.payload.citation as AiCitation | undefined;
-        return citation ? { ...message, citations: [...message.citations, citation] } : message;
+        if (!citation || message.citations.some((existing) => existing.id === citation.id)) return message;
+        return { ...message, citations: [...message.citations, citation] };
       }
       if (event.type === "artifact.ready") {
         const artifact = event.payload.artifact as AiChatMessage["artifacts"][number] | undefined;
-        return artifact ? { ...message, artifacts: [...message.artifacts, artifact] } : message;
+        if (!artifact || message.artifacts.some((existing) => existing.id === artifact.id)) return message;
+        return { ...message, artifacts: [...message.artifacts, artifact] };
       }
       if (event.type === "message.completed") return { ...message, status: "completed", content: String(event.payload.content ?? message.content) };
       if (event.type === "message.failed") return { ...message, status: "failed", errorMessage: "The AI response could not be completed." };
@@ -116,5 +118,10 @@ function Welcome({ canCreate, onSelectPrompt }: { canCreate: boolean; onSelectPr
 
 function MessageBubble({ message, onRetry, onStop, stopping }: { message: AiChatMessage; onRetry?: () => void; onStop?: () => void; stopping: boolean }) {
   const assistant = message.role === "assistant";
-  return <article className={cn("max-w-[92%]", assistant ? "mr-auto" : "ml-auto")}><div className={cn("rounded-xl px-4 py-3 text-sm leading-relaxed", assistant ? "bg-muted/70 text-foreground" : "bg-primary text-primary-foreground")}>{message.content || (assistant && <span className="inline-flex items-center gap-2 text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Thinking…</span>)}</div>{assistant && message.artifacts.map((artifact) => <AiArtifactRenderer key={artifact.id} artifact={artifact} />)}<div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground"><span>{formatDate(message.createdAt)}</span>{message.status === "streaming" && <span>Streaming</span>}{onStop && <Button size="sm" variant="ghost" onClick={onStop} disabled={stopping}><OctagonX /> Stop</Button>}{message.status === "failed" && <span className="inline-flex items-center gap-1 text-destructive"><AlertCircle className="h-3.5 w-3.5" /> {message.errorMessage ?? "Response failed"}</span>}{onRetry && <Button size="sm" variant="ghost" onClick={onRetry}><RotateCcw /> Reuse</Button>}</div>{assistant && message.citations.length > 0 && <div className="mt-2 space-y-1">{message.citations.map((citation) => <Citation key={citation.id} citation={citation} />)}</div>}</article>;
+  // A source_answer artifact already carries this same text plus a deduplicated
+  // source list, so once it lands we drop the raw bubble and the separate
+  // citations list instead of showing the identical answer and sources twice.
+  const sourceAnswerArtifact = assistant ? message.artifacts.find((artifact) => artifact.type === "source_answer.v1") : undefined;
+  const otherArtifacts = assistant ? message.artifacts.filter((artifact) => artifact.type !== "source_answer.v1") : [];
+  return <article className={cn("max-w-[92%]", assistant ? "mr-auto" : "ml-auto")}>{!sourceAnswerArtifact && <div className={cn("rounded-xl px-4 py-3 text-sm leading-relaxed", assistant ? "bg-muted/70 text-foreground" : "bg-primary text-primary-foreground")}>{message.content || (assistant && <span className="inline-flex items-center gap-2 text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Thinking…</span>)}</div>}{assistant && sourceAnswerArtifact && <AiArtifactRenderer artifact={sourceAnswerArtifact} />}{assistant && otherArtifacts.map((artifact) => <AiArtifactRenderer key={artifact.id} artifact={artifact} />)}<div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground"><span>{formatDate(message.createdAt)}</span>{message.status === "streaming" && <span>Streaming</span>}{onStop && <Button size="sm" variant="ghost" onClick={onStop} disabled={stopping}><OctagonX /> Stop</Button>}{message.status === "failed" && <span className="inline-flex items-center gap-1 text-destructive"><AlertCircle className="h-3.5 w-3.5" /> {message.errorMessage ?? "Response failed"}</span>}{onRetry && <Button size="sm" variant="ghost" onClick={onRetry}><RotateCcw /> Reuse</Button>}</div>{assistant && !sourceAnswerArtifact && message.citations.length > 0 && <div className="mt-2 space-y-1">{message.citations.map((citation) => <Citation key={citation.id} citation={citation} />)}</div>}</article>;
 }

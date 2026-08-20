@@ -44,11 +44,19 @@ export function useAiStream() {
           const frames = buffer.split("\n\n");
           buffer = frames.pop() ?? "";
           for (const frame of frames) {
-            const id = /^id: (\d+)$/m.exec(frame)?.[1];
             const data = /^data: (.*)$/m.exec(frame)?.[1];
             if (!data) continue;
             const event = JSON.parse(data) as AiStreamEvent;
-            if (id) lastEventId = Number(id);
+            // SSE + Last-Event-ID replay is at-least-once delivery: a reconnect can
+            // legitimately resend events the client already applied (e.g. if the
+            // Last-Event-ID header never made it to the server, or a proxy buffers
+            // and redelivers). Sequence numbers are strictly increasing per message,
+            // so anything at or below the high-water mark is a duplicate and is
+            // dropped here rather than double-applying citations/artifacts.
+            if (event.sequence > 0) {
+              if (event.sequence <= lastEventId) continue;
+              lastEventId = event.sequence;
+            }
             onEvent(event);
             if (["message.completed", "message.failed", "message.cancelled"].includes(event.type)) terminal = true;
           }
