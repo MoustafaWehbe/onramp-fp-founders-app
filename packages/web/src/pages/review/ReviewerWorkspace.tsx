@@ -32,7 +32,7 @@ export function ReviewerWorkspace() {
     retry: false,
   });
 
-  const documents = workspaceQuery.data?.documents ?? [];
+  const documents = useMemo(() => workspaceQuery.data?.documents ?? [], [workspaceQuery.data]);
   const activeDocumentId = selectedDocumentId ?? documents[0]?.documentId ?? null;
 
   const commentsQuery = useQuery({

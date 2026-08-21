@@ -97,7 +97,7 @@ export function FundingHistoryChart({ startupId, roundId, currency, compact = fa
     enabled: Boolean(roundId),
   });
 
-  const events = historyQuery.data ?? [];
+  const events = useMemo(() => historyQuery.data ?? [], [historyQuery.data]);
   const series = useMemo(() => buildMonthlySeries(events, range), [events, range]);
   const current = series.at(-1)?.value ?? 0;
 

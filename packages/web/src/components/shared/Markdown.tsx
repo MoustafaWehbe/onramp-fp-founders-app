@@ -38,6 +38,27 @@ function remarkToneLists() {
   };
 }
 
+function ListItem({ children }: { children?: React.ReactNode }) {
+  const tone = useContext(ListToneContext);
+  if (tone === "positive") {
+    return (
+      <li className="flex items-start gap-2">
+        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
+        <span>{children}</span>
+      </li>
+    );
+  }
+  if (tone === "negative") {
+    return (
+      <li className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+        <span>{children}</span>
+      </li>
+    );
+  }
+  return <li className="pl-0.5">{children}</li>;
+}
+
 const components: Components = {
   p: ({ children }) => <p className="leading-relaxed [&:not(:first-child)]:mt-3">{children}</p>,
   strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
@@ -60,26 +81,7 @@ const components: Components = {
     );
   },
   ol: ({ children }) => <ol className="mt-2 list-decimal space-y-1 pl-5 marker:text-muted-foreground first:mt-0">{children}</ol>,
-  li: ({ children }) => {
-    const tone = useContext(ListToneContext);
-    if (tone === "positive") {
-      return (
-        <li className="flex items-start gap-2">
-          <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
-          <span>{children}</span>
-        </li>
-      );
-    }
-    if (tone === "negative") {
-      return (
-        <li className="flex items-start gap-2">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
-          <span>{children}</span>
-        </li>
-      );
-    }
-    return <li className="pl-0.5">{children}</li>;
-  },
+  li: ListItem,
   blockquote: ({ children }) => <blockquote className="mt-2 border-l-2 border-primary/40 pl-3 text-muted-foreground first:mt-0">{children}</blockquote>,
   hr: () => <hr className="my-4 border-border/60" />,
   code: ({ className, children, ...props }) => {

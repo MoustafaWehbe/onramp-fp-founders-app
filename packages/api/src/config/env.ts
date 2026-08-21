@@ -1,3 +1,5 @@
+import { getAiConfig } from "./ai";
+
 const REQUIRED: Record<string, string[]> = {
   always: [
     "DATABASE_URL",
@@ -123,7 +125,6 @@ export function validateEnv(): void {
   try {
     // Keep feature-flagged AI configuration invalid at boot rather than
     // discovering it only after a user starts a request.
-    const { getAiConfig } = require("./ai") as typeof import("./ai");
     getAiConfig();
   } catch (err) {
     problems.push((err as Error).message);

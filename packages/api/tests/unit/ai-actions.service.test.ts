@@ -2,7 +2,6 @@ import { prisma } from "../../src/db/prisma";
 import { AiActionsService } from "../../src/services/ai-actions.service";
 import { hasPermission } from "../../src/middleware/rbac";
 import { taskService } from "../../src/services/task.service";
-import { interactionLogService } from "../../src/services/interaction-log.service";
 import { calendarEventService } from "../../src/services/calendar-event.service";
 import { gmailSendService } from "../../src/services/gmail-send.service";
 import { pipelineService } from "../../src/services/pipeline.service";

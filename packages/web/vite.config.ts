@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
   server: {
@@ -28,6 +28,12 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    // Keep coverage-heavy jsdom suites from starving individual tests on
+    // high-core Windows and CI hosts.
+    maxWorkers: 4,
+    // Coverage instrumentation and parallel jsdom suites can push interaction
+    // tests past Vitest's 5-second default on Windows CI runners.
+    testTimeout: 10_000,
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],

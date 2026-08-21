@@ -27,7 +27,7 @@ export function DiscussionTab({ startupId, pipelineId, dealLabel }: DiscussionTa
     queryFn: () => listMentionsForTarget(startupId, "deal", pipelineId),
   });
 
-  const entries = backlinkQuery.data ?? [];
+  const entries = useMemo(() => backlinkQuery.data ?? [], [backlinkQuery.data]);
   const messages = useMemo(() => entries.map((entry) => entry.message), [entries]);
   const resolved = useResolvedMentions(startupId, messages);
 

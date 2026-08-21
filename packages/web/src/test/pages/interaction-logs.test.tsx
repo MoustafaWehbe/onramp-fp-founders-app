@@ -33,6 +33,22 @@ vi.mock("../../hooks/useGoogleConnection", () => ({
   useGoogleConnectionStatus: () => ({ data: { connected: true, configured: true } }),
 }));
 
+// The calendar popover has its own component coverage. These tests exercise
+// scheduling behavior, so use a deterministic instant without paying for the
+// full date-picker interaction in every coverage run.
+vi.mock("../../components/ui/date-time-picker", () => ({
+  DateTimePicker: ({ id, onChange }: { id?: string; onChange: (date: Date) => void }) => (
+    <button
+      id={id}
+      type="button"
+      aria-label="When"
+      onClick={() => onChange(new Date("2026-08-22T10:00:00.000Z"))}
+    >
+      Choose date and time
+    </button>
+  ),
+}));
+
 let role = "owner";
 vi.mock("../../hooks/usePermissions", async () => {
   const { roleCan } = await import("../../lib/permissions");
@@ -208,8 +224,6 @@ describe("InvestorDetailDialog interaction history", () => {
 
     await user.click(screen.getByRole("button", { name: /^schedule$/i }));
     await user.click(screen.getByRole("button", { name: "When" }));
-    await user.click(screen.getByRole("button", { name: new Date().toDateString() }));
-    await user.keyboard("{Escape}");
     await user.type(screen.getByLabelText("Subject"), "Follow-up");
     await user.click(screen.getByRole("button", { name: "Schedule & invite" }));
 
@@ -289,8 +303,6 @@ describe("InvestorDetailDialog interaction history", () => {
 
     await user.click(screen.getByRole("button", { name: /^schedule$/i }));
     await user.click(screen.getByRole("button", { name: "When" }));
-    await user.click(screen.getByRole("button", { name: new Date().toDateString() }));
-    await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "Schedule & invite" }));
 
     await waitFor(() =>

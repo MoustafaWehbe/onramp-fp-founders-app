@@ -56,7 +56,7 @@ export function Fundraising() {
   const [roundDialog, setRoundDialog] = useState<FundraisingRound | "new" | null>(null);
   const [commitmentDialog, setCommitmentDialog] = useState<Commitment | "new" | null>(null);
   const roundsQuery = useQuery({ queryKey: qk.rounds(startupId), queryFn: () => listFundraisingRounds(startupId) });
-  const rounds = roundsQuery.data?.data ?? [];
+  const rounds = useMemo(() => roundsQuery.data?.data ?? [], [roundsQuery.data]);
   const selectedRound = useMemo(() => rounds.find((round) => round.id === preferredRoundId) ?? rounds.find((round) => round.status === "active") ?? rounds[0] ?? null, [preferredRoundId, rounds]);
   useEffect(() => { if (selectedRound && selectedRound.id !== preferredRoundId) setActiveRoundId(startupId, selectedRound.id); }, [preferredRoundId, selectedRound, setActiveRoundId, startupId]);
   const commitmentsQuery = useQuery({ queryKey: qk.commitments(startupId, selectedRound?.id), queryFn: () => listCommitments(startupId, selectedRound?.id), enabled: Boolean(selectedRound) });
@@ -111,7 +111,7 @@ export function Fundraising() {
     onSuccess: () => { setCommitmentDialog(null); toast.success("Commitment updated"); invalidateFinancial(); },
     onError: (error) => toast.error(apiErrorMessage(error, "Could not update commitment")),
   });
-  const commitments = commitmentsQuery.data?.data ?? [];
+  const commitments = useMemo(() => commitmentsQuery.data?.data ?? [], [commitmentsQuery.data]);
   // The table shows the filtered request's rows once a status tile is
   // active; the API decides what matches, not a client-side re-scan.
   const visibleCommitments = statusFilter ? (filteredCommitmentsQuery.data?.data ?? []) : commitments;

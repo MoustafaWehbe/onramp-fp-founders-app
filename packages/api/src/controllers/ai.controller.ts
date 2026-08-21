@@ -4,6 +4,7 @@ import { asyncHandler } from "../utils/errors";
 import { aiChatService } from "../services/ai-chat.service";
 import { aiConversationService } from "../services/ai-conversation.service";
 import { aiAnalysisService } from "../services/ai-analysis.service";
+import type { AiStreamEnvelope } from "../services/ai-stream-broker.service";
 import type { CreateAiAnalysisInput, CreateAiMessageInput, CreateAiSessionInput, ListAiAnalysesQuery, ListAiMessagesQuery, ListAiSessionsQuery, UpdateAiSessionInput } from "../validators/ai.schemas";
 import type { NextFunction, Request, Response } from "express";
 
@@ -49,15 +50,17 @@ export const aiController = {
     void (async () => {
       const rawLastEventId = req.header("Last-Event-ID");
       const lastSequence = rawLastEventId && /^\d+$/.test(rawLastEventId) ? Number(rawLastEventId) : 0;
-      const { message, replay } = await aiConversationService.openStream(req.params.startupId as string, req.user!.userId, req.params.sessionId as string, req.params.messageId as string, await accessFor(req), lastSequence);
+      const sessionId = req.params.sessionId as string;
+      const messageId = req.params.messageId as string;
+      const { message, replay } = await aiConversationService.openStream(req.params.startupId as string, req.user!.userId, sessionId, messageId, await accessFor(req), lastSequence);
       res.status(200).set({ "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
       res.flushHeaders();
-      const send = (event: any) => {
+      const send = (event: AiStreamEnvelope) => {
         res.write(`id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
       };
-      send({ version: 1, sessionId: req.params.sessionId, messageId: req.params.messageId, sequence: 0, timestamp: new Date().toISOString(), type: "stream.ready", payload: {} });
+      send({ version: 1, sessionId, messageId, sequence: 0, timestamp: new Date().toISOString(), type: "stream.ready", payload: {} });
       if (replay.length) replay.forEach(send);
-      else send({ version: 1, sessionId: req.params.sessionId, messageId: req.params.messageId, sequence: 0, timestamp: new Date().toISOString(), type: "message.snapshot", payload: { status: message.status, content: message.content, errorMessage: message.errorMessage } });
+      else send({ version: 1, sessionId, messageId, sequence: 0, timestamp: new Date().toISOString(), type: "message.snapshot", payload: { status: message.status, content: message.content, errorMessage: message.errorMessage } });
 
       const terminalSnapshot = ["completed", "failed", "cancelled"].includes(message.status);
       if (terminalSnapshot || replay.some((event) => event.type === "stream.closed")) {
@@ -65,23 +68,22 @@ export const aiController = {
         return;
       }
 
-      let heartbeat: NodeJS.Timeout | undefined;
+      const heartbeat = setInterval(() => res.write(": ping\n\n"), 15_000);
       let unsubscribe = () => {};
       let closed = false;
       const close = () => {
         if (closed) return;
         closed = true;
-        if (heartbeat) clearInterval(heartbeat);
+        clearInterval(heartbeat);
         unsubscribe();
       };
-      unsubscribe = aiConversationService.subscribe(req.params.messageId as string, (event) => {
+      unsubscribe = aiConversationService.subscribe(messageId, (event) => {
         send(event);
         if (event.type === "stream.closed") {
           close();
           res.end();
         }
       });
-      heartbeat = setInterval(() => res.write(": ping\n\n"), 15_000);
       req.on("close", close);
       res.on("error", close);
     })().catch(next);

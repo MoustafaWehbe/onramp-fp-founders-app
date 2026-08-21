@@ -63,7 +63,6 @@ const USER: AuthUser = {
 };
 
 let client: QueryClient;
-let invalidate: ReturnType<typeof vi.fn>;
 
 function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
@@ -76,7 +75,7 @@ function render() {
 
 /** Keys passed to invalidateQueries, flattened for easy assertion. */
 function invalidatedKeys() {
-  return invalidate.mock.calls.map(([arg]) => JSON.stringify(arg.queryKey));
+  return vi.mocked(client.invalidateQueries).mock.calls.map(([arg]) => JSON.stringify(arg?.queryKey));
 }
 
 beforeEach(() => {
@@ -84,8 +83,7 @@ beforeEach(() => {
   FakeEventSource.instances = [];
   authState = { user: USER, isLoading: false };
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  invalidate = vi.fn();
-  client.invalidateQueries = invalidate;
+  vi.spyOn(client, "invalidateQueries").mockResolvedValue(undefined);
 });
 
 describe("useNotificationStream", () => {

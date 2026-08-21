@@ -202,7 +202,7 @@ export function DealDetailDialog({
     setInvestorFitScore(deal.investorFitScore == null ? "" : String(deal.investorFitScore));
     setLeadConfirmOpen(false);
     setDetailsOpen(false);
-  }, [deal]);
+  }, [deal, initialTab]);
 
   const logsQuery = useQuery({
     queryKey: qk.logsForInvestor(startupId, investorId),

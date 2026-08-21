@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { PageHeader } from "../../../components/layout/PageHeader";
@@ -39,7 +39,7 @@ export function Chat() {
     queryFn: () => listConversations(startupId),
   });
 
-  const conversations = conversationsQuery.data ?? [];
+  const conversations = useMemo(() => conversationsQuery.data ?? [], [conversationsQuery.data]);
 
   // Land on the most recently active channel by default, and follow along if
   // the one that was selected gets archived out from under the list. Wait

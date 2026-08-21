@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ArrowDown, ArrowUp, FileSearch, Loader2, Sparkles, UserRound } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -83,7 +83,7 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
     // the already-rendered text with that stale empty value.
     refetchOnWindowFocus: false,
   });
-  const messages = messagesQuery.data ?? [];
+  const messages = useMemo(() => messagesQuery.data ?? [], [messagesQuery.data]);
   // Read inside the ResizeObserver callback below, which must not force a
   // scroll for growth caused by something other than an active generation
   // (e.g. the user expanding a citation or an analysis's collapsible section).
@@ -111,7 +111,7 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
     enabled: Boolean(session),
     refetchInterval: (query) => (query.state.data?.some((analysis) => analysis.status === "queued" || analysis.status === "processing") ? 2_500 : false),
   });
-  const analyses = analysesQuery.data ?? [];
+  const analyses = useMemo(() => analysesQuery.data ?? [], [analysesQuery.data]);
 
   const createAnalysisMutation = useMutation({
     mutationFn: (documentVersionId: string) => createAiAnalysis(startupId, { documentVersionId, sessionId: session!.id }),
@@ -199,7 +199,7 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
     return () => el.removeEventListener("scroll", updateScrollButtonVisibility);
   }, [session?.id]);
 
-  const applyEvent = (messageId: string, event: AiStreamEvent) => {
+  const applyEvent = useCallback((messageId: string, event: AiStreamEvent) => {
     queryClient.setQueryData<AiChatMessage[]>(["ai-messages", startupId, session?.id], (current = []) =>
       current.map((message) => {
         if (message.id !== messageId) return message;
@@ -252,7 +252,7 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
         return event.type === "message.started" ? { ...message, status: "streaming" } : message;
       }),
     );
-  };
+  }, [queryClient, session?.id, startupId]);
 
   useEffect(() => {
     if (!session) return;
@@ -271,7 +271,7 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
     }).finally(() => {
       activeStreamId.current = null;
     });
-  }, [messages, open, queryClient, session, startupId]);
+  }, [applyEvent, messages, open, queryClient, session, startupId]);
 
   useEffect(() => {
     if (!session || session.title) return;
