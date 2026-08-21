@@ -5,6 +5,9 @@ import { pipelineService } from "../../src/services/pipeline.service";
 import { interactionLogService } from "../../src/services/interaction-log.service";
 import { taskService } from "../../src/services/task.service";
 import { chatService } from "../../src/services/chat.service";
+import { aiActionsService } from "../../src/services/ai-actions.service";
+import { gmailSendService } from "../../src/services/gmail-send.service";
+import { calendarEventService } from "../../src/services/calendar-event.service";
 
 jest.mock("../../src/db/prisma", () => ({
   prisma: {
@@ -22,6 +25,9 @@ jest.mock("../../src/services/pipeline.service", () => ({ pipelineService: { get
 jest.mock("../../src/services/interaction-log.service", () => ({ interactionLogService: { listLogsByInvestor: jest.fn() } }));
 jest.mock("../../src/services/task.service", () => ({ taskService: { listTasks: jest.fn() } }));
 jest.mock("../../src/services/chat.service", () => ({ chatService: { listConversations: jest.fn(), searchMessages: jest.fn() } }));
+jest.mock("../../src/services/ai-actions.service", () => ({ aiActionsService: { proposeAction: jest.fn() } }));
+jest.mock("../../src/services/gmail-send.service", () => ({ gmailSendService: { sendInvestorEmail: jest.fn() } }));
+jest.mock("../../src/services/calendar-event.service", () => ({ calendarEventService: { scheduleMeeting: jest.fn() } }));
 
 describe("AI structured tools", () => {
   beforeEach(() => jest.clearAllMocks());
@@ -159,5 +165,48 @@ describe("AI structured tools", () => {
     (chatService.searchMessages as jest.Mock).mockResolvedValue({ data: [] });
     await new AiToolsService().execute("startup-a", "search_team_messages", { query: "Ana Ruiz" }, ["search_team_messages"], { userId: "user-1" });
     expect(chatService.searchMessages).toHaveBeenCalledWith("startup-a", "member-1", "Ana Ruiz");
+  });
+
+  describe("propose_* write tools", () => {
+    const CONTEXT = { userId: "user-1", sessionId: "session-1", messageId: "message-1" };
+
+    it("only ever proposes — a propose_* tool call never reaches the real send/schedule/write service directly", async () => {
+      (aiActionsService.proposeAction as jest.Mock).mockResolvedValue({ id: "action-1", actionType: "send_investor_email", status: "proposed", expiresAt: new Date() });
+      await new AiToolsService().execute("startup-a", "propose_investor_email", {
+        investorId: "00000000-0000-0000-0000-000000000001", pipelineId: null, subject: "Hi", body: "Hello",
+      }, ["propose_investor_email"], CONTEXT);
+      expect(gmailSendService.sendInvestorEmail).not.toHaveBeenCalled();
+      expect(calendarEventService.scheduleMeeting).not.toHaveBeenCalled();
+    });
+
+    it("maps the tool name to the stored actionType and strips model-supplied nulls before proposing", async () => {
+      (aiActionsService.proposeAction as jest.Mock).mockResolvedValue({ id: "action-1", actionType: "create_task", status: "proposed", expiresAt: new Date() });
+      await new AiToolsService().execute("startup-a", "propose_task", {
+        pipelineId: "00000000-0000-0000-0000-000000000001", title: "Follow up", description: null, priority: null, dueDate: null, assigneeId: null,
+      }, ["propose_task"], CONTEXT);
+
+      expect(aiActionsService.proposeAction).toHaveBeenCalledWith(
+        "startup-a", "session-1", "message-1", "user-1", "create_task",
+        { pipelineId: "00000000-0000-0000-0000-000000000001", title: "Follow up" },
+      );
+    });
+
+    it("returns a result that explicitly says drafted/awaiting review, never that the action happened", async () => {
+      (aiActionsService.proposeAction as jest.Mock).mockResolvedValue({ id: "action-1", actionType: "create_task", status: "proposed", expiresAt: new Date() });
+      const result = await new AiToolsService().execute("startup-a", "propose_task", {
+        pipelineId: "00000000-0000-0000-0000-000000000001", title: "Follow up", description: null, priority: null, dueDate: null, assigneeId: null,
+      }, ["propose_task"], CONTEXT) as { actionId: string; status: string; summary: string };
+
+      expect(result.actionId).toBe("action-1");
+      expect(result.status).toBe("proposed");
+      expect(result.summary.toLowerCase()).toContain("awaiting");
+      expect(result.summary.toLowerCase()).toContain("drafted");
+    });
+
+    it("refuses to propose without an authenticated identity to attribute it to, rather than falling back to any default", async () => {
+      await expect(new AiToolsService().execute("startup-a", "propose_task", { pipelineId: "00000000-0000-0000-0000-000000000001", title: "x", description: null, priority: null, dueDate: null, assigneeId: null }, ["propose_task"], {}))
+        .rejects.toThrow("AI_TOOL_FORBIDDEN");
+      expect(aiActionsService.proposeAction).not.toHaveBeenCalled();
+    });
   });
 });

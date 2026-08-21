@@ -49,6 +49,7 @@ model User {
   commitmentStatusEvents CommitmentStatusEvent[]
   googleConnection       GoogleConnection?
   conversationsCreated   Conversation[]
+  aiAgentActions         AiAgentAction[]
 
   @@map("users")
 }
@@ -122,6 +123,7 @@ model Startup {
   aiChatSessions         AiChatSession[]
   aiRuns                 AiRun[]
   aiArtifacts            AiArtifact[]
+  aiAgentActions         AiAgentAction[]
   reviewerInvitations    ReviewerInvitation[]
   reviewerComments       ReviewerComment[]
   auditLogs              AuditLog[]
@@ -855,6 +857,7 @@ model AiChatSession {
   analyses  AiAnalysis[]
   artifacts AiArtifact[]
   runs      AiRun[]
+  agentActions AiAgentAction[]
 
   @@unique([startupId, id])
   @@index([startupId, userId, archivedAt, lastMessageAt])
@@ -888,10 +891,40 @@ model AiChatMessage {
   toolCalls AiToolCall[]
   artifacts AiArtifact[]
   runs      AiRun[]
+  agentActions AiAgentAction[]
 
   @@unique([sessionId, clientRequestId])
   @@index([sessionId, createdAt])
   @@map("ai_chat_messages")
+}
+
+model AiAgentAction {
+  id              String    @id @default(uuid())
+  startupId       String    @map("startup_id")
+  sessionId       String    @map("session_id")
+  messageId       String    @map("message_id")
+  userId          String    @map("user_id") // who it will act as
+  actionType      String    @map("action_type") // send_investor_email | schedule_meeting | create_task | log_interaction | update_deal_stage
+  status          String    @default("proposed") @map("status") // proposed | approved | executed | rejected | failed | expired
+  payload         Json // model-proposed, zod-validated
+  resolvedPayload Json?     @map("resolved_payload") // what was actually executed, after any user edit
+  resultRef       Json?     @map("result_ref") // { taskId } | { logId } | { gmailMessageId, gmailThreadId } | { eventId, htmlLink } | { pipelineId, stage }
+  errorCode       String?   @map("error_code")
+  approvedAt      DateTime? @map("approved_at")
+  executedAt      DateTime? @map("executed_at")
+  // A stale proposal in an old conversation cannot be approved next week
+  // against data that has since moved defaults to +24h from creation.
+  expiresAt       DateTime  @map("expires_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  startup Startup       @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  session AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  message AiChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User          @relation(fields: [userId], references: [id])
+
+  @@index([startupId, status, createdAt])
+  @@index([messageId])
+  @@map("ai_agent_actions")
 }
 
 model AiChatSessionDocument {

@@ -12,8 +12,17 @@ jest.mock("../../src/db/prisma", () => ({
     aiToolCall: { create: jest.fn() },
     aiCitation: { createMany: jest.fn() },
     aiAnalysis: { findMany: jest.fn() },
+    aiArtifact: { create: jest.fn() },
   },
 }));
+
+// ai-tools.service.ts now imports ai-actions.service.ts, which imports
+// gmail-send.service.ts, which imports the real BullMQ job queue — that opens
+// a live Redis connection at module-load time. requireActual below still
+// evaluates ai-tools.service.ts's real imports, so this must be mocked here
+// too (not just left to ai-tools.service.test.ts's own mock) or the test
+// process never exits.
+jest.mock("../../src/services/ai-actions.service", () => ({ aiActionsService: { proposeAction: jest.fn() } }));
 
 // toolSchemasFor stays real (it's what builds the tool definitions the model sees);
 // only execute() is stubbed so the loop never reaches a real domain service.
@@ -123,7 +132,7 @@ describe("AI conversation agent loop", () => {
 
     await (service as any).runGeneration(session, "assistant-message", "user-1", loopAccess);
 
-    expect(aiToolsService.execute).toHaveBeenCalledWith("startup-1", "get_focus_deals", { roundId: null }, ["get_focus_deals"], { canReadFinancial: true, userId: "user-1" });
+    expect(aiToolsService.execute).toHaveBeenCalledWith("startup-1", "get_focus_deals", { roundId: null }, ["get_focus_deals"], { canReadFinancial: true, userId: "user-1", sessionId: "session-1", messageId: "assistant-message" });
     expect(prisma.aiToolCall.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ toolName: "get_focus_deals", status: "completed" }) }));
     expect(prisma.aiChatMessage.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "completed", content: "Focus on Ana Ruiz." }) }));
     // The second streamConversation call must carry the first round's tool call and
@@ -162,6 +171,30 @@ describe("AI conversation agent loop", () => {
     expect(provider.requests.filter((request) => request.operation === "streamConversation")).toHaveLength(4);
     expect(prisma.aiChatMessage.update).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ status: "completed", content: expect.stringContaining("couldn't finish") }),
+    }));
+  });
+
+  it("surfaces a propose_* tool result as an action_proposal.v1 artifact immediately, not only at message completion", async () => {
+    (aiToolsService.execute as jest.Mock).mockResolvedValue({
+      actionId: "00000000-0000-0000-0000-000000000099", actionType: "create_task", status: "proposed", expiresAt: new Date("2026-08-22T00:00:00.000Z"),
+    });
+    (prisma.aiArtifact.create as jest.Mock).mockResolvedValue({ id: "artifact-1", artifactType: "action_proposal", schemaVersion: "v1", title: "Proposed action", status: "ready", data: {} });
+    const provider = new FakeAiProvider();
+    provider.streamEventsByTurn = [
+      [{ type: "tool_call", callId: "call-1", name: "propose_task", arguments: "{\"pipelineId\":\"pipeline-1\",\"title\":\"Follow up\"}" }, { type: "completed", stopReason: "tool_calls" }],
+      [{ type: "delta", text: "I've drafted a task for you to review." }, { type: "completed", stopReason: "stop" }],
+    ];
+    const proposeAccess = { canReadDocuments: false, canReadFinancial: true, tools: ["propose_task" as const] };
+    const service = new AiConversationService(provider);
+
+    await (service as any).runGeneration(session, "assistant-message", "user-1", proposeAccess);
+
+    expect(prisma.aiArtifact.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        artifactType: "action_proposal",
+        schemaVersion: "v1",
+        data: expect.objectContaining({ actionId: "00000000-0000-0000-0000-000000000099", actionType: "create_task", status: "proposed" }),
+      }),
     }));
   });
 });

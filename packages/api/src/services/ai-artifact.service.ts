@@ -12,6 +12,13 @@ const comparisonSchema = z.object({
 });
 const emailDraftSchema = z.object({ subject: z.string().min(1).max(240), body: z.string().min(1).max(20_000), contextLabel: z.string().min(1).max(300), missingInvestorContext: z.boolean() });
 const meetingBriefSchema = z.object({ title: z.string().min(1).max(240), talkingPoints: z.array(z.string().min(1).max(1_000)).min(1).max(10), contextLabel: z.string().min(1).max(300), missingInvestorContext: z.boolean() });
+const actionProposalSchema = z.object({
+  actionId: z.string().uuid(),
+  actionType: z.enum(["create_task", "log_interaction", "schedule_meeting", "send_investor_email", "update_deal_stage"]),
+  status: z.enum(["proposed", "approved", "executed", "rejected", "failed", "expired"]),
+  payload: z.record(z.unknown()),
+  expiresAt: z.string(),
+});
 const forecastSchema = z.object({
   roundName: z.string().min(1).max(200),
   currency: z.string().min(1).max(10),
@@ -37,6 +44,10 @@ export const AI_ARTIFACT_REGISTRY = {
   "email_draft.v1": { schema: emailDraftSchema, requiredPermissions: [] },
   "meeting_brief.v1": { schema: meetingBriefSchema, requiredPermissions: [] },
   "forecast.v1": { schema: forecastSchema, requiredPermissions: ["financial:read"] },
+  // No extra gate here beyond what already produced it: the tool call that
+  // created this proposal already required pipeline:create/update, and the
+  // approve endpoint re-checks live permission again before executing it.
+  "action_proposal.v1": { schema: actionProposalSchema, requiredPermissions: [] },
 } as const;
 
 export type AiArtifactType = keyof typeof AI_ARTIFACT_REGISTRY;

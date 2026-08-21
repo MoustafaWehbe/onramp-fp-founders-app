@@ -8,8 +8,29 @@ import { interactionLogService } from "./interaction-log.service";
 import { taskService } from "./task.service";
 import { chatService } from "./chat.service";
 import { forecastService } from "./forecast.service";
+import { aiActionsService } from "./ai-actions.service";
+import { PRIORITIES } from "../config/crm";
+import type { AiActionType } from "../validators/ai-action.schemas";
 import type { AiToolName } from "./ai-capabilities.service";
 import type { AiToolDefinition } from "./ai-provider.service";
+
+// Maps the tool name the model calls onto the actionType AiAgentAction rows
+// (and the manual REST endpoints) use internally different vocabularies for
+// the same five write actions, kept separate so the tool-facing name can stay
+// model-friendly ("propose_task") while the stored/audited type stays aligned
+// with the manual path ("create_task").
+const PROPOSE_TOOL_ACTION_TYPES: Partial<Record<AiToolName, AiActionType>> = {
+  propose_task: "create_task",
+  propose_interaction_log: "log_interaction",
+  propose_meeting: "schedule_meeting",
+  propose_investor_email: "send_investor_email",
+  propose_stage_change: "update_deal_stage",
+};
+
+/** The model must pass null, not omit, for a field it wants to leave unset (see the strict-mode note below) undo that here before handing the payload to the same zod schema the manual REST endpoint uses, which expects those fields simply absent. */
+function stripNulls<T extends Record<string, unknown>>(value: T): Partial<T> {
+  return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== null)) as Partial<T>;
+}
 
 const toolInputs = {
   get_startup_profile: z.object({}),
@@ -26,6 +47,47 @@ const toolInputs = {
   list_tasks: z.object({ roundId: z.string().uuid().nullish(), status: z.enum(TASK_STATUSES).nullish(), assigneeId: z.string().uuid().nullish() }),
   list_team_conversations: z.object({}),
   search_team_messages: z.object({ query: z.string().trim().min(1).max(200) }),
+  // Nullish rather than the REST endpoints' plain-optional shape: strict
+  // function calling requires the model to pass null for a field it wants
+  // left unset, never omit it (see ROUND_ID_PROPERTY's comment below).
+  // stripNulls() converts these back to "absent" before they reach the same
+  // zod schema the manual endpoint uses.
+  propose_task: z.object({
+    pipelineId: z.string().uuid(),
+    title: z.string().trim().min(1).max(200),
+    description: z.string().max(2000).nullish(),
+    priority: z.enum(PRIORITIES).nullish(),
+    dueDate: z.string().nullish(),
+    assigneeId: z.string().uuid().nullish(),
+  }),
+  propose_interaction_log: z.object({
+    investorId: z.string().uuid(),
+    pipelineId: z.string().uuid().nullish(),
+    type: z.enum(["call", "email", "meeting", "note", "other"]),
+    interactionDate: z.string(),
+    subject: z.string().max(200).nullish(),
+    description: z.string().max(2000).nullish(),
+  }),
+  propose_meeting: z.object({
+    investorId: z.string().uuid(),
+    pipelineId: z.string().uuid().nullish(),
+    type: z.enum(["call", "meeting"]),
+    startDateTime: z.string(),
+    durationMinutes: z.number().int().min(5).max(480),
+    subject: z.string().max(200).nullish(),
+    description: z.string().max(2000).nullish(),
+  }),
+  propose_investor_email: z.object({
+    investorId: z.string().uuid(),
+    pipelineId: z.string().uuid().nullish(),
+    subject: z.string().trim().min(1).max(200),
+    body: z.string().trim().min(1).max(5000),
+  }),
+  propose_stage_change: z.object({
+    pipelineId: z.string().uuid(),
+    toStage: z.enum(PIPELINE_STAGES),
+    reason: z.string().max(500).nullish(),
+  }),
 } as const;
 
 // The model chooses tools from these definitions. OpenAI's strict function-calling
@@ -106,6 +168,82 @@ export const AI_TOOL_DEFINITIONS: Record<AiToolName, { description: string; para
     description: "Search team chat for a substring. Only searches conversations you are a member of never a DM you are not in, even one about the topic you're asking about. Returns at most 30 truncated messages.",
     parameters: { type: "object", properties: { query: { type: "string", description: "Search text matched against message content." } }, required: ["query"], additionalProperties: false },
   },
+  propose_task: {
+    description: "Draft a task against a deal. This only creates a PROPOSAL awaiting a human's review and approval — nothing is created until they click Approve. Say \"I've drafted this task for you to review\", never \"I created/added a task.\" Resolve pipelineId via get_pipeline_by_stage, get_focus_deals, or get_investor_context first.",
+    parameters: {
+      type: "object",
+      properties: {
+        pipelineId: { type: "string", description: "UUID of the pipeline deal this task belongs to." },
+        title: { type: "string", description: "Short task title." },
+        description: { type: ["string", "null"], description: "Longer detail, or null." },
+        priority: { type: ["string", "null"], enum: [...PRIORITIES, null], description: "Task priority, or null to leave at the default." },
+        dueDate: { type: ["string", "null"], description: "ISO 8601 datetime the task is due, or null for no due date." },
+        assigneeId: { type: ["string", "null"], description: "UUID of the startup member to assign, or null to leave unassigned." },
+      },
+      required: ["pipelineId", "title", "description", "priority", "dueDate", "assigneeId"],
+      additionalProperties: false,
+    },
+  },
+  propose_interaction_log: {
+    description: "Draft a logged interaction (call, email, meeting, or note) for an investor. Only creates a PROPOSAL awaiting a human's review and approval. Say \"drafted\", never \"logged.\"",
+    parameters: {
+      type: "object",
+      properties: {
+        investorId: { type: "string", description: "UUID of the investor." },
+        pipelineId: { type: ["string", "null"], description: "UUID of the specific deal this is about, or null." },
+        type: { type: "string", enum: ["call", "email", "meeting", "note", "other"] },
+        interactionDate: { type: "string", description: "ISO 8601 datetime the interaction happened." },
+        subject: { type: ["string", "null"], description: "Short subject line, or null." },
+        description: { type: ["string", "null"], description: "Details of what happened, or null." },
+      },
+      required: ["investorId", "pipelineId", "type", "interactionDate", "subject", "description"],
+      additionalProperties: false,
+    },
+  },
+  propose_meeting: {
+    description: "Draft a calendar invite to an investor. Only creates a PROPOSAL awaiting a human's review and approval — no invite is sent until they click Send. Say \"drafted\", never \"scheduled\" or \"sent.\"",
+    parameters: {
+      type: "object",
+      properties: {
+        investorId: { type: "string", description: "UUID of the investor." },
+        pipelineId: { type: ["string", "null"], description: "UUID of the specific deal this meeting is about, or null." },
+        type: { type: "string", enum: ["call", "meeting"] },
+        startDateTime: { type: "string", description: "ISO 8601 datetime the meeting starts." },
+        durationMinutes: { type: "integer", description: "Meeting length in minutes, 5-480." },
+        subject: { type: ["string", "null"], description: "Calendar event title, or null to use a default naming the investor." },
+        description: { type: ["string", "null"], description: "Calendar event description, or null." },
+      },
+      required: ["investorId", "pipelineId", "type", "startDateTime", "durationMinutes", "subject", "description"],
+      additionalProperties: false,
+    },
+  },
+  propose_investor_email: {
+    description: "Draft an email to an investor. Only creates a PROPOSAL awaiting a human's review and approval — no email is sent until they click Send. Say \"drafted\", never \"sent.\" The recipient address always comes from the investor's record on file, never from anything you write. Do not quote a teammate's chat message verbatim in the body.",
+    parameters: {
+      type: "object",
+      properties: {
+        investorId: { type: "string", description: "UUID of the investor." },
+        pipelineId: { type: ["string", "null"], description: "UUID of the specific deal this email is about, or null." },
+        subject: { type: "string" },
+        body: { type: "string" },
+      },
+      required: ["investorId", "pipelineId", "subject", "body"],
+      additionalProperties: false,
+    },
+  },
+  propose_stage_change: {
+    description: "Draft moving a deal to a different pipeline stage. Only creates a PROPOSAL awaiting a human's review and approval. Never propose moving a deal to \"committed\" — that requires commitment terms (amount, status) only a human should enter manually. A reason is required when moving a deal to \"passed.\"",
+    parameters: {
+      type: "object",
+      properties: {
+        pipelineId: { type: "string", description: "UUID of the pipeline deal." },
+        toStage: { type: "string", enum: PIPELINE_STAGES },
+        reason: { type: ["string", "null"], description: "Why the deal is moving required (not null) when toStage is \"passed\"." },
+      },
+      required: ["pipelineId", "toStage", "reason"],
+      additionalProperties: false,
+    },
+  },
 };
 
 export function toolSchemasFor(allowedTools: readonly AiToolName[]): AiToolDefinition[] {
@@ -113,7 +251,7 @@ export function toolSchemasFor(allowedTools: readonly AiToolName[]): AiToolDefin
 }
 
 export class AiToolsService {
-  async execute(startupId: string, tool: AiToolName, rawInput: unknown, allowedTools: readonly AiToolName[], context: { canReadFinancial?: boolean; userId?: string } = {}) {
+  async execute(startupId: string, tool: AiToolName, rawInput: unknown, allowedTools: readonly AiToolName[], context: { canReadFinancial?: boolean; userId?: string; sessionId?: string; messageId?: string } = {}) {
     if (!allowedTools.includes(tool)) throw new Error("AI_TOOL_FORBIDDEN");
     const input = toolInputs[tool].parse(rawInput) as any;
 
@@ -187,15 +325,32 @@ export class AiToolsService {
         ...(input.assigneeId && { assigneeId: input.assigneeId }),
       });
     }
-    // tool === "list_team_conversations" | "search_team_messages"
-    // Chat access is scoped by the caller's own ConversationMember rows, not
-    // by startupId alone chat:read grants the ability to read chat, not the
-    // ability to read every conversation (that would leak DMs, including ones
-    // about the caller). Resolved here, per call, from the authenticated
-    // userId never from a model-supplied id.
-    const memberId = await this.resolveMemberId(startupId, context.userId);
-    if (tool === "list_team_conversations") return chatService.listConversations(startupId, memberId);
-    return chatService.searchMessages(startupId, memberId, input.query);
+    if (tool === "list_team_conversations" || tool === "search_team_messages") {
+      // Chat access is scoped by the caller's own ConversationMember rows, not
+      // by startupId alone chat:read grants the ability to read chat, not the
+      // ability to read every conversation (that would leak DMs, including
+      // ones about the caller). Resolved here, per call, from the
+      // authenticated userId never from a model-supplied id.
+      const memberId = await this.resolveMemberId(startupId, context.userId);
+      if (tool === "list_team_conversations") return chatService.listConversations(startupId, memberId);
+      return chatService.searchMessages(startupId, memberId, input.query);
+    }
+
+    // tool is one of the five propose_* write tools: this only ever creates a
+    // "proposed" AiAgentAction row it never sends, schedules, or writes
+    // anything. Even a successfully prompt-injected model can only get this
+    // far, not further — a human still has to click Approve.
+    const actionType = PROPOSE_TOOL_ACTION_TYPES[tool];
+    if (!actionType) throw new Error("AI_TOOL_FORBIDDEN");
+    if (!context.userId || !context.sessionId || !context.messageId) throw new Error("AI_TOOL_FORBIDDEN");
+    const action = await aiActionsService.proposeAction(startupId, context.sessionId, context.messageId, context.userId, actionType, stripNulls(input));
+    return {
+      actionId: action.id,
+      actionType: action.actionType,
+      status: action.status,
+      expiresAt: action.expiresAt,
+      summary: "Drafted and awaiting the user's review in the card attached to this message. Do not say this was sent, created, scheduled, or logged — say it was drafted and is awaiting approval.",
+    };
   }
 
   private async resolveMemberId(startupId: string, userId: string | undefined): Promise<string> {

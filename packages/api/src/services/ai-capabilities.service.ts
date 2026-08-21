@@ -21,6 +21,14 @@ export const AI_TOOL_REQUIREMENTS = {
   list_tasks: ["pipeline:read"],
   list_team_conversations: ["chat:read"],
   search_team_messages: ["chat:read"],
+  // Propose-only: these never send/schedule/write anything themselves, they
+  // create a row a human must click Send on so the gate here mirrors the
+  // manual endpoint's own requirement, not a lighter one.
+  propose_task: ["pipeline:create"],
+  propose_interaction_log: ["pipeline:create"],
+  propose_meeting: ["pipeline:create"],
+  propose_investor_email: ["pipeline:create"],
+  propose_stage_change: ["pipeline:update"],
 } as const;
 
 export type AiToolName = keyof typeof AI_TOOL_REQUIREMENTS;

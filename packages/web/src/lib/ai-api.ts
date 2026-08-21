@@ -135,6 +135,27 @@ export async function cancelAiMessage(startupId: string, sessionId: string, mess
   await apiClient.post(`/startups/${startupId}/ai/sessions/${sessionId}/messages/${messageId}/cancel`);
 }
 
+export type AiAgentAction = {
+  id: string;
+  actionType: "create_task" | "log_interaction" | "schedule_meeting" | "send_investor_email" | "update_deal_stage";
+  status: "proposed" | "approved" | "executed" | "rejected" | "failed" | "expired";
+  resultRef: unknown;
+};
+
+/** Delegates to the exact same service the manual UI button uses — the click that actually sends/schedules/creates/moves whatever the copilot drafted. */
+export async function approveAiAction(startupId: string, actionId: string, payload?: Record<string, unknown>) {
+  const { data } = await apiClient.post<{ data: { action: AiAgentAction; result: unknown } }>(
+    `/startups/${startupId}/ai/actions/${actionId}/approve`,
+    payload ? { payload } : {},
+  );
+  return data.data;
+}
+
+export async function rejectAiAction(startupId: string, actionId: string) {
+  const { data } = await apiClient.post<{ data: AiAgentAction }>(`/startups/${startupId}/ai/actions/${actionId}/reject`);
+  return data.data;
+}
+
 export async function listAiAnalyses(startupId: string, filter?: { documentVersionId?: string; sessionId?: string }) {
   const { data } = await apiClient.get<{ data: AiAnalysis[] }>(`/startups/${startupId}/ai/analyses`, { params: filter });
   return data.data;

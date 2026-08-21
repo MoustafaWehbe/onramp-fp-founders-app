@@ -33,6 +33,11 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
   list_tasks: "tasks",
   list_team_conversations: "team conversations",
   search_team_messages: "team chat",
+  propose_task: "a task",
+  propose_interaction_log: "an interaction log",
+  propose_meeting: "a meeting",
+  propose_investor_email: "an email",
+  propose_stage_change: "a stage change",
 };
 
 const SUGGESTED_PROMPTS = [
@@ -374,6 +379,7 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
               entry.type === "message" ? (
                 <MessageBubble
                   key={entry.message.id}
+                  startupId={startupId}
                   message={entry.message}
                   onStop={activeAssistant?.id === entry.message.id ? () => cancelMutation.mutate(entry.message.id) : undefined}
                   stopping={cancelMutation.isPending}
@@ -467,6 +473,12 @@ function ToolActivityRow({ calls }: { calls: AiToolCallActivity[] }) {
     <div className="mb-1.5 flex flex-col gap-1">
       {calls.map((call) => {
         const label = TOOL_ACTIVITY_LABELS[call.name] ?? call.name;
+        const isDraft = call.name.startsWith("propose_");
+        const text = call.status === "started"
+          ? (isDraft ? `Drafting ${label}…` : `Checking ${label}…`)
+          : call.status === "failed"
+            ? (isDraft ? `Couldn't draft ${label}` : `Couldn't check ${label}`)
+            : (isDraft ? `Drafted ${label}` : `Checked ${label}`);
         return (
           <span key={call.callId} className="inline-flex w-fit items-center gap-1.5 text-[11px] text-muted-foreground">
             {call.status === "started" ? (
@@ -474,7 +486,7 @@ function ToolActivityRow({ calls }: { calls: AiToolCallActivity[] }) {
             ) : (
               <span className={cn("h-1.5 w-1.5 rounded-full", call.status === "failed" ? "bg-destructive/60" : "bg-primary/50")} />
             )}
-            {call.status === "started" ? `Checking ${label}…` : call.status === "failed" ? `Couldn't check ${label}` : `Checked ${label}`}
+            {text}
           </span>
         );
       })}
@@ -534,7 +546,7 @@ function Welcome({ canCreate, onSelectPrompt }: { canCreate: boolean; onSelectPr
   );
 }
 
-function MessageBubble({ message, onStop, stopping }: { message: AiChatMessage; onStop?: () => void; stopping: boolean }) {
+function MessageBubble({ startupId, message, onStop, stopping }: { startupId: string; message: AiChatMessage; onStop?: () => void; stopping: boolean }) {
   const assistant = message.role === "assistant";
   // The source_answer artifact duplicates this same text plus a source list in a
   // bordered card — rendering it instead of the plain bubble made every grounded
@@ -568,7 +580,7 @@ function MessageBubble({ message, onStop, stopping }: { message: AiChatMessage; 
           )}
         </div>
 
-        {assistant && displayArtifacts.map((artifact) => <AiArtifactRenderer key={artifact.id} artifact={artifact} />)}
+        {assistant && displayArtifacts.map((artifact) => <AiArtifactRenderer key={artifact.id} startupId={startupId} artifact={artifact} />)}
 
         <div className={cn("mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground", assistant ? "" : "flex-row-reverse")}>
           <span className="opacity-0 transition-opacity group-hover:opacity-100">{formatDate(message.createdAt)}</span>
