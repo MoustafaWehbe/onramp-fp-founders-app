@@ -190,6 +190,8 @@ describe("InvestorService.listInvestors", () => {
       { fullName: { contains: "accel", mode: "insensitive" } },
       { email: { contains: "accel", mode: "insensitive" } },
       { ventureFirm: { contains: "accel", mode: "insensitive" } },
+      { sectorFocus: { contains: "accel", mode: "insensitive" } },
+      { description: { contains: "accel", mode: "insensitive" } },
     ]);
     expect(where.AND[1].OR).toEqual([
       { pipeline: { some: {} } },
@@ -406,6 +408,8 @@ describe("InvestorService.listInvestors", () => {
       { fullName: { contains: "accel", mode: "insensitive" } },
       { email: { contains: "accel", mode: "insensitive" } },
       { ventureFirm: { contains: "accel", mode: "insensitive" } },
+      { sectorFocus: { contains: "accel", mode: "insensitive" } },
+      { description: { contains: "accel", mode: "insensitive" } },
     ]);
   });
 

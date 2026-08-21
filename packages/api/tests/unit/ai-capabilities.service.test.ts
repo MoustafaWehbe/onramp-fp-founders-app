@@ -14,16 +14,19 @@ describe("AI capability policy", () => {
     expect(capabilities.tools).toEqual([
       "get_pipeline_summary",
       "get_focus_deals",
+      "get_investor_context",
       "get_reviewer_engagement",
+      "search_investors",
+      "list_investors",
+      "get_pipeline_by_stage",
+      "get_interaction_history",
+      "list_tasks",
     ]);
     expect(capabilities.tools).not.toContain("get_round_health");
-    expect(capabilities.tools).not.toContain("get_investor_context");
   });
 
-  it("requires financial access for investor context because it includes commitments", () => {
+  it("exposes the investor context tool on pipeline:read alone commitment amounts are gated separately inside the tool, not at this layer", () => {
     expect(resolveAiCapabilities(["ai_reports:read", "pipeline:read"]).tools)
-      .not.toContain("get_investor_context");
-    expect(resolveAiCapabilities(["ai_reports:read", "pipeline:read", "financial:read"]).tools)
       .toContain("get_investor_context");
   });
 

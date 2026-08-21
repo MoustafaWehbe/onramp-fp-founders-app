@@ -8,10 +8,16 @@ export const AI_TOOL_REQUIREMENTS = {
   get_round_health: ["financial:read"],
   get_pipeline_summary: ["pipeline:read"],
   get_focus_deals: ["pipeline:read"],
-  // This combined tool includes commitments, so pipeline access alone is not
-  // enough. A future non-financial investor tool can be introduced separately.
-  get_investor_context: ["pipeline:read", "financial:read"],
+  // Commitment amounts are added on top of this base profile only when the
+  // caller also has financial:read (see ai-tools.service.ts) — pipeline access
+  // alone is enough for the profile, notes, deal stage, and interaction history.
+  get_investor_context: ["pipeline:read"],
   get_reviewer_engagement: ["documents:read"],
+  search_investors: ["pipeline:read"],
+  list_investors: ["pipeline:read"],
+  get_pipeline_by_stage: ["pipeline:read"],
+  get_interaction_history: ["pipeline:read"],
+  list_tasks: ["pipeline:read"],
 } as const;
 
 export type AiToolName = keyof typeof AI_TOOL_REQUIREMENTS;

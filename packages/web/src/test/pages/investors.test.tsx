@@ -63,6 +63,12 @@ function contact(id: string, fullName: string, inPipeline = false): InvestorList
     notesUpdatedAt: null,
     notesUpdatedBy: null,
     source: null,
+    description: null,
+    checkSizeMin: null,
+    checkSizeMax: null,
+    geographyFocus: null,
+    portfolioHighlights: null,
+    warmIntroPath: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     pipeline: inPipeline

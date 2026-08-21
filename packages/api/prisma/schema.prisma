@@ -92,6 +92,18 @@ model Startup {
   industry     String?
   website      String?
   fundingStage String?  @map("funding_stage")
+  // Structured comparables so the copilot can judge investor/pitch fit without
+  // re-deriving them from free-text description every time.
+  oneLiner         String?   @map("one_liner")
+  problemStatement String?   @map("problem_statement")
+  solutionSummary  String?   @map("solution_summary")
+  targetMarket     String?   @map("target_market")
+  businessModel    String?   @map("business_model")
+  tractionSummary  String?   @map("traction_summary")
+  competitiveEdge  String?   @map("competitive_edge")
+  headquarters     String?
+  foundedAt        DateTime? @map("founded_at")
+  teamSummary      String?   @map("team_summary")
   createdBy    String   @map("created_by")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
@@ -425,6 +437,15 @@ model StartupInvestor {
   sectorFocus               String?   @map("sector_focus")
   investmentStagePreference String?   @map("investment_stage_preference")
   linkedinUrl               String?   @map("linkedin_url")
+  // The stable "who is this investor" profile — separate from `notes`, which is a
+  // running human scratchpad that churns and is often stale. Collapsing the two
+  // would make the model quote a two-month-old scratch note as if it were a fact.
+  description         String?   @map("description")
+  checkSizeMin        Decimal?  @map("check_size_min")
+  checkSizeMax        Decimal?  @map("check_size_max")
+  geographyFocus      String?   @map("geography_focus")
+  portfolioHighlights String?   @map("portfolio_highlights")
+  warmIntroPath       String?   @map("warm_intro_path")
   notes                     String?
   notesCreatedAt            DateTime? @map("notes_created_at")
   notesCreatedBy            String?   @map("notes_created_by")

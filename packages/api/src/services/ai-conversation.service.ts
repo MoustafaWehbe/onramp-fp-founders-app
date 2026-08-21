@@ -225,7 +225,7 @@ export class AiConversationService {
         if (roundStopReason !== "tool_calls" || roundToolCalls.length === 0) { turnsExhausted = false; break; }
 
         aiStreamBroker.publish(session.id, messageId, "tool.started", { calls: roundToolCalls.map((call) => ({ callId: call.callId, name: call.name })) });
-        const executed = await Promise.all(roundToolCalls.map((call) => this.executeToolCall(session.startupId, messageId, call, allowedTools, toolResults)));
+        const executed = await Promise.all(roundToolCalls.map((call) => this.executeToolCall(session.startupId, messageId, call, allowedTools, toolResults, access.canReadFinancial)));
         aiStreamBroker.publish(session.id, messageId, "tool.completed", { calls: executed.map((item) => ({ callId: item.callId, name: item.name, status: item.status })) });
         input = [
           ...input,
@@ -307,6 +307,7 @@ export class AiConversationService {
     call: { callId: string; name: string; arguments: string },
     allowedTools: readonly AiToolName[],
     toolResults: Array<{ tool: AiToolName; result: unknown }>,
+    canReadFinancial: boolean,
   ): Promise<{ callId: string; name: string; status: "completed" | "failed"; output: unknown }> {
     const startedAt = Date.now();
     let parsedArgs: unknown;
@@ -318,7 +319,7 @@ export class AiConversationService {
     }
     const toolName = call.name as AiToolName;
     try {
-      const result = await aiToolsService.execute(startupId, toolName, parsedArgs, allowedTools);
+      const result = await aiToolsService.execute(startupId, toolName, parsedArgs, allowedTools, { canReadFinancial });
       toolResults.push({ tool: toolName, result });
       await prisma.aiToolCall.create({ data: { messageId, toolName, arguments: parsedArgs as object, status: "completed", durationMs: Date.now() - startedAt, resultSummary: result as object } });
       return { callId: call.callId, name: toolName, status: "completed", output: result };
