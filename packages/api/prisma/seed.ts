@@ -145,6 +145,14 @@ interface ContactSeed {
   notesAuthorKey?: string;
   notesEditorKey?: string;
   notesAgeDays?: number;
+  // The stable "who is this investor" profile the AI copilot reads see
+  // StartupInvestor.description in schema.prisma for why this is kept apart from `notes`.
+  description?: string;
+  checkSizeMin?: number;
+  checkSizeMax?: number;
+  geographyFocus?: string;
+  portfolioHighlights?: string;
+  warmIntroPath?: string;
   deals?: DealSeed[];
   logs?: LogSeed[];
 }
@@ -250,6 +258,12 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     investmentStagePreference: "seed",
     linkedinUrl: "https://linkedin.com/in/elenafischer",
     source: "outbound",
+    description: "Partner focused on European B2B SaaS, typically leads or co-leads seed rounds.",
+    checkSizeMin: 500_000,
+    checkSizeMax: 2_500_000,
+    geographyFocus: "Europe, remote-friendly US",
+    portfolioHighlights: "Revolut, GoCardless, Aircall",
+    warmIntroPath: "Cold outreach only so far no shared connections found.",
     deals: [
       {
         round: "seed",
@@ -272,6 +286,11 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     sectorFocus: "Enterprise software",
     investmentStagePreference: "seed",
     source: "conference",
+    description: "APAC-focused enterprise software investor, looking to build a US bridge for portfolio companies.",
+    checkSizeMin: 300_000,
+    checkSizeMax: 1_500_000,
+    geographyFocus: "Japan, Southeast Asia",
+    portfolioHighlights: "Mercari, Sansan",
     deals: [
       {
         round: "seed",
@@ -317,6 +336,12 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     sectorFocus: "Developer tools",
     investmentStagePreference: "seed",
     source: "warm_intro",
+    description: "Leads Index's developer-tools thesis, known for moving fast once he's met the full team.",
+    checkSizeMin: 1_000_000,
+    checkSizeMax: 3_000_000,
+    geographyFocus: "Global, prefers in-person diligence",
+    portfolioHighlights: "Figma, Notion, Loom",
+    warmIntroPath: "Ravi at Loom introduced us directly.",
     notes: "Wants to meet the full founding team before going further.",
     notesAuthorKey: "muhamad",
     notesEditorKey: "raymond",
@@ -365,6 +390,8 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
       investorType: "angel",
     sectorFocus: "Marketplaces",
     source: "linkedin",
+    checkSizeMin: 25_000,
+    checkSizeMax: 100_000,
     deals: [
       // Passed on the pre-seed, back in the funnel for the seed the same
       // contact legitimately appears in two rounds.
@@ -406,6 +433,10 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     investorType: "vc",
     investmentStagePreference: "seed",
     source: "outbound",
+    description: "High-volume seed investor, writes smaller checks but moves fast and rarely leads.",
+    checkSizeMin: 100_000,
+    checkSizeMax: 400_000,
+    geographyFocus: "Europe",
     deals: [
       {
         round: "seed",
@@ -430,6 +461,11 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     sectorFocus: "B2B SaaS",
     investmentStagePreference: "series_a",
     source: "outbound",
+    description: "Growth-stage partner but will do a late seed if metrics clear their Series A bar.",
+    checkSizeMin: 1_500_000,
+    checkSizeMax: 5_000_000,
+    geographyFocus: "US, UK",
+    portfolioHighlights: "UiPath, Deliveroo, Supercell",
     notes: "Asked for cohort retention split by segment ahead of the partner meeting.",
     notesAuthorKey: "raymond",
     notesAgeDays: 3,
@@ -485,6 +521,11 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     investorType: "accelerator",
     investmentStagePreference: "pre_seed",
     source: "program",
+    description: "YC partner running point on our batch, also invests personally on follow-on rounds.",
+    checkSizeMin: 125_000,
+    checkSizeMax: 500_000,
+    geographyFocus: "Global, YC network",
+    warmIntroPath: "Met through the YC batch program directly.",
     deals: [
       {
         round: "pre_seed",
@@ -532,6 +573,10 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
       investorType: "vc",
     investmentStagePreference: "seed",
     source: "warm_intro",
+    checkSizeMin: 750_000,
+    checkSizeMax: 2_000_000,
+    geographyFocus: "Nordics, DACH",
+    portfolioHighlights: "Klarna, Spotify, Small Giant Games",
     deals: [
       {
         round: "seed",
@@ -569,6 +614,12 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     investmentStagePreference: "seed",
     linkedinUrl: "https://linkedin.com/in/sarahchen",
     source: "event",
+    description: "Partner leading the deal, historically a strong signer once GTM and NRR check out in diligence.",
+    checkSizeMin: 1_000_000,
+    checkSizeMax: 4_000_000,
+    geographyFocus: "Global, prefers US-incorporated",
+    portfolioHighlights: "Zoom, Stripe, Snowflake",
+    warmIntroPath: "Met directly at TechCrunch Disrupt no shared connection needed.",
     deals: [
       {
         round: "seed",
@@ -628,6 +679,10 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
       investorType: "family_office",
       sectorFocus: "Diversified",
       source: "referral",
+    description: "Family office allocating a small venture sleeve, slower diligence but a reliable close once committed.",
+    checkSizeMin: 250_000,
+    checkSizeMax: 750_000,
+    geographyFocus: "No preference",
     deals: [
       {
         round: "seed",
@@ -659,6 +714,11 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     sectorFocus: "Fintech",
     investmentStagePreference: "seed",
     source: "conference",
+    description: "Fintech-focused fund, thorough on compliance and data-security diligence.",
+    checkSizeMin: 500_000,
+    checkSizeMax: 1_500_000,
+    geographyFocus: "North America",
+    portfolioHighlights: "Ramp, Mercury",
     deals: [
       {
         round: "seed",
@@ -684,6 +744,11 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     sectorFocus: "Infrastructure",
     investmentStagePreference: "series_a",
     source: "conference",
+    description: "Infrastructure-focused partner, verbally committed pending IC sign-off.",
+    checkSizeMin: 750_000,
+    checkSizeMax: 2_000_000,
+    geographyFocus: "US, willing to invest globally for the right team",
+    portfolioHighlights: "Snap, Affirm, Rubrik",
     deals: [
       {
         round: "seed",
@@ -721,6 +786,10 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     sectorFocus: "Climate",
     investmentStagePreference: "series_a",
     source: "outbound",
+    description: "Climate-adjacent thesis, soft-circled but the expected close has already slipped once.",
+    checkSizeMin: 300_000,
+    checkSizeMax: 1_000_000,
+    geographyFocus: "Europe",
     deals: [
       {
         round: "seed",
@@ -752,6 +821,10 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     sectorFocus: "Fintech, SaaS",
       investmentStagePreference: "pre_seed",
     source: "referral",
+    description: "Former operator turned angel, wrote the first pre-seed cheque and doubled down on the seed.",
+    checkSizeMin: 50_000,
+    checkSizeMax: 250_000,
+    warmIntroPath: "Referred by a portfolio founder from a prior fund.",
     deals: [
       {
         round: "pre_seed",
@@ -821,6 +894,10 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     sectorFocus: "B2B SaaS",
       investmentStagePreference: "seed",
       source: "outbound",
+    description: "Signed at $400k, wire scheduled with the round close.",
+    checkSizeMin: 200_000,
+    checkSizeMax: 800_000,
+    geographyFocus: "North America",
     deals: [
       {
         round: "seed",
@@ -861,6 +938,9 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     sectorFocus: "Marketplaces",
     investmentStagePreference: "pre_seed",
     source: "event",
+    checkSizeMin: 50_000,
+    checkSizeMax: 300_000,
+    geographyFocus: "US East Coast",
     deals: [
       {
         round: "seed",
@@ -888,6 +968,10 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     ventureFirm: "Bessemer",
     investorType: "vc",
     source: "outbound",
+    description: "Growth-stage fund, deploys mainly at Series A and beyond.",
+    checkSizeMin: 2_000_000,
+    checkSizeMax: 8_000_000,
+    geographyFocus: "Global",
     notes: "Passed — too early for the current fund. Revisit at Series A.",
     notesAuthorKey: "muhamad",
     notesAgeDays: 22,
@@ -920,6 +1004,10 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     sectorFocus: "AI / Infrastructure",
     investmentStagePreference: "seed",
     source: "referral",
+    description: "Withdrew a soft circle during diligence a portfolio conflict, not a fit issue.",
+    checkSizeMin: 200_000,
+    checkSizeMax: 600_000,
+    geographyFocus: "US",
     deals: [
       // Soft-circled, then pulled out during diligence the withdrawn path the
       // funding chart must not count as raised.
@@ -1128,6 +1216,11 @@ const DRIFT_CONTACTS: ContactSeed[] = [
     investorType: "vc",
     investmentStagePreference: "seed",
     source: "warm_intro",
+    description: "Leading the round, currently the deal's designated lead investor.",
+    checkSizeMin: 400_000,
+    checkSizeMax: 1_200_000,
+    geographyFocus: "France, Southern Europe",
+    portfolioHighlights: "BlaBlaCar, Watchfinder",
     deals: [
       {
         round: "seed_eur",
@@ -1150,6 +1243,10 @@ const DRIFT_CONTACTS: ContactSeed[] = [
     investorType: "vc",
     investmentStagePreference: "seed",
     source: "outbound",
+    description: "Hard-circled, wire expected with the round close.",
+    checkSizeMin: 250_000,
+    checkSizeMax: 900_000,
+    geographyFocus: "DACH, Benelux",
     deals: [
       {
         round: "seed_eur",
@@ -1176,6 +1273,9 @@ const DRIFT_CONTACTS: ContactSeed[] = [
     email: "mireille@example.com",
     investorType: "angel",
     source: "referral",
+    checkSizeMin: 25_000,
+    checkSizeMax: 100_000,
+    geographyFocus: "France",
     deals: [
       {
         round: "seed_eur",
@@ -1195,6 +1295,10 @@ const DRIFT_CONTACTS: ContactSeed[] = [
     ventureFirm: "Northzone",
     investorType: "vc",
     source: "conference",
+    description: "Newly sourced, climate/logistics-adjacent thesis fund out of the Nordics.",
+    checkSizeMin: 500_000,
+    checkSizeMax: 1_500_000,
+    geographyFocus: "Nordics, wider Europe",
     deals: [
       {
         round: "seed_eur",
@@ -1308,6 +1412,18 @@ interface WorkspaceSeed {
   industry: string;
   website: string;
   fundingStage: string;
+  // Structured comparables the AI copilot reads directly see
+  // Startup.oneLiner etc. in schema.prisma.
+  oneLiner?: string;
+  problemStatement?: string;
+  solutionSummary?: string;
+  targetMarket?: string;
+  businessModel?: string;
+  tractionSummary?: string;
+  competitiveEdge?: string;
+  headquarters?: string;
+  foundedAt?: Date;
+  teamSummary?: string;
   creatorKey: string;
   members: MemberSeed[];
   rounds: Array<{
@@ -1338,6 +1454,16 @@ async function seedWorkspace(
       industry: spec.industry,
       website: spec.website,
       fundingStage: spec.fundingStage,
+      oneLiner: spec.oneLiner ?? null,
+      problemStatement: spec.problemStatement ?? null,
+      solutionSummary: spec.solutionSummary ?? null,
+      targetMarket: spec.targetMarket ?? null,
+      businessModel: spec.businessModel ?? null,
+      tractionSummary: spec.tractionSummary ?? null,
+      competitiveEdge: spec.competitiveEdge ?? null,
+      headquarters: spec.headquarters ?? null,
+      foundedAt: spec.foundedAt ?? null,
+      teamSummary: spec.teamSummary ?? null,
       createdBy: usersByKey.get(spec.creatorKey)!.id,
     },
   });
@@ -1407,6 +1533,12 @@ async function seedWorkspace(
         ),
         linkedinUrl: seed.linkedinUrl ?? null,
         source: controlledSeedValue(seed.source, SOURCE_IDS, "source"),
+        description: seed.description ?? null,
+        checkSizeMin: seed.checkSizeMin ?? null,
+        checkSizeMax: seed.checkSizeMax ?? null,
+        geographyFocus: seed.geographyFocus ?? null,
+        portfolioHighlights: seed.portfolioHighlights ?? null,
+        warmIntroPath: seed.warmIntroPath ?? null,
         notes: seed.notes ?? null,
         notesCreatedBy: author?.id ?? null,
         notesCreatedAt: seed.notes ? days(-notesAge) : null,
@@ -1941,6 +2073,21 @@ async function main() {
       industry: "SaaS",
       website: "https://northbeam.example.com",
       fundingStage: "seed",
+      oneLiner: "Revenue intelligence that tells B2B sales teams which deals will actually close.",
+      problemStatement:
+        "Sales leaders find out a deal is slipping only after it's already lost forecast accuracy in most B2B orgs is under 60%.",
+      solutionSummary:
+        "Northbeam ingests CRM activity, call transcripts, and email threads to score deal health in real time and flag at-risk deals two to three weeks before they'd otherwise slip.",
+      targetMarket: "Series A-C B2B SaaS companies with 10-100 person sales teams and a CRM already in place.",
+      businessModel: "Per-seat SaaS subscription, billed annually, with usage-based add-ons for call intelligence minutes.",
+      tractionSummary:
+        "$38k MRR across 14 paying customers, 22% MoM growth over the last two quarters, 96% logo retention.",
+      competitiveEdge:
+        "Purpose-built deal scoring model trained on our design partners' historical win/loss data, versus generic activity-count heuristics from incumbents.",
+      headquarters: "New York, NY",
+      foundedAt: new Date("2024-02-01T00:00:00.000Z"),
+      teamSummary:
+        "Founding team of three: CEO ex-Gong sales leader, CTO ex-Stripe infra, and a founding engineer ex-Amplitude data platform.",
       creatorKey: "muhamad",
       members: NORTHBEAM_MEMBERS,
       rounds: [
@@ -1983,6 +2130,18 @@ async function main() {
       industry: "Climate tech",
       website: "https://driftlabs.example.com",
       fundingStage: "seed",
+      oneLiner: "Carbon accounting that plugs straight into fleet telematics, no manual reporting.",
+      problemStatement:
+        "Logistics fleets need Scope 1 emissions reports for compliance and shipper RFPs, but today that means someone manually stitching together fuel receipts and mileage logs.",
+      solutionSummary:
+        "Drift Labs connects directly to telematics providers and fuel cards to compute per-vehicle, per-route emissions automatically, with audit-ready exports.",
+      targetMarket: "Mid-size European logistics and freight operators with 50-500 vehicle fleets.",
+      businessModel: "Per-vehicle monthly SaaS fee plus a one-time telematics integration fee.",
+      tractionSummary: "€19k MRR across 6 fleet customers, first two enterprise pilots converted to paid this quarter.",
+      competitiveEdge: "Direct telematics integrations mean no manual data entry, versus spreadsheet-based competitors.",
+      headquarters: "Lisbon, Portugal",
+      foundedAt: new Date("2024-06-01T00:00:00.000Z"),
+      teamSummary: "Two co-founders: CEO ex-logistics ops at a freight marketplace, CTO ex-climate data scientist.",
       creatorKey: "karim",
       members: DRIFT_MEMBERS,
       rounds: [

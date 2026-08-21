@@ -364,7 +364,7 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
 
       <div className="relative min-h-0 flex-1">
         <div ref={scrollContainerRef} className="scrollbar-slim h-full overflow-y-auto scroll-smooth px-6 py-8">
-          <div ref={messagesContentRef} className="mx-auto flex w-full max-w-2xl flex-col gap-7">
+          <div ref={messagesContentRef} className="mx-auto flex w-full max-w-4xl flex-col gap-7">
             {messagesQuery.isPending && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" /> Loading conversation
@@ -416,7 +416,7 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
       </div>
 
       <div className="shrink-0 border-t border-border/60 bg-card/30 px-6 py-4">
-        <div className="mx-auto w-full max-w-2xl">
+        <div className="mx-auto w-full max-w-4xl">
           {canReadDocuments && (
             <div className="mb-2">
               <DropdownMenu>
