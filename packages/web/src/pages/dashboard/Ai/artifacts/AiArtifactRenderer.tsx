@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { z } from "zod";
-import { Check, Clipboard, FileCheck2, GitCompareArrows, Mail, ShieldAlert, UsersRound } from "lucide-react";
+import { Check, Clipboard, FileCheck2, GitCompareArrows, Mail, ShieldAlert, TrendingUp, UsersRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Markdown } from "../../../../components/shared/Markdown";
 import { cn } from "../../../../lib/utils";
@@ -16,6 +16,24 @@ const comparison = z.object({
 });
 const emailDraft = z.object({ subject: z.string().min(1).max(240), body: z.string().min(1).max(20_000), contextLabel: z.string().min(1).max(300), missingInvestorContext: z.boolean() });
 const meetingBrief = z.object({ title: z.string().min(1).max(240), talkingPoints: z.array(z.string().min(1).max(1_000)).min(1).max(10), contextLabel: z.string().min(1).max(300), missingInvestorContext: z.boolean() });
+const forecast = z.object({
+  roundName: z.string().min(1).max(200),
+  currency: z.string().min(1).max(10),
+  targetAmount: z.number().nonnegative(),
+  committedToDate: z.number().nonnegative(),
+  softPipeline: z.number().nonnegative(),
+  projectedDaysToClose: z.number().int().nullable(),
+  confidence: z.enum(["low", "medium", "high"]),
+  insufficientData: z.boolean(),
+  inputs: z.object({
+    windowDays: z.number().int(),
+    stageEventCount: z.number().int(),
+    overallConversionRate: z.number().nullable(),
+    cycleTimeDays: z.number().nullable(),
+    newDealsPerDay: z.number(),
+    averageCheckSize: z.number().nullable(),
+  }),
+});
 
 export function AiArtifactRenderer({ artifact }: { artifact: AiArtifact }) {
   if (artifact.type === "source_answer.v1") {
@@ -81,6 +99,43 @@ export function AiArtifactRenderer({ artifact }: { artifact: AiArtifact }) {
             </li>
           ))}
         </ul>
+      </ArtifactShell>
+    );
+  }
+
+  if (artifact.type === "forecast.v1") {
+    const parsed = forecast.safeParse(artifact.data);
+    if (!parsed.success) return <UnsupportedArtifact />;
+    const data = parsed.data;
+    const format = (amount: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: data.currency, maximumFractionDigits: 0 }).format(amount);
+    const progressPct = data.targetAmount > 0 ? Math.min(100, Math.round((data.committedToDate / data.targetAmount) * 100)) : 0;
+    const confidenceStyle = data.confidence === "high" ? "bg-success/15 text-success" : data.confidence === "medium" ? "bg-warning/15 text-warning" : "bg-muted text-muted-foreground";
+    return (
+      <ArtifactShell icon={TrendingUp} title={`${data.roundName} forecast`}>
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-muted-foreground">{format(data.committedToDate)} committed of {format(data.targetAmount)}</span>
+          <span className="font-medium text-foreground">{progressPct}%</span>
+        </div>
+        <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-background/60">
+          <div className="h-full rounded-full bg-primary" style={{ width: `${progressPct}%` }} />
+        </div>
+        <p className="mt-1.5 text-[11px] text-muted-foreground">+ {format(data.softPipeline)} weighted soft pipeline</p>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-background/60 px-2.5 py-1 text-xs font-medium text-foreground">
+            {data.projectedDaysToClose !== null ? `~${data.projectedDaysToClose} days to close` : "Not enough data to project"}
+          </span>
+          <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-medium capitalize", confidenceStyle)}>{data.confidence} confidence</span>
+          {data.insufficientData && <span className="text-[11px] text-muted-foreground">Thin history — treat as a rough signal, not a promise.</span>}
+        </div>
+
+        <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-border/60 pt-3 text-[11px] sm:grid-cols-3">
+          <div><dt className="text-muted-foreground">Stage events (180d)</dt><dd className="text-foreground">{data.inputs.stageEventCount}</dd></div>
+          <div><dt className="text-muted-foreground">New deals / day</dt><dd className="text-foreground">{data.inputs.newDealsPerDay}</dd></div>
+          <div><dt className="text-muted-foreground">Sourced → committed</dt><dd className="text-foreground">{data.inputs.overallConversionRate !== null ? `${Math.round(data.inputs.overallConversionRate * 100)}%` : "—"}</dd></div>
+          <div><dt className="text-muted-foreground">Typical cycle time</dt><dd className="text-foreground">{data.inputs.cycleTimeDays !== null ? `${data.inputs.cycleTimeDays} days` : "—"}</dd></div>
+          <div><dt className="text-muted-foreground">Average check</dt><dd className="text-foreground">{data.inputs.averageCheckSize !== null ? format(data.inputs.averageCheckSize) : "—"}</dd></div>
+        </dl>
       </ArtifactShell>
     );
   }

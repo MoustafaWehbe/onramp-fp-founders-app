@@ -7,12 +7,14 @@ import { investorService } from "./investor.service";
 import { interactionLogService } from "./interaction-log.service";
 import { taskService } from "./task.service";
 import { chatService } from "./chat.service";
+import { forecastService } from "./forecast.service";
 import type { AiToolName } from "./ai-capabilities.service";
 import type { AiToolDefinition } from "./ai-provider.service";
 
 const toolInputs = {
   get_startup_profile: z.object({}),
   get_round_health: z.object({ roundId: z.string().uuid().nullish() }),
+  forecast_round_close: z.object({ roundId: z.string().uuid().nullish() }),
   get_pipeline_summary: z.object({ roundId: z.string().uuid().nullish() }),
   get_focus_deals: z.object({ roundId: z.string().uuid().nullish() }),
   get_investor_context: z.object({ investorId: z.string().uuid() }),
@@ -37,6 +39,10 @@ export const AI_TOOL_DEFINITIONS: Record<AiToolName, { description: string; para
   },
   get_round_health: {
     description: "Get commitment totals, currency, and metrics for a fundraising round.",
+    parameters: { type: "object", properties: { roundId: ROUND_ID_PROPERTY }, required: ["roundId"], additionalProperties: false },
+  },
+  forecast_round_close: {
+    description: "Get a deterministic, data-derived projection of how many days until this round hits its target — computed from commitment totals, weighted pipeline, and historical stage velocity/conversion, never estimated. Always explain the returned confidence and insufficientData flags alongside the number; do not state the projected date more confidently than they warrant.",
     parameters: { type: "object", properties: { roundId: ROUND_ID_PROPERTY }, required: ["roundId"], additionalProperties: false },
   },
   get_pipeline_summary: {
@@ -128,6 +134,7 @@ export class AiToolsService {
         : (await fundraisingService.listRounds(startupId, { page: 1, limit: 1, status: "active" as any })).data[0];
       return round ? { round: { id: round.id, name: round.roundName, currency: round.currency }, metrics: await fundraisingService.getRoundMetrics(startupId, round.id) } : { round: null, metrics: null };
     }
+    if (tool === "forecast_round_close") return forecastService.forecastRoundClose(startupId, input.roundId);
     if (tool === "get_pipeline_summary") return pipelineService.getAnalytics(startupId, input.roundId);
     if (tool === "get_focus_deals") return pipelineService.getFocus(startupId, input.roundId);
     if (tool === "get_investor_context") {

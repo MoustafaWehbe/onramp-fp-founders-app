@@ -12,12 +12,31 @@ const comparisonSchema = z.object({
 });
 const emailDraftSchema = z.object({ subject: z.string().min(1).max(240), body: z.string().min(1).max(20_000), contextLabel: z.string().min(1).max(300), missingInvestorContext: z.boolean() });
 const meetingBriefSchema = z.object({ title: z.string().min(1).max(240), talkingPoints: z.array(z.string().min(1).max(1_000)).min(1).max(10), contextLabel: z.string().min(1).max(300), missingInvestorContext: z.boolean() });
+const forecastSchema = z.object({
+  roundName: z.string().min(1).max(200),
+  currency: z.string().min(1).max(10),
+  targetAmount: z.number().nonnegative(),
+  committedToDate: z.number().nonnegative(),
+  softPipeline: z.number().nonnegative(),
+  projectedDaysToClose: z.number().int().nullable(),
+  confidence: z.enum(["low", "medium", "high"]),
+  insufficientData: z.boolean(),
+  inputs: z.object({
+    windowDays: z.number().int(),
+    stageEventCount: z.number().int(),
+    overallConversionRate: z.number().nullable(),
+    cycleTimeDays: z.number().nullable(),
+    newDealsPerDay: z.number(),
+    averageCheckSize: z.number().nullable(),
+  }),
+});
 
 export const AI_ARTIFACT_REGISTRY = {
   "source_answer.v1": { schema: sourceAnswerSchema, requiredPermissions: ["documents:read"] },
   "comparison.v1": { schema: comparisonSchema, requiredPermissions: ["documents:read"] },
   "email_draft.v1": { schema: emailDraftSchema, requiredPermissions: [] },
   "meeting_brief.v1": { schema: meetingBriefSchema, requiredPermissions: [] },
+  "forecast.v1": { schema: forecastSchema, requiredPermissions: ["financial:read"] },
 } as const;
 
 export type AiArtifactType = keyof typeof AI_ARTIFACT_REGISTRY;

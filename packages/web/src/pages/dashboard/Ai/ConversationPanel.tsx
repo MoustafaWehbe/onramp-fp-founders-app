@@ -21,6 +21,7 @@ import { AiArtifactRenderer } from "./artifacts/AiArtifactRenderer";
 const TOOL_ACTIVITY_LABELS: Record<string, string> = {
   get_startup_profile: "your startup profile",
   get_round_health: "round health",
+  forecast_round_close: "round forecast",
   get_pipeline_summary: "pipeline summary",
   get_focus_deals: "today's focus deals",
   get_investor_context: "investor context",

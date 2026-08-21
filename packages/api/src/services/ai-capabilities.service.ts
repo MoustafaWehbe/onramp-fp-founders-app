@@ -6,6 +6,7 @@
 export const AI_TOOL_REQUIREMENTS = {
   get_startup_profile: ["startup:read"],
   get_round_health: ["financial:read"],
+  forecast_round_close: ["financial:read", "pipeline:read"],
   get_pipeline_summary: ["pipeline:read"],
   get_focus_deals: ["pipeline:read"],
   // Commitment amounts are added on top of this base profile only when the

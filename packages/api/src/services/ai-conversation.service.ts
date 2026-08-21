@@ -6,6 +6,7 @@ import { AiRetrievalService } from "./ai-retrieval.service";
 import { aiStreamBroker, type AiStreamEnvelope } from "./ai-stream-broker.service";
 import { aiArtifactService, aiCapabilityManifest } from "./ai-artifact.service";
 import { aiToolsService, toolSchemasFor } from "./ai-tools.service";
+import { forecastService } from "./forecast.service";
 import type { AiToolName } from "./ai-capabilities.service";
 import type { CreateAiMessageInput, ListAiMessagesQuery } from "../validators/ai.schemas";
 import { getAiConfig } from "../config/ai";
@@ -281,6 +282,39 @@ export class AiConversationService {
           const artifact = await aiArtifactService.createReady({ startupId: session.startupId, sessionId: session.id, messageId, type: "meeting_brief.v1", title: "Meeting brief", data: { title: "Meeting preparation", talkingPoints, contextLabel, missingInvestorContext } });
           aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "meeting_brief.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
         }
+      }
+      // Unlike the two heuristics above, this triggers on the tool actually
+      // having run this turn, not on prompt keywords: forecast_round_close is
+      // deterministic, so whenever the model called it for a real round, the
+      // numbers are worth surfacing as a card rather than only prose.
+      const forecastResult = toolResults.find((entry) => entry.tool === "forecast_round_close")?.result as Awaited<ReturnType<typeof forecastService.forecastRoundClose>> | undefined;
+      if (forecastResult?.round && access.canReadFinancial) {
+        const artifact = await aiArtifactService.createReady({
+          startupId: session.startupId,
+          sessionId: session.id,
+          messageId,
+          type: "forecast.v1",
+          title: "Round forecast",
+          data: {
+            roundName: forecastResult.round.name,
+            currency: forecastResult.round.currency,
+            targetAmount: forecastResult.targetAmount,
+            committedToDate: forecastResult.committedToDate,
+            softPipeline: forecastResult.softPipeline,
+            projectedDaysToClose: forecastResult.projectedDaysToClose,
+            confidence: forecastResult.confidence,
+            insufficientData: forecastResult.insufficientData,
+            inputs: {
+              windowDays: forecastResult.inputs.windowDays,
+              stageEventCount: forecastResult.inputs.stageEventCount,
+              overallConversionRate: forecastResult.inputs.overallConversionRate,
+              cycleTimeDays: forecastResult.inputs.cycleTimeDays,
+              newDealsPerDay: forecastResult.inputs.newDealsPerDay,
+              averageCheckSize: forecastResult.inputs.averageCheckSize,
+            },
+          },
+        });
+        aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "forecast.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
       }
       aiStreamBroker.publish(session.id, messageId, "message.completed", { content, providerRequestId });
       // Fire-and-forget: an auto-generated title is a nice-to-have that should never
