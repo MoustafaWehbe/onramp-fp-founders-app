@@ -15,7 +15,7 @@
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {
-    "turbo": "^2.3.0"
+    "turbo": "^2.10.11"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
