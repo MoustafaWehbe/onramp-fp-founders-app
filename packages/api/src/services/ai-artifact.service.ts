@@ -19,6 +19,51 @@ const actionProposalSchema = z.object({
   payload: z.record(z.unknown()),
   expiresAt: z.string(),
 });
+const investorBriefSchema = z.object({
+  investorId: z.string().uuid(),
+  fullName: z.string().min(1).max(200),
+  ventureFirm: z.string().max(200).nullable(),
+  investorType: z.string().max(50).nullable(),
+  sectorFocus: z.string().max(200).nullable(),
+  description: z.string().max(2000).nullable(),
+  checkSizeMin: z.number().nullable(),
+  checkSizeMax: z.number().nullable(),
+  stage: z.string().nullable(),
+  daysInStage: z.number().int().nullable(),
+  lastInteractions: z.array(z.object({ type: z.string(), subject: z.string().nullable(), interactionDate: z.string().nullable() })).max(5),
+});
+const focusListSchema = z.object({
+  roundId: z.string().uuid().nullable(),
+  deals: z
+    .array(
+      z.object({
+        investorId: z.string(),
+        investorName: z.string(),
+        stage: z.string(),
+        reason: z.enum(["overdue", "today", "missing", "quiet", "priority"]),
+        daysQuiet: z.number().int(),
+        nextTaskDueDate: z.string().nullable(),
+      }),
+    )
+    .max(15),
+});
+const pipelineBoardSchema = z.object({
+  stages: z.array(z.object({ stage: z.string(), count: z.number().int(), totalValue: z.number() })).max(10),
+});
+const taskListSchema = z.object({
+  tasks: z
+    .array(
+      z.object({
+        id: z.string(),
+        title: z.string(),
+        status: z.string(),
+        priority: z.string(),
+        dueDate: z.string().nullable(),
+        assigned: z.boolean(),
+      }),
+    )
+    .max(20),
+});
 const forecastSchema = z.object({
   roundName: z.string().min(1).max(200),
   currency: z.string().min(1).max(10),
@@ -48,6 +93,12 @@ export const AI_ARTIFACT_REGISTRY = {
   // created this proposal already required pipeline:create/update, and the
   // approve endpoint re-checks live permission again before executing it.
   "action_proposal.v1": { schema: actionProposalSchema, requiredPermissions: [] },
+  // Same reasoning as action_proposal.v1: these only ever get created after
+  // the read tool that supplied their data already ran, which is the real gate.
+  "investor_brief.v1": { schema: investorBriefSchema, requiredPermissions: [] },
+  "focus_list.v1": { schema: focusListSchema, requiredPermissions: [] },
+  "pipeline_board.v1": { schema: pipelineBoardSchema, requiredPermissions: [] },
+  "task_list.v1": { schema: taskListSchema, requiredPermissions: [] },
 } as const;
 
 export type AiArtifactType = keyof typeof AI_ARTIFACT_REGISTRY;

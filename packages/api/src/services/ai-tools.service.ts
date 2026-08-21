@@ -282,7 +282,7 @@ export class AiToolsService {
           id: true, fullName: true, ventureFirm: true, investorType: true, sectorFocus: true,
           description: true, checkSizeMin: true, checkSizeMax: true, geographyFocus: true, portfolioHighlights: true, warmIntroPath: true,
           notes: true,
-          pipeline: { take: 10, select: { id: true, roundId: true, stage: true, priority: true, expectedAmount: true } },
+          pipeline: { take: 10, select: { id: true, roundId: true, stage: true, priority: true, expectedAmount: true, stageChangedAt: true } },
           interactionLogs: { take: 10, orderBy: { createdAt: "desc" }, select: { type: true, subject: true, interactionDate: true, description: true } },
         },
       });

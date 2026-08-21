@@ -380,6 +380,7 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
                 <MessageBubble
                   key={entry.message.id}
                   startupId={startupId}
+                  onAskFollowup={setDraft}
                   message={entry.message}
                   onStop={activeAssistant?.id === entry.message.id ? () => cancelMutation.mutate(entry.message.id) : undefined}
                   stopping={cancelMutation.isPending}
@@ -546,7 +547,7 @@ function Welcome({ canCreate, onSelectPrompt }: { canCreate: boolean; onSelectPr
   );
 }
 
-function MessageBubble({ startupId, message, onStop, stopping }: { startupId: string; message: AiChatMessage; onStop?: () => void; stopping: boolean }) {
+function MessageBubble({ startupId, message, onStop, stopping, onAskFollowup }: { startupId: string; message: AiChatMessage; onStop?: () => void; stopping: boolean; onAskFollowup: (prompt: string) => void }) {
   const assistant = message.role === "assistant";
   // The source_answer artifact duplicates this same text plus a source list in a
   // bordered card — rendering it instead of the plain bubble made every grounded
@@ -580,7 +581,7 @@ function MessageBubble({ startupId, message, onStop, stopping }: { startupId: st
           )}
         </div>
 
-        {assistant && displayArtifacts.map((artifact) => <AiArtifactRenderer key={artifact.id} startupId={startupId} artifact={artifact} />)}
+        {assistant && displayArtifacts.map((artifact) => <AiArtifactRenderer key={artifact.id} startupId={startupId} artifact={artifact} onAskFollowup={onAskFollowup} />)}
 
         <div className={cn("mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground", assistant ? "" : "flex-row-reverse")}>
           <span className="opacity-0 transition-opacity group-hover:opacity-100">{formatDate(message.createdAt)}</span>

@@ -319,6 +319,61 @@ export class AiConversationService {
         });
         aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "forecast.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
       }
+      // The remaining rich cards, like forecast.v1 above, trigger on the read
+      // tool having actually run this turn and returned real data — never on
+      // prompt keywords — so they can't fire off a lookup the model made for
+      // some other reason, and can't be spoofed by prompt text asking for one.
+      type InvestorContextResult = { id: string; fullName: string; ventureFirm: string | null; investorType: string | null; sectorFocus: string | null; description: string | null; checkSizeMin: number | null; checkSizeMax: number | null; pipeline: Array<{ stage: string; stageChangedAt: string | Date }>; interactionLogs: Array<{ type: string; subject: string | null; interactionDate: string | Date | null }> } | null;
+      const investorContextResult = toolResults.find((entry) => entry.tool === "get_investor_context")?.result as InvestorContextResult | undefined;
+      if (investorContextResult) {
+        const currentDeal = investorContextResult.pipeline[0];
+        const daysInStage = currentDeal ? Math.max(0, Math.floor((Date.now() - new Date(currentDeal.stageChangedAt).getTime()) / (24 * 60 * 60 * 1000))) : null;
+        const artifact = await aiArtifactService.createReady({
+          startupId: session.startupId, sessionId: session.id, messageId, type: "investor_brief.v1", title: investorContextResult.fullName,
+          data: {
+            investorId: investorContextResult.id, fullName: investorContextResult.fullName, ventureFirm: investorContextResult.ventureFirm,
+            investorType: investorContextResult.investorType, sectorFocus: investorContextResult.sectorFocus, description: investorContextResult.description,
+            checkSizeMin: investorContextResult.checkSizeMin, checkSizeMax: investorContextResult.checkSizeMax,
+            stage: currentDeal?.stage ?? null, daysInStage,
+            lastInteractions: investorContextResult.interactionLogs.slice(0, 5).map((log) => ({ type: log.type, subject: log.subject, interactionDate: log.interactionDate ? new Date(log.interactionDate).toISOString() : null })),
+          },
+        });
+        aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "investor_brief.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
+      }
+
+      type FocusDealsResult = { data: Array<{ investorId: string; investor: { fullName: string }; stage: string; reason: string; daysQuiet: number; nextTaskDueDate: string | null }> } | undefined;
+      const focusDealsResult = toolResults.find((entry) => entry.tool === "get_focus_deals")?.result as FocusDealsResult;
+      if (focusDealsResult?.data?.length) {
+        const artifact = await aiArtifactService.createReady({
+          startupId: session.startupId, sessionId: session.id, messageId, type: "focus_list.v1", title: "Today's focus",
+          data: {
+            roundId: session.roundId ?? null,
+            deals: focusDealsResult.data.slice(0, 15).map((deal) => ({ investorId: deal.investorId, investorName: deal.investor.fullName, stage: deal.stage, reason: deal.reason, daysQuiet: deal.daysQuiet, nextTaskDueDate: deal.nextTaskDueDate })),
+          },
+        });
+        aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "focus_list.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
+      }
+
+      type PipelineByStageResult = { data: Array<{ stage: string; count: number; totalValue: number }> } | undefined;
+      const pipelineByStageResult = toolResults.find((entry) => entry.tool === "get_pipeline_by_stage")?.result as PipelineByStageResult;
+      if (pipelineByStageResult?.data && pipelineByStageResult.data.some((stage) => stage.count > 0)) {
+        const artifact = await aiArtifactService.createReady({
+          startupId: session.startupId, sessionId: session.id, messageId, type: "pipeline_board.v1", title: "Pipeline",
+          data: { stages: pipelineByStageResult.data.map((stage) => ({ stage: stage.stage, count: stage.count, totalValue: stage.totalValue })) },
+        });
+        aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "pipeline_board.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
+      }
+
+      type ListTasksResult = { data: Array<{ id: string; title: string; status: string; priority: string; dueDate: string | Date | null; assigneeId: string | null }> } | undefined;
+      const listTasksResult = toolResults.find((entry) => entry.tool === "list_tasks")?.result as ListTasksResult;
+      if (listTasksResult?.data?.length) {
+        const artifact = await aiArtifactService.createReady({
+          startupId: session.startupId, sessionId: session.id, messageId, type: "task_list.v1", title: "Tasks",
+          data: { tasks: listTasksResult.data.slice(0, 20).map((task) => ({ id: task.id, title: task.title, status: task.status, priority: task.priority, dueDate: task.dueDate ? new Date(task.dueDate).toISOString() : null, assigned: task.assigneeId !== null })) },
+        });
+        aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "task_list.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
+      }
+
       aiStreamBroker.publish(session.id, messageId, "message.completed", { content, providerRequestId });
       // Fire-and-forget: an auto-generated title is a nice-to-have that should never
       // delay the visible response, and maybeGenerateTitle no-ops once a title exists

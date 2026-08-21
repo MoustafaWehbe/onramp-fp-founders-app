@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Calendar, Check, CheckCircle2, Clipboard, FileCheck2, GitCompareArrows, ListChecks, Loader2, Mail, MessageSquareText, ShieldAlert, TrendingUp, UsersRound, X, XCircle } from "lucide-react";
+import { AlertTriangle, Calendar, CalendarClock, Check, CheckCircle2, Clipboard, FileCheck2, Flame, GitCompareArrows, KanbanSquare, ListChecks, ListTodo, Loader2, Mail, MessageSquareText, ShieldAlert, TrendingUp, UserRound, UsersRound, X, XCircle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Markdown } from "../../../../components/shared/Markdown";
 import { Button } from "../../../../components/ui/button";
@@ -39,6 +39,44 @@ const forecast = z.object({
   }),
 });
 
+const investorBrief = z.object({
+  investorId: z.string().uuid(),
+  fullName: z.string().min(1).max(200),
+  ventureFirm: z.string().max(200).nullable(),
+  investorType: z.string().max(50).nullable(),
+  sectorFocus: z.string().max(200).nullable(),
+  description: z.string().max(2000).nullable(),
+  checkSizeMin: z.number().nullable(),
+  checkSizeMax: z.number().nullable(),
+  stage: z.string().nullable(),
+  daysInStage: z.number().int().nullable(),
+  lastInteractions: z.array(z.object({ type: z.string(), subject: z.string().nullable(), interactionDate: z.string().nullable() })).max(5),
+});
+const focusList = z.object({
+  roundId: z.string().uuid().nullable(),
+  deals: z.array(z.object({
+    investorId: z.string(),
+    investorName: z.string(),
+    stage: z.string(),
+    reason: z.enum(["overdue", "today", "missing", "quiet", "priority"]),
+    daysQuiet: z.number().int(),
+    nextTaskDueDate: z.string().nullable(),
+  })).max(15),
+});
+const pipelineBoard = z.object({
+  stages: z.array(z.object({ stage: z.string(), count: z.number().int(), totalValue: z.number() })).max(10),
+});
+const taskList = z.object({
+  tasks: z.array(z.object({
+    id: z.string(),
+    title: z.string(),
+    status: z.string(),
+    priority: z.string(),
+    dueDate: z.string().nullable(),
+    assigned: z.boolean(),
+  })).max(20),
+});
+
 const actionProposal = z.object({
   actionId: z.string().uuid(),
   actionType: z.enum(["create_task", "log_interaction", "schedule_meeting", "send_investor_email", "update_deal_stage"]),
@@ -47,7 +85,7 @@ const actionProposal = z.object({
   expiresAt: z.string(),
 });
 
-export function AiArtifactRenderer({ startupId, artifact }: { startupId: string; artifact: AiArtifact }) {
+export function AiArtifactRenderer({ startupId, artifact, onAskFollowup }: { startupId: string; artifact: AiArtifact; onAskFollowup?: (prompt: string) => void }) {
   if (artifact.type === "source_answer.v1") {
     const parsed = sourceAnswer.safeParse(artifact.data);
     if (!parsed.success) return <UnsupportedArtifact />;
@@ -158,8 +196,135 @@ export function AiArtifactRenderer({ startupId, artifact }: { startupId: string;
     return <ActionProposalCard key={parsed.data.actionId} startupId={startupId} proposal={parsed.data} />;
   }
 
+  if (artifact.type === "investor_brief.v1") {
+    const parsed = investorBrief.safeParse(artifact.data);
+    if (!parsed.success) return <UnsupportedArtifact />;
+    const data = parsed.data;
+    const checkSize = data.checkSizeMin !== null || data.checkSizeMax !== null
+      ? `$${(data.checkSizeMin ?? 0).toLocaleString()}${data.checkSizeMax !== null ? `–$${data.checkSizeMax.toLocaleString()}` : "+"}`
+      : null;
+    return (
+      <ArtifactShell icon={UserRound} title={data.fullName}>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {data.ventureFirm && <span className="text-xs text-muted-foreground">{data.ventureFirm}</span>}
+          {data.stage && (
+            <span className="rounded-full bg-background/60 px-2 py-0.5 text-[11px] font-medium text-foreground">
+              {data.stage.replace(/_/g, " ")}{data.daysInStage !== null ? ` · ${data.daysInStage}d` : ""}
+            </span>
+          )}
+          {data.sectorFocus && <span className="rounded-full bg-background/60 px-2 py-0.5 text-[11px] text-muted-foreground">{data.sectorFocus}</span>}
+          {checkSize && <span className="rounded-full bg-background/60 px-2 py-0.5 text-[11px] text-muted-foreground">{checkSize}</span>}
+        </div>
+        {data.description && <p className="mt-2.5 text-sm text-foreground/90">{data.description}</p>}
+        {data.lastInteractions.length > 0 && (
+          <ul className="mt-3 space-y-1 border-t border-border/60 pt-2.5">
+            {data.lastInteractions.map((log, index) => (
+              <li key={index} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span className="font-medium capitalize text-foreground/80">{log.type}</span>
+                {log.subject && <span className="truncate">{log.subject}</span>}
+                {log.interactionDate && <span className="ml-auto shrink-0">{new Date(log.interactionDate).toLocaleDateString()}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+        {onAskFollowup && (
+          <div className="mt-3 flex gap-2 border-t border-border/60 pt-3">
+            <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs" onClick={() => onAskFollowup(`Draft a follow-up email to ${data.fullName}.`)}>
+              <Mail className="h-3 w-3" /> Draft email
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs" onClick={() => onAskFollowup(`Draft a meeting invite to ${data.fullName}.`)}>
+              <Calendar className="h-3 w-3" /> Schedule
+            </Button>
+          </div>
+        )}
+      </ArtifactShell>
+    );
+  }
+
+  if (artifact.type === "focus_list.v1") {
+    const parsed = focusList.safeParse(artifact.data);
+    if (!parsed.success) return <UnsupportedArtifact />;
+    return (
+      <ArtifactShell icon={Flame} title="Today's focus">
+        <ul className="divide-y divide-border/60">
+          {parsed.data.deals.map((deal) => (
+            <li key={deal.investorId} className="flex items-center justify-between gap-2 py-2 first:pt-0 last:pb-0">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-foreground">{deal.investorName}</p>
+                <p className="text-[11px] text-muted-foreground">{FOCUS_REASON_LABELS[deal.reason]} · {deal.stage.replace(/_/g, " ")}</p>
+              </div>
+              {onAskFollowup && (
+                <Button size="sm" variant="ghost" className="h-7 shrink-0 gap-1.5 text-xs" onClick={() => onAskFollowup(`Draft a task to follow up with ${deal.investorName}.`)}>
+                  <ListChecks className="h-3 w-3" /> Task
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </ArtifactShell>
+    );
+  }
+
+  if (artifact.type === "pipeline_board.v1") {
+    const parsed = pipelineBoard.safeParse(artifact.data);
+    if (!parsed.success) return <UnsupportedArtifact />;
+    const stages = parsed.data.stages.filter((stage) => stage.count > 0);
+    return (
+      <ArtifactShell icon={KanbanSquare} title="Pipeline">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {stages.map((stage) => (
+            <div key={stage.stage} className="rounded-lg bg-background/60 p-2.5">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{stage.stage.replace(/_/g, " ")}</p>
+              <p className="mt-0.5 text-sm font-semibold text-foreground">{stage.count}</p>
+              {stage.totalValue > 0 && <p className="text-[11px] text-muted-foreground">${stage.totalValue.toLocaleString()}</p>}
+            </div>
+          ))}
+        </div>
+      </ArtifactShell>
+    );
+  }
+
+  if (artifact.type === "task_list.v1") {
+    const parsed = taskList.safeParse(artifact.data);
+    if (!parsed.success) return <UnsupportedArtifact />;
+    return (
+      <ArtifactShell icon={ListTodo} title="Tasks">
+        <ul className="divide-y divide-border/60">
+          {parsed.data.tasks.map((task) => {
+            const overdue = task.status === "open" && task.dueDate !== null && new Date(task.dueDate).getTime() < Date.now();
+            return (
+              <li key={task.id} className="flex items-center justify-between gap-2 py-2 first:pt-0 last:pb-0">
+                <div className="min-w-0">
+                  <p className={cn("truncate text-sm font-medium", task.status === "completed" ? "text-muted-foreground line-through" : "text-foreground")}>{task.title}</p>
+                  <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <span className="capitalize">{task.priority}</span>
+                    {task.dueDate && (
+                      <span className={cn("inline-flex items-center gap-0.5", overdue && "text-destructive")}>
+                        {overdue ? <AlertTriangle className="h-2.5 w-2.5" /> : <CalendarClock className="h-2.5 w-2.5" />}
+                        {new Date(task.dueDate).toLocaleDateString()}
+                      </span>
+                    )}
+                    {!task.assigned && <span>· Unassigned</span>}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </ArtifactShell>
+    );
+  }
+
   return <UnsupportedArtifact />;
 }
+
+const FOCUS_REASON_LABELS: Record<z.infer<typeof focusList>["deals"][number]["reason"], string> = {
+  overdue: "Overdue follow-up",
+  today: "Due today",
+  missing: "No open task",
+  quiet: "Gone quiet",
+  priority: "High priority",
+};
 
 const ACTION_TYPE_META: Record<z.infer<typeof actionProposal>["actionType"], { label: string; icon: LucideIcon }> = {
   create_task: { label: "Task", icon: ListChecks },
