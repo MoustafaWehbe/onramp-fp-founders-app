@@ -134,6 +134,25 @@ describe("ReviewerInvitationService.createInvitation", () => {
     expect(result.invitation.email).toBe("investor@acme.com");
     expect(mockPrisma.reviewerInvitation.create).toHaveBeenCalled();
   });
+
+  it("rejects a convertible DOCX that is still rendering", async () => {
+    mockPrisma.documentVersion.findMany.mockResolvedValue([
+      {
+        id: VERSION_A,
+        documentId: "doc-1",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        renderStatus: "pending",
+      },
+    ] as never);
+
+    await expect(
+      reviewerInvitationService.createInvitation(STARTUP_ID, "user-1", {
+        email: "investor@acme.com",
+        documentVersionIds: [VERSION_A],
+        expiresInDays: 14,
+      } as never),
+    ).rejects.toMatchObject({ code: "RENDER_PENDING" });
+  });
 });
 
 describe("ReviewerInvitationService.getInvitationAnalytics", () => {

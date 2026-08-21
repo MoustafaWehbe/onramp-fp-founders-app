@@ -55,6 +55,28 @@ export function mentionToken(type: MentionTargetType, id: string, label: string)
   return `@[${label.replace(/\]/g, "")}](${type}:${id})`;
 }
 
+/**
+ * What the composer shows after a picker selection the wire token still
+ * carries `(type:id)` for the API, but that internal id must not appear in
+ * the draft textarea.
+ */
+export function mentionDisplay(label: string): string {
+  return `@${label.replace(/\]/g, "").trim()}`;
+}
+
+export type ComposerMention = { display: string; token: string };
+
+/** Rewrites each still-present composer display alias back into its wire token, left-to-right once per entry. */
+export function expandComposerMentions(body: string, pending: ComposerMention[]): string {
+  let result = body;
+  for (const { display, token } of pending) {
+    const idx = result.indexOf(display);
+    if (idx === -1) continue;
+    result = result.slice(0, idx) + token + result.slice(idx + display.length);
+  }
+  return result;
+}
+
 export type MessageSegment =
   | { kind: "text"; text: string }
   | { kind: "mention"; type: MentionTargetType; id: string; label: string };

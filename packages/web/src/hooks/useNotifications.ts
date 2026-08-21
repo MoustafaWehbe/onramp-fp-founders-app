@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   listNotifications,
@@ -6,6 +6,7 @@ import {
   markNotificationRead,
   type AppNotification,
 } from "../lib/notification-api";
+import { useWorkspace } from "./useWorkspace";
 
 export const NOTIFICATIONS_KEY = ["notifications"] as const;
 
@@ -35,9 +36,14 @@ function relativeAge(iso: string): string {
 /**
  * The notification feed, shared by the header menu and the full page so both
  * read the same cache entry and a read in one is reflected in the other.
+ *
+ * The API returns every workspace the user belongs to; we scope the list and
+ * unread badge to the active startup so switching Northbeam ↔ Drift Labs
+ * swaps the feed without touching other dashboard queries.
  */
 export function useNotifications() {
   const queryClient = useQueryClient();
+  const { activeStartupId } = useWorkspace();
 
   const query = useQuery({ queryKey: NOTIFICATIONS_KEY, queryFn: listNotifications });
 
@@ -52,15 +58,26 @@ export function useNotifications() {
     onSuccess: invalidate,
   });
 
-  const items: NotificationRow[] = (query.data?.items ?? []).map((n) => ({
-    ...n,
-    read: n.readAt !== null,
-    when: relativeAge(n.createdAt),
-  }));
+  const items: NotificationRow[] = useMemo(() => {
+    const all = query.data?.items ?? [];
+    const scoped = activeStartupId
+      ? all.filter((n) => n.startup?.id === activeStartupId)
+      : all;
+    return scoped.map((n) => ({
+      ...n,
+      read: n.readAt !== null,
+      when: relativeAge(n.createdAt),
+    }));
+  }, [query.data?.items, activeStartupId]);
+
+  const unreadCount = useMemo(
+    () => items.reduce((count, n) => count + (n.read ? 0 : 1), 0),
+    [items],
+  );
 
   return {
     items,
-    unreadCount: query.data?.unreadCount ?? 0,
+    unreadCount,
     isPending: query.isPending,
     isError: query.isError,
     markRead: readMutation.mutate,

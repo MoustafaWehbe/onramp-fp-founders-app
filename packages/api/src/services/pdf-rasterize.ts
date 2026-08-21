@@ -61,7 +61,14 @@ type PdfPage = {
 let pdfjsPromise: Promise<PdfjsModule> | null = null;
 
 function loadPdfjs(): Promise<PdfjsModule> {
-  pdfjsPromise ??= importEsm("pdfjs-dist/legacy/build/pdf.mjs");
+  if (!pdfjsPromise) {
+    pdfjsPromise = importEsm("pdfjs-dist/legacy/build/pdf.mjs").catch((err) => {
+      // A torn-down Jest VM (or transient import failure) must not poison every
+      // later call with the same rejected promise.
+      pdfjsPromise = null;
+      throw err;
+    });
+  }
   return pdfjsPromise;
 }
 
@@ -85,6 +92,9 @@ function renderScale(width: number, height: number) {
 }
 
 export async function openPdf(buffer: Buffer): Promise<{ doc: PdfDocument; pageCount: number }> {
+  // Keep the ESM load outside the PDF_UNREADABLE mapping so Jest/runtime
+  // failures (e.g. "Test environment has been torn down") are not reported as
+  // a bad upload.
   const pdfjs = await loadPdfjs();
   let doc: PdfDocument;
   try {

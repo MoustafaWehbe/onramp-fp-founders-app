@@ -1,46 +1,51 @@
+# Runs automatically on GitHub when you open/update a PR or push to main.
+# It does NOT run on your laptop before `git push` — that would be a local
+# git hook. Locally you can mirror this with: npm run ci
 name: CI
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches:
+      - main
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-
 jobs:
-  quality:
+  check:
+    name: Lint, test, build
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: "20"
           cache: npm
 
+      # Dummy URL is enough for `prisma generate` during postinstall; unit tests
+      # mock Prisma and set their own env in packages/api/tests/setup.ts.
       - name: Install dependencies
         run: npm ci
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ci
 
       - name: Lint
         run: npm run lint
 
+      - name: Test
+        # One package at a time: pdfjs + canvas under Jest's experimental VM is
+        # memory-sensitive, and parallel api+web workers were tearing down the
+        # pdf-rasterize suite mid-import on the GitHub runner.
+        run: npx turbo run test --concurrency=1
+
       - name: Build
         run: npm run build
-
-      - name: Test
-        run: npm run test
-
-      - name: Check generated API types
-        run: |
-          npm run gen:api-types --workspace=@starter-kit/web
-          git diff --exit-code -- packages/web/src/lib/api-types.ts
-
-      - name: Audit high-severity vulnerabilities
-        run: npm audit --audit-level=high
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ci

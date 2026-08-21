@@ -13,6 +13,7 @@ vi.mock("react-router-dom", async (importOriginal) => ({
 import type { InteractionLog } from "../../lib/interaction-log-api";
 import type { PipelineEntry, PipelineFocusEntry } from "../../lib/pipeline-api";
 import type { PipelineStageId } from "../../lib/mock-data";
+import { formatCompactMoney } from "../../lib/utils";
 
 const listPipelineEntries = vi.fn();
 const createPipelineEntry = vi.fn();
@@ -287,10 +288,11 @@ describe("Pipeline board", () => {
 
     const summary = within(await screen.findByLabelText("Pipeline summary"));
     // 200k + 300k live; the 500k passed deal is left out of every total.
-    expect(summary.getByText("$500K")).toBeInTheDocument();
+    // Match via formatCompactMoney so ICU differences (e.g. "$500K" vs "$500.0K") don't flake CI.
+    expect(summary.getByText(formatCompactMoney(500_000, "USD"))).toBeInTheDocument();
     // 200k × 0.25 + 300k × 0.9 = 320k
-    expect(summary.getByText("$320K")).toBeInTheDocument();
-    expect(summary.getByText("$300K")).toBeInTheDocument();
+    expect(summary.getByText(formatCompactMoney(320_000, "USD"))).toBeInTheDocument();
+    expect(summary.getByText(formatCompactMoney(300_000, "USD"))).toBeInTheDocument();
   });
 
   it("flags an overdue task on the card and counts it as needing attention", async () => {
@@ -479,10 +481,12 @@ describe("Pipeline board", () => {
         expect.objectContaining({ search: "northwind" }),
       ),
     );
-    // The matching request has been sent, but its response still has to land
-    // and re-render before the board reflects it.
-    await waitFor(() => expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument());
-    expect(screen.getByText("Grace Hopper")).toBeInTheDocument();
+    // While the filtered query is in flight the board briefly shows [] — wait
+    // until Grace is painted, not merely until Ada has disappeared.
+    await waitFor(() => {
+      expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
+      expect(screen.getByText("Grace Hopper")).toBeInTheDocument();
+    });
   });
 
   // The board moves cards via dnd-kit (pointer-based drag, real

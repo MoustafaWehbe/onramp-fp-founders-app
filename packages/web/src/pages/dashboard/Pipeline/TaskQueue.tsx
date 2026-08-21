@@ -1,7 +1,17 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, Check, CheckCircle2, Pencil, Plus, RotateCcw } from "lucide-react";
+import {
+  CalendarClock,
+  Check,
+  CheckCircle2,
+  ListChecks,
+  Pencil,
+  Plus,
+  RotateCcw,
+  UserRound,
+} from "lucide-react";
 import { toast } from "sonner";
+import { Avatar, AvatarFallback, AvatarImage } from "../../../components/ui/avatar";
 import { Button } from "../../../components/ui/button";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { EmptyState } from "../../../components/shared/EmptyState";
@@ -12,8 +22,8 @@ import { apiErrorMessage } from "../../../lib/api-error";
 import type { PipelineEntry } from "../../../lib/pipeline-api";
 import { invalidateTaskData, qk } from "../../../lib/query-keys";
 import { listMembers } from "../../../lib/team-api";
-import { PRIORITY_LABELS, setTaskStatus, type Task } from "../../../lib/task-api";
-import { cn } from "../../../lib/utils";
+import { PRIORITY_LABELS, setTaskStatus, type Priority, type Task } from "../../../lib/task-api";
+import { cn, getInitials } from "../../../lib/utils";
 import { TaskDialog } from "./TaskDialog";
 
 type TaskQueueProps = {
@@ -56,6 +66,12 @@ const EMPTY_MESSAGES: Record<ViewId, { title: string; detail: string }> = {
     title: "Nothing finished yet",
     detail: "Completed tasks in this round are kept here as a record of what was done.",
   },
+};
+
+const PRIORITY_PILL: Record<Priority, string> = {
+  low: "border-border/70 bg-muted text-muted-foreground",
+  medium: "border-primary/25 bg-primary/10 text-primary",
+  high: "border-destructive/30 bg-destructive/10 text-destructive",
 };
 
 function isOverdue(task: Task, now: number): boolean {
@@ -118,6 +134,11 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
       : (member.invitedEmail ?? null);
   };
 
+  const memberAvatar = (memberId: string | null) => {
+    if (!memberId) return null;
+    return membersQuery.data?.find((m) => m.id === memberId)?.user?.avatarUrl ?? null;
+  };
+
   const tasksQuery = useRoundTasks(startupId, roundId);
 
   const toggleMutation = useMutation({
@@ -158,48 +179,71 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
   );
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div
-          role="tablist"
-          aria-label="Task view"
-          className="inline-flex flex-wrap items-center gap-1 rounded-xl border border-border/70 bg-surface/60 p-1"
-        >
-          {VIEWS.map((id) => (
-            <button
-              key={id}
-              role="tab"
-              type="button"
-              aria-selected={view === id}
-              onClick={() => setView(id)}
-              className={cn(
-                "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors",
-                view === id
-                  ? "bg-card font-medium text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-                // Overdue is the one count worth colouring even when unselected.
-                id === "overdue" && buckets.overdue.length > 0 && view !== id && "text-destructive",
-              )}
-            >
-              {VIEW_LABELS[id]}
-              <span className="font-mono text-[11px] tabular-nums opacity-75">
-                {buckets[id].length}
-              </span>
-            </button>
-          ))}
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+            <ListChecks className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="font-display text-base font-semibold tracking-tight">Round tasks</h2>
+            <p className="text-sm text-muted-foreground">Next steps across every deal in this round.</p>
+          </div>
         </div>
 
         {canCreate && dealOptions.length > 0 && (
-          <Button type="button" size="sm" onClick={() => setEditing("new")}>
-            <Plus className="h-4 w-4" /> New task
+          <Button type="button" size="sm" variant="outline" className="border-primary/40 text-primary" onClick={() => setEditing("new")}>
+            <Plus className="h-3.5 w-3.5" /> New task
           </Button>
         )}
       </div>
 
+      <div
+        role="tablist"
+        aria-label="Task view"
+        className="inline-flex flex-wrap items-center gap-1 rounded-xl border border-border/70 bg-surface/60 p-1"
+      >
+        {VIEWS.map((id) => {
+          const active = view === id;
+          const count = buckets[id].length;
+          return (
+            <button
+              key={id}
+              role="tab"
+              type="button"
+              aria-selected={active}
+              onClick={() => setView(id)}
+              className={cn(
+                "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors",
+                active
+                  ? "bg-card font-medium text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {VIEW_LABELS[id]}
+              <span
+                className={cn(
+                  "rounded-md px-1.5 py-0.5 font-mono text-[11px] tabular-nums",
+                  id === "overdue" && count > 0
+                    ? active
+                      ? "bg-destructive/15 text-destructive"
+                      : "bg-destructive/10 text-destructive"
+                    : active
+                      ? "bg-primary/15 text-primary"
+                      : "bg-muted text-muted-foreground",
+                )}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {tasksQuery.isPending && (
-        <ul className="space-y-2" aria-hidden>
+        <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/70 bg-card" aria-hidden>
           {Array.from({ length: 3 }, (_, i) => (
-            <li key={i} className="flex items-center gap-3 rounded-xl border border-border/70 bg-surface/50 p-3">
+            <li key={i} className="flex items-center gap-3 p-4">
               <div className="min-w-0 flex-1 space-y-1.5">
                 <Skeleton className="h-3.5 w-1/3" />
                 <Skeleton className="h-3 w-1/4" />
@@ -223,17 +267,18 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
       )}
 
       {tasks.length > 0 && (
-        <ul className="space-y-2">
+        <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/70 bg-card">
           {tasks.map((task) => {
             const deal = entriesById.get(task.pipelineId);
             const due = dueLabel(task.dueDate, now);
             const assignee = memberName(task.assigneeId);
+            const avatarUrl = memberAvatar(task.assigneeId);
             const busy = toggleMutation.isPending && toggleMutation.variables?.id === task.id;
 
             return (
               <li
                 key={task.id}
-                className="flex flex-wrap items-center gap-3 rounded-xl border border-border/70 bg-surface/50 p-3"
+                className="group flex flex-wrap items-center gap-3 p-4 transition-colors hover:bg-surface/40"
               >
                 <div className="min-w-0 flex-1">
                   {canUpdate ? (
@@ -241,7 +286,7 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
                       type="button"
                       onClick={() => setEditing(task)}
                       className={cn(
-                        "block max-w-full truncate text-left text-sm font-medium hover:text-primary hover:underline",
+                        "block max-w-full truncate text-left text-sm font-medium hover:text-primary",
                         task.status === "completed" && "text-muted-foreground line-through",
                       )}
                     >
@@ -257,30 +302,56 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
                       {task.title}
                     </p>
                   )}
-                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                     {deal && (
                       <button
                         type="button"
                         onClick={() => onOpenDeal(task.pipelineId)}
-                        className="truncate hover:text-foreground hover:underline"
+                        className="truncate rounded-md border border-border/60 bg-surface/70 px-1.5 py-0.5 hover:border-primary/30 hover:text-foreground"
                       >
                         {deal.investor.fullName}
                       </button>
                     )}
-                    <span>· {PRIORITY_LABELS[task.priority]}</span>
-                    <span>· {assignee ?? "Unassigned"}</span>
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                        PRIORITY_PILL[task.priority],
+                      )}
+                    >
+                      {PRIORITY_LABELS[task.priority]}
+                    </span>
+                    <span className="inline-flex max-w-[10rem] items-center gap-1.5 rounded-md border border-border/60 bg-surface/70 px-1.5 py-0.5">
+                      {assignee ? (
+                        <>
+                          <Avatar className="h-4 w-4">
+                            {avatarUrl ? <AvatarImage src={avatarUrl} alt="" /> : null}
+                            <AvatarFallback className="text-[8px] font-semibold">
+                              {getInitials(assignee)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="truncate">{assignee}</span>
+                        </>
+                      ) : (
+                        <>
+                          <UserRound className="h-3 w-3 shrink-0" />
+                          <span>Unassigned</span>
+                        </>
+                      )}
+                    </span>
                   </div>
                 </div>
 
-                <span className={cn("inline-flex shrink-0 items-center gap-1 text-xs", due.tone)}>
+                <span className={cn("inline-flex shrink-0 items-center gap-1 text-xs font-medium", due.tone)}>
                   <CalendarClock className="h-3.5 w-3.5" />
                   {due.text}
                 </span>
 
                 {canUpdate && (
                   <>
-                    <button
+                    <Button
                       type="button"
+                      size="sm"
+                      variant="outline"
                       role="checkbox"
                       aria-checked={task.status === "completed"}
                       aria-label={
@@ -291,10 +362,9 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
                       disabled={busy}
                       onClick={() => toggleMutation.mutate(task)}
                       className={cn(
-                        "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50",
                         task.status === "completed"
-                          ? "border-border bg-card text-muted-foreground hover:text-foreground focus-visible:ring-ring"
-                          : "border-success/30 bg-success/[0.06] text-success hover:border-success/50 hover:bg-success/15 focus-visible:ring-success/40",
+                          ? "text-muted-foreground"
+                          : "border-success/35 text-success hover:bg-success/10 hover:text-success",
                       )}
                     >
                       {task.status === "completed" ? (
@@ -306,12 +376,12 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
                           <Check className="h-3.5 w-3.5" /> Mark done
                         </>
                       )}
-                    </button>
+                    </Button>
                     <Button
                       type="button"
-                      variant="ghost"
+                      variant="outline"
                       size="icon"
-                      className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+                      className="h-8 w-8 shrink-0 text-muted-foreground"
                       onClick={() => setEditing(task)}
                       aria-label={`Edit task ${task.title}`}
                     >

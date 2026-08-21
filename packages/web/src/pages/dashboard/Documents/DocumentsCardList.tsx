@@ -16,6 +16,7 @@ function scoreColor(score: number) {
 type DocumentsCardListProps = {
   documents: VaultDocument[];
   selectedIds: Set<string> | null;
+  focusedDocumentId?: string | null;
   onToggleOne: (id: string) => void;
   canUpdate: boolean;
   canDelete: boolean;
@@ -32,6 +33,7 @@ type DocumentsCardListProps = {
 export function DocumentsCardList({
   documents,
   selectedIds,
+  focusedDocumentId = null,
   onToggleOne,
   canUpdate,
   canDelete,
@@ -53,16 +55,19 @@ export function DocumentsCardList({
         const status = statusOf(version);
         const selected = selectedIds?.has(doc.id) ?? false;
         const canOpen = status === "ready";
+        const focused = focusedDocumentId === doc.id;
 
         return (
           <div
             key={doc.id}
+            data-document-id={doc.id}
             aria-selected={selectionActive ? selected : undefined}
             onClick={selectionActive ? () => onToggleOne(doc.id) : undefined}
             className={cn(
               "card-elevated group p-4 transition-colors",
               selectionActive ? "cursor-pointer" : "hover:border-primary/40",
               selected && "border-primary/50 bg-primary/[0.04]",
+              focused && "border-primary/60 bg-primary/[0.06] ring-1 ring-primary/30",
             )}
           >
             <div className="mb-3 flex items-start justify-between gap-2">

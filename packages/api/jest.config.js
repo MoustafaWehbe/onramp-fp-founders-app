@@ -19,4 +19,7 @@ module.exports = {
   transform: {
     "^.+\\.tsx?$": ["ts-jest", { tsconfig: "./tsconfig.test.json" }],
   },
+  // express-rate-limit's in-memory store leaves timers after suites finish.
+  // forceExit so those don't keep the process hanging once assertions are done.
+  forceExit: true,
 };

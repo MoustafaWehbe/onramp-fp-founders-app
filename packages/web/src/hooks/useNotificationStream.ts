@@ -23,10 +23,12 @@ type ChatTypingEvent = { conversationId: string; memberId: string; memberName: s
  * Keeps the notification feed *and* team chat live over one shared
  * server-sent events connection.
  *
- * Despite the endpoint's name, the server multiplexes every realtime event
- * for the signed-in user onto this one stream see the comment on
- * notificationController.stream so chat listens here too rather than
- * opening a second EventSource.
+ * The browser still speaks SSE (EventSource). Behind that, the API fans
+ * events through Redis pub/sub so cron / other processes reach every open
+ * tab — see packages/api/src/events/realtime-bus.ts. Despite the endpoint
+ * name, the server multiplexes every realtime event for the signed-in user
+ * onto this one stream so chat listens here too rather than opening a
+ * second EventSource.
  *
  * The stream is a signal, not a data source: every event just invalidates the
  * queries and lets them refetch. Trying to splice pushed payloads into the

@@ -37,9 +37,15 @@ function monthsBetween(a: Date, b: Date): number {
  * because that is what really happened.
  */
 function buildMonthlySeries(events: FundingHistoryEvent[], range: FundingChartRange) {
-  const sorted = [...events].sort(
-    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-  );
+  // useMemo always runs — even with [] events and range "all". Accessing
+  // sorted[0].createdAt then crashes and blanks the whole Dashboard.
+  const sorted = [...events]
+    .filter((event) => Boolean(event?.createdAt))
+    .sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+
+  if (sorted.length === 0) return [];
 
   let running = 0;
   const timeline = sorted.map((event) => {
@@ -51,7 +57,7 @@ function buildMonthlySeries(events: FundingHistoryEvent[], range: FundingChartRa
   const now = new Date();
   const monthsBack =
     range === "all"
-      ? Math.max(1, monthsBetween(new Date(sorted[0].createdAt), now) + 1)
+      ? Math.max(1, monthsBetween(new Date(sorted[0]!.createdAt), now) + 1)
       : range;
 
   return Array.from({ length: monthsBack }, (_, index) => {
@@ -80,6 +86,8 @@ type FundingHistoryChartProps = {
   currency: string;
   /** Trims chrome for the Dashboard's tighter card; the Fundraising page gets the full header. */
   compact?: boolean;
+  /** Dashboard-only: stretch card height to match the Pipeline-by-stage column. */
+  matchSiblingHeight?: boolean;
 };
 
 /**
@@ -87,7 +95,13 @@ type FundingHistoryChartProps = {
  * every point here can be traced to a real transition the API recorded,
  * never implied from a commitment's createdAt.
  */
-export function FundingHistoryChart({ startupId, roundId, currency, compact = false }: FundingHistoryChartProps) {
+export function FundingHistoryChart({
+  startupId,
+  roundId,
+  currency,
+  compact = false,
+  matchSiblingHeight = false,
+}: FundingHistoryChartProps) {
   const range = useAppStore((state) => state.fundingChartRanges[startupId] ?? 6);
   const setRange = useAppStore((state) => state.setFundingChartRange);
 
@@ -100,9 +114,51 @@ export function FundingHistoryChart({ startupId, roundId, currency, compact = fa
   const events = useMemo(() => historyQuery.data ?? [], [historyQuery.data]);
   const series = useMemo(() => buildMonthlySeries(events, range), [events, range]);
   const current = series.at(-1)?.value ?? 0;
+  const bodyClass = matchSiblingHeight ? "min-h-[220px] flex-1" : "h-[220px]";
+
+  const chart = (
+    <ResponsiveContainer width="100%" height="100%">
+      <AreaChart data={series} margin={{ left: 4, right: 8, top: 8 }}>
+        <defs>
+          <linearGradient id="funding-history-gradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#F97316" stopOpacity={0.42} />
+            <stop offset="100%" stopColor="#F97316" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" stroke="#30363D" vertical={false} />
+        <XAxis dataKey="month" stroke="#8B949E" fontSize={11} tickLine={false} axisLine={false} />
+        <YAxis
+          width={52}
+          stroke="#8B949E"
+          fontSize={11}
+          tickLine={false}
+          axisLine={false}
+          tickFormatter={(value) => formatCompactMoney(Number(value), currency)}
+        />
+        <Tooltip
+          formatter={(value) => [formatMoney(Number(value), currency), "Raised"]}
+          contentStyle={{ background: "#1C2128", border: "1px solid #30363D", borderRadius: 10, fontSize: 12 }}
+          labelStyle={{ color: "#8B949E" }}
+        />
+        <Area
+          type="monotone"
+          dataKey="value"
+          stroke="#F97316"
+          strokeWidth={2.5}
+          fill="url(#funding-history-gradient)"
+          activeDot={{ r: 5, strokeWidth: 0 }}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
 
   return (
-    <div className={cn(!compact && "card-elevated p-4 sm:p-5")}>
+    <div
+      className={cn(
+        !compact && "card-elevated p-4 sm:p-5",
+        matchSiblingHeight && "flex h-full flex-col",
+      )}
+    >
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
@@ -147,13 +203,18 @@ export function FundingHistoryChart({ startupId, roundId, currency, compact = fa
       </div>
 
       {historyQuery.isPending && (
-        <div className="grid h-[220px] place-items-center text-sm text-muted-foreground">
+        <div className={cn("grid place-items-center text-sm text-muted-foreground", bodyClass)}>
           Loading funding history…
         </div>
       )}
 
       {historyQuery.isError && (
-        <div className="flex h-[220px] flex-col items-center justify-center gap-2 rounded-lg border border-destructive/30 bg-destructive/[0.05] text-center text-sm text-destructive">
+        <div
+          className={cn(
+            "flex flex-col items-center justify-center gap-2 rounded-lg border border-destructive/30 bg-destructive/[0.05] text-center text-sm text-destructive",
+            bodyClass,
+          )}
+        >
           <AlertTriangle className="h-5 w-5" />
           {apiErrorMessage(historyQuery.error, "Could not load funding history.")}
           <Button size="sm" variant="outline" onClick={() => void historyQuery.refetch()}>
@@ -163,7 +224,12 @@ export function FundingHistoryChart({ startupId, roundId, currency, compact = fa
       )}
 
       {!historyQuery.isPending && !historyQuery.isError && events.length === 0 && (
-        <div className="flex h-[220px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/70 text-center">
+        <div
+          className={cn(
+            "flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/70 text-center",
+            bodyClass,
+          )}
+        >
           <TrendingUp className="h-6 w-6 text-muted-foreground" />
           <p className="text-sm font-medium">No commitments recorded yet</p>
           <p className="max-w-xs text-xs text-muted-foreground">
@@ -173,40 +239,15 @@ export function FundingHistoryChart({ startupId, roundId, currency, compact = fa
       )}
 
       {!historyQuery.isPending && !historyQuery.isError && events.length > 0 && (
-        <div className="h-[220px]" aria-label="Funding progress chart">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={series} margin={{ left: 4, right: 8, top: 8 }}>
-              <defs>
-                <linearGradient id="funding-history-gradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#F97316" stopOpacity={0.42} />
-                  <stop offset="100%" stopColor="#F97316" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#30363D" vertical={false} />
-              <XAxis dataKey="month" stroke="#8B949E" fontSize={11} tickLine={false} axisLine={false} />
-              <YAxis
-                width={52}
-                stroke="#8B949E"
-                fontSize={11}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(value) => formatCompactMoney(Number(value), currency)}
-              />
-              <Tooltip
-                formatter={(value) => [formatMoney(Number(value), currency), "Raised"]}
-                contentStyle={{ background: "#1C2128", border: "1px solid #30363D", borderRadius: 10, fontSize: 12 }}
-                labelStyle={{ color: "#8B949E" }}
-              />
-              <Area
-                type="monotone"
-                dataKey="value"
-                stroke="#F97316"
-                strokeWidth={2.5}
-                fill="url(#funding-history-gradient)"
-                activeDot={{ r: 5, strokeWidth: 0 }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+        <div
+          className={cn(matchSiblingHeight ? "relative min-h-[220px] flex-1" : "h-[220px]")}
+          aria-label="Funding progress chart"
+        >
+          {/*
+            Dashboard stretch needs absolute fill. Fundraising must put
+            ResponsiveContainer directly under h-[220px] or Recharts sizes to 0×0.
+          */}
+          {matchSiblingHeight ? <div className="absolute inset-0">{chart}</div> : chart}
         </div>
       )}
     </div>

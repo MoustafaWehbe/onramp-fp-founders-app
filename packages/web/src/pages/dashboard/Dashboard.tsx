@@ -161,12 +161,17 @@ function TodayWorkspace({ startupId }: { startupId: string }) {
         <SummaryCard icon={Crown} label="Lead alerts" value={leadAlerts.length} detail={leadAlerts.length ? "Lead investors need action" : "Leads are up to date"} />
       </section>
 
-      <section aria-label="Fundraising charts" className="grid gap-5 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <FundingHistoryChart startupId={startupId} roundId={activeRound.id} currency={activeRound.currency} />
+      <section aria-label="Fundraising charts" className="grid items-stretch gap-5 lg:grid-cols-3">
+        <div className="h-full min-h-0 lg:col-span-2">
+          <FundingHistoryChart
+            startupId={startupId}
+            roundId={activeRound.id}
+            currency={activeRound.currency}
+            matchSiblingHeight
+          />
         </div>
 
-        <div className="card-elevated p-4 sm:p-5">
+        <div className="card-elevated flex h-full flex-col p-4 sm:p-5">
           <div className="mb-2"><h2 className="font-display text-base font-semibold tracking-tight">Pipeline by stage</h2><p className="text-xs text-muted-foreground sm:text-sm">Live investors in this round click a stage to see who's in it</p></div>
           {stageData.length === 0 ? <EmptyState icon={Users} title="No investors yet" description="Add investors to see your pipeline mix." compact /> : <>
             <div className="relative h-[176px]" aria-label="Pipeline by stage chart"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={stageData} dataKey="value" innerRadius={48} outerRadius={74} paddingAngle={2} onClick={(_datum, index) => navigate(`/investors?tab=engaged&stage=${stageData[index].stageId}`)} cursor="pointer">{stageData.map((stage) => <Cell key={stage.name} fill={stage.color} stroke="#0D1117" strokeWidth={2} />)}</Pie><Tooltip contentStyle={{ background: "#1C2128", border: "1px solid #30363D", borderRadius: 10, fontSize: 12 }} /></PieChart></ResponsiveContainer><div className="pointer-events-none absolute inset-0 grid place-items-center"><div className="text-center"><div className="font-display text-2xl font-semibold tabular-nums">{entries.length}</div><div className="text-[10px] uppercase tracking-wider text-muted-foreground">Investors</div></div></div></div>

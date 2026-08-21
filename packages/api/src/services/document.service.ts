@@ -11,6 +11,31 @@ import type {
   ListDocumentsQuery,
   UpdateDocumentInput,
 } from "../validators/document.schemas";
+import { DOCUMENT_TYPES } from "../validators/document.schemas";
+
+/** Human labels + aliases so search like "pitch", "deck", or "cap table" hits type. */
+const DOCUMENT_TYPE_SEARCH_TERMS: Record<(typeof DOCUMENT_TYPES)[number], string[]> = {
+  pitch_deck: ["pitch", "deck", "pitch deck", "pitchdeck"],
+  financial_model: ["financial", "finance", "model", "financial model"],
+  cap_table: ["cap", "cap table", "captable", "ownership"],
+  term_sheet: ["term", "term sheet", "termsheet"],
+  data_room: ["data room", "dataroom", "room"],
+  other: ["other"],
+};
+
+function documentTypesMatchingSearch(search: string): string[] {
+  const q = search.toLowerCase().trim();
+  if (!q) return [];
+
+  return DOCUMENT_TYPES.filter((type) => {
+    if (type === q || type.replace(/_/g, " ").includes(q) || type.includes(q.replace(/\s+/g, "_"))) {
+      return true;
+    }
+    return DOCUMENT_TYPE_SEARCH_TERMS[type].some(
+      (term) => term === q || (q.length >= 3 && term.includes(q)),
+    );
+  });
+}
 
 function serializeVersion(version: {
   id: string;
@@ -75,11 +100,29 @@ function serializeDocument(
 export class DocumentService {
   async listDocuments(startupId: string, query: ListDocumentsQuery) {
     const { page, limit, search, documentType } = query;
+    const needle = search?.trim();
+    const matchingTypes = needle ? documentTypesMatchingSearch(needle) : [];
+
     const where: Prisma.DocumentWhereInput = {
       startupId,
       ...(documentType ? { documentType } : {}),
-      ...(search
-        ? { title: { contains: search, mode: "insensitive" } }
+      ...(needle
+        ? {
+            OR: [
+              { title: { contains: needle, mode: "insensitive" } },
+              {
+                versions: {
+                  some: {
+                    isCurrent: true,
+                    originalFilename: { contains: needle, mode: "insensitive" },
+                  },
+                },
+              },
+              ...(matchingTypes.length > 0
+                ? [{ documentType: { in: matchingTypes } }]
+                : []),
+            ],
+          }
         : {}),
     };
 
