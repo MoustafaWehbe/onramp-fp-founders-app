@@ -41,7 +41,7 @@ export function Notifications() {
     <div className="space-y-6">
       <PageHeader
         title="Notifications"
-        description="Invitations and activity from every workspace you're part of."
+        description="Invitations and activity for the workspace you're in right now."
         actions={
           <Button
             type="button"
