@@ -189,7 +189,12 @@ export class AiConversationService {
         if (event.type === "delta") {
           if (timeToFirstTokenMs === undefined) timeToFirstTokenMs = Date.now() - startedAt;
           content += event.text;
-          aiStreamBroker.publish(session.id, messageId, "message.delta", { text: event.text });
+          // Sending the cumulative content (not just the fragment) makes each event
+          // idempotent: SSE + Last-Event-ID replay is at-least-once delivery, and a
+          // reconnect mid-stream can redeliver or reorder a delta. A pure fragment
+          // would double up on redelivery (append is not idempotent); a cumulative
+          // value lets the client just take the longest one it has seen.
+          aiStreamBroker.publish(session.id, messageId, "message.delta", { text: event.text, content });
           // The row is otherwise only written once, at completion, so any reader that
           // falls back to the database mid-stream (an SSE reconnect with nothing to
           // replay, a REST refetch) would see an empty message and visibly erase

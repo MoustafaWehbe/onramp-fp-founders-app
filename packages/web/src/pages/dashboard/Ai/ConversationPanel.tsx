@@ -125,7 +125,14 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
       current.map((message) => {
         if (message.id !== messageId) return message;
         if (event.type === "message.delta") {
-          return { ...message, status: "streaming", content: message.content + String(event.payload.text ?? "") };
+          // The delta carries the full cumulative text, not just the new fragment,
+          // specifically so this is idempotent under at-least-once SSE delivery: a
+          // reconnect can redeliver or reorder an event, and appending a fragment
+          // twice would duplicate words, but taking the longest known snapshot
+          // self-corrects regardless of delivery order.
+          const incoming = String(event.payload.content ?? message.content + String(event.payload.text ?? ""));
+          const content = incoming.length >= message.content.length ? incoming : message.content;
+          return { ...message, status: "streaming", content };
         }
         if (event.type === "message.snapshot") {
           // A snapshot can arrive from a stale database read mid-stream (see the
