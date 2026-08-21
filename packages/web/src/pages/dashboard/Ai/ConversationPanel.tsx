@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, ArrowUp, FileSearch, Loader2, OctagonX, Sparkles, UserRound } from "lucide-react";
+import { AlertCircle, ArrowDown, ArrowUp, FileSearch, Loader2, OctagonX, Sparkles, UserRound } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Markdown } from "../../../components/shared/Markdown";
@@ -31,7 +31,7 @@ type Props = {
   canReadDocuments: boolean;
   prefill?: string;
   onStartWithPrompt?: (prompt: string) => void;
-  onSelectPersona: (personaId: string | null) => void;
+  onSelectPersona: (personaId: string | null) => Promise<unknown>;
 };
 
 type TimelineEntry = { type: "message"; createdAt: string; message: AiChatMessage } | { type: "analysis"; createdAt: string; analysis: AiAnalysis };
@@ -44,6 +44,9 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesContentRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const initialScrollDoneRef = useRef<string | null>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const draftKey = session ? `ai-draft:${startupId}:${session.id}` : null;
 
   const messagesQuery = useQuery({
@@ -57,6 +60,11 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
     refetchOnWindowFocus: false,
   });
   const messages = messagesQuery.data ?? [];
+  // Read inside the ResizeObserver callback below, which must not force a
+  // scroll for growth caused by something other than an active generation
+  // (e.g. the user expanding a citation or an analysis's collapsible section).
+  const hasActiveAssistantRef = useRef(false);
+  hasActiveAssistantRef.current = messages.some((message) => message.role === "assistant" && (message.status === "pending" || message.status === "streaming"));
 
   const documentsQuery = useQuery({
     queryKey: ["documents", startupId, "ai-analyze"],
@@ -122,15 +130,49 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
   // e.g. message content would fire "too early" relative to that lagging
   // reveal animation, leaving the scroll position stuck while the bubble
   // keeps growing underneath it. Watching actual rendered height instead
-  // reacts to growth from any source.
+  // reacts to growth from any source — but that also means it fires for
+  // growth that has nothing to do with a live response, like the user
+  // expanding a citation or an analysis card's collapsible sections, so it's
+  // gated on an assistant reply actually being in flight.
+  const updateScrollButtonVisibility = () => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    setShowScrollToBottom(el.scrollHeight - el.scrollTop - el.clientHeight > 120);
+  };
+
   useEffect(() => {
     const el = messagesContentRef.current;
     if (!el) return;
+    const sessionId = session?.id ?? null;
     const observer = new ResizeObserver(() => {
+      // The first time a session's messages actually render (history load,
+      // not a live response), jump straight to the latest exchange instead
+      // of leaving the view sitting at the top of a possibly-long thread —
+      // el.scrollHeight is read live off the DOM here, not from a possibly
+      // stale `messages` closure, so this is accurate whenever it fires.
+      if (sessionId && initialScrollDoneRef.current !== sessionId && el.scrollHeight > 0) {
+        initialScrollDoneRef.current = sessionId;
+        bottomRef.current?.scrollIntoView({ block: "end" });
+        updateScrollButtonVisibility();
+        return;
+      }
+      updateScrollButtonVisibility();
+      if (!hasActiveAssistantRef.current) return;
       bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     });
     observer.observe(el);
     return () => observer.disconnect();
+  }, [session?.id]);
+
+  // A manual "jump to bottom" affordance for when the user has scrolled up to
+  // read earlier messages — the effect above only auto-follows during an
+  // active response, by design, so this is the way back down otherwise.
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    updateScrollButtonVisibility();
+    el.addEventListener("scroll", updateScrollButtonVisibility, { passive: true });
+    return () => el.removeEventListener("scroll", updateScrollButtonVisibility);
   }, [session?.id]);
 
   const applyEvent = (messageId: string, event: AiStreamEvent) => {
@@ -225,6 +267,28 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
     if (content && !sendMutation.isPending && canCreate) sendMutation.mutate(content);
   }
 
+  // Selecting a persona used to just silently arm a mode with no visible
+  // effect until the user typed something themselves. Kicking off the
+  // rehearsal here — once the persona is actually set server-side — makes the
+  // investor ask the first question immediately instead of leaving an empty
+  // composer as the only feedback that anything happened. Symmetrically,
+  // ending it (persona -> null) should hand back a real wrap-up instead of
+  // just silently dropping the mode with no takeaway from the rehearsal.
+  async function handleSelectPersona(personaId: string | null) {
+    const wasActive = Boolean(session?.persona);
+    try {
+      await onSelectPersona(personaId);
+    } catch {
+      return;
+    }
+    if (!canCreate || hasActiveAssistantRef.current) return;
+    if (personaId) {
+      sendMutation.mutate("Let's begin the rehearsal — go ahead and ask your first question.");
+    } else if (wasActive) {
+      sendMutation.mutate("That's the end of the rehearsal. Please step out of character and summarize how I did: my strengths, the gaps I should address, and how ready this pitch feels overall.");
+    }
+  }
+
   if (!session) {
     return <Welcome canCreate={canCreate} onSelectPrompt={onStartWithPrompt} />;
   }
@@ -244,49 +308,62 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
         {session.persona && (
           <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 py-1 pl-2.5 pr-1 text-[11px] font-medium text-primary">
             <UserRound className="h-3 w-3" /> {session.persona.name ?? "Investor persona"}
-            <button type="button" onClick={() => onSelectPersona(null)} className="rounded-full px-1.5 py-0.5 text-primary/70 hover:bg-primary/15 hover:text-primary">
+            <button type="button" onClick={() => handleSelectPersona(null)} className="rounded-full px-1.5 py-0.5 text-primary/70 hover:bg-primary/15 hover:text-primary">
               Stop
             </button>
           </div>
         )}
       </div>
 
-      <div className="scrollbar-slim min-h-0 flex-1 overflow-y-auto scroll-smooth px-6 py-8">
-        <div ref={messagesContentRef} className="mx-auto flex w-full max-w-2xl flex-col gap-7">
-          {messagesQuery.isPending && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading conversation
-            </div>
-          )}
-          {messagesQuery.isError && (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-              This conversation is unavailable with your current permissions.
-            </div>
-          )}
-          {timeline.map((entry) =>
-            entry.type === "message" ? (
-              <MessageBubble
-                key={entry.message.id}
-                message={entry.message}
-                onStop={activeAssistant?.id === entry.message.id ? () => cancelMutation.mutate(entry.message.id) : undefined}
-                stopping={cancelMutation.isPending}
-              />
-            ) : (
-              <AnalysisCard
-                key={entry.analysis.id}
-                startupId={startupId}
-                sessionId={session.id}
-                analysis={entry.analysis}
-                documentTitle={documentTitleById.get(entry.analysis.documentVersionId) ?? "Document"}
-                canCreate={canCreate}
-                onAskFollowup={setDraft}
-                onSelectPersona={onSelectPersona}
-                selectedPersonaId={session.persona?.id ?? null}
-              />
-            ),
-          )}
-          <div ref={bottomRef} />
+      <div className="relative min-h-0 flex-1">
+        <div ref={scrollContainerRef} className="scrollbar-slim h-full overflow-y-auto scroll-smooth px-6 py-8">
+          <div ref={messagesContentRef} className="mx-auto flex w-full max-w-2xl flex-col gap-7">
+            {messagesQuery.isPending && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading conversation
+              </div>
+            )}
+            {messagesQuery.isError && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                This conversation is unavailable with your current permissions.
+              </div>
+            )}
+            {timeline.map((entry) =>
+              entry.type === "message" ? (
+                <MessageBubble
+                  key={entry.message.id}
+                  message={entry.message}
+                  onStop={activeAssistant?.id === entry.message.id ? () => cancelMutation.mutate(entry.message.id) : undefined}
+                  stopping={cancelMutation.isPending}
+                />
+              ) : (
+                <AnalysisCard
+                  key={entry.analysis.id}
+                  startupId={startupId}
+                  sessionId={session.id}
+                  analysis={entry.analysis}
+                  documentTitle={documentTitleById.get(entry.analysis.documentVersionId) ?? "Document"}
+                  canCreate={canCreate}
+                  onAskFollowup={setDraft}
+                  onSelectPersona={handleSelectPersona}
+                  selectedPersonaId={session.persona?.id ?? null}
+                />
+              ),
+            )}
+            <div ref={bottomRef} />
+          </div>
         </div>
+
+        {showScrollToBottom && (
+          <button
+            type="button"
+            onClick={() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })}
+            aria-label="Scroll to latest message"
+            className="absolute bottom-4 right-4 grid h-9 w-9 place-items-center rounded-full border border-border/60 bg-card text-foreground shadow-md transition-colors hover:bg-surface-hover"
+          >
+            <ArrowDown className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       <div className="shrink-0 border-t border-border/60 bg-card/30 px-6 py-4">
@@ -343,17 +420,29 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
   );
 }
 
-function Citation({ citation }: { citation: AiCitation }) {
-  const link = aiRecordLink(citation.sourceType, citation.sourceId, citation.metadata);
+function CitationList({ citations }: { citations: AiCitation[] }) {
   return (
-    <details className="rounded-lg border border-border/60 bg-background/40 px-3 py-2 text-xs">
-      <summary className="cursor-pointer list-none font-medium text-muted-foreground marker:content-none">Source: {citation.label}</summary>
-      {citation.excerpt && <p className="mt-1.5 text-muted-foreground/90">{citation.excerpt}</p>}
-      {link && (
-        <Link className="mt-2 inline-block text-primary hover:underline" to={link}>
-          Open source
-        </Link>
-      )}
+    <details className="group mt-2 rounded-lg border border-border/60 bg-background/40 text-xs">
+      <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 font-medium text-muted-foreground marker:content-none">
+        <span>{citations.length} source{citations.length === 1 ? "" : "s"}</span>
+        <span className="text-[10px] text-muted-foreground/70 transition-transform group-open:rotate-180">▾</span>
+      </summary>
+      <ul className="space-y-2 border-t border-border/60 px-3 py-2">
+        {citations.map((citation) => {
+          const link = aiRecordLink(citation.sourceType, citation.sourceId, citation.metadata);
+          return (
+            <li key={citation.id} className="leading-relaxed">
+              <span className="font-medium text-foreground/80">{citation.label}</span>
+              {citation.excerpt && <span className="text-muted-foreground"> — {citation.excerpt}</span>}
+              {link && (
+                <Link className="ml-1.5 text-primary hover:underline" to={link}>
+                  Open source
+                </Link>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </details>
   );
 }
@@ -431,13 +520,7 @@ function MessageBubble({ message, onStop, stopping }: { message: AiChatMessage; 
           )}
         </div>
 
-        {assistant && message.citations.length > 0 && (
-          <div className="mt-2 space-y-1.5">
-            {message.citations.map((citation) => (
-              <Citation key={citation.id} citation={citation} />
-            ))}
-          </div>
-        )}
+        {assistant && message.citations.length > 0 && <CitationList citations={message.citations} />}
       </div>
     </article>
   );

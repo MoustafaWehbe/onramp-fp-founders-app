@@ -11,10 +11,10 @@ const components: Components = {
       {children}
     </a>
   ),
-  h1: ({ children }) => <h1 className="mt-4 text-xl font-semibold text-foreground first:mt-0">{children}</h1>,
-  h2: ({ children }) => <h2 className="mt-4 text-lg font-semibold text-foreground first:mt-0">{children}</h2>,
-  h3: ({ children }) => <h3 className="mt-3 text-base font-semibold text-foreground first:mt-0">{children}</h3>,
-  h4: ({ children }) => <h4 className="mt-3 text-base font-semibold text-foreground first:mt-0">{children}</h4>,
+  h1: ({ children }) => <h1 className="mt-6 text-2xl font-bold tracking-tight text-foreground first:mt-0">{children}</h1>,
+  h2: ({ children }) => <h2 className="mt-6 border-b border-border/60 pb-1.5 text-xl font-bold tracking-tight text-foreground first:mt-0">{children}</h2>,
+  h3: ({ children }) => <h3 className="mt-5 text-lg font-semibold text-foreground first:mt-0">{children}</h3>,
+  h4: ({ children }) => <h4 className="mt-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground first:mt-0">{children}</h4>,
   ul: ({ children }) => <ul className="mt-2 list-disc space-y-1 pl-5 marker:text-muted-foreground first:mt-0">{children}</ul>,
   ol: ({ children }) => <ol className="mt-2 list-decimal space-y-1 pl-5 marker:text-muted-foreground first:mt-0">{children}</ol>,
   li: ({ children }) => <li className="pl-0.5">{children}</li>,

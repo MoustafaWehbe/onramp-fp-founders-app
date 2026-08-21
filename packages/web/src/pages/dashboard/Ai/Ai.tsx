@@ -133,7 +133,7 @@ export function Ai() {
             canReadDocuments={canReadDocuments}
             prefill={analysisPrompt}
             onStartWithPrompt={(prompt) => createSessionMutation.mutate(prompt)}
-            onSelectPersona={(personaId) => personaMutation.mutate(personaId)}
+            onSelectPersona={(personaId) => personaMutation.mutateAsync(personaId)}
           />
         </div>
       )}

@@ -177,7 +177,7 @@ export class AiConversationService {
         "Do not claim document facts without citing the supplied source labels in your response.",
         session.persona ? `This is a clearly labeled pitch simulation. Role-play only as the simulated investor persona \"${session.persona.personaName}\" using this investment lens: ${session.persona.description ?? "Ask rigorous, evidence-based investor questions."}. Never claim to be a real investor or have real-world knowledge beyond the supplied context.` : "",
         `Registered presentation types for this request: ${aiCapabilityManifest(access.canReadDocuments ? ["documents:read"] : [], { hasPinnedDocuments: versionIds.length > 0, hasRound: Boolean(session.roundId) }).artifactTypes.join(", ") || "none"}. Never emit an action payload or artifact JSON yourself — those are attached separately by the system.`,
-        "Format the response as markdown where it improves readability: headings, bold/italic, bullet or numbered lists, tables, and code blocks are all rendered. Do not fabricate clickable links or URLs — reference sources only by their supplied labels.",
+        "Format the response as markdown where it improves readability: headings, bold/italic, bullet or numbered lists, tables, and code blocks are all rendered. For a multi-section answer, give each section a real markdown heading (## or ###) rather than just bolding the first few words of a paragraph or list item — headings render distinctly larger, so they're how a section title should be marked, not bold text. Do not fabricate clickable links or URLs — reference sources only by their supplied labels.",
         toolResults.length ? `Trusted, server-computed application data follows. Explain these values faithfully; do not invent other records:\n${JSON.stringify(toolResults)}` : "",
         sources ? `Retrieved document data follows:\n<document_data>\n${sources}\n</document_data>` : "No document evidence was retrieved. State uncertainty rather than inventing facts.",
       ].join("\n\n");
@@ -233,11 +233,18 @@ export class AiConversationService {
           const investorToolResult = toolResults.find((entry) => entry.tool === "get_investor_context" || entry.tool === "get_focus_deals")?.result as { data?: unknown[] } | null | undefined;
           const missingInvestorContext = !investorToolResult || (Array.isArray(investorToolResult.data) && investorToolResult.data.length === 0);
           const contextLabel = missingInvestorContext ? "No investor record selected" : "Grounded in this conversation's pipeline data";
-          if (prompt.includes("follow-up") || prompt.includes("follow up") || prompt.includes("email draft")) {
+          // These structured artifacts duplicate the plain answer bubble underneath
+          // them, so they should only fire on a clear, explicit request for that
+          // format — never during a persona rehearsal (where "follow-up question"
+          // and "prepare for" come up constantly in ordinary investor dialogue and
+          // would otherwise wrap every reply in a stray "email draft" card).
+          const wantsEmailDraft = !session.persona && /\bemail\b/.test(prompt) && (prompt.includes("draft") || prompt.includes("write") || prompt.includes("send"));
+          if (wantsEmailDraft) {
             const artifact = await aiArtifactService.createReady({ startupId: session.startupId, sessionId: session.id, messageId, type: "email_draft.v1", title: "Follow-up draft", data: { subject: "Follow-up", body: content, contextLabel, missingInvestorContext } });
             aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "email_draft.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
           }
-          if (prompt.includes("meeting brief") || prompt.includes("prepare me for") || prompt.includes("prepare for")) {
+          const wantsMeetingBrief = !session.persona && (prompt.includes("meeting brief") || prompt.includes("prepare me for a meeting") || prompt.includes("prepare for a meeting") || prompt.includes("prepare for the meeting"));
+          if (wantsMeetingBrief) {
             const talkingPoints = content.split(/\n+|(?<=[.!?])\s+/).map((item) => item.trim()).filter(Boolean).slice(0, 8);
             if (talkingPoints.length) {
               const artifact = await aiArtifactService.createReady({ startupId: session.startupId, sessionId: session.id, messageId, type: "meeting_brief.v1", title: "Meeting brief", data: { title: "Meeting preparation", talkingPoints, contextLabel, missingInvestorContext } });

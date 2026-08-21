@@ -47,11 +47,11 @@ export function AnalysisCard({ startupId, sessionId, analysis, documentTitle, ca
         <BarChart3 className="h-3.5 w-3.5" />
       </span>
       <div className="min-w-0 max-w-[calc(100%-2.5rem)] flex-1 rounded-xl border border-border/60 bg-card/60 p-4">
-        <p className="text-sm font-semibold text-foreground">Deck analysis</p>
-        <p className="truncate text-xs text-muted-foreground">{documentTitle}</p>
+        <p className="text-base font-semibold text-foreground">Deck analysis</p>
+        <p className="truncate text-sm text-muted-foreground">{documentTitle}</p>
 
         {analysis.status === "queued" || analysis.status === "processing" ? (
-          <div className="mt-3 rounded-lg border border-border/60 bg-surface/50 p-3 text-xs">
+          <div className="mt-3 rounded-lg border border-border/60 bg-surface/50 p-3 text-sm">
             <div className="flex items-center gap-2 font-medium text-foreground">
               <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> {analysis.status === "queued" ? "Analysis queued" : "Analyzing deck"}
             </div>
@@ -61,7 +61,7 @@ export function AnalysisCard({ startupId, sessionId, analysis, documentTitle, ca
             </Button>
           </div>
         ) : analysis.status === "failed" || analysis.status === "cancelled" ? (
-          <div className="mt-3 rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-xs">
+          <div className="mt-3 rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm">
             <div className="flex items-center gap-2 font-medium text-destructive">
               <AlertCircle className="h-3.5 w-3.5" /> {analysis.status === "cancelled" ? "Analysis cancelled" : "Analysis failed"}
             </div>
@@ -93,16 +93,16 @@ function CompletedAnalysis({ startupId, analysis, onAskFollowup, onSelectPersona
       <div className="grid grid-cols-4 gap-1.5">
         {scores.map(([label, score]) => (
           <div key={label} className={cn("rounded-lg border p-2 text-center", label === "Overall" ? "border-primary/30 bg-primary/5" : "border-border/60 bg-surface/40")}>
-            <div className="font-mono text-[9px] uppercase tracking-wide text-muted-foreground">{label}</div>
-            <div className={cn("mt-0.5 font-display text-lg font-semibold", label === "Overall" && "text-primary")}>{score ?? "—"}</div>
+            <div className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+            <div className={cn("mt-0.5 font-display text-xl font-semibold", label === "Overall" && "text-primary")}>{score ?? "—"}</div>
           </div>
         ))}
       </div>
 
-      {analysis.summaryReport && <p className="text-xs leading-relaxed text-muted-foreground">{analysis.summaryReport}</p>}
+      {analysis.summaryReport && <p className="text-sm leading-relaxed text-muted-foreground">{analysis.summaryReport}</p>}
 
       {result?.gaps?.length ? (
-        <details className="group rounded-xl border border-border/60 text-xs">
+        <details className="group rounded-xl border border-border/60 text-sm">
           <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 font-medium text-foreground marker:content-none">
             <span>{result.gaps.length} prioritized gaps</span>
             <ChevronRight className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
@@ -112,8 +112,8 @@ function CompletedAnalysis({ startupId, analysis, onAskFollowup, onSelectPersona
               <div key={`${gap.section}-${index}`}>
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="font-medium capitalize text-foreground">{gap.section.replace(/_/g, " ")}</span>
-                  <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize", SEVERITY_STYLE[gap.severity] ?? SEVERITY_STYLE.low)}>{gap.severity}</span>
-                  <span className="text-[10px] capitalize text-muted-foreground">{gap.status}</span>
+                  <span className={cn("rounded-full px-1.5 py-0.5 text-xs font-medium capitalize", SEVERITY_STYLE[gap.severity] ?? SEVERITY_STYLE.low)}>{gap.severity}</span>
+                  <span className="text-xs capitalize text-muted-foreground">{gap.status}</span>
                 </div>
                 <p className="mt-1 text-muted-foreground">{gap.issue}</p>
                 <p className="mt-1 text-foreground/80">{gap.recommendation}</p>
@@ -134,7 +134,7 @@ function CompletedAnalysis({ startupId, analysis, onAskFollowup, onSelectPersona
       ) : null}
 
       {detailQuery.data?.personas?.length ? (
-        <details className="group rounded-xl border border-border/60 text-xs">
+        <details className="group rounded-xl border border-border/60 text-sm">
           <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 font-medium text-foreground marker:content-none">
             <span>Investor rehearsal</span>
             <ChevronRight className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
