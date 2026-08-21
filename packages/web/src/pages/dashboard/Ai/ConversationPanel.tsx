@@ -43,6 +43,7 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
   const activeStreamId = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesContentRef = useRef<HTMLDivElement>(null);
   const draftKey = session ? `ai-draft:${startupId}:${session.id}` : null;
 
   const messagesQuery = useQuery({
@@ -115,10 +116,22 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
     el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
   }, [draft]);
 
-  const streamingContent = messages.find((message) => message.status === "streaming")?.content;
+  // A ResizeObserver (not a data dependency) is required here: the typewriter
+  // reveal in MessageBubble grows the DOM on its own requestAnimationFrame
+  // loop, independent of when the raw SSE content changes. Keying this off
+  // e.g. message content would fire "too early" relative to that lagging
+  // reveal animation, leaving the scroll position stuck while the bubble
+  // keeps growing underneath it. Watching actual rendered height instead
+  // reacts to growth from any source.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [timeline.length, streamingContent]);
+    const el = messagesContentRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [session?.id]);
 
   const applyEvent = (messageId: string, event: AiStreamEvent) => {
     queryClient.setQueryData<AiChatMessage[]>(["ai-messages", startupId, session?.id], (current = []) =>
@@ -239,7 +252,7 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
       </div>
 
       <div className="scrollbar-slim min-h-0 flex-1 overflow-y-auto scroll-smooth px-6 py-8">
-        <div className="mx-auto flex w-full max-w-2xl flex-col gap-7">
+        <div ref={messagesContentRef} className="mx-auto flex w-full max-w-2xl flex-col gap-7">
           {messagesQuery.isPending && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading conversation
