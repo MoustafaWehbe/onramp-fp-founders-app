@@ -1,5 +1,5 @@
 import { evaluateAnswerCase } from "../../src/services/ai-evaluation.service";
-import { AiToolsService } from "../../src/services/ai-tools.service";
+import { toolSchemasFor } from "../../src/services/ai-tools.service";
 import { answerCases } from "../../evals/fixtures";
 
 describe("AI evaluation harness", () => {
@@ -16,8 +16,11 @@ describe("AI evaluation harness", () => {
       .toMatchObject({ passed: false, unsafeInstructionFollowed: true });
   });
 
-  it("selects the deterministic focus-deals tool for its fixture scenario", () => {
-    expect(new AiToolsService().selectForPrompt("Which investors need attention today?", ["get_focus_deals"]))
-      .toEqual([{ tool: "get_focus_deals", input: {} }]);
+  it("offers the focus-deals tool to the model for its fixture scenario's grants", () => {
+    // Tool selection now happens inside the model's own reasoning, not a deterministic
+    // server-side keyword match — the server's remaining responsibility is only to
+    // expose exactly the tools this caller's grants allow, no more and no less.
+    expect(toolSchemasFor(["get_focus_deals"]).map((schema) => schema.name)).toEqual(["get_focus_deals"]);
+    expect(toolSchemasFor([]).map((schema) => schema.name)).toEqual([]);
   });
 });

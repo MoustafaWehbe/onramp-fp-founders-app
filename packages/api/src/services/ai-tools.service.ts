@@ -2,16 +2,52 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { fundraisingService } from "./fundraising.service";
 import { pipelineService } from "./pipeline.service";
-import { AI_TOOL_REQUIREMENTS, type AiToolName } from "./ai-capabilities.service";
+import type { AiToolName } from "./ai-capabilities.service";
+import type { AiToolDefinition } from "./ai-provider.service";
 
 const toolInputs = {
   get_startup_profile: z.object({}),
-  get_round_health: z.object({ roundId: z.string().uuid().optional() }),
-  get_pipeline_summary: z.object({ roundId: z.string().uuid().optional() }),
-  get_focus_deals: z.object({ roundId: z.string().uuid().optional() }),
+  get_round_health: z.object({ roundId: z.string().uuid().nullish() }),
+  get_pipeline_summary: z.object({ roundId: z.string().uuid().nullish() }),
+  get_focus_deals: z.object({ roundId: z.string().uuid().nullish() }),
   get_investor_context: z.object({ investorId: z.string().uuid() }),
-  get_reviewer_engagement: z.object({ documentId: z.string().uuid().optional() }),
+  get_reviewer_engagement: z.object({ documentId: z.string().uuid().nullish() }),
 } as const;
+
+// The model chooses tools from these definitions. OpenAI's strict function-calling
+// mode requires every property to be listed in `required`; a field that's actually
+// optional is instead typed to accept null, and the model passes null to omit it.
+const ROUND_ID_PROPERTY = { type: ["string", "null"], description: "UUID of the fundraising round, or null to use the currently active round." };
+export const AI_TOOL_DEFINITIONS: Record<AiToolName, { description: string; parameters: Record<string, unknown> }> = {
+  get_startup_profile: {
+    description: "Get this startup's profile: name, description, industry, website, and funding stage.",
+    parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+  },
+  get_round_health: {
+    description: "Get commitment totals, currency, and metrics for a fundraising round.",
+    parameters: { type: "object", properties: { roundId: ROUND_ID_PROPERTY }, required: ["roundId"], additionalProperties: false },
+  },
+  get_pipeline_summary: {
+    description: "Get pipeline analytics: deal counts and conversion by stage for a round.",
+    parameters: { type: "object", properties: { roundId: ROUND_ID_PROPERTY }, required: ["roundId"], additionalProperties: false },
+  },
+  get_focus_deals: {
+    description: "Get the deals that most need attention today, ranked by urgency, for a round.",
+    parameters: { type: "object", properties: { roundId: ROUND_ID_PROPERTY }, required: ["roundId"], additionalProperties: false },
+  },
+  get_investor_context: {
+    description: "Get full context for one investor: profile, notes, pipeline deals, and recent interaction history. Requires the investor's id — if you only have a name, ask the user for it or check whether the pipeline/focus tools already surfaced the id.",
+    parameters: { type: "object", properties: { investorId: { type: "string", description: "UUID of the investor." } }, required: ["investorId"], additionalProperties: false },
+  },
+  get_reviewer_engagement: {
+    description: "Get reviewer invitation counts per document, optionally scoped to one document.",
+    parameters: { type: "object", properties: { documentId: { type: ["string", "null"], description: "UUID of the document, or null for all documents." } }, required: ["documentId"], additionalProperties: false },
+  },
+};
+
+export function toolSchemasFor(allowedTools: readonly AiToolName[]): AiToolDefinition[] {
+  return allowedTools.map((tool) => ({ type: "function" as const, name: tool, description: AI_TOOL_DEFINITIONS[tool].description, parameters: AI_TOOL_DEFINITIONS[tool].parameters, strict: true as const }));
+}
 
 export class AiToolsService {
   async execute(startupId: string, tool: AiToolName, rawInput: unknown, allowedTools: readonly AiToolName[]) {
@@ -34,17 +70,6 @@ export class AiToolsService {
     const counts = await prisma.reviewerInvitationDocument.groupBy({ by: ["documentVersionId"], where: { documentVersionId: { in: versions.map((version) => version.id) } }, _count: { invitationId: true } });
     const countByVersion = new Map(counts.map((count) => [count.documentVersionId, count._count.invitationId]));
     return versions.map((version) => ({ id: version.document.id, title: version.document.title, invitationCount: countByVersion.get(version.id) ?? 0 }));
-  }
-
-  /** Intent selection is deliberately conservative; it never lets prompt text name an arbitrary tool. */
-  selectForPrompt(prompt: string, allowedTools: readonly AiToolName[], roundId?: string | null): Array<{ tool: AiToolName; input: object }> {
-    const lower = prompt.toLowerCase();
-    const match = (tool: AiToolName, terms: string[]) => allowedTools.includes(tool) && terms.some((term) => lower.includes(term));
-    if (match("get_round_health", ["round", "raise", "raised", "commitment", "runway"])) return [{ tool: "get_round_health", input: roundId ? { roundId } : {} }];
-    if (match("get_focus_deals", ["attention", "today", "focus", "follow up", "follow-up"])) return [{ tool: "get_focus_deals", input: roundId ? { roundId } : {} }];
-    if (match("get_pipeline_summary", ["pipeline", "funnel", "conversion"])) return [{ tool: "get_pipeline_summary", input: roundId ? { roundId } : {} }];
-    if (match("get_startup_profile", ["startup", "company profile"])) return [{ tool: "get_startup_profile", input: {} }];
-    return [];
   }
 }
 

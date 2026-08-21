@@ -39,6 +39,8 @@ export type AiCitation = {
   sortOrder: number;
 };
 
+export type AiToolCallActivity = { callId: string; name: string; status: "started" | "completed" | "failed" };
+
 export type AiChatMessage = {
   id: string;
   role: "user" | "assistant";
@@ -50,6 +52,9 @@ export type AiChatMessage = {
   completedAt: string | null;
   citations: AiCitation[];
   artifacts: AiArtifact[];
+  // Populated live from tool.started/tool.completed SSE events during an active
+  // generation; the server does not persist or replay these on a fresh page load.
+  toolCalls?: AiToolCallActivity[];
 };
 
 export type AiArtifact = {
@@ -63,7 +68,7 @@ export type AiArtifact = {
 
 export type AiStreamEvent = {
   sequence: number;
-  type: "stream.ready" | "message.started" | "message.delta" | "citation.added" | "artifact.ready" | "artifact.failed" | "message.snapshot" | "message.completed" | "message.failed" | "message.cancelled";
+  type: "stream.ready" | "message.started" | "message.delta" | "citation.added" | "artifact.ready" | "artifact.failed" | "message.snapshot" | "tool.started" | "tool.completed" | "message.completed" | "message.failed" | "message.cancelled";
   payload: Record<string, unknown>;
 };
 

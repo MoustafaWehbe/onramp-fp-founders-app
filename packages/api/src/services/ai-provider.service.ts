@@ -2,9 +2,19 @@ import OpenAI from "openai";
 import { getAiConfig, type AiConfig } from "../config/ai";
 
 export interface AiUsage { inputTokens?: number; cachedInputTokens?: number; outputTokens?: number; }
-export type AiStreamEvent = { type: "delta"; text: string } | { type: "completed"; providerRequestId?: string; usage?: AiUsage } | { type: "refusal"; message: string };
+export type AiStreamEvent =
+  | { type: "delta"; text: string }
+  | { type: "tool_call"; callId: string; name: string; arguments: string }
+  | { type: "completed"; providerRequestId?: string; usage?: AiUsage; stopReason?: "tool_calls" | "stop" }
+  | { type: "refusal"; message: string };
 export interface ConversationMessage { role: "user" | "assistant"; content: string; }
-export interface StreamConversationRequest { instructions: string; messages: ConversationMessage[]; signal?: AbortSignal; }
+/** A prior tool call the model made, replayed back into context for a follow-up turn. */
+export interface FunctionCallInputItem { type: "function_call"; callId: string; name: string; arguments: string; }
+/** The server-computed result of a tool call, replayed back into context. */
+export interface FunctionCallOutputInputItem { type: "function_call_output"; callId: string; output: string; }
+export type AiInputItem = ConversationMessage | FunctionCallInputItem | FunctionCallOutputInputItem;
+export interface AiToolDefinition { type: "function"; name: string; description: string; parameters: Record<string, unknown>; strict: true; }
+export interface StreamConversationRequest { instructions: string; input: AiInputItem[]; tools?: AiToolDefinition[]; signal?: AbortSignal; }
 export interface StructuredObjectRequest { instructions: string; input: string; schemaName: string; schema: Record<string, unknown>; signal?: AbortSignal; }
 export interface StructuredObjectResult { providerRequestId?: string; value: unknown; usage?: AiUsage; }
 export interface AiProvider {
@@ -55,15 +65,28 @@ export class OpenAiProvider implements AiProvider {
   async *streamConversation(request: StreamConversationRequest): AsyncIterable<AiStreamEvent> {
     this.assertEnabled();
     let deliveredOutput = false;
+    let sawToolCall = false;
+    const input = request.input.map((item) =>
+      "type" in item && item.type === "function_call"
+        ? { type: "function_call" as const, call_id: item.callId, name: item.name, arguments: item.arguments }
+        : "type" in item && item.type === "function_call_output"
+          ? { type: "function_call_output" as const, call_id: item.callId, output: item.output }
+          : item,
+    );
     for (let attempt = 0; attempt <= this.config.maxRetries; attempt += 1) {
       const timed = requestSignal(request.signal, this.config.requestTimeoutMs);
       try {
-        const stream = await this.client.responses.create({ model: this.config.chatModel, instructions: request.instructions, input: request.messages, max_output_tokens: this.config.maxOutputTokens, store: false, stream: true }, { signal: timed.signal });
+        const stream = await this.client.responses.create({ model: this.config.chatModel, instructions: request.instructions, input, tools: request.tools?.length ? request.tools : undefined, max_output_tokens: this.config.maxOutputTokens, store: false, stream: true }, { signal: timed.signal });
         if (!isAsyncIterable(stream)) throw new AiProviderError("AI provider returned a non-stream response", "AI_MALFORMED_RESPONSE");
         for await (const event of stream) {
           if (event.type === "response.output_text.delta" && typeof event.delta === "string") { deliveredOutput = true; yield { type: "delta", text: event.delta }; }
           else if (event.type === "response.refusal.delta" && typeof event.delta === "string") yield { type: "refusal", message: event.delta };
-          else if (event.type === "response.completed") yield { type: "completed", providerRequestId: event.response?.id, usage: usageOf(event.response) };
+          else if (event.type === "response.output_item.done" && event.item?.type === "function_call") {
+            deliveredOutput = true;
+            sawToolCall = true;
+            yield { type: "tool_call", callId: event.item.call_id, name: event.item.name, arguments: event.item.arguments ?? "{}" };
+          }
+          else if (event.type === "response.completed") yield { type: "completed", providerRequestId: event.response?.id, usage: usageOf(event.response), stopReason: sawToolCall ? "tool_calls" : "stop" };
         }
         return;
       } catch (error) {
@@ -124,10 +147,23 @@ export class OpenAiProvider implements AiProvider {
 export class FakeAiProvider implements AiProvider {
   public readonly requests: Array<{ operation: string; input: unknown }> = [];
   public streamEvents: AiStreamEvent[] = [];
+  /** Scripts a multi-turn tool round trip: each array is the events for one streamConversation call, in order. Takes precedence over `streamEvents` when non-empty. */
+  public streamEventsByTurn: AiStreamEvent[][] = [];
+  private streamTurn = 0;
   public structuredValue: unknown = {};
   public embedding: number[] = Array.from({ length: 1536 }, () => 0);
   public error?: Error;
-  async *streamConversation(request: StreamConversationRequest): AsyncIterable<AiStreamEvent> { this.requests.push({ operation: "streamConversation", input: request }); if (this.error) throw this.error; yield* this.streamEvents; }
+  async *streamConversation(request: StreamConversationRequest): AsyncIterable<AiStreamEvent> {
+    this.requests.push({ operation: "streamConversation", input: request });
+    if (this.error) throw this.error;
+    if (this.streamEventsByTurn.length) {
+      const events = this.streamEventsByTurn[Math.min(this.streamTurn, this.streamEventsByTurn.length - 1)];
+      this.streamTurn += 1;
+      yield* events;
+      return;
+    }
+    yield* this.streamEvents;
+  }
   async generateStructuredObject(request: StructuredObjectRequest): Promise<StructuredObjectResult> { this.requests.push({ operation: "generateStructuredObject", input: request }); if (this.error) throw this.error; return { value: this.structuredValue, providerRequestId: "fake-request" }; }
   async embedQuery(text: string): Promise<number[]> { this.requests.push({ operation: "embedQuery", input: text }); if (this.error) throw this.error; return this.embedding; }
 }

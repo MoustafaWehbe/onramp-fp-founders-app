@@ -37,11 +37,11 @@ describe("OpenAiProvider", () => {
     ));
     const provider = new OpenAiProvider(config, { responses: { create }, embeddings: { create: jest.fn() } });
     const events = [];
-    for await (const event of provider.streamConversation({ instructions: "safe", messages: [{ role: "user", content: "Hi" }] })) events.push(event);
+    for await (const event of provider.streamConversation({ instructions: "safe", input: [{ role: "user", content: "Hi" }] })) events.push(event);
 
     expect(events).toEqual([
       { type: "delta", text: "Hello" },
-      { type: "completed", providerRequestId: "resp-1", usage: { inputTokens: 4, cachedInputTokens: undefined, outputTokens: 2 } },
+      { type: "completed", providerRequestId: "resp-1", usage: { inputTokens: 4, cachedInputTokens: undefined, outputTokens: 2 }, stopReason: "stop" },
     ]);
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ store: false, stream: true, max_output_tokens: 123 }), expect.any(Object));
   });
@@ -53,10 +53,10 @@ describe("OpenAiProvider", () => {
       .mockResolvedValueOnce(streamOf({ type: "response.completed", response: { id: "resp-2" } }));
     const provider = new OpenAiProvider(config, { responses: { create }, embeddings: { create: jest.fn() } });
     const events = [];
-    for await (const event of provider.streamConversation({ instructions: "safe", messages: [] })) events.push(event);
+    for await (const event of provider.streamConversation({ instructions: "safe", input: [] })) events.push(event);
 
     expect(create).toHaveBeenCalledTimes(2);
-    expect(events).toEqual([{ type: "completed", providerRequestId: "resp-2", usage: undefined }]);
+    expect(events).toEqual([{ type: "completed", providerRequestId: "resp-2", usage: undefined, stopReason: "stop" }]);
   });
 
   it("does not retry after a meaningful streamed delta", async () => {
@@ -66,7 +66,7 @@ describe("OpenAiProvider", () => {
       Promise.reject(transient),
     ));
     const provider = new OpenAiProvider(config, { responses: { create }, embeddings: { create: jest.fn() } });
-    const iterator = provider.streamConversation({ instructions: "safe", messages: [] })[Symbol.asyncIterator]();
+    const iterator = provider.streamConversation({ instructions: "safe", input: [] })[Symbol.asyncIterator]();
 
     await expect(iterator.next()).resolves.toMatchObject({ value: { type: "delta", text: "Partial" } });
     await expect(iterator.next()).rejects.toMatchObject({ code: "AI_PROVIDER_ERROR" });
@@ -95,9 +95,40 @@ describe("OpenAiProvider", () => {
     const provider = new FakeAiProvider();
     provider.streamEvents = [{ type: "delta", text: "fixture" }];
     const events = [];
-    for await (const event of provider.streamConversation({ instructions: "x", messages: [] })) events.push(event);
+    for await (const event of provider.streamConversation({ instructions: "x", input: [] })) events.push(event);
     expect(events).toEqual([{ type: "delta", text: "fixture" }]);
     await expect(provider.embedQuery("query")).resolves.toHaveLength(1536);
+  });
+
+  it("scripts a multi-turn tool round trip via streamEventsByTurn", async () => {
+    const provider = new FakeAiProvider();
+    provider.streamEventsByTurn = [
+      [{ type: "tool_call", callId: "call-1", name: "get_focus_deals", arguments: "{}" }, { type: "completed", stopReason: "tool_calls" }],
+      [{ type: "delta", text: "Here you go" }, { type: "completed", stopReason: "stop" }],
+    ];
+    const firstTurn = [];
+    for await (const event of provider.streamConversation({ instructions: "x", input: [] })) firstTurn.push(event);
+    const secondTurn = [];
+    for await (const event of provider.streamConversation({ instructions: "x", input: [] })) secondTurn.push(event);
+
+    expect(firstTurn).toEqual([{ type: "tool_call", callId: "call-1", name: "get_focus_deals", arguments: "{}" }, { type: "completed", stopReason: "tool_calls" }]);
+    expect(secondTurn).toEqual([{ type: "delta", text: "Here you go" }, { type: "completed", stopReason: "stop" }]);
+  });
+
+  it("maps a function_call output item into a tool_call event and marks the completion tool_calls", async () => {
+    const create = jest.fn().mockResolvedValue(streamOf(
+      { type: "response.output_item.done", item: { type: "function_call", call_id: "call-1", name: "get_focus_deals", arguments: "{\"roundId\":null}" } },
+      { type: "response.completed", response: { id: "resp-3" } },
+    ));
+    const provider = new OpenAiProvider(config, { responses: { create }, embeddings: { create: jest.fn() } });
+    const events = [];
+    for await (const event of provider.streamConversation({ instructions: "safe", input: [], tools: [{ type: "function", name: "get_focus_deals", description: "d", parameters: {}, strict: true }] })) events.push(event);
+
+    expect(events).toEqual([
+      { type: "tool_call", callId: "call-1", name: "get_focus_deals", arguments: "{\"roundId\":null}" },
+      { type: "completed", providerRequestId: "resp-3", usage: undefined, stopReason: "tool_calls" },
+    ]);
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ tools: [expect.objectContaining({ name: "get_focus_deals" })] }), expect.any(Object));
   });
 });
 
@@ -105,7 +136,7 @@ describe("AI provider errors", () => {
   it("fails closed when chat is feature-flagged off", async () => {
     const provider = new OpenAiProvider({ ...config, enabled: false }, { responses: { create: jest.fn() }, embeddings: { create: jest.fn() } });
     await expect(async () => {
-      for await (const _event of provider.streamConversation({ instructions: "x", messages: [] })) { /* consume */ }
+      for await (const _event of provider.streamConversation({ instructions: "x", input: [] })) { /* consume */ }
     }).rejects.toBeInstanceOf(AiProviderError);
   });
 });

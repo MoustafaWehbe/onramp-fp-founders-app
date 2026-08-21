@@ -11,12 +11,21 @@ import { useAiStream } from "../../../hooks/useAiStream";
 import { useStreamedReveal } from "../../../hooks/useStreamedReveal";
 import { apiErrorMessage } from "../../../lib/api-error";
 import { aiRecordLink } from "../../../lib/ai-record-link";
-import { cancelAiMessage, createAiAnalysis, createAiMessage, listAiAnalyses, listAiMessages, type AiAnalysis, type AiChatMessage, type AiCitation, type AiSession, type AiStreamEvent } from "../../../lib/ai-api";
+import { cancelAiMessage, createAiAnalysis, createAiMessage, listAiAnalyses, listAiMessages, type AiAnalysis, type AiChatMessage, type AiCitation, type AiSession, type AiStreamEvent, type AiToolCallActivity } from "../../../lib/ai-api";
 import { listDocuments } from "../../../lib/document-api";
 import { qk } from "../../../lib/query-keys";
 import { cn, formatDate } from "../../../lib/utils";
 import { AnalysisCard } from "./AnalysisCard";
 import { AiArtifactRenderer } from "./artifacts/AiArtifactRenderer";
+
+const TOOL_ACTIVITY_LABELS: Record<string, string> = {
+  get_startup_profile: "your startup profile",
+  get_round_health: "round health",
+  get_pipeline_summary: "pipeline summary",
+  get_focus_deals: "today's focus deals",
+  get_investor_context: "investor context",
+  get_reviewer_engagement: "reviewer engagement",
+};
 
 const SUGGESTED_PROMPTS = [
   "What should I improve in my pitch deck?",
@@ -207,6 +216,20 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
           const artifact = event.payload.artifact as AiChatMessage["artifacts"][number] | undefined;
           if (!artifact || message.artifacts.some((existing) => existing.id === artifact.id)) return message;
           return { ...message, artifacts: [...message.artifacts, artifact] };
+        }
+        if (event.type === "tool.started") {
+          const calls = (event.payload.calls as Array<{ callId: string; name: string }> | undefined) ?? [];
+          const existing = message.toolCalls ?? [];
+          const merged = [...existing];
+          for (const call of calls) {
+            if (!merged.some((item) => item.callId === call.callId)) merged.push({ callId: call.callId, name: call.name, status: "started" });
+          }
+          return { ...message, toolCalls: merged };
+        }
+        if (event.type === "tool.completed") {
+          const calls = (event.payload.calls as Array<{ callId: string; status: "completed" | "failed" }> | undefined) ?? [];
+          const existing = message.toolCalls ?? [];
+          return { ...message, toolCalls: existing.map((item) => { const match = calls.find((call) => call.callId === item.callId); return match ? { ...item, status: match.status } : item; }) };
         }
         if (event.type === "message.completed") return { ...message, status: "completed", content: String(event.payload.content ?? message.content) };
         if (event.type === "message.failed") return { ...message, status: "failed", errorMessage: "The AI response could not be completed." };
@@ -431,6 +454,26 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
   );
 }
 
+function ToolActivityRow({ calls }: { calls: AiToolCallActivity[] }) {
+  return (
+    <div className="mb-1.5 flex flex-col gap-1">
+      {calls.map((call) => {
+        const label = TOOL_ACTIVITY_LABELS[call.name] ?? call.name;
+        return (
+          <span key={call.callId} className="inline-flex w-fit items-center gap-1.5 text-[11px] text-muted-foreground">
+            {call.status === "started" ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <span className={cn("h-1.5 w-1.5 rounded-full", call.status === "failed" ? "bg-destructive/60" : "bg-primary/50")} />
+            )}
+            {call.status === "started" ? `Checking ${label}…` : call.status === "failed" ? `Couldn't check ${label}` : `Checked ${label}`}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function CitationList({ citations }: { citations: AiCitation[] }) {
   return (
     <details className="group mt-2 rounded-lg border border-border/60 bg-background/40 text-xs">
@@ -491,7 +534,9 @@ function MessageBubble({ message, onStop, stopping }: { message: AiChatMessage; 
   // shown via the lightweight citations list below, so that artifact type is
   // never rendered here.
   const displayArtifacts = assistant ? message.artifacts.filter((artifact) => artifact.type !== "source_answer.v1") : [];
-  const thinking = assistant && !message.content;
+  // The tool-activity row already communicates "in progress" once a tool call has
+  // started, so the generic thinking spinner would be redundant alongside it.
+  const thinking = assistant && !message.content && !message.toolCalls?.some((call) => call.status === "started");
   const revealedContent = useStreamedReveal(message.content, message.status === "pending" || message.status === "streaming");
 
   return (
@@ -502,6 +547,7 @@ function MessageBubble({ message, onStop, stopping }: { message: AiChatMessage; 
         </span>
       )}
       <div className={cn("min-w-0 flex-1", assistant ? "max-w-[calc(100%-2.5rem)]" : "flex flex-col items-end")}>
+        {assistant && message.toolCalls && message.toolCalls.length > 0 && <ToolActivityRow calls={message.toolCalls} />}
         <div className={cn(!assistant && "max-w-[85%] rounded-2xl rounded-tr-sm bg-primary/15 px-4 py-2.5 text-base leading-relaxed text-foreground")}>
           {thinking ? (
             <span className="inline-flex items-center gap-2 text-base text-muted-foreground">
