@@ -9,6 +9,8 @@ import { documentRasterizeJob } from "./document-rasterize.worker";
 import { calendarSyncJob } from "./calendar-sync.worker";
 import { gmailLogRetryJob } from "./gmail-log-retry.worker";
 import { aiAnalysisJob } from "./ai-analysis.worker";
+import { prisma } from "../../db/prisma";
+import { closeRedis } from "../../db/redis";
 
 interface WorkerDef {
   name: string;
@@ -47,11 +49,17 @@ export function startWorkers(): Worker[] {
 // Entry point only runs when executed directly
 if (require.main === module) {
   const workers = startWorkers();
+  let shuttingDown = false;
 
   async function shutdown(signal: string): Promise<void> {
+    if (shuttingDown) return;
+    shuttingDown = true;
     console.info(`\nReceived ${signal}, shutting down...`);
-    await Promise.all(workers.map((w) => w.close()));
-    process.exit(0);
+    const results = await Promise.allSettled(workers.map((worker) => worker.close()));
+    await Promise.allSettled([closeRedis(), prisma.$disconnect()]);
+    const failed = results.some((result) => result.status === "rejected");
+    if (failed) console.error("One or more workers failed to close cleanly", results);
+    process.exitCode = failed ? 1 : 0;
   }
 
   process.on("SIGTERM", () => shutdown("SIGTERM"));

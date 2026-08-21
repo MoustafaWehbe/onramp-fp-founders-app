@@ -1,18 +1,12 @@
-import { Queue } from "bullmq";
-import { emailJob } from "./workers/email.worker";
+import { Queue, type JobsOptions } from "bullmq";
 import type { EmailJobData } from "../types";
-import { embeddingsJob, type EmbeddingsJobData } from "./workers/embeddings.worker";
-import {
-  documentProcessingJob,
-  type DocumentProcessingJobData,
-} from "./workers/document-processing.worker";
-import {
-  documentRasterizeJob,
-  type DocumentRasterizeJobData,
-} from "./workers/document-rasterize.worker";
-import { calendarSyncJob, type CalendarSyncJobData } from "./workers/calendar-sync.worker";
-import { gmailLogRetryJob, type GmailLogRetryJobData } from "./workers/gmail-log-retry.worker";
-import { aiAnalysisJob, type AiAnalysisJobData } from "./workers/ai-analysis.worker";
+import type { EmbeddingsJobData } from "./workers/embeddings.worker";
+import type { DocumentProcessingJobData } from "./workers/document-processing.worker";
+import type { DocumentRasterizeJobData } from "./workers/document-rasterize.worker";
+import type { CalendarSyncJobData } from "./workers/calendar-sync.worker";
+import type { GmailLogRetryJobData } from "./workers/gmail-log-retry.worker";
+import type { AiAnalysisJobData } from "./workers/ai-analysis.worker";
+import { JOB_NAMES } from "./job-names";
 
 // The Redis singleton now lives in db/redis so non-job callers (the rate
 // limiters) can share it without importing the workers. Re-exported here
@@ -21,29 +15,63 @@ export { getRedis } from "../db/redis";
 
 import { getRedis } from "../db/redis";
 
-// Queue factory
+type BullQueue<T> = Queue<T, unknown, string, T, unknown, string>;
 
-function makeQueue<T>(name: string): Queue<T> {
-  return new Queue<T>(name, {
-    connection: getRedis(),
-    defaultJobOptions: {
-      attempts: 3,
-      backoff: { type: "exponential", delay: 1_000 },
-      removeOnComplete: { count: 100 },
-      removeOnFail: { count: 500 },
-    },
-  });
+class LazyQueue<T> {
+  private queue: BullQueue<T> | undefined;
+
+  constructor(private readonly name: string) {}
+
+  private getQueue(): BullQueue<T> {
+    this.queue ??= new Queue<T, unknown, string, T, unknown, string>(this.name, {
+      connection: getRedis(),
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: { type: "exponential", delay: 1_000 },
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 500 },
+      },
+    });
+    return this.queue;
+  }
+
+  add(name: string, data: T, options?: JobsOptions) {
+    return this.getQueue().add(name, data, options);
+  }
+
+  async close(): Promise<void> {
+    const queue = this.queue;
+    this.queue = undefined;
+    if (queue) await queue.close();
+  }
 }
 
+function makeQueue<T>(name: string): LazyQueue<T> {
+  return new LazyQueue<T>(name);
+}
 
-export const emailQueue = makeQueue<EmailJobData>(emailJob.name);
-export const embeddingsQueue = makeQueue<EmbeddingsJobData>(embeddingsJob.name);
+export const emailQueue = makeQueue<EmailJobData>(JOB_NAMES.email);
+export const embeddingsQueue = makeQueue<EmbeddingsJobData>(JOB_NAMES.embeddings);
 export const documentProcessingQueue = makeQueue<DocumentProcessingJobData>(
-  documentProcessingJob.name,
+  JOB_NAMES.documentProcessing,
 );
 export const documentRasterizeQueue = makeQueue<DocumentRasterizeJobData>(
-  documentRasterizeJob.name,
+  JOB_NAMES.documentRasterize,
 );
-export const calendarSyncQueue = makeQueue<CalendarSyncJobData>(calendarSyncJob.name);
-export const gmailLogRetryQueue = makeQueue<GmailLogRetryJobData>(gmailLogRetryJob.name);
-export const aiAnalysisQueue = makeQueue<AiAnalysisJobData>(aiAnalysisJob.name);
+export const calendarSyncQueue = makeQueue<CalendarSyncJobData>(JOB_NAMES.calendarSync);
+export const gmailLogRetryQueue = makeQueue<GmailLogRetryJobData>(JOB_NAMES.gmailLogRetry);
+export const aiAnalysisQueue = makeQueue<AiAnalysisJobData>(JOB_NAMES.aiAnalysis);
+
+const queues = [
+  emailQueue,
+  embeddingsQueue,
+  documentProcessingQueue,
+  documentRasterizeQueue,
+  calendarSyncQueue,
+  gmailLogRetryQueue,
+  aiAnalysisQueue,
+];
+
+export async function closeQueues(): Promise<void> {
+  await Promise.all(queues.map((queue) => queue.close()));
+}

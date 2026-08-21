@@ -815,7 +815,7 @@ export class PipelineService {
   }
 
   /** Every deal in the round, grouped by stage in the canonical pipeline order. */
-  async getByStage(startupId: string, requestedRoundId?: string) {
+  async getByStage(startupId: string, requestedRoundId?: string | null) {
     const roundId = await this.resolveRoundId(startupId, requestedRoundId);
     const entries = await prisma.pipeline.findMany({
       where: { startupId, roundId },
@@ -920,7 +920,7 @@ export class PipelineService {
    */
   private async resolveRoundId(
     startupId: string,
-    requestedRoundId?: string,
+    requestedRoundId?: string | null,
     options: { forNewDeal?: boolean } = {},
   ): Promise<string> {
     if (requestedRoundId) {

@@ -1,6 +1,7 @@
 import type { Job } from "bullmq";
 import { prisma } from "../../db/prisma";
 import { OpenAiProvider } from "../../services/ai-provider.service";
+import { JOB_NAMES } from "../job-names";
 
 export interface EmbeddingsJobData {
   entityId: string;
@@ -13,7 +14,7 @@ export interface EmbeddingsJobResult {
 }
 
 export const embeddingsJob = {
-  name: "embeddings" as const,
+  name: JOB_NAMES.embeddings,
   concurrency: 5,
 
   async process(job: Job<EmbeddingsJobData, EmbeddingsJobResult>): Promise<EmbeddingsJobResult> {

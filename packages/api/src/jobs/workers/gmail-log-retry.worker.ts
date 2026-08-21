@@ -1,4 +1,5 @@
 import type { Job } from "bullmq";
+import { JOB_NAMES } from "../job-names";
 import { prisma } from "../../db/prisma";
 
 export interface GmailLogRetryJobData {
@@ -17,7 +18,7 @@ export interface GmailLogRetryJobData {
 }
 
 export const gmailLogRetryJob = {
-  name: "gmail-log-retry" as const,
+  name: JOB_NAMES.gmailLogRetry,
   concurrency: 5,
 
   async process(job: Job<GmailLogRetryJobData>): Promise<void> {

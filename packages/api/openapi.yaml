@@ -55,6 +55,8 @@ tags:
     description: Comments left by reviewers on documents/sections
   - name: AI Copilot
     description: Private, startup-scoped AI copilot sessions
+  - name: Operations
+    description: Process liveness and dependency readiness probes
 
 # ─── Reusable components ───────────────────────────────────────────────────────
 components:
@@ -101,6 +103,27 @@ components:
         error:
           type: string
           example: Invalid credentials
+
+    ReadinessResponse:
+      type: object
+      required: [status, checks, timestamp]
+      properties:
+        status:
+          type: string
+          enum: [ready, not_ready]
+        checks:
+          type: object
+          required: [database, redis]
+          properties:
+            database:
+              type: string
+              enum: [ok, unavailable]
+            redis:
+              type: string
+              enum: [ok, unavailable]
+        timestamp:
+          type: string
+          format: date-time
 
     ValidationErrorResponse:
       type: object
@@ -2695,6 +2718,56 @@ components:
         createdAt: { type: string, format: date-time }
 
 paths:
+  /health:
+    get:
+      tags: [Operations]
+      summary: Check whether the API process is alive
+      operationId: getHealth
+      servers:
+        - url: http://localhost:3000
+          description: Local development
+        - url: /
+          description: Same-origin
+      responses:
+        "200":
+          description: API process is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, timestamp]
+                properties:
+                  status:
+                    type: string
+                    const: ok
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /ready:
+    get:
+      tags: [Operations]
+      summary: Check whether the API can serve dependency-backed requests
+      operationId: getReadiness
+      servers:
+        - url: http://localhost:3000
+          description: Local development
+        - url: /
+          description: Same-origin
+      responses:
+        "200":
+          description: PostgreSQL and Redis are available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+        "503":
+          description: At least one required dependency is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+
   # ════════════════════════════════════════════════════════════════
   #  AUTH
   # ════════════════════════════════════════════════════════════════

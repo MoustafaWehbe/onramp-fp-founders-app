@@ -338,7 +338,7 @@ export class AiToolsService {
         ...(listInput?.stage ? { stage: listInput.stage } : {}),
       });
     }
-    if (tool === "get_pipeline_by_stage") return pipelineService.getByStage(startupId, toolInputs.get_pipeline_by_stage.parse(rawInput).roundId ?? undefined);
+    if (tool === "get_pipeline_by_stage") return pipelineService.getByStage(startupId, toolInputs.get_pipeline_by_stage.parse(rawInput).roundId);
     if (tool === "get_interaction_history") return interactionLogService.listLogsByInvestor(startupId, toolInputs.get_interaction_history.parse(rawInput).investorId, { page: 1, limit: 15 });
     if (tool === "list_tasks") {
       const input = toolInputs.list_tasks.parse(rawInput);

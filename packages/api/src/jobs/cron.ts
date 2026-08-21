@@ -5,8 +5,9 @@ import { notifyOverdueAndDueTodayTasks } from "./task-notifications";
 import { calendarSyncQueue } from "./queue";
 import { isGoogleIntegrationEnabled } from "../config/env";
 import { getAiConfig } from "../config/ai";
+import type { ScheduledTask } from "node-cron";
 
-export function startCronJobs(): void {
+export function startCronJobs(): ScheduledTask[] {
   // Delete expired pending registrations every 30 minutes
   cron.schedule("*/30 * * * *", async () => {
     try {
@@ -112,4 +113,5 @@ export function startCronJobs(): void {
   }
 
   console.info("Cron jobs scheduled");
+  return [...cron.getTasks().values()];
 }
