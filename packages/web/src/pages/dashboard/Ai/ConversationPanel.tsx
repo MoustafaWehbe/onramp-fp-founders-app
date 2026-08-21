@@ -25,6 +25,13 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
   get_focus_deals: "today's focus deals",
   get_investor_context: "investor context",
   get_reviewer_engagement: "reviewer engagement",
+  search_investors: "investors",
+  list_investors: "investor directory",
+  get_pipeline_by_stage: "pipeline by stage",
+  get_interaction_history: "interaction history",
+  list_tasks: "tasks",
+  list_team_conversations: "team conversations",
+  search_team_messages: "team chat",
 };
 
 const SUGGESTED_PROMPTS = [

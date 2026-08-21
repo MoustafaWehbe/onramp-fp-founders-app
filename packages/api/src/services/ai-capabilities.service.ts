@@ -18,6 +18,8 @@ export const AI_TOOL_REQUIREMENTS = {
   get_pipeline_by_stage: ["pipeline:read"],
   get_interaction_history: ["pipeline:read"],
   list_tasks: ["pipeline:read"],
+  list_team_conversations: ["chat:read"],
+  search_team_messages: ["chat:read"],
 } as const;
 
 export type AiToolName = keyof typeof AI_TOOL_REQUIREMENTS;

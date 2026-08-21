@@ -6,6 +6,7 @@ import { pipelineService } from "./pipeline.service";
 import { investorService } from "./investor.service";
 import { interactionLogService } from "./interaction-log.service";
 import { taskService } from "./task.service";
+import { chatService } from "./chat.service";
 import type { AiToolName } from "./ai-capabilities.service";
 import type { AiToolDefinition } from "./ai-provider.service";
 
@@ -21,6 +22,8 @@ const toolInputs = {
   get_pipeline_by_stage: z.object({ roundId: z.string().uuid().nullish() }),
   get_interaction_history: z.object({ investorId: z.string().uuid() }),
   list_tasks: z.object({ roundId: z.string().uuid().nullish(), status: z.enum(TASK_STATUSES).nullish(), assigneeId: z.string().uuid().nullish() }),
+  list_team_conversations: z.object({}),
+  search_team_messages: z.object({ query: z.string().trim().min(1).max(200) }),
 } as const;
 
 // The model chooses tools from these definitions. OpenAI's strict function-calling
@@ -89,6 +92,14 @@ export const AI_TOOL_DEFINITIONS: Record<AiToolName, { description: string; para
       additionalProperties: false,
     },
   },
+  list_team_conversations: {
+    description: "List the team chat conversations (channels and DMs) you are a member of, most recently active first.",
+    parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+  },
+  search_team_messages: {
+    description: "Search team chat for a substring. Only searches conversations you are a member of never a DM you are not in, even one about the topic you're asking about. Returns at most 30 truncated messages.",
+    parameters: { type: "object", properties: { query: { type: "string", description: "Search text matched against message content." } }, required: ["query"], additionalProperties: false },
+  },
 };
 
 export function toolSchemasFor(allowedTools: readonly AiToolName[]): AiToolDefinition[] {
@@ -96,7 +107,7 @@ export function toolSchemasFor(allowedTools: readonly AiToolName[]): AiToolDefin
 }
 
 export class AiToolsService {
-  async execute(startupId: string, tool: AiToolName, rawInput: unknown, allowedTools: readonly AiToolName[], context: { canReadFinancial?: boolean } = {}) {
+  async execute(startupId: string, tool: AiToolName, rawInput: unknown, allowedTools: readonly AiToolName[], context: { canReadFinancial?: boolean; userId?: string } = {}) {
     if (!allowedTools.includes(tool)) throw new Error("AI_TOOL_FORBIDDEN");
     const input = toolInputs[tool].parse(rawInput) as any;
 
@@ -160,14 +171,31 @@ export class AiToolsService {
     }
     if (tool === "get_pipeline_by_stage") return pipelineService.getByStage(startupId, input.roundId);
     if (tool === "get_interaction_history") return interactionLogService.listLogsByInvestor(startupId, input.investorId, { page: 1, limit: 15 });
-    // tool === "list_tasks"
-    return taskService.listTasks(startupId, {
-      page: 1,
-      limit: 25,
-      ...(input.roundId && { roundId: input.roundId }),
-      ...(input.status && { status: input.status }),
-      ...(input.assigneeId && { assigneeId: input.assigneeId }),
-    });
+    if (tool === "list_tasks") {
+      return taskService.listTasks(startupId, {
+        page: 1,
+        limit: 25,
+        ...(input.roundId && { roundId: input.roundId }),
+        ...(input.status && { status: input.status }),
+        ...(input.assigneeId && { assigneeId: input.assigneeId }),
+      });
+    }
+    // tool === "list_team_conversations" | "search_team_messages"
+    // Chat access is scoped by the caller's own ConversationMember rows, not
+    // by startupId alone chat:read grants the ability to read chat, not the
+    // ability to read every conversation (that would leak DMs, including ones
+    // about the caller). Resolved here, per call, from the authenticated
+    // userId never from a model-supplied id.
+    const memberId = await this.resolveMemberId(startupId, context.userId);
+    if (tool === "list_team_conversations") return chatService.listConversations(startupId, memberId);
+    return chatService.searchMessages(startupId, memberId, input.query);
+  }
+
+  private async resolveMemberId(startupId: string, userId: string | undefined): Promise<string> {
+    if (!userId) throw new Error("AI_TOOL_FORBIDDEN");
+    const member = await prisma.startupMember.findUnique({ where: { startupId_userId: { startupId, userId } }, select: { id: true, status: true } });
+    if (!member || member.status !== "active") throw new Error("AI_TOOL_FORBIDDEN");
+    return member.id;
   }
 }
 

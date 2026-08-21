@@ -4,6 +4,7 @@ import { investorService } from "../../src/services/investor.service";
 import { pipelineService } from "../../src/services/pipeline.service";
 import { interactionLogService } from "../../src/services/interaction-log.service";
 import { taskService } from "../../src/services/task.service";
+import { chatService } from "../../src/services/chat.service";
 
 jest.mock("../../src/db/prisma", () => ({
   prisma: {
@@ -12,6 +13,7 @@ jest.mock("../../src/db/prisma", () => ({
     documentVersion: { findMany: jest.fn() },
     reviewerInvitationDocument: { groupBy: jest.fn() },
     commitment: { findMany: jest.fn() },
+    startupMember: { findUnique: jest.fn() },
   },
 }));
 
@@ -19,6 +21,7 @@ jest.mock("../../src/services/investor.service", () => ({ investorService: { lis
 jest.mock("../../src/services/pipeline.service", () => ({ pipelineService: { getAnalytics: jest.fn(), getFocus: jest.fn(), getByStage: jest.fn() } }));
 jest.mock("../../src/services/interaction-log.service", () => ({ interactionLogService: { listLogsByInvestor: jest.fn() } }));
 jest.mock("../../src/services/task.service", () => ({ taskService: { listTasks: jest.fn() } }));
+jest.mock("../../src/services/chat.service", () => ({ chatService: { listConversations: jest.fn(), searchMessages: jest.fn() } }));
 
 describe("AI structured tools", () => {
   beforeEach(() => jest.clearAllMocks());
@@ -120,5 +123,41 @@ describe("AI structured tools", () => {
     const call = (taskService.listTasks as jest.Mock).mock.calls[0][1];
     expect(call).not.toHaveProperty("roundId");
     expect(call).not.toHaveProperty("assigneeId");
+  });
+
+  it("resolves the caller's own member id from their authenticated userId before reading chat", async () => {
+    (prisma.startupMember.findUnique as jest.Mock).mockResolvedValue({ id: "member-1", status: "active" });
+    (chatService.listConversations as jest.Mock).mockResolvedValue({ data: [] });
+    await new AiToolsService().execute("startup-a", "list_team_conversations", {}, ["list_team_conversations"], { userId: "user-1" });
+    expect(prisma.startupMember.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { startupId_userId: { startupId: "startup-a", userId: "user-1" } } }));
+    expect(chatService.listConversations).toHaveBeenCalledWith("startup-a", "member-1");
+  });
+
+  it("refuses to read chat when no authenticated userId was supplied never falls back to any other identity", async () => {
+    await expect(new AiToolsService().execute("startup-a", "list_team_conversations", {}, ["list_team_conversations"], {}))
+      .rejects.toThrow("AI_TOOL_FORBIDDEN");
+    expect(prisma.startupMember.findUnique).not.toHaveBeenCalled();
+    expect(chatService.listConversations).not.toHaveBeenCalled();
+  });
+
+  it("refuses to read chat for a userId with no active membership in this startup", async () => {
+    (prisma.startupMember.findUnique as jest.Mock).mockResolvedValue(null);
+    await expect(new AiToolsService().execute("startup-a", "search_team_messages", { query: "Ana" }, ["search_team_messages"], { userId: "user-1" }))
+      .rejects.toThrow("AI_TOOL_FORBIDDEN");
+    expect(chatService.searchMessages).not.toHaveBeenCalled();
+  });
+
+  it("refuses to read chat for a member whose membership has been deactivated", async () => {
+    (prisma.startupMember.findUnique as jest.Mock).mockResolvedValue({ id: "member-1", status: "removed" });
+    await expect(new AiToolsService().execute("startup-a", "search_team_messages", { query: "Ana" }, ["search_team_messages"], { userId: "user-1" }))
+      .rejects.toThrow("AI_TOOL_FORBIDDEN");
+    expect(chatService.searchMessages).not.toHaveBeenCalled();
+  });
+
+  it("searches team chat scoped to the resolved member id, not a model-supplied one", async () => {
+    (prisma.startupMember.findUnique as jest.Mock).mockResolvedValue({ id: "member-1", status: "active" });
+    (chatService.searchMessages as jest.Mock).mockResolvedValue({ data: [] });
+    await new AiToolsService().execute("startup-a", "search_team_messages", { query: "Ana Ruiz" }, ["search_team_messages"], { userId: "user-1" });
+    expect(chatService.searchMessages).toHaveBeenCalledWith("startup-a", "member-1", "Ana Ruiz");
   });
 });
