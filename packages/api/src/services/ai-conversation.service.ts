@@ -1,3 +1,4 @@
+import { ZodError } from "zod";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
 import type { AiInputItem, AiProvider } from "./ai-provider.service";
@@ -250,135 +251,150 @@ export class AiConversationService {
       // result is ever written to telemetry.
       await prisma.$executeRaw`UPDATE "ai_runs" SET "time_to_first_token_ms" = ${timeToFirstTokenMs ?? null}, "retrieval_result_count" = ${chunks.length}, "retrieval_min_score" = ${retrievalScores.length ? Math.min(...retrievalScores) : null}, "retrieval_max_score" = ${retrievalScores.length ? Math.max(...retrievalScores) : null} WHERE "id" = ${runId}`;
       await prisma.aiChatSession.update({ where: { id: session.id }, data: { lastMessageAt: new Date() } });
-      if (chunks.length) {
-        const artifact = await aiArtifactService.createReady({
-          startupId: session.startupId,
-          sessionId: session.id,
-          messageId,
-          type: "source_answer.v1",
-          title: "Grounded answer",
-          data: { answer: content, sources: chunks.map((chunk) => ({ label: chunk.citation.label, excerpt: chunk.citation.excerpt ?? null })) },
-        });
-        aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "source_answer.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
-      }
-      const prompt = history.at(-1)?.content.toLowerCase() ?? "";
-      // "Investor context" means a tool actually returned investor/deal-specific data
-      // this turn (get_investor_context or non-empty get_focus_deals), not just that a
-      // fundraising round is pinned — a round and an investor are different records.
-      const investorToolResult = toolResults.find((entry) => entry.tool === "get_investor_context" || entry.tool === "get_focus_deals")?.result as { data?: unknown[] } | null | undefined;
-      const missingInvestorContext = !investorToolResult || (Array.isArray(investorToolResult.data) && investorToolResult.data.length === 0);
-      const contextLabel = missingInvestorContext ? "No investor record selected" : "Grounded in this conversation's pipeline data";
-      // These structured artifacts duplicate the plain answer bubble underneath
-      // them, so they should only fire on a clear, explicit request for that
-      // format — never during a persona rehearsal (where "follow-up question"
-      // and "prepare for" come up constantly in ordinary investor dialogue and
-      // would otherwise wrap every reply in a stray "email draft" card).
-      const wantsEmailDraft = !session.persona && /\bemail\b/.test(prompt) && (prompt.includes("draft") || prompt.includes("write") || prompt.includes("send"));
-      if (wantsEmailDraft) {
-        const artifact = await aiArtifactService.createReady({ startupId: session.startupId, sessionId: session.id, messageId, type: "email_draft.v1", title: "Follow-up draft", data: { subject: "Follow-up", body: content, contextLabel, missingInvestorContext } });
-        aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "email_draft.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
-      }
-      const wantsMeetingBrief = !session.persona && (prompt.includes("meeting brief") || prompt.includes("prepare me for a meeting") || prompt.includes("prepare for a meeting") || prompt.includes("prepare for the meeting"));
-      if (wantsMeetingBrief) {
-        const talkingPoints = content.split(/\n+|(?<=[.!?])\s+/).map((item) => item.trim()).filter(Boolean).slice(0, 8);
-        if (talkingPoints.length) {
-          const artifact = await aiArtifactService.createReady({ startupId: session.startupId, sessionId: session.id, messageId, type: "meeting_brief.v1", title: "Meeting brief", data: { title: "Meeting preparation", talkingPoints, contextLabel, missingInvestorContext } });
-          aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "meeting_brief.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
-        }
-      }
-      // Unlike the two heuristics above, this triggers on the tool actually
-      // having run this turn, not on prompt keywords: forecast_round_close is
-      // deterministic, so whenever the model called it for a real round, the
-      // numbers are worth surfacing as a card rather than only prose.
-      const forecastResult = toolResults.find((entry) => entry.tool === "forecast_round_close")?.result as Awaited<ReturnType<typeof forecastService.forecastRoundClose>> | undefined;
-      if (forecastResult?.round && access.canReadFinancial) {
-        const artifact = await aiArtifactService.createReady({
-          startupId: session.startupId,
-          sessionId: session.id,
-          messageId,
-          type: "forecast.v1",
-          title: "Round forecast",
-          data: {
-            roundName: forecastResult.round.name,
-            currency: forecastResult.round.currency,
-            targetAmount: forecastResult.targetAmount,
-            committedToDate: forecastResult.committedToDate,
-            softPipeline: forecastResult.softPipeline,
-            projectedDaysToClose: forecastResult.projectedDaysToClose,
-            confidence: forecastResult.confidence,
-            insufficientData: forecastResult.insufficientData,
-            inputs: {
-              windowDays: forecastResult.inputs.windowDays,
-              stageEventCount: forecastResult.inputs.stageEventCount,
-              overallConversionRate: forecastResult.inputs.overallConversionRate,
-              cycleTimeDays: forecastResult.inputs.cycleTimeDays,
-              newDealsPerDay: forecastResult.inputs.newDealsPerDay,
-              averageCheckSize: forecastResult.inputs.averageCheckSize,
-            },
-          },
-        });
-        aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "forecast.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
-      }
-      // The remaining rich cards, like forecast.v1 above, trigger on the read
-      // tool having actually run this turn and returned real data — never on
-      // prompt keywords — so they can't fire off a lookup the model made for
-      // some other reason, and can't be spoofed by prompt text asking for one.
-      type InvestorContextResult = { id: string; fullName: string; ventureFirm: string | null; investorType: string | null; sectorFocus: string | null; description: string | null; checkSizeMin: number | null; checkSizeMax: number | null; pipeline: Array<{ stage: string; stageChangedAt: string | Date }>; interactionLogs: Array<{ type: string; subject: string | null; interactionDate: string | Date | null }> } | null;
-      const investorContextResult = toolResults.find((entry) => entry.tool === "get_investor_context")?.result as InvestorContextResult | undefined;
-      if (investorContextResult) {
-        const currentDeal = investorContextResult.pipeline[0];
-        const daysInStage = currentDeal ? Math.max(0, Math.floor((Date.now() - new Date(currentDeal.stageChangedAt).getTime()) / (24 * 60 * 60 * 1000))) : null;
-        const artifact = await aiArtifactService.createReady({
-          startupId: session.startupId, sessionId: session.id, messageId, type: "investor_brief.v1", title: investorContextResult.fullName,
-          data: {
-            investorId: investorContextResult.id, fullName: investorContextResult.fullName, ventureFirm: investorContextResult.ventureFirm,
-            investorType: investorContextResult.investorType, sectorFocus: investorContextResult.sectorFocus, description: investorContextResult.description,
-            checkSizeMin: investorContextResult.checkSizeMin, checkSizeMax: investorContextResult.checkSizeMax,
-            stage: currentDeal?.stage ?? null, daysInStage,
-            lastInteractions: investorContextResult.interactionLogs.slice(0, 5).map((log) => ({ type: log.type, subject: log.subject, interactionDate: log.interactionDate ? new Date(log.interactionDate).toISOString() : null })),
-          },
-        });
-        aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "investor_brief.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
-      }
 
-      type FocusDealsResult = { data: Array<{ investorId: string; investor: { fullName: string }; stage: string; reason: string; daysQuiet: number; nextTaskDueDate: string | null }> } | undefined;
-      const focusDealsResult = toolResults.find((entry) => entry.tool === "get_focus_deals")?.result as FocusDealsResult;
-      if (focusDealsResult?.data?.length) {
-        const artifact = await aiArtifactService.createReady({
-          startupId: session.startupId, sessionId: session.id, messageId, type: "focus_list.v1", title: "Today's focus",
-          data: {
-            roundId: session.roundId ?? null,
-            deals: focusDealsResult.data.slice(0, 15).map((deal) => ({ investorId: deal.investorId, investorName: deal.investor.fullName, stage: deal.stage, reason: deal.reason, daysQuiet: deal.daysQuiet, nextTaskDueDate: deal.nextTaskDueDate })),
-          },
-        });
-        aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "focus_list.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
-      }
-
-      type PipelineByStageResult = { data: Array<{ stage: string; count: number; totalValue: number }> } | undefined;
-      const pipelineByStageResult = toolResults.find((entry) => entry.tool === "get_pipeline_by_stage")?.result as PipelineByStageResult;
-      if (pipelineByStageResult?.data && pipelineByStageResult.data.some((stage) => stage.count > 0)) {
-        const artifact = await aiArtifactService.createReady({
-          startupId: session.startupId, sessionId: session.id, messageId, type: "pipeline_board.v1", title: "Pipeline",
-          data: { stages: pipelineByStageResult.data.map((stage) => ({ stage: stage.stage, count: stage.count, totalValue: stage.totalValue })) },
-        });
-        aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "pipeline_board.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
-      }
-
-      type ListTasksResult = { data: Array<{ id: string; title: string; status: string; priority: string; dueDate: string | Date | null; assigneeId: string | null }> } | undefined;
-      const listTasksResult = toolResults.find((entry) => entry.tool === "list_tasks")?.result as ListTasksResult;
-      if (listTasksResult?.data?.length) {
-        const artifact = await aiArtifactService.createReady({
-          startupId: session.startupId, sessionId: session.id, messageId, type: "task_list.v1", title: "Tasks",
-          data: { tasks: listTasksResult.data.slice(0, 20).map((task) => ({ id: task.id, title: task.title, status: task.status, priority: task.priority, dueDate: task.dueDate ? new Date(task.dueDate).toISOString() : null, assigned: task.assigneeId !== null })) },
-        });
-        aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "task_list.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
-      }
-
+      // The visible answer is fully done as of here — tell the client now rather
+      // than making it sit through several more DB round trips for bonus cards
+      // below. Those still arrive as normal artifact.ready events on the same
+      // (now-open-ended) stream; the client just no longer shows the message as
+      // "in progress" while they trickle in.
       aiStreamBroker.publish(session.id, messageId, "message.completed", { content, providerRequestId });
       // Fire-and-forget: an auto-generated title is a nice-to-have that should never
       // delay the visible response, and maybeGenerateTitle no-ops once a title exists
       // (set manually or by an earlier exchange), so this only ever does real work once.
       void this.maybeGenerateTitle(session, history.at(-1)?.content ?? "", content);
+
+      // Everything below only ever adds a bonus card on top of an answer that is
+      // already fully delivered and persisted as "completed" above — wrapped so a
+      // card-generation bug (a bad schema, a DB hiccup) can never retroactively
+      // turn an already-successful, already-announced answer into a failed one.
+      try {
+        if (chunks.length) {
+          const artifact = await aiArtifactService.createReady({
+            startupId: session.startupId,
+            sessionId: session.id,
+            messageId,
+            type: "source_answer.v1",
+            title: "Grounded answer",
+            data: { answer: content, sources: chunks.map((chunk) => ({ label: chunk.citation.label, excerpt: chunk.citation.excerpt ?? null })) },
+          });
+          aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "source_answer.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
+        }
+        const prompt = history.at(-1)?.content.toLowerCase() ?? "";
+        // "Investor context" means a tool actually returned investor/deal-specific data
+        // this turn (get_investor_context or non-empty get_focus_deals), not just that a
+        // fundraising round is pinned — a round and an investor are different records.
+        const investorToolResult = toolResults.find((entry) => entry.tool === "get_investor_context" || entry.tool === "get_focus_deals")?.result as { data?: unknown[] } | null | undefined;
+        const missingInvestorContext = !investorToolResult || (Array.isArray(investorToolResult.data) && investorToolResult.data.length === 0);
+        const contextLabel = missingInvestorContext ? "No investor record selected" : "Grounded in this conversation's pipeline data";
+        // These structured artifacts duplicate the plain answer bubble underneath
+        // them, so they should only fire on a clear, explicit request for that
+        // format — never during a persona rehearsal (where "follow-up question"
+        // and "prepare for" come up constantly in ordinary investor dialogue and
+        // would otherwise wrap every reply in a stray "email draft" card).
+        const wantsEmailDraft = !session.persona && /\bemail\b/.test(prompt) && (prompt.includes("draft") || prompt.includes("write") || prompt.includes("send"));
+        if (wantsEmailDraft) {
+          const artifact = await aiArtifactService.createReady({ startupId: session.startupId, sessionId: session.id, messageId, type: "email_draft.v1", title: "Follow-up draft", data: { subject: "Follow-up", body: content, contextLabel, missingInvestorContext } });
+          aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "email_draft.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
+        }
+        const wantsMeetingBrief = !session.persona && (prompt.includes("meeting brief") || prompt.includes("prepare me for a meeting") || prompt.includes("prepare for a meeting") || prompt.includes("prepare for the meeting"));
+        if (wantsMeetingBrief) {
+          const talkingPoints = content.split(/\n+|(?<=[.!?])\s+/).map((item) => item.trim()).filter(Boolean).slice(0, 8);
+          if (talkingPoints.length) {
+            const artifact = await aiArtifactService.createReady({ startupId: session.startupId, sessionId: session.id, messageId, type: "meeting_brief.v1", title: "Meeting brief", data: { title: "Meeting preparation", talkingPoints, contextLabel, missingInvestorContext } });
+            aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "meeting_brief.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
+          }
+        }
+        // Unlike the two heuristics above, this triggers on the tool actually
+        // having run this turn, not on prompt keywords: forecast_round_close is
+        // deterministic, so whenever the model called it for a real round, the
+        // numbers are worth surfacing as a card rather than only prose.
+        const forecastResult = toolResults.find((entry) => entry.tool === "forecast_round_close")?.result as Awaited<ReturnType<typeof forecastService.forecastRoundClose>> | undefined;
+        if (forecastResult?.round && access.canReadFinancial) {
+          const artifact = await aiArtifactService.createReady({
+            startupId: session.startupId,
+            sessionId: session.id,
+            messageId,
+            type: "forecast.v1",
+            title: "Round forecast",
+            data: {
+              roundName: forecastResult.round.name,
+              currency: forecastResult.round.currency,
+              targetAmount: forecastResult.targetAmount,
+              committedToDate: forecastResult.committedToDate,
+              softPipeline: forecastResult.softPipeline,
+              projectedDaysToClose: forecastResult.projectedDaysToClose,
+              confidence: forecastResult.confidence,
+              insufficientData: forecastResult.insufficientData,
+              inputs: {
+                windowDays: forecastResult.inputs.windowDays,
+                stageEventCount: forecastResult.inputs.stageEventCount,
+                overallConversionRate: forecastResult.inputs.overallConversionRate,
+                cycleTimeDays: forecastResult.inputs.cycleTimeDays,
+                newDealsPerDay: forecastResult.inputs.newDealsPerDay,
+                averageCheckSize: forecastResult.inputs.averageCheckSize,
+              },
+            },
+          });
+          aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "forecast.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
+        }
+        // The remaining rich cards, like forecast.v1 above, trigger on the read
+        // tool having actually run this turn and returned real data — never on
+        // prompt keywords — so they can't fire off a lookup the model made for
+        // some other reason, and can't be spoofed by prompt text asking for one.
+        type InvestorContextResult = { id: string; fullName: string; ventureFirm: string | null; investorType: string | null; sectorFocus: string | null; description: string | null; checkSizeMin: number | null; checkSizeMax: number | null; pipeline: Array<{ stage: string; stageChangedAt: string | Date }>; interactionLogs: Array<{ type: string; subject: string | null; interactionDate: string | Date | null }> } | null;
+        const investorContextResult = toolResults.find((entry) => entry.tool === "get_investor_context")?.result as InvestorContextResult | undefined;
+        if (investorContextResult) {
+          const currentDeal = investorContextResult.pipeline[0];
+          const daysInStage = currentDeal ? Math.max(0, Math.floor((Date.now() - new Date(currentDeal.stageChangedAt).getTime()) / (24 * 60 * 60 * 1000))) : null;
+          const artifact = await aiArtifactService.createReady({
+            startupId: session.startupId, sessionId: session.id, messageId, type: "investor_brief.v1", title: investorContextResult.fullName,
+            data: {
+              investorId: investorContextResult.id, fullName: investorContextResult.fullName, ventureFirm: investorContextResult.ventureFirm,
+              investorType: investorContextResult.investorType, sectorFocus: investorContextResult.sectorFocus, description: investorContextResult.description,
+              checkSizeMin: investorContextResult.checkSizeMin, checkSizeMax: investorContextResult.checkSizeMax,
+              stage: currentDeal?.stage ?? null, daysInStage,
+              lastInteractions: investorContextResult.interactionLogs.slice(0, 5).map((log) => ({ type: log.type, subject: log.subject, interactionDate: log.interactionDate ? new Date(log.interactionDate).toISOString() : null })),
+            },
+          });
+          aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "investor_brief.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
+        }
+
+        type FocusDealsResult = { data: Array<{ investorId: string; investor: { fullName: string }; stage: string; reason: string; daysQuiet: number; nextTaskDueDate: string | null }> } | undefined;
+        const focusDealsResult = toolResults.find((entry) => entry.tool === "get_focus_deals")?.result as FocusDealsResult;
+        if (focusDealsResult?.data?.length) {
+          const artifact = await aiArtifactService.createReady({
+            startupId: session.startupId, sessionId: session.id, messageId, type: "focus_list.v1", title: "Today's focus",
+            data: {
+              roundId: session.roundId ?? null,
+              deals: focusDealsResult.data.slice(0, 15).map((deal) => ({ investorId: deal.investorId, investorName: deal.investor.fullName, stage: deal.stage, reason: deal.reason, daysQuiet: deal.daysQuiet, nextTaskDueDate: deal.nextTaskDueDate })),
+            },
+          });
+          aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "focus_list.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
+        }
+
+        type PipelineByStageResult = { data: Array<{ stage: string; count: number; totalValue: number }> } | undefined;
+        const pipelineByStageResult = toolResults.find((entry) => entry.tool === "get_pipeline_by_stage")?.result as PipelineByStageResult;
+        if (pipelineByStageResult?.data && pipelineByStageResult.data.some((stage) => stage.count > 0)) {
+          const artifact = await aiArtifactService.createReady({
+            startupId: session.startupId, sessionId: session.id, messageId, type: "pipeline_board.v1", title: "Pipeline",
+            data: { stages: pipelineByStageResult.data.map((stage) => ({ stage: stage.stage, count: stage.count, totalValue: stage.totalValue })) },
+          });
+          aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "pipeline_board.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
+        }
+
+        type ListTasksResult = { data: Array<{ id: string; title: string; status: string; priority: string; dueDate: string | Date | null; assigneeId: string | null }> } | undefined;
+        const listTasksResult = toolResults.find((entry) => entry.tool === "list_tasks")?.result as ListTasksResult;
+        if (listTasksResult?.data?.length) {
+          const artifact = await aiArtifactService.createReady({
+            startupId: session.startupId, sessionId: session.id, messageId, type: "task_list.v1", title: "Tasks",
+            data: { tasks: listTasksResult.data.slice(0, 20).map((task) => ({ id: task.id, title: task.title, status: task.status, priority: task.priority, dueDate: task.dueDate ? new Date(task.dueDate).toISOString() : null, assigned: task.assigneeId !== null })) },
+          });
+          aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "task_list.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
+        }
+      } catch {
+        // The answer itself is already delivered and persisted as completed
+        // above; only a bonus card failed to render.
+      }
     } catch (error: any) {
       const code = controller.signal.aborted ? "AI_CANCELLED" : error?.code ?? "AI_PROVIDER_ERROR";
       const status = controller.signal.aborted ? "cancelled" : "failed";
@@ -440,9 +456,20 @@ export class AiConversationService {
         }
       }
       return { callId: call.callId, name: toolName, status: "completed", output: result };
-    } catch {
-      await prisma.aiToolCall.create({ data: { messageId, toolName: call.name, arguments: parsedArgs as object, status: "failed", durationMs: Date.now() - startedAt, errorCode: "AI_TOOL_FAILED" } });
-      return { callId: call.callId, name: call.name, status: "failed", output: { error: "This tool is unavailable or the lookup failed." } };
+    } catch (error) {
+      // The JSON-schema the model calls against only constrains shape ("string"),
+      // not format the actual UUID check lives in our zod re-validation inside
+      // aiToolsService.execute, so a hallucinated id (e.g. a name where an id was
+      // expected) lands here as a ZodError. Surfacing its specific issue — rather
+      // than a generic failure — is what lets the model self-correct (e.g. call
+      // search_investors to resolve the id) within the same turn instead of
+      // giving up and asking the user to supply facts the system already has.
+      const invalidArgs = error instanceof ZodError;
+      const message = invalidArgs
+        ? `Invalid arguments: ${error.issues.map((issue) => `${issue.path.join(".") || "input"} ${issue.message}`).join("; ")}. Resolve any id from a search/list tool first — never guess or invent one.`
+        : "This tool is unavailable or the lookup failed.";
+      await prisma.aiToolCall.create({ data: { messageId, toolName: call.name, arguments: parsedArgs as object, status: "failed", durationMs: Date.now() - startedAt, errorCode: invalidArgs ? "AI_TOOL_INVALID_ARGUMENTS" : "AI_TOOL_FAILED" } });
+      return { callId: call.callId, name: call.name, status: "failed", output: { error: message } };
     }
   }
 

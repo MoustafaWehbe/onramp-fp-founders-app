@@ -13,12 +13,13 @@ jest.mock("../../src/db/prisma", () => ({
     aiAgentAction: { create: jest.fn(), findFirst: jest.fn(), updateMany: jest.fn(), update: jest.fn(), findUniqueOrThrow: jest.fn() },
     startupInvestor: { findUnique: jest.fn() },
     pipeline: { findUnique: jest.fn() },
+    task: { findUnique: jest.fn() },
   },
 }));
 
 jest.mock("../../src/middleware/rbac", () => ({ hasPermission: jest.fn() }));
 jest.mock("../../src/services/audit-writer", () => ({ AUDIT_ACTIONS: { CREATE: "create" }, recordAuditEvent: jest.fn() }));
-jest.mock("../../src/services/task.service", () => ({ taskService: { createTask: jest.fn() } }));
+jest.mock("../../src/services/task.service", () => ({ taskService: { createTask: jest.fn(), updateTask: jest.fn() } }));
 jest.mock("../../src/services/interaction-log.service", () => ({ interactionLogService: { createLog: jest.fn() } }));
 jest.mock("../../src/services/calendar-event.service", () => ({ calendarEventService: { scheduleMeeting: jest.fn() } }));
 jest.mock("../../src/services/gmail-send.service", () => ({ gmailSendService: { sendInvestorEmail: jest.fn() } }));
@@ -29,6 +30,7 @@ const USER_ID = "00000000-0000-0000-0000-000000000001";
 const ROLE_ID = "role-1";
 const INVESTOR_ID = "00000000-0000-0000-0000-000000000002";
 const PIPELINE_ID = "00000000-0000-0000-0000-000000000003";
+const TASK_ID = "00000000-0000-0000-0000-000000000004";
 
 function proposedRow(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -62,6 +64,13 @@ describe("AiActionsService.proposeAction", () => {
     (prisma.startupInvestor.findUnique as jest.Mock).mockResolvedValue(null);
     await expect(new AiActionsService().proposeAction(STARTUP_ID, "session-1", "message-1", USER_ID, "send_investor_email", { investorId: INVESTOR_ID, subject: "Hi", body: "Hello" }))
       .rejects.toMatchObject({ code: "INVESTOR_NOT_FOUND" });
+    expect(prisma.aiAgentAction.create).not.toHaveBeenCalled();
+  });
+
+  it("404s on a task that does not belong to this startup, before writing a row", async () => {
+    (prisma.task.findUnique as jest.Mock).mockResolvedValue(null);
+    await expect(new AiActionsService().proposeAction(STARTUP_ID, "session-1", "message-1", USER_ID, "update_task_status", { taskId: TASK_ID, status: "completed" }))
+      .rejects.toMatchObject({ code: "TASK_NOT_FOUND" });
     expect(prisma.aiAgentAction.create).not.toHaveBeenCalled();
   });
 
@@ -154,6 +163,21 @@ describe("AiActionsService.approveAction", () => {
     expect(taskService.createTask).toHaveBeenCalledWith(STARTUP_ID, expect.objectContaining({ pipelineId: PIPELINE_ID, title: "Follow up" }), USER_ID);
     expect(outcome.result).toEqual({ taskId: "task-42" });
     expect(recordAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ startupId: STARTUP_ID, userId: USER_ID, entityType: "ai_action:create_task" }));
+  });
+
+  it("delegates update_task_status to the exact same service the manual UI uses", async () => {
+    (prisma.aiAgentAction.findFirst as jest.Mock).mockResolvedValue(proposedRow({ actionType: "update_task_status", payload: { taskId: TASK_ID, status: "completed" } }));
+    (hasPermission as jest.Mock).mockResolvedValue(true);
+    (prisma.aiAgentAction.updateMany as jest.Mock).mockResolvedValue({ count: 1 });
+    (prisma.task.findUnique as jest.Mock).mockResolvedValue({ id: TASK_ID });
+    (taskService.updateTask as jest.Mock).mockResolvedValue({ data: { id: TASK_ID, status: "completed" } });
+    (prisma.aiAgentAction.update as jest.Mock).mockResolvedValue(proposedRow({ status: "executed", resultRef: { taskId: TASK_ID, status: "completed" } }));
+
+    const outcome = await new AiActionsService().approveAction(STARTUP_ID, USER_ID, ROLE_ID, "action-1");
+
+    expect(hasPermission).toHaveBeenCalledWith(ROLE_ID, "pipeline", "update");
+    expect(taskService.updateTask).toHaveBeenCalledWith(STARTUP_ID, TASK_ID, { status: "completed" }, USER_ID);
+    expect(outcome.result).toEqual({ taskId: TASK_ID, status: "completed" });
   });
 
   it("resolves the send-email recipient strictly from the investor's own record, never from the payload", async () => {

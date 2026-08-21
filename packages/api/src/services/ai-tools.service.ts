@@ -25,6 +25,7 @@ const PROPOSE_TOOL_ACTION_TYPES: Partial<Record<AiToolName, AiActionType>> = {
   propose_meeting: "schedule_meeting",
   propose_investor_email: "send_investor_email",
   propose_stage_change: "update_deal_stage",
+  propose_task_status: "update_task_status",
 };
 
 /** The model must pass null, not omit, for a field it wants to leave unset (see the strict-mode note below) undo that here before handing the payload to the same zod schema the manual REST endpoint uses, which expects those fields simply absent. */
@@ -44,7 +45,10 @@ const toolInputs = {
   list_investors: z.object({ roundId: z.string().uuid().nullish(), stage: z.enum(PIPELINE_STAGES).nullish() }),
   get_pipeline_by_stage: z.object({ roundId: z.string().uuid().nullish() }),
   get_interaction_history: z.object({ investorId: z.string().uuid() }),
-  list_tasks: z.object({ roundId: z.string().uuid().nullish(), status: z.enum(TASK_STATUSES).nullish(), assigneeId: z.string().uuid().nullish() }),
+  // No assigneeId filter: scoped server-side to the caller's own tasks (see
+  // resolveMemberId in execute() below), the same way chat access is resolved
+  // from the authenticated userId rather than trusted from the model.
+  list_tasks: z.object({ roundId: z.string().uuid().nullish(), status: z.enum(TASK_STATUSES).nullish() }),
   list_team_conversations: z.object({}),
   search_team_messages: z.object({ query: z.string().trim().min(1).max(200) }),
   // Nullish rather than the REST endpoints' plain-optional shape: strict
@@ -87,6 +91,10 @@ const toolInputs = {
     pipelineId: z.string().uuid(),
     toStage: z.enum(PIPELINE_STAGES),
     reason: z.string().max(500).nullish(),
+  }),
+  propose_task_status: z.object({
+    taskId: z.string().uuid(),
+    status: z.enum(TASK_STATUSES),
   }),
 } as const;
 
@@ -148,15 +156,14 @@ export const AI_TOOL_DEFINITIONS: Record<AiToolName, { description: string; para
     parameters: { type: "object", properties: { investorId: { type: "string", description: "UUID of the investor." } }, required: ["investorId"], additionalProperties: false },
   },
   list_tasks: {
-    description: "List tasks, optionally filtered to one round, a status, and/or an assignee.",
+    description: "List the caller's own tasks (never a teammate's), optionally filtered to one round and/or a status.",
     parameters: {
       type: "object",
       properties: {
         roundId: ROUND_ID_PROPERTY,
         status: { type: ["string", "null"], enum: [...TASK_STATUSES, null], description: "Task status to filter to, or null for all statuses." },
-        assigneeId: { type: ["string", "null"], description: "UUID of the assignee (a startup member id), or null for all assignees." },
       },
-      required: ["roundId", "status", "assigneeId"],
+      required: ["roundId", "status"],
       additionalProperties: false,
     },
   },
@@ -244,6 +251,18 @@ export const AI_TOOL_DEFINITIONS: Record<AiToolName, { description: string; para
       additionalProperties: false,
     },
   },
+  propose_task_status: {
+    description: "Draft marking a task open or completed (e.g. \"mark it done\", \"reopen that task\"). Only creates a PROPOSAL awaiting a human's review and approval — nothing changes until they click Approve. Say \"I've drafted marking this done for you to review\", never \"I marked it done.\" Resolve taskId via list_tasks first.",
+    parameters: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "UUID of the task." },
+        status: { type: "string", enum: TASK_STATUSES, description: "The new status." },
+      },
+      required: ["taskId", "status"],
+      additionalProperties: false,
+    },
+  },
 };
 
 export function toolSchemasFor(allowedTools: readonly AiToolName[]): AiToolDefinition[] {
@@ -317,12 +336,17 @@ export class AiToolsService {
     if (tool === "get_pipeline_by_stage") return pipelineService.getByStage(startupId, input.roundId);
     if (tool === "get_interaction_history") return interactionLogService.listLogsByInvestor(startupId, input.investorId, { page: 1, limit: 15 });
     if (tool === "list_tasks") {
+      // Always the caller's own tasks, resolved server-side from the
+      // authenticated userId never a model-supplied assignee, the same
+      // reasoning as chat access below (this is a "what's on my plate" tool,
+      // not a "what's on anyone's plate" one).
+      const memberId = await this.resolveMemberId(startupId, context.userId);
       return taskService.listTasks(startupId, {
         page: 1,
         limit: 25,
+        assigneeId: memberId,
         ...(input.roundId && { roundId: input.roundId }),
         ...(input.status && { status: input.status }),
-        ...(input.assigneeId && { assigneeId: input.assigneeId }),
       });
     }
     if (tool === "list_team_conversations" || tool === "search_team_messages") {

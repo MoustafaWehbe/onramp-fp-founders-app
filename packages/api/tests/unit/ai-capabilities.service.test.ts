@@ -43,6 +43,11 @@ describe("AI capability policy", () => {
     expect(resolveAiCapabilities(["ai_reports:read", "ai_reports:create"]).canCreateAi).toBe(true);
   });
 
+  it("exposes propose_task_status only with pipeline:update, the same gate the manual task edit endpoint uses", () => {
+    expect(resolveAiCapabilities(["ai_reports:read", "pipeline:read"]).tools).not.toContain("propose_task_status");
+    expect(resolveAiCapabilities(["ai_reports:read", "pipeline:read", "pipeline:update"]).tools).toContain("propose_task_status");
+  });
+
   it("uses a non-specific response for protected topics", () => {
     expect(AI_UNAVAILABLE_RESOURCE_RESPONSE).not.toMatch(/financial|round|commitment|permission/i);
   });

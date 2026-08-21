@@ -1,3 +1,4 @@
+import { ZodError } from "zod";
 import { prisma } from "../../src/db/prisma";
 import { AiConversationService } from "../../src/services/ai-conversation.service";
 import { FakeAiProvider } from "../../src/services/ai-provider.service";
@@ -157,6 +158,24 @@ describe("AI conversation agent loop", () => {
 
     expect(prisma.aiToolCall.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "failed", errorCode: "AI_TOOL_FAILED" }) }));
     expect(prisma.aiChatMessage.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "completed" }) }));
+  });
+
+  it("surfaces the specific validation issue for a bad tool argument (e.g. a hallucinated id), not a generic failure, so the model can self-correct", async () => {
+    (aiToolsService.execute as jest.Mock).mockRejectedValue(new ZodError([{ code: "invalid_string", validation: "uuid", message: "Invalid uuid", path: ["investorId"] } as any]));
+    const provider = new FakeAiProvider();
+    provider.streamEventsByTurn = [
+      [{ type: "tool_call", callId: "call-1", name: "get_investor_context", arguments: "{\"investorId\":\"Elena\"}" }, { type: "completed", stopReason: "tool_calls" }],
+      [{ type: "delta", text: "Let me search for her instead." }, { type: "completed", stopReason: "stop" }],
+    ];
+    const service = new AiConversationService(provider);
+
+    await (service as any).runGeneration(session, "assistant-message", "user-1", { ...loopAccess, tools: ["get_investor_context" as const] });
+
+    expect(prisma.aiToolCall.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "failed", errorCode: "AI_TOOL_INVALID_ARGUMENTS" }) }));
+    const secondRequest = provider.requests[1].input as { input: unknown[] };
+    const toolOutput = secondRequest.input.find((item: any) => item.type === "function_call_output") as { output: string };
+    expect(toolOutput.output).toContain("investorId");
+    expect(toolOutput.output.toLowerCase()).toContain("never guess or invent");
   });
 
   it("ends the turn with a plain-language message, not a failure, once the tool-call budget is exhausted", async () => {

@@ -38,6 +38,7 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
   propose_meeting: "a meeting",
   propose_investor_email: "an email",
   propose_stage_change: "a stage change",
+  propose_task_status: "a task update",
 };
 
 const SUGGESTED_PROMPTS = [

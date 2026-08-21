@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PIPELINE_STAGES, COMMITMENT_STATUSES } from "../config/crm";
+import { PIPELINE_STAGES, COMMITMENT_STATUSES, TASK_STATUSES } from "../config/crm";
 import { createTaskSchema } from "./task.schemas";
 import { createInteractionLogSchema } from "./interaction-log.schemas";
 import { scheduleMeetingSchema } from "./calendar-event.schemas";
@@ -32,6 +32,10 @@ export const AI_ACTION_PAYLOAD_SCHEMAS = {
       })
       .optional(),
   }),
+  update_task_status: z.object({
+    taskId: uuid,
+    status: z.enum(TASK_STATUSES),
+  }),
 } as const;
 
 export type AiActionType = keyof typeof AI_ACTION_PAYLOAD_SCHEMAS;
@@ -45,6 +49,7 @@ export const AI_ACTION_PERMISSIONS: Record<AiActionType, { resource: string; act
   schedule_meeting: { resource: "pipeline", action: "create" },
   send_investor_email: { resource: "pipeline", action: "create" },
   update_deal_stage: { resource: "pipeline", action: "update" },
+  update_task_status: { resource: "pipeline", action: "update" },
 };
 
 export const aiActionIdParamSchema = z.object({ startupId: uuid, actionId: uuid });

@@ -123,12 +123,26 @@ describe("AI structured tools", () => {
   });
 
   it("lists tasks via list_tasks, dropping null filters rather than passing them through", async () => {
+    (prisma.startupMember.findUnique as jest.Mock).mockResolvedValue({ id: "member-1", status: "active" });
     (taskService.listTasks as jest.Mock).mockResolvedValue({ data: [], meta: {} });
-    await new AiToolsService().execute("startup-a", "list_tasks", { roundId: null, status: "open", assigneeId: null }, ["list_tasks"]);
+    await new AiToolsService().execute("startup-a", "list_tasks", { roundId: null, status: "open" }, ["list_tasks"], { userId: "user-1" });
     expect(taskService.listTasks).toHaveBeenCalledWith("startup-a", expect.objectContaining({ status: "open" }));
     const call = (taskService.listTasks as jest.Mock).mock.calls[0][1];
     expect(call).not.toHaveProperty("roundId");
-    expect(call).not.toHaveProperty("assigneeId");
+  });
+
+  it("scopes list_tasks to the caller's own resolved member id, never a model-supplied assignee", async () => {
+    (prisma.startupMember.findUnique as jest.Mock).mockResolvedValue({ id: "member-9", status: "active" });
+    (taskService.listTasks as jest.Mock).mockResolvedValue({ data: [], meta: {} });
+    await new AiToolsService().execute("startup-a", "list_tasks", { roundId: null, status: null }, ["list_tasks"], { userId: "user-1" });
+    expect(prisma.startupMember.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { startupId_userId: { startupId: "startup-a", userId: "user-1" } } }));
+    expect(taskService.listTasks).toHaveBeenCalledWith("startup-a", expect.objectContaining({ assigneeId: "member-9" }));
+  });
+
+  it("refuses list_tasks without an authenticated identity to scope it to", async () => {
+    await expect(new AiToolsService().execute("startup-a", "list_tasks", { roundId: null, status: null }, ["list_tasks"], {}))
+      .rejects.toThrow("AI_TOOL_FORBIDDEN");
+    expect(taskService.listTasks).not.toHaveBeenCalled();
   });
 
   it("resolves the caller's own member id from their authenticated userId before reading chat", async () => {
@@ -207,6 +221,18 @@ describe("AI structured tools", () => {
       await expect(new AiToolsService().execute("startup-a", "propose_task", { pipelineId: "00000000-0000-0000-0000-000000000001", title: "x", description: null, priority: null, dueDate: null, assigneeId: null }, ["propose_task"], {}))
         .rejects.toThrow("AI_TOOL_FORBIDDEN");
       expect(aiActionsService.proposeAction).not.toHaveBeenCalled();
+    });
+
+    it("maps propose_task_status to the update_task_status actionType", async () => {
+      (aiActionsService.proposeAction as jest.Mock).mockResolvedValue({ id: "action-1", actionType: "update_task_status", status: "proposed", expiresAt: new Date() });
+      await new AiToolsService().execute("startup-a", "propose_task_status", {
+        taskId: "00000000-0000-0000-0000-000000000004", status: "completed",
+      }, ["propose_task_status"], CONTEXT);
+
+      expect(aiActionsService.proposeAction).toHaveBeenCalledWith(
+        "startup-a", "session-1", "message-1", "user-1", "update_task_status",
+        { taskId: "00000000-0000-0000-0000-000000000004", status: "completed" },
+      );
     });
   });
 });

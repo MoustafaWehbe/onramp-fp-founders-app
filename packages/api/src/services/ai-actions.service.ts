@@ -109,12 +109,21 @@ export class AiActionsService {
       const pipeline = await prisma.pipeline.findUnique({ where: { startupId_id: { startupId, id: payload.pipelineId } }, select: { id: true } });
       if (!pipeline) throw createError("Pipeline entry not found", 404, "PIPELINE_NOT_FOUND");
     }
+    if (typeof payload.taskId === "string") {
+      const task = await prisma.task.findUnique({ where: { startupId_id: { startupId, id: payload.taskId } }, select: { id: true } });
+      if (!task) throw createError("Task not found", 404, "TASK_NOT_FOUND");
+    }
   }
 
   private async execute(startupId: string, userId: string, actionType: AiActionType, payload: Record<string, unknown>): Promise<object> {
     if (actionType === "create_task") {
       const result = await taskService.createTask(startupId, payload as any, userId);
       return { taskId: result.data.id };
+    }
+    if (actionType === "update_task_status") {
+      const { taskId, status } = payload;
+      const result = await taskService.updateTask(startupId, taskId as string, { status } as any, userId);
+      return { taskId: result.data.id, status: result.data.status };
     }
     if (actionType === "log_interaction") {
       const result = await interactionLogService.createLog(startupId, payload as any, userId);

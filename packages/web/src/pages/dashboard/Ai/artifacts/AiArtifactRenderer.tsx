@@ -79,7 +79,7 @@ const taskList = z.object({
 
 const actionProposal = z.object({
   actionId: z.string().uuid(),
-  actionType: z.enum(["create_task", "log_interaction", "schedule_meeting", "send_investor_email", "update_deal_stage"]),
+  actionType: z.enum(["create_task", "log_interaction", "schedule_meeting", "send_investor_email", "update_deal_stage", "update_task_status"]),
   status: z.enum(["proposed", "approved", "executed", "rejected", "failed", "expired"]),
   payload: z.record(z.unknown()),
   expiresAt: z.string(),
@@ -332,6 +332,7 @@ const ACTION_TYPE_META: Record<z.infer<typeof actionProposal>["actionType"], { l
   schedule_meeting: { label: "Meeting", icon: Calendar },
   send_investor_email: { label: "Email", icon: Mail },
   update_deal_stage: { label: "Stage change", icon: GitCompareArrows },
+  update_task_status: { label: "Task update", icon: CheckCircle2 },
 };
 
 /** Primary fields shown as the card's heading/body per action type; everything else in the payload falls into the compact key/value list below. */
@@ -341,6 +342,7 @@ const ACTION_PRIMARY_FIELDS: Record<string, { heading?: string; body?: string }>
   schedule_meeting: { heading: "subject", body: "description" },
   send_investor_email: { heading: "subject", body: "body" },
   update_deal_stage: { body: "reason" },
+  update_task_status: {},
 };
 
 function formatFieldLabel(key: string): string {
@@ -372,6 +374,7 @@ function ActionProposalCard({ startupId, proposal }: { startupId: string; propos
           proposal.actionType === "send_investor_email" ? "Sent" :
           proposal.actionType === "schedule_meeting" ? "Scheduled" :
           proposal.actionType === "create_task" ? "Task created" :
+          proposal.actionType === "update_task_status" ? "Task updated" :
           proposal.actionType === "log_interaction" ? "Logged" : "Stage updated";
         setResultSummary(summary);
         toast.success(summary);

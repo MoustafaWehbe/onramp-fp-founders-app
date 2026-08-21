@@ -29,6 +29,7 @@ export const AI_TOOL_REQUIREMENTS = {
   propose_meeting: ["pipeline:create"],
   propose_investor_email: ["pipeline:create"],
   propose_stage_change: ["pipeline:update"],
+  propose_task_status: ["pipeline:update"],
 } as const;
 
 export type AiToolName = keyof typeof AI_TOOL_REQUIREMENTS;

@@ -137,7 +137,7 @@ export async function cancelAiMessage(startupId: string, sessionId: string, mess
 
 export type AiAgentAction = {
   id: string;
-  actionType: "create_task" | "log_interaction" | "schedule_meeting" | "send_investor_email" | "update_deal_stage";
+  actionType: "create_task" | "log_interaction" | "schedule_meeting" | "send_investor_email" | "update_deal_stage" | "update_task_status";
   status: "proposed" | "approved" | "executed" | "rejected" | "failed" | "expired";
   resultRef: unknown;
 };

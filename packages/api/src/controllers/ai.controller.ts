@@ -10,7 +10,7 @@ import type { NextFunction, Request, Response } from "express";
 async function accessFor(req: Express.Request) {
   const roleId = req.member!.roleId;
   const grants = (await Promise.all([
-    "startup:read", "documents:read", "financial:read", "pipeline:read", "ai_reports:read", "ai_reports:create",
+    "startup:read", "documents:read", "financial:read", "pipeline:read", "pipeline:create", "pipeline:update", "ai_reports:read", "ai_reports:create",
   ].map(async (grant) => { const [resource, action] = grant.split(":"); return (await hasPermission(roleId, resource, action)) ? grant : null; }))).filter((grant): grant is string => Boolean(grant));
   const capabilities = resolveAiCapabilities(grants);
   return { canReadDocuments: grants.includes("documents:read"), canReadFinancial: grants.includes("financial:read"), tools: capabilities.tools };
