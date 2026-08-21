@@ -67,6 +67,16 @@ export type AiStreamEvent = {
   payload: Record<string, unknown>;
 };
 
+export type AiAnalysisEvidenceItem = { documentChunkId: string; label: string; excerpt: string };
+export type AiAnalysisResultShape = {
+  schemaVersion: string;
+  executiveSummary: string;
+  scores: { overall: number; narrative: number; marketValidation: number; financial: number; confidence: number };
+  strengths: Array<{ statement: string; evidence: AiAnalysisEvidenceItem[] }>;
+  gaps: Array<{ section: string; status: string; issue: string; severity: string; recommendation: string; evidence: AiAnalysisEvidenceItem[] }>;
+  personas: Array<{ name: string; investmentLens: string; whyTheyCare: string; likelyObjections: string[]; questions: string[] }>;
+};
+
 export type AiAnalysis = {
   id: string;
   startupId: string;
@@ -79,7 +89,7 @@ export type AiAnalysis = {
   financialScore: number | null;
   confidenceScore: number | null;
   summaryReport: string | null;
-  result: unknown;
+  result: AiAnalysisResultShape | null;
   errorMessage: string | null;
   createdAt: string;
 };

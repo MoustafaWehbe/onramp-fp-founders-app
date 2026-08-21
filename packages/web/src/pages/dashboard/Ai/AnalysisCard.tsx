@@ -1,17 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, BarChart3, ChevronRight, Loader2, RotateCcw, UserRound, X } from "lucide-react";
 import { toast } from "sonner";
+import { AiAnalysisResult } from "../../../components/shared/AiAnalysisResult";
 import { Button } from "../../../components/ui/button";
 import { apiErrorMessage } from "../../../lib/api-error";
-import { cn } from "../../../lib/utils";
 import { cancelAiAnalysis, createAiAnalysis, getAiAnalysis, type AiAnalysis } from "../../../lib/ai-api";
-
-const SEVERITY_STYLE: Record<string, string> = {
-  critical: "bg-destructive/15 text-destructive",
-  high: "bg-warning/15 text-warning",
-  medium: "bg-info/15 text-info",
-  low: "bg-muted text-muted-foreground",
-};
 
 type Props = {
   startupId: string;
@@ -80,58 +73,10 @@ export function AnalysisCard({ startupId, sessionId, analysis, documentTitle, ca
 
 function CompletedAnalysis({ startupId, analysis, onAskFollowup, onSelectPersona, selectedPersonaId, canCreate }: { startupId: string; analysis: AiAnalysis; onAskFollowup: (prompt: string) => void; onSelectPersona: (personaId: string | null) => void; selectedPersonaId: string | null; canCreate: boolean }) {
   const detailQuery = useQuery({ queryKey: ["ai-analysis", startupId, analysis.id], queryFn: () => getAiAnalysis(startupId, analysis.id) });
-  const result = analysis.result as { gaps?: Array<{ section: string; status: string; severity: string; issue: string; recommendation: string; evidence: Array<{ label: string; excerpt: string }> }> } | null;
-  const scores = [
-    ["Overall", analysis.overallScore],
-    ["Narrative", analysis.narrativeScore],
-    ["Market", analysis.marketValidationScore],
-    ["Financial", analysis.financialScore],
-  ] as const;
 
   return (
     <div className="mt-3 space-y-4">
-      <div className="grid grid-cols-4 gap-1.5">
-        {scores.map(([label, score]) => (
-          <div key={label} className={cn("rounded-lg border p-2 text-center", label === "Overall" ? "border-primary/30 bg-primary/5" : "border-border/60 bg-surface/40")}>
-            <div className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
-            <div className={cn("mt-0.5 font-display text-xl font-semibold", label === "Overall" && "text-primary")}>{score ?? "—"}</div>
-          </div>
-        ))}
-      </div>
-
-      {analysis.summaryReport && <p className="text-sm leading-relaxed text-muted-foreground">{analysis.summaryReport}</p>}
-
-      {result?.gaps?.length ? (
-        <details className="group rounded-xl border border-border/60 text-sm">
-          <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 font-medium text-foreground marker:content-none">
-            <span>{result.gaps.length} prioritized gaps</span>
-            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
-          </summary>
-          <div className="space-y-3 border-t border-border/60 px-3 py-3">
-            {result.gaps.slice(0, 5).map((gap, index) => (
-              <div key={`${gap.section}-${index}`}>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="font-medium capitalize text-foreground">{gap.section.replace(/_/g, " ")}</span>
-                  <span className={cn("rounded-full px-1.5 py-0.5 text-xs font-medium capitalize", SEVERITY_STYLE[gap.severity] ?? SEVERITY_STYLE.low)}>{gap.severity}</span>
-                  <span className="text-xs capitalize text-muted-foreground">{gap.status}</span>
-                </div>
-                <p className="mt-1 text-muted-foreground">{gap.issue}</p>
-                <p className="mt-1 text-foreground/80">{gap.recommendation}</p>
-                {gap.evidence?.length > 0 && (
-                  <details className="mt-1 text-muted-foreground">
-                    <summary className="cursor-pointer">Evidence</summary>
-                    {gap.evidence.map((item, evidenceIndex) => (
-                      <p key={`${item.label}-${evidenceIndex}`} className="mt-1">
-                        {item.label}: {item.excerpt}
-                      </p>
-                    ))}
-                  </details>
-                )}
-              </div>
-            ))}
-          </div>
-        </details>
-      ) : null}
+      <AiAnalysisResult analysis={analysis} />
 
       {detailQuery.data?.personas?.length ? (
         <details className="group rounded-xl border border-border/60 text-sm">
@@ -146,6 +91,16 @@ function CompletedAnalysis({ startupId, analysis, onAskFollowup, onSelectPersona
                 <div key={persona.id} className="rounded-lg border border-border/60 bg-surface/40 p-2.5">
                   <p className="font-medium text-foreground">{persona.personaName ?? "Investor persona"}</p>
                   <p className="mt-1 text-muted-foreground line-clamp-2">{persona.description}</p>
+                  {persona.questions.length > 0 && (
+                    <details className="mt-2 text-xs text-muted-foreground">
+                      <summary className="cursor-pointer font-medium">Sample questions ({persona.questions.length})</summary>
+                      <ul className="mt-1.5 list-disc space-y-1 pl-4">
+                        {persona.questions.map((question) => (
+                          <li key={question.id}>{question.questionText}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
                   <Button
                     className="mt-2 h-7 px-2 text-xs"
                     size="sm"
