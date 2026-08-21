@@ -14,7 +14,13 @@ import { apiErrorMessage } from "../../../lib/api-error";
 import { qk } from "../../../lib/query-keys";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { sendMessage, searchMentionables, pingTyping, type MentionableItem } from "../../../lib/chat-api";
-import { mentionToken, type MentionTargetType } from "../../../lib/mentions";
+import {
+  expandComposerMentions,
+  mentionDisplay,
+  mentionToken,
+  type ComposerMention,
+  type MentionTargetType,
+} from "../../../lib/mentions";
 import { MentionPicker } from "./MentionPicker";
 import { EntityPickerMenu } from "./EntityPickerMenu";
 
@@ -76,6 +82,8 @@ export function Composer({
 }: ComposerProps) {
   const queryClient = useQueryClient();
   const [body, setBody] = useState("");
+  /** Maps friendly `@Name` aliases in the draft to wire `@[Name](type:id)` tokens for send. */
+  const [pendingMentions, setPendingMentions] = useState<ComposerMention[]>([]);
   const [mention, setMention] = useState<MentionContext | null>(null);
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -108,13 +116,14 @@ export function Composer({
   const sendMutation = useMutation({
     mutationFn: () =>
       sendMessage(startupId, conversationId, {
-        body: body.trim(),
+        body: expandComposerMentions(body, pendingMentions).trim(),
         clientNonce: nonceRef.current,
         parentMessageId,
         documentIds: attachedDocs.length > 0 ? attachedDocs.map((d) => d.id) : undefined,
       }),
     onSuccess: () => {
       setBody("");
+      setPendingMentions([]);
       setMention(null);
       setAttachedDocs([]);
       // Only rotate the nonce once the send is confirmed an error leaves it
@@ -141,9 +150,12 @@ export function Composer({
   }
 
   function handleChange(event: React.ChangeEvent<HTMLTextAreaElement>) {
-    setBody(event.target.value);
-    updateMentionContext(event.target.value, event.target.selectionStart);
-    if (event.target.value.trim().length > 0) pingTypingThrottled();
+    const value = event.target.value;
+    setBody(value);
+    // Drop aliases the user edited or deleted so we never hydrate a stale pick.
+    setPendingMentions((prev) => prev.filter((entry) => value.includes(entry.display)));
+    updateMentionContext(value, event.target.selectionStart);
+    if (value.trim().length > 0) pingTypingThrottled();
   }
 
   function selectMention(item: MentionableItem) {
@@ -151,12 +163,14 @@ export function Composer({
     if (!mention || !textarea) return;
 
     const cursor = textarea.selectionStart;
+    const display = mentionDisplay(item.label);
     const token = mentionToken(item.type, item.id, item.label);
-    const next = body.slice(0, mention.start) + token + " " + body.slice(cursor);
+    const next = body.slice(0, mention.start) + display + " " + body.slice(cursor);
     setBody(next);
+    setPendingMentions((prev) => [...prev, { display, token }]);
     setMention(null);
 
-    const caretPosition = mention.start + token.length + 1;
+    const caretPosition = mention.start + display.length + 1;
     requestAnimationFrame(() => {
       textarea.focus();
       textarea.setSelectionRange(caretPosition, caretPosition);
@@ -175,10 +189,12 @@ export function Composer({
   /** A Share-button pick is appended to the draft rather than spliced at the caret it's an attachment-style reference, not something typed mid-sentence. */
   function appendMentionToken(item: MentionableItem) {
     const textarea = textareaRef.current;
+    const display = mentionDisplay(item.label);
     const token = mentionToken(item.type, item.id, item.label);
     const separator = body.length > 0 && !body.endsWith(" ") ? " " : "";
-    const next = `${body}${separator}${token} `;
+    const next = `${body}${separator}${display} `;
     setBody(next);
+    setPendingMentions((prev) => [...prev, { display, token }]);
     setShareType(null);
 
     requestAnimationFrame(() => {
