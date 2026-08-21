@@ -7,8 +7,15 @@ import { cn } from "../../lib/utils";
 type ListTone = "positive" | "negative" | null;
 const ListToneContext = createContext<ListTone>(null);
 
-function headingText(node: any): string {
-  if (node.value) return node.value as string;
+type MarkdownNode = {
+  type: string;
+  value?: string;
+  children?: MarkdownNode[];
+  data?: { hProperties?: Record<string, unknown> };
+};
+
+function headingText(node: MarkdownNode): string {
+  if (node.value) return node.value;
   if (Array.isArray(node.children)) return node.children.map(headingText).join("");
   return "";
 }
@@ -19,7 +26,7 @@ function headingText(node: any): string {
 // the model is instructed to use exactly these heading words for this to
 // activate reliably.
 function remarkToneLists() {
-  return (tree: any) => {
+  return (tree: MarkdownNode) => {
     let tone: ListTone = null;
     for (const node of tree.children ?? []) {
       if (node.type === "heading") {

@@ -1,7 +1,5 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useState,
   type ReactNode,
@@ -10,47 +8,14 @@ import axios from "axios";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../lib/api-client";
 import { useAppStore } from "../lib/app-store";
+import {
+  AuthContext,
+  type AuthUser,
+  type RegisterInitiateInput,
+  type UpdateProfileInput,
+} from "./auth-context";
 
-export interface AuthUser {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  title: string | null;
-  avatarUrl: string | null;
-  lastActiveStartupId?: string | null;
-}
-
-interface RegisterInitiateInput {
-  first_name: string;
-  last_name: string;
-  email: string;
-  password: string;
-}
-
-interface AuthContextValue {
-  user: AuthUser | null;
-  isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
-  registerInitiate: (input: RegisterInitiateInput) => Promise<{ email: string; expires_in_seconds: number }>;
-  registerVerify: (email: string, otp: string) => Promise<void>;
-  registerResend: (email: string) => Promise<void>;
-  forgotPassword: (email: string) => Promise<string>;
-  resetPassword: (token: string, newPassword: string) => Promise<void>;
-  googleAuth: (idToken: string) => Promise<void>;
-  updateProfile: (input: UpdateProfileInput) => Promise<void>;
-  uploadAvatar: (blob: Blob) => Promise<void>;
-  removeAvatar: () => Promise<void>;
-}
-
-export interface UpdateProfileInput {
-  firstName?: string;
-  lastName?: string;
-  title?: string | null;
-}
-
-const AuthContext = createContext<AuthContextValue | null>(null);
+export type { AuthUser, UpdateProfileInput } from "./auth-context";
 
 // Non-sensitive session hint: which account this tab believes it is signed in
 // as. Tells the client whether to attempt a restore, and lets other tabs notice
@@ -257,10 +222,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuthContext(): AuthContextValue {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuthContext must be used within <AuthProvider>");
-  return ctx;
 }

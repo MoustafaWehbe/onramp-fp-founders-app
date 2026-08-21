@@ -42,8 +42,25 @@ function requestSignal(inputSignal: AbortSignal | undefined, timeoutMs: number) 
   return { signal: controller.signal, cleanup: () => { clearTimeout(timeout); inputSignal?.removeEventListener("abort", abort); } };
 }
 
-function usageOf(value: any): AiUsage | undefined {
-  const usage = value?.usage;
+type ProviderUsageContainer = {
+  usage?: {
+    input_tokens?: number;
+    input_tokens_details?: { cached_tokens?: number };
+    output_tokens?: number;
+  };
+};
+
+type ProviderStreamEvent = {
+  type?: string;
+  delta?: string;
+  item?: { type?: string; call_id?: string; name?: string; arguments?: string };
+  response?: ProviderUsageContainer & { id?: string };
+};
+
+function usageOf(value: unknown): AiUsage | undefined {
+  const usage = typeof value === "object" && value !== null && "usage" in value
+    ? (value as ProviderUsageContainer).usage
+    : undefined;
   return usage ? { inputTokens: usage.input_tokens, cachedInputTokens: usage.input_tokens_details?.cached_tokens, outputTokens: usage.output_tokens } : undefined;
 }
 
@@ -52,7 +69,9 @@ function normalizeError(error: unknown, signal?: AbortSignal): AiProviderError {
   const status = typeof error === "object" && error !== null ? (error as { status?: number }).status : undefined;
   return new AiProviderError("AI provider request failed", "AI_PROVIDER_ERROR", status === 408 || status === 409 || status === 429 || (typeof status === "number" && status >= 500));
 }
-function isAsyncIterable(value: unknown): value is AsyncIterable<any> { return Boolean(value) && typeof (value as AsyncIterable<any>)[Symbol.asyncIterator] === "function"; }
+function isAsyncIterable(value: unknown): value is AsyncIterable<ProviderStreamEvent> {
+  return typeof value === "object" && value !== null && Symbol.asyncIterator in value;
+}
 
 export class OpenAiProvider implements AiProvider {
   private readonly client: OpenAiClient;
@@ -84,7 +103,9 @@ export class OpenAiProvider implements AiProvider {
           else if (event.type === "response.output_item.done" && event.item?.type === "function_call") {
             deliveredOutput = true;
             sawToolCall = true;
-            yield { type: "tool_call", callId: event.item.call_id, name: event.item.name, arguments: event.item.arguments ?? "{}" };
+            if (event.item.call_id && event.item.name) {
+              yield { type: "tool_call", callId: event.item.call_id, name: event.item.name, arguments: event.item.arguments ?? "{}" };
+            }
           }
           else if (event.type === "response.completed") yield { type: "completed", providerRequestId: event.response?.id, usage: usageOf(event.response), stopReason: sawToolCall ? "tool_calls" : "stop" };
         }

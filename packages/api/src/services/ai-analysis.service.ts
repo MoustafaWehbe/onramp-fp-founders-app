@@ -1,5 +1,6 @@
+import type { AiAnalysis } from "@prisma/client";
 import { prisma } from "../db/prisma";
-import { createError } from "../utils/errors";
+import { createError, getErrorCode } from "../utils/errors";
 import { getAiConfig } from "../config/ai";
 import { PITCH_DECK_GAP_STATUSES, PITCH_DECK_RUBRIC_VERSION, PITCH_DECK_SCORE_WEIGHTS, PITCH_DECK_SECTIONS, PITCH_DECK_SEVERITIES, pitchDeckAnalysisSchema, type PitchDeckAnalysis } from "../config/ai-rubric";
 import { OpenAiProvider, type AiProvider } from "./ai-provider.service";
@@ -28,7 +29,7 @@ const ANALYSIS_JSON_SCHEMA = {
   },
 } as const;
 
-function serializeAnalysis(row: any) {
+function serializeAnalysis(row: AiAnalysis) {
   return { id: row.id, startupId: row.startupId, documentVersionId: row.documentVersionId, sessionId: row.sessionId, status: row.status, overallScore: row.overallScore, narrativeScore: row.narrativeScore, marketValidationScore: row.marketValidationScore, financialScore: row.financialScore, confidenceScore: row.confidenceScore, summaryReport: row.summaryReport, result: row.result, rubricVersion: row.rubricVersion, model: row.model, errorCode: row.errorCode, errorMessage: row.errorMessage, queuedAt: row.queuedAt, startedAt: row.startedAt, completedAt: row.completedAt, createdAt: row.createdAt };
 }
 
@@ -97,15 +98,16 @@ export class AiAnalysisService {
       for (let i = 0; i < 2 && !attempt; i += 1) {
         try {
           attempt = await this.generateValidated(sourceText, allowedChunkIds);
-        } catch (error: any) {
-          if (error?.code !== "AI_INVALID_ANALYSIS" && error?.code !== "AI_INVALID_ANALYSIS_EVIDENCE") throw error;
+        } catch (error: unknown) {
+          const code = getErrorCode(error, "");
+          if (code !== "AI_INVALID_ANALYSIS" && code !== "AI_INVALID_ANALYSIS_EVIDENCE") throw error;
           lastValidationError = error;
         }
       }
       if (!attempt) throw lastValidationError;
       await this.persistCompleted(analysis, attempt.parsed, attempt.result);
-    } catch (error: any) {
-      await prisma.aiAnalysis.updateMany({ where: { id: analysisId, status: "processing" }, data: { status: "failed", errorCode: error?.code ?? "AI_ANALYSIS_FAILED", errorMessage: "The deck analysis could not be completed.", completedAt: new Date() } });
+    } catch (error: unknown) {
+      await prisma.aiAnalysis.updateMany({ where: { id: analysisId, status: "processing" }, data: { status: "failed", errorCode: getErrorCode(error, "AI_ANALYSIS_FAILED"), errorMessage: "The deck analysis could not be completed.", completedAt: new Date() } });
       throw error;
     }
   }
@@ -151,7 +153,7 @@ export class AiAnalysisService {
     for (const evidence of [...result.strengths.flatMap((item) => item.evidence), ...result.gaps.flatMap((item) => item.evidence)]) if (!allowed.has(evidence.documentChunkId)) throw createError("Analysis cited an invalid document chunk", 502, "AI_INVALID_ANALYSIS_EVIDENCE");
   }
 
-  private async persistCompleted(analysis: any, result: PitchDeckAnalysis, providerResult: { providerRequestId?: string; usage?: { inputTokens?: number; outputTokens?: number } }) {
+  private async persistCompleted(analysis: AiAnalysis, result: PitchDeckAnalysis, providerResult: { providerRequestId?: string; usage?: { inputTokens?: number; outputTokens?: number } }) {
     await prisma.$transaction(async (tx) => {
       const current = await tx.aiAnalysis.findUnique({ where: { id: analysis.id }, select: { status: true } });
       if (current?.status !== "processing") return;

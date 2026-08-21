@@ -14,6 +14,11 @@ export function createError(message: string, statusCode = 500, code?: string): A
   return error;
 }
 
+export function getErrorCode(error: unknown, fallback: string): string {
+  if (typeof error !== "object" || error === null || !("code" in error)) return fallback;
+  return typeof error.code === "string" ? error.code : fallback;
+}
+
 type AsyncFn = (req: Request, res: Response, next: NextFunction) => Promise<void>;
 
 export function asyncHandler(fn: AsyncFn): RequestHandler {

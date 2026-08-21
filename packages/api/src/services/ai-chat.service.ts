@@ -1,3 +1,4 @@
+import type { AiChatSession } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
 import type { CreateAiSessionInput, ListAiSessionsQuery, UpdateAiSessionInput } from "../validators/ai.schemas";
@@ -7,7 +8,19 @@ export interface AiSessionAccess {
   canReadFinancial: boolean;
 }
 
-function serializeSession(session: any, access: AiSessionAccess) {
+type SessionDocument = {
+  documentId: string;
+  documentVersionId: string;
+  document: { title: string };
+  documentVersion: { versionNumber: number; processingStatus: string };
+};
+
+type SerializableSession = AiChatSession & {
+  documents: SessionDocument[];
+  persona?: { id: string; personaName: string | null; description: string | null } | null;
+};
+
+function serializeSession(session: SerializableSession, access: AiSessionAccess) {
   return {
     id: session.id,
     startupId: session.startupId,
@@ -19,7 +32,7 @@ function serializeSession(session: any, access: AiSessionAccess) {
     updatedAt: session.updatedAt,
     ...(access.canReadFinancial ? { roundId: session.roundId } : {}),
     ...(access.canReadDocuments ? {
-      documents: session.documents.map((item: any) => ({
+      documents: session.documents.map((item) => ({
         documentId: item.documentId,
         documentVersionId: item.documentVersionId,
         title: item.document.title,
@@ -41,7 +54,10 @@ export class AiChatService {
         documents: { include: { document: { select: { title: true } }, documentVersion: { select: { versionNumber: true, processingStatus: true } } } }, persona: { select: { id: true, personaName: true, description: true } },
       } : undefined,
     });
-    return sessions.map((session) => serializeSession({ ...session, documents: "documents" in session ? session.documents : [] }, access));
+    return sessions.map((session) => serializeSession({
+      ...session,
+      documents: "documents" in session ? session.documents as SessionDocument[] : [],
+    }, access));
   }
 
   async getSession(startupId: string, userId: string, sessionId: string, access: AiSessionAccess) {
@@ -52,7 +68,10 @@ export class AiChatService {
       } : undefined,
     });
     if (!session) throw createError("AI session not found", 404, "AI_SESSION_NOT_FOUND");
-    return serializeSession({ ...session, documents: "documents" in session ? session.documents : [] }, access);
+    return serializeSession({
+      ...session,
+      documents: "documents" in session ? session.documents as SessionDocument[] : [],
+    }, access);
   }
 
   async createSession(startupId: string, userId: string, input: CreateAiSessionInput, access: AiSessionAccess) {
@@ -89,7 +108,13 @@ export class AiChatService {
       data: { ...(input.title !== undefined ? { title: input.title } : {}), ...(input.archived !== undefined ? { archivedAt: input.archived ? new Date() : null } : {}), ...(input.personaId !== undefined ? { personaId: input.personaId } : {}) },
       include: access.canReadDocuments ? { persona: { select: { id: true, personaName: true, description: true } } } : undefined,
     });
-    return serializeSession({ ...session, documents: [], persona: "persona" in session ? session.persona : null }, access);
+    return serializeSession({
+      ...session,
+      documents: [],
+      persona: "persona" in session
+        ? session.persona as SerializableSession["persona"]
+        : null,
+    }, access);
   }
 
   async archiveSession(startupId: string, userId: string, sessionId: string): Promise<void> {

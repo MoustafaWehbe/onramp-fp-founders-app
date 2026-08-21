@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
+import { Prisma, type AiChatSession } from "@prisma/client";
 import { prisma } from "../db/prisma";
-import { createError } from "../utils/errors";
+import { createError, getErrorCode } from "../utils/errors";
 import type { AiInputItem, AiProvider } from "./ai-provider.service";
 import { OpenAiProvider } from "./ai-provider.service";
 import { AiRetrievalService } from "./ai-retrieval.service";
@@ -17,6 +18,11 @@ export interface AiConversationAccess { canReadDocuments: boolean; canReadFinanc
 const activeRuns = new Map<string, { controller: AbortController; userId: string; runId?: string }>();
 
 const TITLE_JSON_SCHEMA = { type: "object", additionalProperties: false, required: ["title"], properties: { title: { type: "string" } } } as const;
+
+type ConversationSession = AiChatSession & {
+  documents: Array<{ documentVersionId: string }>;
+  persona: { id: string; personaName: string | null; description: string | null } | null;
+};
 
 export class AiConversationService {
   constructor(
@@ -37,8 +43,8 @@ export class AiConversationService {
     let userMessage;
     try {
       userMessage = await prisma.aiChatMessage.create({ data: { sessionId, role: "user", content: input.content, status: "completed", clientRequestId: input.clientRequestId, completedAt: new Date() } });
-    } catch (error: any) {
-      if (error?.code !== "P2002") throw error;
+    } catch (error: unknown) {
+      if (getErrorCode(error, "") !== "P2002") throw error;
       userMessage = await prisma.aiChatMessage.findFirst({ where: { sessionId, clientRequestId: input.clientRequestId, role: "user" } });
       if (!userMessage) throw error;
     }
@@ -151,7 +157,7 @@ export class AiConversationService {
 
   subscribe(messageId: string, listener: (event: AiStreamEnvelope) => void) { return aiStreamBroker.subscribe(messageId, listener); }
 
-  private async runGeneration(session: any, messageId: string, userId: string, access: AiConversationAccess): Promise<void> {
+  private async runGeneration(session: ConversationSession, messageId: string, userId: string, access: AiConversationAccess): Promise<void> {
     const startedAt = Date.now();
     const controller = new AbortController();
     activeRuns.set(messageId, { controller, userId });
@@ -183,7 +189,7 @@ export class AiConversationService {
       const signer = allowedTools.includes("propose_investor_email") || allowedTools.includes("propose_meeting")
         ? await prisma.user.findUnique({ where: { id: userId }, select: { firstName: true, lastName: true, title: true } })
         : null;
-      const versionIds = session.documents.map((document: any) => document.documentVersionId);
+      const versionIds = session.documents.map((document) => document.documentVersionId);
       // Give the model the already-computed deck analysis directly instead of making
       // it re-derive scores and gaps from raw retrieved text every time the user asks
       // about "this analysis" — that re-derivation was producing a different-sounding
@@ -205,7 +211,7 @@ export class AiConversationService {
             documentChunkId: chunk.citation.documentChunkId,
             label: chunk.citation.label,
             excerpt: chunk.citation.excerpt,
-            metadata: chunk.citation.metadata as any,
+            metadata: chunk.citation.metadata as Prisma.InputJsonValue,
             sortOrder,
           })),
         });
@@ -462,8 +468,8 @@ export class AiConversationService {
         // The answer itself is already delivered and persisted as completed
         // above; only a bonus card failed to render.
       }
-    } catch (error: any) {
-      const code = controller.signal.aborted ? "AI_CANCELLED" : error?.code ?? "AI_PROVIDER_ERROR";
+    } catch (error: unknown) {
+      const code = controller.signal.aborted ? "AI_CANCELLED" : getErrorCode(error, "AI_PROVIDER_ERROR");
       const status = controller.signal.aborted ? "cancelled" : "failed";
       const completedAt = new Date();
       if (runId) await prisma.aiRun.update({ where: { id: runId }, data: { status, errorCode: code, latencyMs: Date.now() - startedAt, completedAt } });

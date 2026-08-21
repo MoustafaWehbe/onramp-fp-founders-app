@@ -1,5 +1,5 @@
 import { prisma } from "../db/prisma";
-import { createError } from "../utils/errors";
+import { createError, getErrorCode } from "../utils/errors";
 import { hasPermission } from "../middleware/rbac";
 import { AUDIT_ACTIONS, recordAuditEvent } from "./audit-writer";
 import { AI_ACTION_PAYLOAD_SCHEMAS, AI_ACTION_PERMISSIONS, type AiActionType } from "../validators/ai-action.schemas";
@@ -86,8 +86,8 @@ export class AiActionsService {
       const executed = await prisma.aiAgentAction.update({ where: { id: action.id }, data: { status: "executed", executedAt: new Date(), resultRef: resultRef as object } });
       await recordAuditEvent({ startupId, userId, action: AUDIT_ACTIONS.CREATE, entityType: `ai_action:${action.actionType}`, entityId: action.id, changes: { resultRef } });
       return { action: executed, result: resultRef };
-    } catch (error: any) {
-      const errorCode = typeof error?.code === "string" ? error.code : "AI_ACTION_EXECUTION_FAILED";
+    } catch (error: unknown) {
+      const errorCode = getErrorCode(error, "AI_ACTION_EXECUTION_FAILED");
       await prisma.aiAgentAction.update({ where: { id: action.id }, data: { status: "failed", errorCode } });
       throw error;
     }
@@ -117,31 +117,33 @@ export class AiActionsService {
 
   private async execute(startupId: string, userId: string, actionType: AiActionType, payload: Record<string, unknown>): Promise<object> {
     if (actionType === "create_task") {
-      const result = await taskService.createTask(startupId, payload as any, userId);
+      const input = AI_ACTION_PAYLOAD_SCHEMAS.create_task.parse(payload);
+      const result = await taskService.createTask(startupId, input, userId);
       return { taskId: result.data.id };
     }
     if (actionType === "update_task_status") {
-      const { taskId, status } = payload;
-      const result = await taskService.updateTask(startupId, taskId as string, { status } as any, userId);
+      const { taskId, status } = AI_ACTION_PAYLOAD_SCHEMAS.update_task_status.parse(payload);
+      const result = await taskService.updateTask(startupId, taskId, { status }, userId);
       return { taskId: result.data.id, status: result.data.status };
     }
     if (actionType === "log_interaction") {
-      const result = await interactionLogService.createLog(startupId, payload as any, userId);
+      const input = AI_ACTION_PAYLOAD_SCHEMAS.log_interaction.parse(payload);
+      const result = await interactionLogService.createLog(startupId, input, userId);
       return { logId: result.data.id };
     }
     if (actionType === "schedule_meeting") {
-      const { investorId, ...input } = payload;
-      const result = await calendarEventService.scheduleMeeting(startupId, investorId as string, userId, input as any);
+      const { investorId, ...input } = AI_ACTION_PAYLOAD_SCHEMAS.schedule_meeting.parse(payload);
+      const result = await calendarEventService.scheduleMeeting(startupId, investorId, userId, input);
       return { eventId: result.eventId, htmlLink: result.htmlLink };
     }
     if (actionType === "send_investor_email") {
-      const { investorId, ...input } = payload;
-      const result = await gmailSendService.sendInvestorEmail(startupId, investorId as string, userId, input as any);
+      const { investorId, ...input } = AI_ACTION_PAYLOAD_SCHEMAS.send_investor_email.parse(payload);
+      const result = await gmailSendService.sendInvestorEmail(startupId, investorId, userId, input);
       return { gmailMessageId: result.messageId, gmailThreadId: result.threadId };
     }
     // actionType === "update_deal_stage"
-    const { pipelineId, toStage, ...rest } = payload;
-    const entry = await pipelineService.updateEntry(startupId, pipelineId as string, { stage: toStage, ...rest } as any, userId);
+    const { pipelineId, toStage, ...rest } = AI_ACTION_PAYLOAD_SCHEMAS.update_deal_stage.parse(payload);
+    const entry = await pipelineService.updateEntry(startupId, pipelineId, { stage: toStage, ...rest }, userId);
     return { pipelineId: entry.id, stage: entry.stage };
   }
 }

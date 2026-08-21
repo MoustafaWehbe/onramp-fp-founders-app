@@ -9,17 +9,6 @@ import { PRIORITY_LABELS } from "../../lib/task-api";
 import { entityHref } from "../../lib/entity-routes";
 import type { ResolvedMention } from "../../lib/chat-api";
 
-/**
- * Only the CRM-anchored reference types unfurl into a card a chip that
- * just names a teammate ("hey @Alice") does not need a card underneath it
- * the way a deal or a document does.
- */
-const UNFURLABLE = new Set<ResolvedMention["type"]>(["investor", "deal", "task", "round", "document"]);
-
-export function isUnfurlable(type: ResolvedMention["type"]): boolean {
-  return UNFURLABLE.has(type);
-}
-
 export function EntityUnfurl({ mention }: { mention: ResolvedMention }) {
   const href = entityHref(mention);
 

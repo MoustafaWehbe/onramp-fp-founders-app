@@ -34,7 +34,7 @@ export class ForecastService {
   async forecastRoundClose(startupId: string, requestedRoundId?: string | null) {
     const round = requestedRoundId
       ? await fundraisingService.getRound(startupId, requestedRoundId)
-      : (await fundraisingService.listRounds(startupId, { page: 1, limit: 1, status: "active" as any })).data[0];
+      : (await fundraisingService.listRounds(startupId, { page: 1, limit: 1, status: "active" })).data[0];
     if (!round) return { round: null, insufficientData: true, confidence: "low" as const };
 
     const metrics = await fundraisingService.getRoundMetrics(startupId, round.id);

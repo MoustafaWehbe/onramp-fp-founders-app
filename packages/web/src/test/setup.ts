@@ -1,4 +1,23 @@
 import "@testing-library/jest-dom";
+import { cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
+import { vi } from "vitest";
+
+// Recharts' responsive wrapper relies on browser layout measurements that
+// jsdom cannot provide. Give chart children deterministic dimensions so tests
+// exercise chart rendering without emitting zero-size warnings.
+vi.mock("recharts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("recharts")>();
+  return {
+    ...actual,
+    ResponsiveContainer: ({ children }: { children: ReactNode }) =>
+      isValidElement(children)
+        ? cloneElement(children as ReactElement<{ width?: number; height?: number }>, {
+            width: 800,
+            height: 400,
+          })
+        : children,
+  };
+});
 
 // Radix's listbox primitives (Select) drive positioning and focus through
 // pointer-capture, scrollIntoView and ResizeObserver none of which jsdom

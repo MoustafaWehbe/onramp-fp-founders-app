@@ -22,7 +22,10 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
-    sourcemap: true,
+    // Production source maps expose implementation details and substantially
+    // increase deploy size. Enable them only in a dedicated error-reporting
+    // upload workflow rather than publishing them with the application.
+    sourcemap: false,
   },
   test: {
     globals: true,
