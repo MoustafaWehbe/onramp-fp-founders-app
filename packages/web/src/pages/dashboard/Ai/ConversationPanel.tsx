@@ -8,6 +8,7 @@ import { Button } from "../../../components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import { Textarea } from "../../../components/ui/textarea";
 import { useAiStream } from "../../../hooks/useAiStream";
+import { useStreamedReveal } from "../../../hooks/useStreamedReveal";
 import { apiErrorMessage } from "../../../lib/api-error";
 import { aiRecordLink } from "../../../lib/ai-record-link";
 import { cancelAiMessage, createAiAnalysis, createAiMessage, listAiAnalyses, listAiMessages, type AiAnalysis, type AiChatMessage, type AiCitation, type AiSession, type AiStreamEvent } from "../../../lib/ai-api";
@@ -364,12 +365,14 @@ function Welcome({ canCreate, onSelectPrompt }: { canCreate: boolean; onSelectPr
 
 function MessageBubble({ message, onStop, stopping }: { message: AiChatMessage; onStop?: () => void; stopping: boolean }) {
   const assistant = message.role === "assistant";
-  // A source_answer artifact already carries this same text plus a deduplicated
-  // source list, so once it lands we drop the raw bubble and the separate
-  // citations list instead of showing the identical answer and sources twice.
-  const sourceAnswerArtifact = assistant ? message.artifacts.find((artifact) => artifact.type === "source_answer.v1") : undefined;
-  const otherArtifacts = assistant ? message.artifacts.filter((artifact) => artifact.type !== "source_answer.v1") : [];
-  const thinking = assistant && !message.content && !sourceAnswerArtifact;
+  // The source_answer artifact duplicates this same text plus a source list in a
+  // bordered card — rendering it instead of the plain bubble made every grounded
+  // answer visibly "reshape" the instant streaming finished. Sources are already
+  // shown via the lightweight citations list below, so that artifact type is
+  // never rendered here.
+  const displayArtifacts = assistant ? message.artifacts.filter((artifact) => artifact.type !== "source_answer.v1") : [];
+  const thinking = assistant && !message.content;
+  const revealedContent = useStreamedReveal(message.content, message.status === "pending" || message.status === "streaming");
 
   return (
     <article className={cn("group flex gap-3", assistant ? "flex-row" : "flex-row-reverse")}>
@@ -379,22 +382,19 @@ function MessageBubble({ message, onStop, stopping }: { message: AiChatMessage; 
         </span>
       )}
       <div className={cn("min-w-0 flex-1", assistant ? "max-w-[calc(100%-2.5rem)]" : "flex flex-col items-end")}>
-        {!sourceAnswerArtifact && (
-          <div className={cn(!assistant && "max-w-[85%] rounded-2xl rounded-tr-sm bg-primary/15 px-4 py-2.5 text-sm leading-relaxed text-foreground")}>
-            {thinking ? (
-              <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Thinking…
-              </span>
-            ) : assistant ? (
-              <Markdown>{message.content}</Markdown>
-            ) : (
-              <span className="whitespace-pre-wrap">{message.content}</span>
-            )}
-          </div>
-        )}
+        <div className={cn(!assistant && "max-w-[85%] rounded-2xl rounded-tr-sm bg-primary/15 px-4 py-2.5 text-base leading-relaxed text-foreground")}>
+          {thinking ? (
+            <span className="inline-flex items-center gap-2 text-base text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Thinking…
+            </span>
+          ) : assistant ? (
+            <Markdown>{revealedContent}</Markdown>
+          ) : (
+            <span className="whitespace-pre-wrap">{message.content}</span>
+          )}
+        </div>
 
-        {assistant && sourceAnswerArtifact && <AiArtifactRenderer artifact={sourceAnswerArtifact} />}
-        {assistant && otherArtifacts.map((artifact) => <AiArtifactRenderer key={artifact.id} artifact={artifact} />)}
+        {assistant && displayArtifacts.map((artifact) => <AiArtifactRenderer key={artifact.id} artifact={artifact} />)}
 
         <div className={cn("mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground", assistant ? "" : "flex-row-reverse")}>
           <span className="opacity-0 transition-opacity group-hover:opacity-100">{formatDate(message.createdAt)}</span>
@@ -411,7 +411,7 @@ function MessageBubble({ message, onStop, stopping }: { message: AiChatMessage; 
           )}
         </div>
 
-        {assistant && !sourceAnswerArtifact && message.citations.length > 0 && (
+        {assistant && message.citations.length > 0 && (
           <div className="mt-2 space-y-1.5">
             {message.citations.map((citation) => (
               <Citation key={citation.id} citation={citation} />

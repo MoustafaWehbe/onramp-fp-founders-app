@@ -11,10 +11,10 @@ const components: Components = {
       {children}
     </a>
   ),
-  h1: ({ children }) => <h1 className="mt-4 text-base font-semibold text-foreground first:mt-0">{children}</h1>,
-  h2: ({ children }) => <h2 className="mt-4 text-[15px] font-semibold text-foreground first:mt-0">{children}</h2>,
-  h3: ({ children }) => <h3 className="mt-3 text-sm font-semibold text-foreground first:mt-0">{children}</h3>,
-  h4: ({ children }) => <h4 className="mt-3 text-sm font-semibold text-foreground first:mt-0">{children}</h4>,
+  h1: ({ children }) => <h1 className="mt-4 text-xl font-semibold text-foreground first:mt-0">{children}</h1>,
+  h2: ({ children }) => <h2 className="mt-4 text-lg font-semibold text-foreground first:mt-0">{children}</h2>,
+  h3: ({ children }) => <h3 className="mt-3 text-base font-semibold text-foreground first:mt-0">{children}</h3>,
+  h4: ({ children }) => <h4 className="mt-3 text-base font-semibold text-foreground first:mt-0">{children}</h4>,
   ul: ({ children }) => <ul className="mt-2 list-disc space-y-1 pl-5 marker:text-muted-foreground first:mt-0">{children}</ul>,
   ol: ({ children }) => <ol className="mt-2 list-decimal space-y-1 pl-5 marker:text-muted-foreground first:mt-0">{children}</ol>,
   li: ({ children }) => <li className="pl-0.5">{children}</li>,
@@ -38,7 +38,7 @@ const components: Components = {
   pre: ({ children }) => <pre className="scrollbar-slim mt-2 overflow-x-auto rounded-lg border border-border/60 bg-background/60 p-3 first:mt-0">{children}</pre>,
   table: ({ children }) => (
     <div className="scrollbar-slim mt-2 overflow-x-auto rounded-lg border border-border/60 first:mt-0">
-      <table className="w-full border-collapse text-left text-xs">{children}</table>
+      <table className="w-full border-collapse text-left text-sm">{children}</table>
     </div>
   ),
   thead: ({ children }) => <thead className="bg-surface/60">{children}</thead>,
@@ -48,7 +48,7 @@ const components: Components = {
 
 export function Markdown({ children, className }: { children: string; className?: string }) {
   return (
-    <div className={cn("text-sm leading-relaxed text-foreground/95", className)}>
+    <div className={cn("text-base leading-relaxed text-foreground/95", className)}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {children}
       </ReactMarkdown>

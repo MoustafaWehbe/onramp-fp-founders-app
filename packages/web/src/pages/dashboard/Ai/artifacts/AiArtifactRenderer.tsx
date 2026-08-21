@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { z } from "zod";
 import { Check, Clipboard, FileCheck2, GitCompareArrows, Mail, ShieldAlert, UsersRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { Markdown } from "../../../../components/shared/Markdown";
 import { cn } from "../../../../lib/utils";
 import type { AiArtifact } from "../../../../lib/ai-api";
 
@@ -22,7 +23,7 @@ export function AiArtifactRenderer({ artifact }: { artifact: AiArtifact }) {
     if (!parsed.success) return <UnsupportedArtifact />;
     return (
       <ArtifactShell icon={FileCheck2} title={artifact.title ?? "Grounded answer"}>
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{parsed.data.answer}</p>
+        <Markdown>{parsed.data.answer}</Markdown>
         {parsed.data.sources.length > 0 && <SourceList sources={parsed.data.sources} />}
       </ArtifactShell>
     );
@@ -57,7 +58,7 @@ export function AiArtifactRenderer({ artifact }: { artifact: AiArtifact }) {
       >
         <p className="text-xs text-muted-foreground">{parsed.data.contextLabel}</p>
         <p className="mt-3 text-sm font-medium text-foreground">Subject: {parsed.data.subject}</p>
-        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">{parsed.data.body}</p>
+        <Markdown className="mt-2">{parsed.data.body}</Markdown>
       </ArtifactShell>
     );
   }
