@@ -18,6 +18,7 @@ import {
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import { Select } from "../../../components/ui/select";
+import { Textarea } from "../../../components/ui/textarea";
 import {
   INVESTOR_SOURCE_LABELS,
   INVESTOR_SOURCE_OPTIONS,
@@ -50,6 +51,12 @@ type FormState = {
   investmentStagePreference: string;
   linkedinUrl: string;
   source: string;
+  description: string;
+  checkSizeMin: string;
+  checkSizeMax: string;
+  geographyFocus: string;
+  portfolioHighlights: string;
+  warmIntroPath: string;
 };
 
 const EMPTY: FormState = {
@@ -61,6 +68,12 @@ const EMPTY: FormState = {
   investmentStagePreference: "",
   linkedinUrl: "",
   source: "",
+  description: "",
+  checkSizeMin: "",
+  checkSizeMax: "",
+  geographyFocus: "",
+  portfolioHighlights: "",
+  warmIntroPath: "",
 };
 
 function toFormState(investor: InvestorContact | null | undefined): FormState {
@@ -74,6 +87,12 @@ function toFormState(investor: InvestorContact | null | undefined): FormState {
     investmentStagePreference: investor.investmentStagePreference ?? "",
     linkedinUrl: investor.linkedinUrl ?? "",
     source: investor.source ?? "",
+    description: investor.description ?? "",
+    checkSizeMin: investor.checkSizeMin === null ? "" : String(investor.checkSizeMin),
+    checkSizeMax: investor.checkSizeMax === null ? "" : String(investor.checkSizeMax),
+    geographyFocus: investor.geographyFocus ?? "",
+    portfolioHighlights: investor.portfolioHighlights ?? "",
+    warmIntroPath: investor.warmIntroPath ?? "",
   };
 }
 
@@ -81,6 +100,7 @@ function toFormState(investor: InvestorContact | null | undefined): FormState {
 // value actually clears it server-side instead of being rejected or ignored.
 function toInput(form: FormState): InvestorInput {
   const orNull = (value: string) => (value.trim() === "" ? null : value.trim());
+  const numberOrNull = (value: string) => (value.trim() === "" ? null : Number(value));
 
   return {
     fullName: form.fullName.trim(),
@@ -91,6 +111,12 @@ function toInput(form: FormState): InvestorInput {
     investmentStagePreference: orNull(form.investmentStagePreference),
     linkedinUrl: orNull(form.linkedinUrl),
     source: orNull(form.source),
+    description: orNull(form.description),
+    checkSizeMin: numberOrNull(form.checkSizeMin),
+    checkSizeMax: numberOrNull(form.checkSizeMax),
+    geographyFocus: orNull(form.geographyFocus),
+    portfolioHighlights: orNull(form.portfolioHighlights),
+    warmIntroPath: orNull(form.warmIntroPath),
   };
 }
 
@@ -113,7 +139,8 @@ export function InvestorFormDialog({
     // never hides something the record actually has.
     setShowMore(
       Boolean(
-        next.sectorFocus || next.investmentStagePreference || next.linkedinUrl || next.source,
+        next.sectorFocus || next.investmentStagePreference || next.linkedinUrl || next.source ||
+        next.description || next.checkSizeMin || next.checkSizeMax || next.geographyFocus || next.portfolioHighlights || next.warmIntroPath,
       ),
     );
   }, [open, investor]);
@@ -126,7 +153,9 @@ export function InvestorFormDialog({
   const emailValid = form.email.trim() === "" || /^\S+@\S+\.\S+$/.test(form.email.trim());
   const linkedinValid =
     form.linkedinUrl.trim() === "" || /^https?:\/\/\S+\.\S+/i.test(form.linkedinUrl.trim());
-  const canSubmit = nameValid && emailValid && linkedinValid && !isSubmitting;
+  const checkSizeMinValid = form.checkSizeMin.trim() === "" || Number.isFinite(Number(form.checkSizeMin)) && Number(form.checkSizeMin) >= 0;
+  const checkSizeMaxValid = form.checkSizeMax.trim() === "" || Number.isFinite(Number(form.checkSizeMax)) && Number(form.checkSizeMax) >= 0;
+  const canSubmit = nameValid && emailValid && linkedinValid && checkSizeMinValid && checkSizeMaxValid && !isSubmitting;
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -288,6 +317,87 @@ export function InvestorFormDialog({
                     Include the full address, starting with http:// or https://
                   </p>
                 )}
+              </div>
+
+              <div className="space-y-2 border-t border-border/60 pt-4">
+                <div className="text-sm font-medium">AI copilot profile</div>
+                <p className="text-xs text-muted-foreground">
+                  Who this investor is and their thesis kept separate from notes so it stays a stable reference.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="investor-description">Description</Label>
+                <Textarea
+                  id="investor-description"
+                  value={form.description}
+                  onChange={(e) => set("description", e.target.value)}
+                  maxLength={2000}
+                  rows={3}
+                  placeholder="Who they are, their thesis, background…"
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="investor-check-min">Check size min</Label>
+                  <Input
+                    id="investor-check-min"
+                    type="number"
+                    min={0}
+                    value={form.checkSizeMin}
+                    onChange={(e) => set("checkSizeMin", e.target.value)}
+                    placeholder="25000"
+                  />
+                  {!checkSizeMinValid && <p className="text-xs text-destructive">Enter a valid amount</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="investor-check-max">Check size max</Label>
+                  <Input
+                    id="investor-check-max"
+                    type="number"
+                    min={0}
+                    value={form.checkSizeMax}
+                    onChange={(e) => set("checkSizeMax", e.target.value)}
+                    placeholder="250000"
+                  />
+                  {!checkSizeMaxValid && <p className="text-xs text-destructive">Enter a valid amount</p>}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="investor-geography">Geography focus</Label>
+                <Input
+                  id="investor-geography"
+                  value={form.geographyFocus}
+                  onChange={(e) => set("geographyFocus", e.target.value)}
+                  maxLength={200}
+                  placeholder="North America, remote-first…"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="investor-portfolio">Portfolio highlights</Label>
+                <Textarea
+                  id="investor-portfolio"
+                  value={form.portfolioHighlights}
+                  onChange={(e) => set("portfolioHighlights", e.target.value)}
+                  maxLength={2000}
+                  rows={2}
+                  placeholder="Notable portfolio companies…"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="investor-warm-intro">Warm intro path</Label>
+                <Textarea
+                  id="investor-warm-intro"
+                  value={form.warmIntroPath}
+                  onChange={(e) => set("warmIntroPath", e.target.value)}
+                  maxLength={500}
+                  rows={2}
+                  placeholder="How we can get introduced…"
+                />
               </div>
             </div>
           )}

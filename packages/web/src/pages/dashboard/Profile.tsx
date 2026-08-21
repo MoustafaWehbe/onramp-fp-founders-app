@@ -20,6 +20,7 @@ export function Profile() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [firstName, setFirstName] = useState(user?.firstName ?? "");
   const [lastName, setLastName] = useState(user?.lastName ?? "");
+  const [title, setTitle] = useState(user?.title ?? "");
   // A newly chosen photo, staged locally until Save — not uploaded yet.
   const [pendingPhoto, setPendingPhoto] = useState<PreparedAvatar | null>(null);
   // User clicked Remove; the existing photo goes away on Save.
@@ -30,6 +31,7 @@ export function Profile() {
   useEffect(() => {
     setFirstName(user?.firstName ?? "");
     setLastName(user?.lastName ?? "");
+    setTitle(user?.title ?? "");
     // The server response is the source of truth once it arrives; drop any
     // staged-but-unsaved photo state (and its object URL) rather than let it
     // linger out of sync with what's now persisted.
@@ -54,7 +56,8 @@ export function Profile() {
   const avatarSrc = pendingPhoto ? pendingPhoto.previewUrl : photoRemoved ? undefined : (user.avatarUrl ?? undefined);
   const canRemovePhoto = Boolean(pendingPhoto) || (!photoRemoved && Boolean(user.avatarUrl));
   const nameChanged = firstName.trim() !== user.firstName || lastName.trim() !== user.lastName;
-  const isDirty = nameChanged || Boolean(pendingPhoto) || photoRemoved;
+  const titleChanged = title.trim() !== (user.title ?? "");
+  const isDirty = nameChanged || titleChanged || Boolean(pendingPhoto) || photoRemoved;
 
   async function choosePhoto(file: File | undefined) {
     if (!file) return;
@@ -99,8 +102,11 @@ export function Profile() {
       } else if (photoRemoved) {
         await removeAvatar();
       }
-      if (nameChanged) {
-        await updateProfile({ firstName: firstName.trim(), lastName: lastName.trim() });
+      if (nameChanged || titleChanged) {
+        await updateProfile({
+          ...(nameChanged && { firstName: firstName.trim(), lastName: lastName.trim() }),
+          ...(titleChanged && { title: title.trim() || null }),
+        });
       }
       toast.success("Profile updated");
     } catch (error) {
@@ -172,6 +178,11 @@ export function Profile() {
                 <Label htmlFor="profile-last-name">Last name</Label>
                 <Input id="profile-last-name" value={lastName} maxLength={100} onChange={(event) => setLastName(event.target.value)} />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="profile-title">Title</Label>
+              <Input id="profile-title" value={title} maxLength={100} placeholder="e.g. Co-Founder & CEO" onChange={(event) => setTitle(event.target.value)} />
+              <p className="text-xs text-muted-foreground">Used to sign off emails the AI copilot drafts on your behalf.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="profile-email">Email address</Label>

@@ -60,6 +60,14 @@ export type InvestorContact = {
   notesUpdatedAt: string | null;
   notesUpdatedBy: string | null;
   source: string | null;
+  // The stable "who is this investor" profile the AI copilot reads distinct
+  // from `notes` above, which is a running scratchpad.
+  description: string | null;
+  checkSizeMin: number | null;
+  checkSizeMax: number | null;
+  geographyFocus: string | null;
+  portfolioHighlights: string | null;
+  warmIntroPath: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -109,6 +117,12 @@ export type InvestorInput = {
   linkedinUrl?: string | null;
   notes?: string | null;
   source?: string | null;
+  description?: string | null;
+  checkSizeMin?: number | null;
+  checkSizeMax?: number | null;
+  geographyFocus?: string | null;
+  portfolioHighlights?: string | null;
+  warmIntroPath?: string | null;
 };
 
 export async function listInvestors(startupId: string, params: ListInvestorsParams = {}) {

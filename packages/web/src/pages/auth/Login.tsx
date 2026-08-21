@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
-import { useAuthContext } from "../../providers/AuthProvider";
+import { useAuthContext } from "../../providers/auth-context";
 import { safeRedirect } from "../../lib/safe-redirect";
 import { toast } from "sonner";
 import type { AxiosError } from "axios";

@@ -260,6 +260,10 @@ export function InvestorDetailDialog({
       ? "Connect your Google account in Settings to schedule meetings"
       : undefined;
 
+  const checkSizeRange = investor && (investor.contact.checkSizeMin !== null || investor.contact.checkSizeMax !== null)
+    ? `$${(investor.contact.checkSizeMin ?? 0).toLocaleString()}${investor.contact.checkSizeMax !== null ? `–$${investor.contact.checkSizeMax.toLocaleString()}` : "+"}`
+    : "—";
+
   const details = investor
     ? [
         { label: "Firm", value: investor.firm },
@@ -270,6 +274,8 @@ export function InvestorDetailDialog({
         { label: "Sector focus", value: investor.sector },
         { label: "Stage preference", value: investor.stagePreference },
         { label: "Source", value: investor.contact.source ?? "—" },
+        { label: "Check size", value: checkSizeRange },
+        { label: "Geography focus", value: investor.contact.geographyFocus ?? "—" },
       ]
     : [];
 
@@ -378,6 +384,29 @@ export function InvestorDetailDialog({
                   </div>
                 ))}
               </dl>
+
+              {(investor.contact.description || investor.contact.portfolioHighlights || investor.contact.warmIntroPath) && (
+                <div className="space-y-3 rounded-xl border border-border/70 bg-surface/50 p-3 text-sm">
+                  {investor.contact.description && (
+                    <div>
+                      <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">About</p>
+                      <p className="mt-0.5 whitespace-pre-wrap text-foreground">{investor.contact.description}</p>
+                    </div>
+                  )}
+                  {investor.contact.portfolioHighlights && (
+                    <div>
+                      <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Portfolio highlights</p>
+                      <p className="mt-0.5 whitespace-pre-wrap text-foreground">{investor.contact.portfolioHighlights}</p>
+                    </div>
+                  )}
+                  {investor.contact.warmIntroPath && (
+                    <div>
+                      <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Warm intro path</p>
+                      <p className="mt-0.5 whitespace-pre-wrap text-foreground">{investor.contact.warmIntroPath}</p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               </>}
 

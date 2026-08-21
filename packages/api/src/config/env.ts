@@ -1,3 +1,5 @@
+import { getAiConfig } from "./ai";
+
 const REQUIRED: Record<string, string[]> = {
   always: [
     "DATABASE_URL",
@@ -118,6 +120,14 @@ export function validateEnv(): void {
   const encryptionKey = process.env.GOOGLE_TOKEN_ENCRYPTION_KEY;
   if (encryptionKey && !/^[0-9a-f]{64}$/i.test(encryptionKey)) {
     problems.push("GOOGLE_TOKEN_ENCRYPTION_KEY must be a 64-character hex string (32 bytes)");
+  }
+
+  try {
+    // Keep feature-flagged AI configuration invalid at boot rather than
+    // discovering it only after a user starts a request.
+    getAiConfig();
+  } catch (err) {
+    problems.push((err as Error).message);
   }
 
   if (problems.length > 0) {

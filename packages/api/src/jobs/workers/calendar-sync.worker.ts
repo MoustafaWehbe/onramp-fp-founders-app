@@ -1,4 +1,5 @@
 import type { Job } from "bullmq";
+import { JOB_NAMES } from "../job-names";
 import { calendarSyncService, type SyncStats } from "../../services/calendar-sync.service";
 
 export interface CalendarSyncJobData {
@@ -6,7 +7,7 @@ export interface CalendarSyncJobData {
 }
 
 export const calendarSyncJob = {
-  name: "calendar-sync" as const,
+  name: JOB_NAMES.calendarSync,
   // Google Calendar API quota is per-project, not per-connection a low
   // concurrency keeps many connections syncing at once from bursting it.
   concurrency: 3,

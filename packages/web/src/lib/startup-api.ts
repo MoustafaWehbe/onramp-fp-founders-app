@@ -9,6 +9,17 @@ export type Startup = {
   industry: string | null;
   website: string | null;
   fundingStage: FundingStage;
+  // Structured comparables the AI copilot reads to judge investor/pitch fit.
+  oneLiner: string | null;
+  problemStatement: string | null;
+  solutionSummary: string | null;
+  targetMarket: string | null;
+  businessModel: string | null;
+  tractionSummary: string | null;
+  competitiveEdge: string | null;
+  headquarters: string | null;
+  foundedAt: string | null;
+  teamSummary: string | null;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -31,6 +42,20 @@ export type CreateStartupInput = {
   industry: string;
   website: string;
   funding_stage: FundingStage;
+};
+
+/** All nullable and edited post-creation, in Settings not part of the create flow. */
+export type UpdateStartupInput = Partial<CreateStartupInput> & {
+  oneLiner?: string | null;
+  problemStatement?: string | null;
+  solutionSummary?: string | null;
+  targetMarket?: string | null;
+  businessModel?: string | null;
+  tractionSummary?: string | null;
+  competitiveEdge?: string | null;
+  headquarters?: string | null;
+  foundedAt?: string | null;
+  teamSummary?: string | null;
 };
 
 /**
@@ -64,7 +89,7 @@ export async function activateStartup(startupId: string) {
   await apiClient.put(`/startups/${startupId}/activate`);
 }
 
-export async function updateStartup(startupId: string, input: Partial<CreateStartupInput>) {
+export async function updateStartup(startupId: string, input: UpdateStartupInput) {
   const { data } = await apiClient.patch<{ data: { startup: Startup } }>(
     `/startups/${startupId}`,
     input,

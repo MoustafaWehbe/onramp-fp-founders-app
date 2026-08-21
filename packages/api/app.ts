@@ -14,8 +14,31 @@ import { router } from "./src/routes";
 import { documentController } from "./src/controllers/document.controller";
 import { userController } from "./src/controllers/user.controller";
 import { authenticate } from "./src/middleware/auth";
+import { prisma } from "./src/db/prisma";
+import { getRedis } from "./src/db/redis";
 
 const app = express();
+const READINESS_TIMEOUT_MS = 2_000;
+
+function withReadinessTimeout<T>(operation: Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(
+      () => reject(new Error("Readiness check timed out")),
+      READINESS_TIMEOUT_MS,
+    );
+    timeout.unref();
+    operation.then(
+      (value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+}
 
 // Must be set before any middleware reads req.ip the rate limiters key on it.
 app.set("trust proxy", getTrustProxy());
@@ -85,6 +108,26 @@ app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
 // Health check
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// Readiness is dependency-aware: load balancers should stop routing new work
+// here if either persistence layer is unavailable, while /health remains a
+// process-only liveness probe that can still diagnose a wedged dependency.
+app.get("/ready", async (_req, res) => {
+  const [database, redis] = await Promise.allSettled([
+    withReadinessTimeout(prisma.$queryRaw`SELECT 1`),
+    withReadinessTimeout(getRedis().ping()),
+  ]);
+  const checks = {
+    database: database.status === "fulfilled" ? "ok" : "unavailable",
+    redis: redis.status === "fulfilled" ? "ok" : "unavailable",
+  };
+  const ready = checks.database === "ok" && checks.redis === "ok";
+  res.status(ready ? 200 : 503).json({
+    status: ready ? "ready" : "not_ready",
+    checks,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Error handling (must be last)

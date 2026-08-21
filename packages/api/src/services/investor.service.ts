@@ -23,6 +23,12 @@ const CONTACT_SELECT = {
   notesUpdatedAt: true,
   notesUpdatedBy: true,
   source: true,
+  description: true,
+  checkSizeMin: true,
+  checkSizeMax: true,
+  geographyFocus: true,
+  portfolioHighlights: true,
+  warmIntroPath: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -67,6 +73,14 @@ function listPhrase(items: string[]): string {
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
+type ContactRow = { checkSizeMin: Prisma.Decimal | null; checkSizeMax: Prisma.Decimal | null } & Record<string, unknown>;
+
+// Decimal serializes to a JSON string, but the API contract documents these as
+// numbers convert at the boundary rather than leaking Prisma's type.
+function serializeContact<T extends ContactRow>(contact: T) {
+  return { ...contact, checkSizeMin: contact.checkSizeMin === null ? null : Number(contact.checkSizeMin), checkSizeMax: contact.checkSizeMax === null ? null : Number(contact.checkSizeMax) };
+}
+
 // Decimal serializes to a JSON string, but the API contract documents these as
 // numbers convert at the boundary rather than leaking Prisma's type.
 function serializePipeline(entry: PipelineRow | undefined) {
@@ -87,10 +101,10 @@ export class InvestorService {
     }
 
     try {
-      return await prisma.startupInvestor.create({
+      return serializeContact(await prisma.startupInvestor.create({
         data: { startupId, ...input },
         select: CONTACT_SELECT,
-      });
+      }));
     } catch (err) {
       // Narrows the race between the check above and this insert.
       throw this.translateDuplicateEmail(err);
@@ -109,9 +123,16 @@ export class InvestorService {
       ...(stage && { pipeline: { some: { stage, ...(roundId && { roundId }) } } }),
       ...(search && {
         OR: [
-          { fullName: { contains: search, mode: "insensitive" as const } },
+          // Matched token-by-token (every word in the search must appear
+          // somewhere in the name, in any order) rather than as one contiguous
+          // substring a name typed slightly wrong, e.g. "Sara Chen" instead of
+          // "Sarah Chen", is otherwise a contiguous-substring miss even though
+          // every word the caller typed is genuinely present in the name.
+          { AND: search.trim().split(/\s+/).filter(Boolean).map((token) => ({ fullName: { contains: token, mode: "insensitive" as const } })) },
           { email: { contains: search, mode: "insensitive" as const } },
           { ventureFirm: { contains: search, mode: "insensitive" as const } },
+          { sectorFocus: { contains: search, mode: "insensitive" as const } },
+          { description: { contains: search, mode: "insensitive" as const } },
         ],
       }),
     };
@@ -165,7 +186,7 @@ export class InvestorService {
 
     return {
       data: contacts.map(({ pipeline, ...contact }) => ({
-        ...contact,
+        ...serializeContact(contact),
         pipeline: serializePipeline(pipeline[0]),
         nextFollowupDate: followups.get(contact.id) ?? null,
         lastInteractionDate: lastInteractions.get(contact.id) ?? null,
@@ -198,7 +219,7 @@ export class InvestorService {
     const { pipeline, ...rest } = contact;
 
     return {
-      ...rest,
+      ...serializeContact(rest),
       pipeline: serializePipeline(pipeline[0]),
       nextFollowupDate: followups.get(contact.id) ?? null,
       lastInteractionDate: lastInteractions.get(contact.id) ?? null,
@@ -222,11 +243,11 @@ export class InvestorService {
     }
 
     try {
-      return await prisma.startupInvestor.update({
+      return serializeContact(await prisma.startupInvestor.update({
         where: { id: investorId },
         data: { ...input, ...this.noteAuthorship(input, existing, userId) },
         select: CONTACT_SELECT,
-      });
+      }));
     } catch (err) {
       throw this.translateDuplicateEmail(err);
     }

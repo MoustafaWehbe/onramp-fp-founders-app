@@ -11,7 +11,8 @@ vi.mock("../../lib/api-client", () => ({
   },
 }));
 
-const { AuthProvider, useAuthContext } = await import("../../providers/AuthProvider");
+const { AuthProvider } = await import("../../providers/AuthProvider");
+const { useAuthContext } = await import("../../providers/auth-context");
 const { useAppStore } = await import("../../lib/app-store");
 
 const ALICE = {

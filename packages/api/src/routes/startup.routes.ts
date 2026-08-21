@@ -28,6 +28,7 @@ import { auditRouter } from "./audit.routes";
 import { documentRouter } from "./document.routes";
 import { reviewerInvitationRouter } from "./reviewer-invitation.routes";
 import { chatRouter } from "./chat.routes";
+import { aiRouter } from "./ai.routes";
 
 const router = Router();
 
@@ -54,6 +55,9 @@ router.use("/:startupId/reviewer-invitations", reviewerInvitationRouter);
 
 // /api/v1/startups/:startupId/chat declares its own middleware chain
 router.use("/:startupId/chat", chatRouter);
+
+// /api/v1/startups/:startupId/ai private AI copilot sessions
+router.use("/:startupId/ai", aiRouter);
 
 // Financial resources are startup-scoped just like the CRM resources.
 router.use("/:startupId", fundraisingRouter);

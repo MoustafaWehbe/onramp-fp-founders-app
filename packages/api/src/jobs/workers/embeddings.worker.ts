@@ -1,25 +1,7 @@
 import type { Job } from "bullmq";
-import OpenAI from "openai";
 import { prisma } from "../../db/prisma";
-
-let openai: OpenAI | null = null;
-
-function getOpenAI(): OpenAI {
-  if (!openai) {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) throw new Error("OPENAI_API_KEY is not configured");
-    openai = new OpenAI({ apiKey });
-  }
-  return openai;
-}
-
-async function generateEmbedding(text: string): Promise<number[]> {
-  const response = await getOpenAI().embeddings.create({
-    model: "text-embedding-3-small",
-    input: text.slice(0, 20_000),
-  });
-  return response.data[0]?.embedding ?? [];
-}
+import { OpenAiProvider } from "../../services/ai-provider.service";
+import { JOB_NAMES } from "../job-names";
 
 export interface EmbeddingsJobData {
   entityId: string;
@@ -32,14 +14,14 @@ export interface EmbeddingsJobResult {
 }
 
 export const embeddingsJob = {
-  name: "embeddings" as const,
+  name: JOB_NAMES.embeddings,
   concurrency: 5,
 
   async process(job: Job<EmbeddingsJobData, EmbeddingsJobResult>): Promise<EmbeddingsJobResult> {
     const { entityId, entityType, text } = job.data;
     console.info(`[embeddings] Generating embedding for ${entityType}:${entityId}`);
 
-    const embedding = await generateEmbedding(text);
+    const embedding = await new OpenAiProvider().embedQuery(text);
     if (embedding.length === 0) {
       throw new Error("OpenAI returned an empty embedding");
     }

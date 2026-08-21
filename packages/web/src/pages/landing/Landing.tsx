@@ -156,7 +156,7 @@ export function LandingPage() {
           );
 
         const reveal = gsap.utils && gsap.utils.toArray ? gsap.utils.toArray(".reveal") : [];
-        reveal.forEach((element: any) => {
+        reveal.forEach((element) => {
           gsap.fromTo(
             element,
             { y: 24, opacity: 0 },
@@ -174,7 +174,7 @@ export function LandingPage() {
           );
         });
 
-        gsap.utils.toArray(".metric-count").forEach((element: any, index: number) => {
+        gsap.utils.toArray(".metric-count").forEach((element, index) => {
           const metric = METRICS[index];
           if (!metric) return;
 

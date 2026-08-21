@@ -119,7 +119,7 @@ export function Reviewers() {
     [docsQuery.data],
   );
 
-  const rows = invitesQuery.data?.data ?? [];
+  const rows = useMemo(() => invitesQuery.data?.data ?? [], [invitesQuery.data]);
   const stats = useMemo(
     () => ({
       active: rows.filter((row) => row.status === "in_review" || row.status === "opened").length,

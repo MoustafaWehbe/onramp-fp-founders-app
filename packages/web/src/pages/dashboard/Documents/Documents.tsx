@@ -82,6 +82,10 @@ export function Documents() {
   const canUpload = can("documents", "create");
   const canUpdate = can("documents", "update");
   const canDelete = can("documents", "delete");
+  const canReadAiAnalyses = can("ai_reports", "read");
+  const canCreateAiAnalysis = can("ai_reports", "create") && can("documents", "read");
+
+  const analyticsDocument = allRows.find((row) => row.id === analyticsSheetDocId) ?? null;
 
   function invalidateDocuments() {
     void queryClient.invalidateQueries({ queryKey: ["documents", startupId] });
@@ -426,6 +430,9 @@ export function Documents() {
       <DocumentAnalyticsSheet
         startupId={startupId}
         documentId={analyticsSheetDocId}
+        documentVersionId={analyticsDocument?.currentVersion?.id ?? null}
+        canReadAiAnalyses={canReadAiAnalyses}
+        canCreateAiAnalysis={canCreateAiAnalysis}
         onOpenChange={(next) => !next && setAnalyticsSheetDocId(null)}
       />
 

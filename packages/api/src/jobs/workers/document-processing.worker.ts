@@ -1,4 +1,5 @@
 import type { Job } from "bullmq";
+import { JOB_NAMES } from "../job-names";
 import { prisma } from "../../db/prisma";
 import { chunkMarkdown } from "../../services/document-chunking";
 import { extractDocumentMarkdown } from "../../services/document-parse";
@@ -11,7 +12,7 @@ export interface DocumentProcessingJobData {
 }
 
 export const documentProcessingJob = {
-  name: "document-processing" as const,
+  name: JOB_NAMES.documentProcessing,
   concurrency: 2,
 
   async process(job: Job<DocumentProcessingJobData>): Promise<{ chunkCount: number }> {

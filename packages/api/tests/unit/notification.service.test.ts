@@ -31,6 +31,16 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
+async function expectSwallowedFailure(operation: () => Promise<void>): Promise<void> {
+  const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await expect(operation()).resolves.toBeUndefined();
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  } finally {
+    errorSpy.mockRestore();
+  }
+}
+
 describe("NotificationService.notifyFollowupDue", () => {
   const input = {
     userId: USER_ID,
@@ -80,7 +90,7 @@ describe("NotificationService.notifyFollowupDue", () => {
   it("swallows a database failure rather than throwing", async () => {
     (mockPrisma.notification.findFirst as jest.Mock).mockRejectedValue(new Error("db down"));
 
-    await expect(service.notifyFollowupDue(input)).resolves.toBeUndefined();
+    await expectSwallowedFailure(() => service.notifyFollowupDue(input));
   });
 });
 
@@ -119,7 +129,7 @@ describe("NotificationService.clearFollowupNotifications", () => {
   it("swallows a database failure rather than throwing", async () => {
     (mockPrisma.notification.findMany as jest.Mock).mockRejectedValue(new Error("db down"));
 
-    await expect(service.clearFollowupNotifications([LOG_ID])).resolves.toBeUndefined();
+    await expectSwallowedFailure(() => service.clearFollowupNotifications([LOG_ID]));
   });
 });
 
@@ -191,7 +201,7 @@ describe("NotificationService.notifyTaskOverdue / notifyTaskDueToday", () => {
   it("swallows a database failure rather than throwing", async () => {
     (mockPrisma.notification.findFirst as jest.Mock).mockRejectedValue(new Error("db down"));
 
-    await expect(service.notifyTaskOverdue(input)).resolves.toBeUndefined();
+    await expectSwallowedFailure(() => service.notifyTaskOverdue(input));
   });
 });
 
@@ -230,6 +240,6 @@ describe("NotificationService.clearTaskNotifications", () => {
   it("swallows a database failure rather than throwing", async () => {
     (mockPrisma.notification.findMany as jest.Mock).mockRejectedValue(new Error("db down"));
 
-    await expect(service.clearTaskNotifications([TASK_ID])).resolves.toBeUndefined();
+    await expectSwallowedFailure(() => service.clearTaskNotifications([TASK_ID]));
   });
 });

@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Eye, ShieldCheck, TrendingDown, Users } from "lucide-react";
+import { AlertTriangle, Eye, Sparkles, ShieldCheck, TrendingDown, Users } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "../../../components/ui/button";
 import {
@@ -14,11 +15,15 @@ import { PerPageTimeChart } from "../../../components/shared/PerPageTimeChart";
 import { StatTile } from "../../../components/shared/StatTile";
 import { apiErrorMessage } from "../../../lib/api-error";
 import { getDocumentAnalytics } from "../../../lib/document-api";
-import { formatDuration } from "../../../lib/utils";
+import { cn, formatDuration } from "../../../lib/utils";
+import { DocumentAiAnalysisPanel } from "./DocumentAiAnalysisPanel";
 
 type DocumentAnalyticsSheetProps = {
   startupId: string;
   documentId: string | null;
+  documentVersionId: string | null;
+  canReadAiAnalyses: boolean;
+  canCreateAiAnalysis: boolean;
   onOpenChange: (open: boolean) => void;
 };
 
@@ -68,29 +73,59 @@ function DropOffChart({ dropOff }: { dropOff: Array<{ pageNumber: number; reache
 export function DocumentAnalyticsSheet({
   startupId,
   documentId,
+  documentVersionId,
+  canReadAiAnalyses,
+  canCreateAiAnalysis,
   onOpenChange,
 }: DocumentAnalyticsSheetProps) {
   const open = documentId !== null;
+  const [tab, setTab] = useState<"engagement" | "ai">("engagement");
 
   const query = useQuery({
     queryKey: ["documents", startupId, "analytics", documentId],
     queryFn: () => getDocumentAnalytics(startupId, documentId as string),
-    enabled: open,
+    enabled: open && tab === "engagement",
   });
 
   const data = query.data;
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent>
+    <Sheet open={open} onOpenChange={(next) => { onOpenChange(next); if (!next) setTab("engagement"); }}>
+      <SheetContent className="sm:max-w-2xl">
         <SheetHeader>
           <SheetTitle>Document analytics</SheetTitle>
           <SheetDescription>
-            {data ? data.document.title : "Engagement across every reviewer who's seen this document."}
+            {data ? data.document.title : "Engagement and AI analysis for this document."}
           </SheetDescription>
         </SheetHeader>
 
-        {query.isPending ? (
+        {canReadAiAnalyses && (
+          <div className="flex gap-1 rounded-lg border border-border/60 bg-surface/40 p-1 text-sm">
+            <button
+              type="button"
+              onClick={() => setTab("engagement")}
+              className={cn("flex-1 rounded-md py-1.5 font-medium transition-colors", tab === "engagement" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+            >
+              <Eye className="mr-1.5 inline h-3.5 w-3.5" /> Engagement
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("ai")}
+              className={cn("flex-1 rounded-md py-1.5 font-medium transition-colors", tab === "ai" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+            >
+              <Sparkles className="mr-1.5 inline h-3.5 w-3.5" /> AI analysis
+            </button>
+          </div>
+        )}
+
+        {tab === "ai" ? (
+          <DocumentAiAnalysisPanel
+            startupId={startupId}
+            documentVersionId={documentVersionId}
+            canReadAnalyses={canReadAiAnalyses}
+            canCreateAnalysis={canCreateAiAnalysis}
+          />
+        ) : query.isPending ? (
           <div className="space-y-3">
             {Array.from({ length: 4 }, (_, index) => (
               <Skeleton key={index} className="h-16 w-full" />

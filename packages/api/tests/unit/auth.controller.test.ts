@@ -10,8 +10,13 @@ jest.mock("../../src/middleware/rate-limiter", () => ({
   reviewerAccessRateLimiter: (_req: any, _res: any, next: any) => next(),
   reviewerEventRateLimiter: (_req: any, _res: any, next: any) => next(),
   reviewerTelemetryRateLimiter: (_req: any, _res: any, next: any) => next(),
+  aiMessageRateLimiter: (_req: any, _res: any, next: any) => next(),
 }));
-jest.mock("../../src/db/prisma", () => ({ prisma: {} }));
+jest.mock("../../src/db/prisma", () => ({
+  prisma: {
+    refreshToken: { findFirst: jest.fn().mockResolvedValue({ id: "session-1" }) },
+  },
+}));
 jest.mock("../../src/config/email", () => ({ resend: {} }));
 
 jest.mock("../../src/services/auth.service", () => ({
