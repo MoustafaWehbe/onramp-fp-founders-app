@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
-import { useAuthContext } from "../../providers/AuthProvider";
+import { useAuthContext } from "../../providers/auth-context";
 
 const GENERIC_MESSAGE =
   "If an account exists with that email, a password reset link has been sent.";

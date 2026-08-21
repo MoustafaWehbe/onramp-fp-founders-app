@@ -8,8 +8,13 @@ export const updateUserSchema = z
   .object({
     firstName: z.string().trim().min(1, "First name is required").max(100).optional(),
     lastName: z.string().trim().min(1, "Last name is required").max(100).optional(),
+    // How this person signs off outbound investor communications, e.g. "Co-Founder & CEO".
+    title: z
+      .union([z.string().trim().max(100, "Title must be at most 100 characters"), z.null()])
+      .transform((value) => (value === "" ? null : value))
+      .optional(),
   })
-  .refine((data) => data.firstName !== undefined || data.lastName !== undefined, {
+  .refine((data) => data.firstName !== undefined || data.lastName !== undefined || data.title !== undefined, {
     message: "At least one field is required",
   });
 

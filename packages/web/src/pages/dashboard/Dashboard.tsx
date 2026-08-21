@@ -70,7 +70,7 @@ function TodayWorkspace({ startupId }: { startupId: string }) {
   const preferredRoundId = useAppStore((state) => state.activeRoundIds[startupId]);
   const setActiveRoundId = useAppStore((state) => state.setActiveRoundId);
   const roundsQuery = useQuery({ queryKey: qk.rounds(startupId), queryFn: () => listFundraisingRounds(startupId) });
-  const rounds = roundsQuery.data?.data ?? [];
+  const rounds = useMemo(() => roundsQuery.data?.data ?? [], [roundsQuery.data]);
   const activeRound = useMemo<FundraisingRound | null>(
     () => rounds.find((round) => round.id === preferredRoundId) ?? rounds.find((round) => round.status === "active") ?? rounds[0] ?? null,
     [preferredRoundId, rounds],
@@ -104,7 +104,7 @@ function TodayWorkspace({ startupId }: { startupId: string }) {
     enabled: Boolean(activeRound),
   });
 
-  const entries = pipelineQuery.data?.data ?? [];
+  const entries = useMemo(() => pipelineQuery.data?.data ?? [], [pipelineQuery.data]);
   const entriesById = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries]);
   const myTasks = useMemo(() => (tasksQuery.data?.data ?? [])
     .filter((task) => task.status === "open" && myMemberId !== null && task.assigneeId === myMemberId)

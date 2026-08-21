@@ -9,7 +9,6 @@ import {
   LayoutDashboard,
   LogOut,
   MessageCircle,
-  MessageSquare,
   Plus,
   ScrollText,
   Settings,
@@ -59,10 +58,7 @@ const navGroups = [
   },
   {
     label: "AI",
-    items: [
-      { to: "/ai/analysis", label: "AI Analysis", icon: Sparkles },
-      { to: "/ai/chat", label: "AI Chat", icon: MessageSquare },
-    ],
+    items: [{ to: "/ai", label: "AI Copilot", icon: Sparkles }],
   },
   {
     label: "Workspace",

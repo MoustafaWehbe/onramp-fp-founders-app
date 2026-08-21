@@ -16,6 +16,10 @@ model User {
   id                  String    @id @default(uuid())
   firstName           String    @map("first_name")
   lastName            String    @map("last_name")
+  // How this person signs off outbound investor communications (e.g. "Co-Founder
+  // & CEO") — the AI copilot uses it to fill a real signature instead of a
+  // "[Your Position]" placeholder when drafting an email.
+  title               String?
   email               String    @unique
   passwordHash        String?   @map("password_hash")
   avatarUrl           String?   @map("avatar_url")
@@ -38,6 +42,8 @@ model User {
   createdDocuments       Document[]
   uploadedVersions       DocumentVersion[]
   aiChatSessions         AiChatSession[]
+  requestedAiAnalyses    AiAnalysis[]            @relation("AiAnalysisRequester")
+  aiRuns                 AiRun[]
   auditLogs              AuditLog[]
   notifications          Notification[]
   pipelineStageEvents    PipelineStageEvent[]
@@ -47,6 +53,7 @@ model User {
   commitmentStatusEvents CommitmentStatusEvent[]
   googleConnection       GoogleConnection?
   conversationsCreated   Conversation[]
+  aiAgentActions         AiAgentAction[]
 
   @@map("users")
 }
@@ -90,6 +97,18 @@ model Startup {
   industry     String?
   website      String?
   fundingStage String?  @map("funding_stage")
+  // Structured comparables so the copilot can judge investor/pitch fit without
+  // re-deriving them from free-text description every time.
+  oneLiner         String?   @map("one_liner")
+  problemStatement String?   @map("problem_statement")
+  solutionSummary  String?   @map("solution_summary")
+  targetMarket     String?   @map("target_market")
+  businessModel    String?   @map("business_model")
+  tractionSummary  String?   @map("traction_summary")
+  competitiveEdge  String?   @map("competitive_edge")
+  headquarters     String?
+  foundedAt        DateTime? @map("founded_at")
+  teamSummary      String?   @map("team_summary")
   createdBy    String   @map("created_by")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
@@ -106,6 +125,9 @@ model Startup {
   documents              Document[]
   aiAnalyses             AiAnalysis[]
   aiChatSessions         AiChatSession[]
+  aiRuns                 AiRun[]
+  aiArtifacts            AiArtifact[]
+  aiAgentActions         AiAgentAction[]
   reviewerInvitations    ReviewerInvitation[]
   reviewerComments       ReviewerComment[]
   auditLogs              AuditLog[]
@@ -247,32 +269,32 @@ model RolePermission {
 // ─── REVIEWER SYSTEM ──────────────────────────────────────────────────────────
 
 model ReviewerInvitation {
-  id                String    @id @default(uuid())
-  startupId         String    @map("startup_id")
-  startupInvestorId String?   @map("startup_investor_id")
-  reviewerName      String?   @map("reviewer_name")
-  emailNormalized   String    @map("email_normalized")
-  tokenHash         String    @unique @map("token_hash")
+  id                  String    @id @default(uuid())
+  startupId           String    @map("startup_id")
+  startupInvestorId   String?   @map("startup_investor_id")
+  reviewerName        String?   @map("reviewer_name")
+  emailNormalized     String    @map("email_normalized")
+  tokenHash           String    @unique @map("token_hash")
   /// pending | opened | in_review | completed | revoked
-  status            String    @default("pending")
-  allowDownload     Boolean   @default(false) @map("allow_download")
-  watermarkEnabled  Boolean   @default(true) @map("watermark_enabled")
-  notifyOnOpen      Boolean   @default(true) @map("notify_on_open")
-  allowPrint        Boolean   @default(false) @map("allow_print")
-  screenshotGuard   Boolean   @default(true) @map("screenshot_guard")
-  requireNda        Boolean   @default(false) @map("require_nda")
-  ndaText           String?   @map("nda_text")
-  ndaAcceptedAt     DateTime? @map("nda_accepted_at")
-  passwordHash      String?   @map("password_hash")
-  allowedEmailDomains String[] @default([]) @map("allowed_email_domains")
-  personalMessage   String?   @map("personal_message")
-  expiresAt         DateTime  @map("expires_at")
-  completedAt       DateTime? @map("completed_at")
-  revokedAt         DateTime? @map("revoked_at")
-  lastActivityAt    DateTime? @map("last_activity_at")
-  createdBy         String    @map("created_by")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
+  status              String    @default("pending")
+  allowDownload       Boolean   @default(false) @map("allow_download")
+  watermarkEnabled    Boolean   @default(true) @map("watermark_enabled")
+  notifyOnOpen        Boolean   @default(true) @map("notify_on_open")
+  allowPrint          Boolean   @default(false) @map("allow_print")
+  screenshotGuard     Boolean   @default(true) @map("screenshot_guard")
+  requireNda          Boolean   @default(false) @map("require_nda")
+  ndaText             String?   @map("nda_text")
+  ndaAcceptedAt       DateTime? @map("nda_accepted_at")
+  passwordHash        String?   @map("password_hash")
+  allowedEmailDomains String[]  @default([]) @map("allowed_email_domains")
+  personalMessage     String?   @map("personal_message")
+  expiresAt           DateTime  @map("expires_at")
+  completedAt         DateTime? @map("completed_at")
+  revokedAt           DateTime? @map("revoked_at")
+  lastActivityAt      DateTime? @map("last_activity_at")
+  createdBy           String    @map("created_by")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
 
   startup         Startup                      @relation(fields: [startupId], references: [id], onDelete: Cascade)
   startupInvestor StartupInvestor?             @relation(fields: [startupInvestorId], references: [id])
@@ -282,10 +304,10 @@ model ReviewerInvitation {
   events          ReviewerEvent[]
   visits          ReviewerVisit[]
 
+  @@unique([startupId, id])
   @@index([startupId, status])
   @@index([startupId, emailNormalized])
   @@index([startupId, expiresAt])
-  @@unique([startupId, id])
   @@map("reviewer_invitations")
 }
 
@@ -365,24 +387,24 @@ model ReviewerEvent {
 }
 
 model ReviewerVisit {
-  id             String    @id @default(uuid())
-  startupId      String    @map("startup_id")
-  invitationId   String    @map("invitation_id")
-  sessionId      String    @unique @map("session_id")
-  startedAt      DateTime  @default(now()) @map("started_at")
-  lastSeenAt     DateTime  @map("last_seen_at")
-  endedAt        DateTime? @map("ended_at")
-  totalActiveMs  Int       @default(0) @map("total_active_ms")
-  pagesViewed    Int       @default(0) @map("pages_viewed")
-  maxPageReached Int       @default(0) @map("max_page_reached")
-  completionPct  Int       @default(0) @map("completion_pct")
-  deviceType       String?  @map("device_type")
-  os               String?  @map("os")
-  browser          String?  @map("browser")
-  deviceHash       String?  @map("device_hash")
-  ipHash           String?  @map("ip_hash")
-  referrer         String?  @map("referrer")
-  suspectedForward Boolean  @default(false) @map("suspected_forward")
+  id               String    @id @default(uuid())
+  startupId        String    @map("startup_id")
+  invitationId     String    @map("invitation_id")
+  sessionId        String    @unique @map("session_id")
+  startedAt        DateTime  @default(now()) @map("started_at")
+  lastSeenAt       DateTime  @map("last_seen_at")
+  endedAt          DateTime? @map("ended_at")
+  totalActiveMs    Int       @default(0) @map("total_active_ms")
+  pagesViewed      Int       @default(0) @map("pages_viewed")
+  maxPageReached   Int       @default(0) @map("max_page_reached")
+  completionPct    Int       @default(0) @map("completion_pct")
+  deviceType       String?   @map("device_type")
+  os               String?   @map("os")
+  browser          String?   @map("browser")
+  deviceHash       String?   @map("device_hash")
+  ipHash           String?   @map("ip_hash")
+  referrer         String?   @map("referrer")
+  suspectedForward Boolean   @default(false) @map("suspected_forward")
 
   invitation ReviewerInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
   pageViews  ReviewerPageView[]
@@ -421,6 +443,15 @@ model StartupInvestor {
   sectorFocus               String?   @map("sector_focus")
   investmentStagePreference String?   @map("investment_stage_preference")
   linkedinUrl               String?   @map("linkedin_url")
+  // The stable "who is this investor" profile — separate from `notes`, which is a
+  // running human scratchpad that churns and is often stale. Collapsing the two
+  // would make the model quote a two-month-old scratch note as if it were a fact.
+  description         String?   @map("description")
+  checkSizeMin        Decimal?  @map("check_size_min")
+  checkSizeMax        Decimal?  @map("check_size_max")
+  geographyFocus      String?   @map("geography_focus")
+  portfolioHighlights String?   @map("portfolio_highlights")
+  warmIntroPath       String?   @map("warm_intro_path")
   notes                     String?
   notesCreatedAt            DateTime? @map("notes_created_at")
   notesCreatedBy            String?   @map("notes_created_by")
@@ -577,6 +608,7 @@ model FundraisingRound {
   pipelineStageEvents PipelineStageEvent[] @relation("PipelineStageEventRound")
   commitments         Commitment[]         @relation("CommitmentRound")
   mentions            MessageMention[]
+  aiChatSessions      AiChatSession[]
 
   @@unique([startupId, id])
   @@map("fundraising_rounds")
@@ -634,14 +666,14 @@ model Document {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  startup            Startup                      @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  creator            User                         @relation(fields: [createdBy], references: [id])
-  versions           DocumentVersion[]
-  reviewerDocs       ReviewerInvitationDocument[]
-  reviewerComments   ReviewerComment[]
-  aiChatSessions     AiChatSession[]              @relation("AiChatSessionDocument")
-  mentions           MessageMention[]
-  messageAttachments MessageAttachment[]
+  startup                Startup                      @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  creator                User                         @relation(fields: [createdBy], references: [id])
+  versions               DocumentVersion[]
+  reviewerDocs           ReviewerInvitationDocument[]
+  reviewerComments       ReviewerComment[]
+  aiChatSessionDocuments AiChatSessionDocument[]
+  mentions               MessageMention[]
+  messageAttachments     MessageAttachment[]
 
   @@unique([startupId, id])
   @@map("documents")
@@ -670,11 +702,12 @@ model DocumentVersion {
   uploadedBy       String   @map("uploaded_by")
   createdAt        DateTime @default(now()) @map("created_at")
 
-  document   Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  uploader   User            @relation(fields: [uploadedBy], references: [id])
-  chunks     DocumentChunk[]
-  pages      DocumentPage[]
-  aiAnalyses AiAnalysis[]
+  document                    Document                     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  uploader                    User                         @relation(fields: [uploadedBy], references: [id])
+  chunks                      DocumentChunk[]
+  pages                       DocumentPage[]
+  aiAnalyses                  AiAnalysis[]
+  aiChatSessionDocuments      AiChatSessionDocument[]
   reviewerInvitationDocuments ReviewerInvitationDocument[]
 
   @@unique([documentId, versionNumber])
@@ -713,8 +746,9 @@ model DocumentChunk {
   charEnd           Int?                         @map("char_end")
   createdAt         DateTime                     @default(now()) @map("created_at")
 
-  documentVersion  DocumentVersion   @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
-  reviewerComments ReviewerComment[]
+  documentVersion    DocumentVersion      @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+  reviewerComments   ReviewerComment[]
+  aiAnalysisEvidence AiAnalysisEvidence[]
 
   @@unique([documentVersionId, chunkIndex])
   @@map("document_chunks")
@@ -723,24 +757,45 @@ model DocumentChunk {
 // ─── AI INSIGHTS ──────────────────────────────────────────────────────────────
 
 model AiAnalysis {
-  id                    String   @id @default(uuid())
-  startupId             String   @map("startup_id")
-  documentVersionId     String   @map("document_version_id")
-  overallScore          Int?     @map("overall_score")
-  narrativeScore        Int?     @map("narrative_score")
-  marketValidationScore Int?     @map("market_validation_score")
-  financialScore        Int?     @map("financial_score")
-  summaryReport         String?  @map("summary_report")
-  status                String   @default("processing")
-  createdAt             DateTime @default(now()) @map("created_at")
+  id                    String    @id @default(uuid())
+  startupId             String    @map("startup_id")
+  documentVersionId     String    @map("document_version_id")
+  overallScore          Int?      @map("overall_score")
+  narrativeScore        Int?      @map("narrative_score")
+  marketValidationScore Int?      @map("market_validation_score")
+  financialScore        Int?      @map("financial_score")
+  summaryReport         String?   @map("summary_report")
+  sessionId             String?   @map("session_id")
+  requestedBy           String    @map("requested_by")
+  analysisType          String    @default("pitch_deck") @map("analysis_type")
+  schemaVersion         String    @default("pitch-deck.v1") @map("schema_version")
+  rubricVersion         String    @default("pitch-deck.v1") @map("rubric_version")
+  model                 String?
+  confidenceScore       Int?      @map("confidence_score")
+  result                Json?
+  status                String    @default("queued")
+  queuedAt              DateTime  @default(now()) @map("queued_at")
+  startedAt             DateTime? @map("started_at")
+  completedAt           DateTime? @map("completed_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  errorCode             String?   @map("error_code")
+  errorMessage          String?   @map("error_message")
+  createdAt             DateTime  @default(now()) @map("created_at")
 
-  startup         Startup           @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  documentVersion DocumentVersion   @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+  startup         Startup              @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  documentVersion DocumentVersion      @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+  session         AiChatSession?       @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  requester       User                 @relation("AiAnalysisRequester", fields: [requestedBy], references: [id])
   gapAnalyses     AiGapAnalysis[]
   personas        InvestorPersona[]
-  aiChatSessions  AiChatSession[]   @relation("AiChatSessionAnalysis")
+  evidence        AiAnalysisEvidence[]
+  artifacts       AiArtifact[]
+  runs            AiRun[]
 
   @@unique([startupId, id])
+  @@index([startupId, documentVersionId, createdAt])
+  @@index([startupId, sessionId, createdAt])
+  @@index([startupId, status, createdAt])
   @@map("ai_analyses")
 }
 
@@ -753,7 +808,8 @@ model AiGapAnalysis {
   recommendation String?
   severity       String?
 
-  analysis AiAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  analysis AiAnalysis           @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  evidence AiAnalysisEvidence[]
 
   @@map("ai_gap_analysis")
 }
@@ -766,6 +822,7 @@ model InvestorPersona {
 
   analysis  AiAnalysis        @relation(fields: [analysisId], references: [id], onDelete: Cascade)
   questions PersonaQuestion[]
+  sessions  AiChatSession[]   @relation("AiSessionPersona")
 
   @@map("investor_personas")
 }
@@ -783,32 +840,227 @@ model PersonaQuestion {
 // ─── AI CHAT ──────────────────────────────────────────────────────────────────
 
 model AiChatSession {
-  id         String   @id @default(uuid())
-  startupId  String   @map("startup_id")
-  userId     String   @map("user_id")
-  documentId String?  @map("document_id")
-  analysisId String?  @map("analysis_id")
-  createdAt  DateTime @default(now()) @map("created_at")
+  id            String    @id @default(uuid())
+  startupId     String    @map("startup_id")
+  userId        String    @map("user_id")
+  title         String?
+  roundId       String?   @map("round_id")
+  personaId     String?   @map("persona_id")
+  contextMode   String    @default("selected") @map("context_mode")
+  lastMessageAt DateTime? @map("last_message_at")
+  archivedAt    DateTime? @map("archived_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  startup  Startup         @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  user     User            @relation(fields: [userId], references: [id])
-  document Document?       @relation("AiChatSessionDocument", fields: [documentId, startupId], references: [id, startupId])
-  analysis AiAnalysis?     @relation("AiChatSessionAnalysis", fields: [analysisId, startupId], references: [id, startupId])
-  messages AiChatMessage[]
+  startup   Startup                 @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  user      User                    @relation(fields: [userId], references: [id])
+  round     FundraisingRound?       @relation(fields: [roundId, startupId], references: [id, startupId], onDelete: Restrict)
+  persona   InvestorPersona?        @relation("AiSessionPersona", fields: [personaId], references: [id], onDelete: SetNull)
+  messages  AiChatMessage[]
+  documents AiChatSessionDocument[]
+  analyses  AiAnalysis[]
+  artifacts AiArtifact[]
+  runs      AiRun[]
+  agentActions AiAgentAction[]
 
+  @@unique([startupId, id])
+  @@index([startupId, userId, archivedAt, lastMessageAt])
   @@map("ai_chat_sessions")
 }
 
 model AiChatMessage {
-  id        String   @id @default(uuid())
-  sessionId String   @map("session_id")
-  role      String
-  content   String
-  createdAt DateTime @default(now()) @map("created_at")
+  id                  String    @id @default(uuid())
+  sessionId           String    @map("session_id")
+  clientRequestId     String?   @map("client_request_id")
+  responseToMessageId String?   @unique @map("response_to_message_id")
+  role                String
+  content             String
+  status              String    @default("completed")
+  model               String?
+  structuredContent   Json?     @map("structured_content")
+  errorCode           String?   @map("error_code")
+  errorMessage        String?   @map("error_message")
+  inputTokens         Int?      @map("input_tokens")
+  outputTokens        Int?      @map("output_tokens")
+  timeToFirstTokenMs  Int?      @map("time_to_first_token_ms")
+  retrievalResultCount Int?     @map("retrieval_result_count")
+  retrievalMinScore   Float?    @map("retrieval_min_score")
+  retrievalMaxScore   Float?    @map("retrieval_max_score")
+  latencyMs           Int?      @map("latency_ms")
+  completedAt         DateTime? @map("completed_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
 
-  session AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session   AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  citations AiCitation[]
+  toolCalls AiToolCall[]
+  artifacts AiArtifact[]
+  runs      AiRun[]
+  agentActions AiAgentAction[]
 
+  @@unique([sessionId, clientRequestId])
+  @@index([sessionId, createdAt])
   @@map("ai_chat_messages")
+}
+
+model AiAgentAction {
+  id              String    @id @default(uuid())
+  startupId       String    @map("startup_id")
+  sessionId       String    @map("session_id")
+  messageId       String    @map("message_id")
+  userId          String    @map("user_id") // who it will act as
+  actionType      String    @map("action_type") // send_investor_email | schedule_meeting | create_task | log_interaction | update_deal_stage
+  status          String    @default("proposed") @map("status") // proposed | approved | executed | rejected | failed | expired
+  payload         Json // model-proposed, zod-validated
+  resolvedPayload Json?     @map("resolved_payload") // what was actually executed, after any user edit
+  resultRef       Json?     @map("result_ref") // { taskId } | { logId } | { gmailMessageId, gmailThreadId } | { eventId, htmlLink } | { pipelineId, stage }
+  errorCode       String?   @map("error_code")
+  approvedAt      DateTime? @map("approved_at")
+  executedAt      DateTime? @map("executed_at")
+  // A stale proposal in an old conversation cannot be approved next week
+  // against data that has since moved defaults to +24h from creation.
+  expiresAt       DateTime  @map("expires_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  startup Startup       @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  session AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  message AiChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User          @relation(fields: [userId], references: [id])
+
+  @@index([startupId, status, createdAt])
+  @@index([messageId])
+  @@map("ai_agent_actions")
+}
+
+model AiChatSessionDocument {
+  id                String   @id @default(uuid())
+  sessionId         String   @map("session_id")
+  documentId        String   @map("document_id")
+  documentVersionId String   @map("document_version_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  session         AiChatSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  document        Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentVersion DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, documentVersionId])
+  @@index([documentId])
+  @@map("ai_chat_session_documents")
+}
+
+model AiCitation {
+  id              String   @id @default(uuid())
+  messageId       String   @map("message_id")
+  sourceType      String   @map("source_type")
+  sourceId        String   @map("source_id")
+  documentChunkId String?  @map("document_chunk_id")
+  label           String
+  excerpt         String?
+  metadata        Json?
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  message AiChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId, sortOrder])
+  @@map("ai_citations")
+}
+
+model AiToolCall {
+  id            String   @id @default(uuid())
+  messageId     String   @map("message_id")
+  toolName      String   @map("tool_name")
+  arguments     Json
+  status        String
+  durationMs    Int?     @map("duration_ms")
+  errorCode     String?  @map("error_code")
+  resultSummary Json?    @map("result_summary")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  message AiChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId, createdAt])
+  @@map("ai_tool_calls")
+}
+
+model AiRun {
+  id                  String    @id @default(uuid())
+  startupId           String    @map("startup_id")
+  userId              String    @map("user_id")
+  sessionId           String?   @map("session_id")
+  messageId           String?   @map("message_id")
+  analysisId          String?   @map("analysis_id")
+  operationType       String    @map("operation_type")
+  provider            String
+  model               String
+  providerRequestId   String?   @map("provider_request_id")
+  status              String    @default("started")
+  inputTokens         Int?      @map("input_tokens")
+  cachedInputTokens   Int?      @map("cached_input_tokens")
+  outputTokens        Int?      @map("output_tokens")
+  latencyMs           Int?      @map("latency_ms")
+  estimatedCostMicros BigInt?   @map("estimated_cost_micros")
+  errorCode           String?   @map("error_code")
+  startedAt           DateTime  @default(now()) @map("started_at")
+  completedAt         DateTime? @map("completed_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  startup  Startup        @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  user     User           @relation(fields: [userId], references: [id])
+  session  AiChatSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  message  AiChatMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  analysis AiAnalysis?    @relation(fields: [analysisId], references: [id], onDelete: SetNull)
+
+  @@index([startupId, createdAt])
+  @@index([userId, createdAt])
+  @@index([sessionId, createdAt])
+  @@index([analysisId, createdAt])
+  @@index([status, createdAt])
+  @@map("ai_runs")
+}
+
+model AiAnalysisEvidence {
+  id              String   @id @default(uuid())
+  analysisId      String   @map("analysis_id")
+  gapAnalysisId   String?  @map("gap_analysis_id")
+  documentChunkId String   @map("document_chunk_id")
+  evidenceType    String   @map("evidence_type")
+  label           String
+  excerpt         String?
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  analysis      AiAnalysis     @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  gapAnalysis   AiGapAnalysis? @relation(fields: [gapAnalysisId], references: [id], onDelete: Cascade)
+  documentChunk DocumentChunk  @relation(fields: [documentChunkId], references: [id], onDelete: Cascade)
+
+  @@index([analysisId, sortOrder])
+  @@index([documentChunkId])
+  @@map("ai_analysis_evidence")
+}
+
+model AiArtifact {
+  id            String   @id @default(uuid())
+  startupId     String   @map("startup_id")
+  sessionId     String   @map("session_id")
+  messageId     String   @map("message_id")
+  analysisId    String?  @map("analysis_id")
+  artifactType  String   @map("artifact_type")
+  schemaVersion String   @map("schema_version")
+  title         String?
+  status        String   @default("building")
+  data          Json
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  startup  Startup       @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  session  AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  message  AiChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  analysis AiAnalysis?   @relation(fields: [analysisId], references: [id], onDelete: SetNull)
+
+  @@index([startupId, sessionId, createdAt])
+  @@index([messageId, createdAt])
+  @@index([analysisId, createdAt])
+  @@map("ai_artifacts")
 }
 
 // ─── TEAM CHAT ────────────────────────────────────────────────────────────────
@@ -848,7 +1100,7 @@ model ConversationMember {
   lastReadSeq BigInt?   @map("last_read_seq")
   lastReadAt  DateTime? @map("last_read_at")
 
-  notifyLevel String    @default("all") @map("notify_level")
+  notifyLevel String @default("all") @map("notify_level")
 
   conversation Conversation  @relation(fields: [conversationId, startupId], references: [id, startupId], onDelete: Cascade)
   member       StartupMember @relation(fields: [memberId, startupId], references: [id, startupId], onDelete: Cascade)
@@ -860,11 +1112,11 @@ model ConversationMember {
 }
 
 model Message {
-  id             String  @id @default(uuid())
-  startupId      String  @map("startup_id")
-  conversationId String  @map("conversation_id")
-  seq            BigInt  @default(autoincrement())
-  senderId       String? @map("sender_id")
+  id              String  @id @default(uuid())
+  startupId       String  @map("startup_id")
+  conversationId  String  @map("conversation_id")
+  seq             BigInt  @default(autoincrement())
+  senderId        String? @map("sender_id")
   parentMessageId String? @map("parent_message_id")
   replyCount      Int     @default(0) @map("reply_count")
 
@@ -899,10 +1151,10 @@ model MessageReaction {
   emoji     String
   createdAt DateTime @default(now()) @map("created_at")
 
-  startup Startup       @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  message Message       @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  startup Startup @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
-  member  StartupMember @relation(fields: [memberId, startupId], references: [id, startupId], onDelete: Cascade)
+  member StartupMember @relation(fields: [memberId, startupId], references: [id, startupId], onDelete: Cascade)
 
   @@unique([messageId, memberId, emoji])
   @@index([messageId])

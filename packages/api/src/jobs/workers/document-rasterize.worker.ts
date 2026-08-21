@@ -1,4 +1,5 @@
 import type { Job } from "bullmq";
+import { JOB_NAMES } from "../job-names";
 import { prisma } from "../../db/prisma";
 import { rasterizePdf } from "../../services/pdf-rasterize";
 import { storageService } from "../../services/storage.service";
@@ -19,7 +20,7 @@ export interface DocumentRasterizeJobData {
  * are IO-bound and much more latency-sensitive for in-app AI features.
  */
 export const documentRasterizeJob = {
-  name: "document-rasterize" as const,
+  name: JOB_NAMES.documentRasterize,
   concurrency: 1,
 
   async process(job: Job<DocumentRasterizeJobData>): Promise<{ pageCount: number }> {

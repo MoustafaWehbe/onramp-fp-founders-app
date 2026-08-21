@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
-import { useAuthContext } from "../../providers/AuthProvider";
+import { useAuthContext } from "../../providers/auth-context";
 import { toast } from "sonner";
 import type { AxiosError } from "axios";
 

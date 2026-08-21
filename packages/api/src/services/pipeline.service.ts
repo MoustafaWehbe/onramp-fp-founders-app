@@ -814,6 +814,31 @@ export class PipelineService {
     return { data: rows };
   }
 
+  /** Every deal in the round, grouped by stage in the canonical pipeline order. */
+  async getByStage(startupId: string, requestedRoundId?: string | null) {
+    const roundId = await this.resolveRoundId(startupId, requestedRoundId);
+    const entries = await prisma.pipeline.findMany({
+      where: { startupId, roundId },
+      select: ENTRY_SELECT,
+      orderBy: { sortOrder: "asc" },
+    });
+
+    const now = Date.now();
+    const dealsByStage = new Map<string, Array<ReturnType<typeof serializeEntry> & { daysInStage: number }>>();
+    for (const entry of entries) {
+      const daysInStage = Math.max(0, Math.floor((now - entry.stageChangedAt.getTime()) / (24 * 60 * 60 * 1000)));
+      const bucket = dealsByStage.get(entry.stage) ?? [];
+      bucket.push({ ...serializeEntry(entry), daysInStage });
+      dealsByStage.set(entry.stage, bucket);
+    }
+
+    const data = PIPELINE_STAGES.map((stage) => {
+      const deals = dealsByStage.get(stage) ?? [];
+      return { stage, count: deals.length, totalValue: deals.reduce((sum, deal) => sum + (deal.expectedAmount ?? 0), 0), deals };
+    });
+    return { data };
+  }
+
   /**
    * Most recent contact per investor, as two aggregates rather than a scan of
    * every log the startup has ever written.
@@ -895,7 +920,7 @@ export class PipelineService {
    */
   private async resolveRoundId(
     startupId: string,
-    requestedRoundId?: string,
+    requestedRoundId?: string | null,
     options: { forNewDeal?: boolean } = {},
   ): Promise<string> {
     if (requestedRoundId) {

@@ -111,7 +111,7 @@ export function FundingHistoryChart({
     enabled: Boolean(roundId),
   });
 
-  const events = historyQuery.data ?? [];
+  const events = useMemo(() => historyQuery.data ?? [], [historyQuery.data]);
   const series = useMemo(() => buildMonthlySeries(events, range), [events, range]);
   const current = series.at(-1)?.value ?? 0;
   const bodyClass = matchSiblingHeight ? "min-h-[220px] flex-1" : "h-[220px]";

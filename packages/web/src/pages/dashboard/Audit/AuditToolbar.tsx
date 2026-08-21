@@ -6,20 +6,7 @@ import { Label } from "../../../components/ui/label";
 import { MultiSelect } from "../../../components/ui/multi-select";
 import type { AuditLogFacets } from "../../../lib/audit-api";
 import { actionLabel, entityLabel } from "./audit-meta";
-
-export type AuditFilters = {
-  actions: string[];
-  entityTypes: string[];
-  from: Date | null;
-  to: Date | null;
-};
-
-export const EMPTY_AUDIT_FILTERS: AuditFilters = {
-  actions: [],
-  entityTypes: [],
-  from: null,
-  to: null,
-};
+import { EMPTY_AUDIT_FILTERS, type AuditFilters } from "./audit-filters";
 
 type AuditToolbarProps = {
   search: string;

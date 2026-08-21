@@ -1,6 +1,7 @@
 import rateLimit, { type Store } from "express-rate-limit";
 import { RedisStore } from "rate-limit-redis";
 import { getRedis } from "../db/redis";
+import { getAiConfig } from "../config/ai";
 
 const WINDOW_MS = 15 * 60 * 1_000; // 15 minutes
 
@@ -150,5 +151,23 @@ export const reviewerTelemetryRateLimiter = rateLimit({
   keyGenerator: (req) => req.reviewer?.sessionId ?? req.ip ?? "unknown",
   message: {
     error: "Too many telemetry updates, please wait before retrying.",
+  },
+});
+
+/**
+ * AI prompts have a separate, deliberately small user budget. It prevents a
+ * single member from exhausting model capacity while leaving ordinary API
+ * traffic governed by the global limiter above.
+ */
+export const aiMessageRateLimiter = rateLimit({
+  windowMs: 60 * 1_000,
+  limit: () => getAiConfig().messagesPerMinute,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  store: makeStore("ai-message"),
+  keyGenerator: (req) => req.user?.userId ?? req.ip ?? "unknown",
+  message: {
+    code: "AI_MESSAGE_RATE_LIMITED",
+    error: "AI message limit reached. Please wait a moment before trying again.",
   },
 });

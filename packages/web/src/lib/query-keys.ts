@@ -18,6 +18,8 @@ import type { QueryClient } from "@tanstack/react-query";
  *   `undefined` in the tuple, so the same round always serialises the same way.
  */
 export const qk = {
+  aiSessions: (startupId: string) => ["ai-sessions", startupId] as const,
+
   rounds: (startupId: string) => ["fundraising-rounds", startupId] as const,
 
   /**

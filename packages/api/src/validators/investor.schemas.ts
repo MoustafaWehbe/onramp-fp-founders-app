@@ -46,6 +46,14 @@ const fullNameSchema = z
   .min(2, "Full name must be at least 2 characters")
   .max(150, "Full name must be at most 150 characters");
 
+const optionalCheckSize = (label: string) =>
+  z
+    .union([
+      z.number({ invalid_type_error: `${label} must be a number` }).finite(`${label} must be a finite number`).min(0, `${label} must be at least 0`),
+      z.null(),
+    ])
+    .optional();
+
 const investorFields = {
   email: optionalEmail,
   ventureFirm: optionalText(150, "Venture firm"),
@@ -55,6 +63,14 @@ const investorFields = {
   linkedinUrl: optionalLinkedinUrl,
   notes: optionalText(2000, "Notes"),
   source: optionalText(100, "Source"),
+  // The stable "who is this investor" profile the AI copilot reads from,
+  // distinct from `notes` above (a running scratchpad — see schema.prisma).
+  description: optionalText(2000, "Description"),
+  checkSizeMin: optionalCheckSize("checkSizeMin"),
+  checkSizeMax: optionalCheckSize("checkSizeMax"),
+  geographyFocus: optionalText(200, "Geography focus"),
+  portfolioHighlights: optionalText(2000, "Portfolio highlights"),
+  warmIntroPath: optionalText(500, "Warm intro path"),
 };
 
 export const createInvestorSchema = z.object({

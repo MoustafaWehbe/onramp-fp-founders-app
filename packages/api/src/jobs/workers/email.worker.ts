@@ -1,9 +1,10 @@
 import type { Job } from "bullmq";
 import { resend } from "../../config/email";
 import type { EmailJobData, EmailJobResult } from "../../types";
+import { JOB_NAMES } from "../job-names";
 
 export const emailJob = {
-  name: "email" as const,
+  name: JOB_NAMES.email,
   concurrency: 10,
 
   async process(job: Job<EmailJobData, EmailJobResult>): Promise<EmailJobResult> {

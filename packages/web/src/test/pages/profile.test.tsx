@@ -10,6 +10,7 @@ const PROFILE_USER = {
   email: "ada@example.com",
   firstName: "Ada",
   lastName: "Lovelace",
+  title: null as string | null,
   avatarUrl: "https://images.example.com/ada.jpg",
 };
 
@@ -58,5 +59,16 @@ describe("Profile", () => {
     expect(uploadAvatar).not.toHaveBeenCalled();
     // Names were untouched, so there's nothing for updateProfile to do.
     expect(updateProfile).not.toHaveBeenCalled();
+  });
+
+  it("saves an edited title, used to sign off AI-drafted emails, without touching name", async () => {
+    const user = userEvent.setup();
+    render(<Profile />);
+
+    const titleField = screen.getByLabelText("Title");
+    await user.type(titleField, "Co-Founder & CEO");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(updateProfile).toHaveBeenCalledWith({ title: "Co-Founder & CEO" });
   });
 });

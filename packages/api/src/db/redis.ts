@@ -19,3 +19,10 @@ export function getRedis(): IORedis {
   }
   return redis;
 }
+
+export async function closeRedis(): Promise<void> {
+  if (!redis) return;
+  const connection = redis;
+  redis = null;
+  await connection.quit();
+}

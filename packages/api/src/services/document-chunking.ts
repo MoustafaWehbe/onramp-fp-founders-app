@@ -3,6 +3,24 @@ import { encode } from "gpt-tokenizer";
 const TARGET_TOKENS = 650;
 const OVERLAP_RATIO = 0.15;
 
+const NAMED_HTML_ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: " " };
+
+/**
+ * LlamaParse's markdown can carry literal HTML entities (e.g. "&#x26;" for "&")
+ * from the source document's XML. Decoding once here — before any char-offset
+ * math — keeps section labels, excerpts, and the text sent to the model clean;
+ * doing it after chunking would desync charStart/charEnd against the stored text.
+ */
+function decodeHtmlEntities(text: string): string {
+  return text.replace(/&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z]+);/g, (match, entity: string) => {
+    if (entity[0] === "#") {
+      const codePoint = entity[1] === "x" || entity[1] === "X" ? parseInt(entity.slice(2), 16) : parseInt(entity.slice(1), 10);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match;
+    }
+    return NAMED_HTML_ENTITIES[entity] ?? match;
+  });
+}
+
 export type TextChunk = {
   chunkIndex: number;
   content: string;
@@ -81,7 +99,7 @@ function windowByTokens(text: string, baseOffset: number, sectionLabel: string |
 
 /** Split LlamaParse (or plain) markdown into overlapping token windows. */
 export function chunkMarkdown(markdown: string): TextChunk[] {
-  const sections = splitMarkdownSections(markdown);
+  const sections = splitMarkdownSections(decodeHtmlEntities(markdown));
   const out: TextChunk[] = [];
   for (const section of sections) {
     const next = windowByTokens(section.body, section.start, section.label, out.length);

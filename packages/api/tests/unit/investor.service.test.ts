@@ -187,14 +187,34 @@ describe("InvestorService.listInvestors", () => {
 
     const { where } = (mockPrisma.startupInvestor.findMany as jest.Mock).mock.calls[0][0];
     expect(where.AND[0].OR).toEqual([
-      { fullName: { contains: "accel", mode: "insensitive" } },
+      { AND: [{ fullName: { contains: "accel", mode: "insensitive" } }] },
       { email: { contains: "accel", mode: "insensitive" } },
       { ventureFirm: { contains: "accel", mode: "insensitive" } },
+      { sectorFocus: { contains: "accel", mode: "insensitive" } },
+      { description: { contains: "accel", mode: "insensitive" } },
     ]);
     expect(where.AND[1].OR).toEqual([
       { pipeline: { some: {} } },
       { interactionLogs: { some: {} } },
     ]);
+  });
+
+  it("matches a full name search token-by-token, so a name typed slightly wrong (a missing letter) still matches", async () => {
+    // "Sara Chen" is not a contiguous substring of "Sarah Chen", but every
+    // word the caller typed is present in the name — this is the search
+    // bug reported when the AI copilot looked up "Sara Chen" and got no results.
+    mockCounts(1, 0);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.listInvestors(STARTUP_ID, { ...DEFAULT_QUERY, search: "Sara Chen" } as never);
+
+    const { where } = (mockPrisma.startupInvestor.findMany as jest.Mock).mock.calls[0][0];
+    expect(where.OR[0]).toEqual({
+      AND: [
+        { fullName: { contains: "Sara", mode: "insensitive" } },
+        { fullName: { contains: "Chen", mode: "insensitive" } },
+      ],
+    });
   });
 
   it("keeps the stage filter when an engagement tab is selected", async () => {
@@ -222,7 +242,7 @@ describe("InvestorService.listInvestors", () => {
     const countCalls = (mockPrisma.startupInvestor.count as jest.Mock).mock.calls;
     for (const [{ where }] of countCalls) {
       expect(where.AND[0].OR).toEqual(
-        expect.arrayContaining([{ fullName: { contains: "seed", mode: "insensitive" } }]),
+        expect.arrayContaining([{ AND: [{ fullName: { contains: "seed", mode: "insensitive" } }] }]),
       );
     }
   });
@@ -403,9 +423,11 @@ describe("InvestorService.listInvestors", () => {
 
     const { where } = (mockPrisma.startupInvestor.findMany as jest.Mock).mock.calls[0][0];
     expect(where.OR).toEqual([
-      { fullName: { contains: "accel", mode: "insensitive" } },
+      { AND: [{ fullName: { contains: "accel", mode: "insensitive" } }] },
       { email: { contains: "accel", mode: "insensitive" } },
       { ventureFirm: { contains: "accel", mode: "insensitive" } },
+      { sectorFocus: { contains: "accel", mode: "insensitive" } },
+      { description: { contains: "accel", mode: "insensitive" } },
     ]);
   });
 

@@ -17,6 +17,18 @@ export const MENTION_TARGET_TYPES = [
 
 export type MentionTargetType = (typeof MENTION_TARGET_TYPES)[number];
 
+const UNFURLABLE_MENTION_TYPES = new Set<MentionTargetType>([
+  "investor",
+  "deal",
+  "task",
+  "round",
+  "document",
+]);
+
+export function isUnfurlableMention(type: MentionTargetType): boolean {
+  return UNFURLABLE_MENTION_TYPES.has(type);
+}
+
 export const MENTION_TYPE_LABELS: Record<MentionTargetType, string> = {
   member: "People",
   investor: "Investors",

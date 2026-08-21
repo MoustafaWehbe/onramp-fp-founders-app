@@ -31,9 +31,9 @@ services:
 
   # Runs the BullMQ job worker (including DOCX/PPTX->PDF rasterization) with
   # LibreOffice installed — see Dockerfile.worker. Not part of the default
-  # local dev loop (`npm run dev`/`npm run worker` run the worker on the host
-  # instead, without office-document conversion); start this explicitly with
-  # `docker compose up worker` when you need to exercise that path.
+  # API process. Use this service (the default with `docker compose up -d`) or
+  # `npm run worker` on the host, without office-document conversion. Do not
+  # run both worker processes at once, or each will compete for the same jobs.
   # Requires packages/api/.env to exist, same as the host `worker` script.
   worker:
     build:

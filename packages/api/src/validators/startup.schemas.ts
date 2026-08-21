@@ -11,6 +11,41 @@ const fundingStageEnum = z.enum(["pre_seed", "seed", "series_a", "series_b", "se
   errorMap: () => ({ message: "Invalid funding stage" }),
 });
 
+function optionalText(max: number, label: string) {
+  return z
+    .union([z.string().trim().max(max, `${label} must be at most ${max} characters`), z.null()])
+    .transform((value) => (value === null || value === "" ? null : value))
+    .optional();
+}
+
+// z.coerce.date() runs `new Date(input)` on whatever it's given null, false,
+// and 0 all coerce to the 1970 epoch instead of failing. Only strings and Date
+// instances are legitimate wire representations of a datetime, so anything
+// else is forced to NaN first, which z.coerce.date() reliably rejects.
+function coercedDate(label: string) {
+  return z.preprocess(
+    (value) => (typeof value === "string" || value instanceof Date ? value : NaN),
+    z.coerce.date({ invalid_type_error: `${label} must be a valid datetime` }),
+  );
+}
+
+// Structured comparables the AI copilot reads to judge investor/pitch fit.
+// All nullable and all optional in the UI no migration backfill, no
+// required-at-creation gate.
+const profileFields = {
+  oneLiner: optionalText(200, "One-liner"),
+  problemStatement: optionalText(2000, "Problem statement"),
+  solutionSummary: optionalText(2000, "Solution summary"),
+  targetMarket: optionalText(1000, "Target market"),
+  businessModel: optionalText(2000, "Business model"),
+  tractionSummary: optionalText(2000, "Traction summary"),
+  competitiveEdge: optionalText(2000, "Competitive edge"),
+  headquarters: optionalText(200, "Headquarters"),
+  foundedAt: z.union([z.null(), coercedDate("foundedAt")]).optional(),
+  teamSummary: optionalText(2000, "Team summary"),
+};
+const PROFILE_FIELD_NAMES = Object.keys(profileFields) as Array<keyof typeof profileFields>;
+
 export const createStartupSchema = z.object({
   name: z
     .string()
@@ -54,6 +89,7 @@ export const updateStartupSchema = z
     website: z.string().trim().url("Website must be a valid URL").optional(),
     funding_stage: fundingStageEnum.optional(),
     fundingStage: fundingStageEnum.optional(),
+    ...profileFields,
   })
   .refine(
     (data) =>
@@ -62,7 +98,8 @@ export const updateStartupSchema = z
       data.industry !== undefined ||
       data.website !== undefined ||
       data.funding_stage !== undefined ||
-      data.fundingStage !== undefined,
+      data.fundingStage !== undefined ||
+      PROFILE_FIELD_NAMES.some((field) => data[field] !== undefined),
     { message: "At least one field is required" },
   )
   .transform((data) => ({
@@ -73,6 +110,16 @@ export const updateStartupSchema = z
     ...((data.fundingStage ?? data.funding_stage) !== undefined && {
       fundingStage: data.fundingStage ?? data.funding_stage,
     }),
+    ...(data.oneLiner !== undefined && { oneLiner: data.oneLiner }),
+    ...(data.problemStatement !== undefined && { problemStatement: data.problemStatement }),
+    ...(data.solutionSummary !== undefined && { solutionSummary: data.solutionSummary }),
+    ...(data.targetMarket !== undefined && { targetMarket: data.targetMarket }),
+    ...(data.businessModel !== undefined && { businessModel: data.businessModel }),
+    ...(data.tractionSummary !== undefined && { tractionSummary: data.tractionSummary }),
+    ...(data.competitiveEdge !== undefined && { competitiveEdge: data.competitiveEdge }),
+    ...(data.headquarters !== undefined && { headquarters: data.headquarters }),
+    ...(data.foundedAt !== undefined && { foundedAt: data.foundedAt }),
+    ...(data.teamSummary !== undefined && { teamSummary: data.teamSummary }),
   }));
 
 export const startupIdParamSchema = z.object({

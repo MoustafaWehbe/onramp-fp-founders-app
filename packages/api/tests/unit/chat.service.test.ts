@@ -282,6 +282,63 @@ describe("ChatService.listConversations", () => {
   });
 });
 
+describe("ChatService.searchMessages", () => {
+  it("scopes the query through the caller's own ConversationMember rows, never by startupId alone", async () => {
+    (mockPrisma.message.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.searchMessages(STARTUP_ID, MEMBER_ID, "Ana Ruiz");
+
+    expect(mockPrisma.message.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          startupId: STARTUP_ID,
+          deletedAt: null,
+          conversation: { members: { some: { memberId: MEMBER_ID } }, archivedAt: null },
+        }),
+      }),
+    );
+  });
+
+  it("keys the membership filter on the caller's own member id, not the message sender's", async () => {
+    (mockPrisma.message.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.searchMessages(STARTUP_ID, OTHER_MEMBER_ID, "confidential");
+
+    const { where } = (mockPrisma.message.findMany as jest.Mock).mock.calls[0][0];
+    expect(where.conversation.members.some.memberId).toBe(OTHER_MEMBER_ID);
+  });
+
+  it("excludes soft-deleted messages and archived conversations", async () => {
+    (mockPrisma.message.findMany as jest.Mock).mockResolvedValue([]);
+    await service.searchMessages(STARTUP_ID, MEMBER_ID, "term sheet");
+    const { where } = (mockPrisma.message.findMany as jest.Mock).mock.calls[0][0];
+    expect(where.deletedAt).toBeNull();
+    expect(where.conversation.archivedAt).toBeNull();
+  });
+
+  it("caps results at 30 and truncates long messages to 400 characters", async () => {
+    const longBody = "x".repeat(1000);
+    (mockPrisma.message.findMany as jest.Mock).mockResolvedValue([
+      { id: "m-1", conversationId: CONVERSATION_ID, body: longBody, createdAt: new Date(), conversation: { type: "channel", name: "fundraising" }, sender: { user: { firstName: "Ana", lastName: "Ruiz" } } },
+    ]);
+
+    const result = await service.searchMessages(STARTUP_ID, MEMBER_ID, "x", 500);
+
+    expect((mockPrisma.message.findMany as jest.Mock).mock.calls[0][0].take).toBe(30);
+    expect(result.data[0].excerpt.length).toBe(401); // 400 chars + ellipsis
+    expect(result.data[0].sender).toBe("Ana Ruiz");
+    expect(result.data[0].conversationName).toBe("fundraising");
+  });
+
+  it("labels a DM generically rather than naming the other participant", async () => {
+    (mockPrisma.message.findMany as jest.Mock).mockResolvedValue([
+      { id: "m-1", conversationId: CONVERSATION_ID, body: "hey", createdAt: new Date(), conversation: { type: "dm", name: null }, sender: { user: { firstName: "Ana", lastName: "Ruiz" } } },
+    ]);
+    const result = await service.searchMessages(STARTUP_ID, MEMBER_ID, "hey");
+    expect(result.data[0].conversationName).toBe("Direct message");
+  });
+});
+
 describe("ChatService.listMessages", () => {
   it("throws CONVERSATION_NOT_FOUND when the caller is not a member", async () => {
     (mockPrisma.conversationMember.findUnique as jest.Mock).mockResolvedValue(null);

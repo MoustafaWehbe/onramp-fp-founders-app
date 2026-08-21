@@ -107,13 +107,12 @@ describe("ReviewerInvitationService.createInvitation", () => {
     ).rejects.toMatchObject({ code: "UNSUPPORTED_SHARE_FORMAT" });
   });
 
-  it("allows a DOCX version through the format gate now that Phase 5 converts it", async () => {
+  it("allows a rendered DOCX version through the format gate", async () => {
     mockPrisma.documentVersion.findMany.mockResolvedValue([
       {
         id: VERSION_A,
         documentId: "doc-1",
         mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        // Format gate accepts DOCX, but sharing still waits for rasterize to finish.
         renderStatus: "ready",
       },
     ] as never);

@@ -8,6 +8,7 @@ const USER_PROFILE_SELECT = {
   email: true,
   firstName: true,
   lastName: true,
+  title: true,
   avatarUrl: true,
   avatarStorageKey: true,
   emailVerifiedAt: true,

@@ -68,7 +68,7 @@ describe("AcceptInvite", () => {
 
   it("adopts the joined workspace and points a signed-in user at the dashboard", async () => {
     authState = {
-      user: { id: "u-1", email: "a@b.co", firstName: "A", lastName: "B", avatarUrl: null },
+      user: { id: "u-1", email: "a@b.co", firstName: "A", lastName: "B", title: null, avatarUrl: null },
       isLoading: false,
     };
     acceptInvite.mockResolvedValue({ status: "accepted", member: MEMBER });
@@ -96,7 +96,7 @@ describe("AcceptInvite", () => {
 
   it("does not switch workspace when signed in as the wrong account", async () => {
     authState = {
-      user: { id: "someone-else", email: "x@y.co", firstName: "X", lastName: "Y", avatarUrl: null },
+      user: { id: "someone-else", email: "x@y.co", firstName: "X", lastName: "Y", title: null, avatarUrl: null },
       isLoading: false,
     };
     acceptInvite.mockRejectedValue(

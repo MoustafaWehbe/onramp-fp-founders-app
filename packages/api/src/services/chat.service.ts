@@ -393,6 +393,46 @@ export class ChatService {
     return { data: rows.reverse().map((row) => serializeMessage(row, memberId)) };
   }
 
+  /**
+   * Full-text-ish search across every conversation the caller is a member of
+   * including DMs they are actually in, never DMs about them. Scoped the
+   * same way listConversations is (`members: { some: { memberId } }`), so a
+   * caller can never see a conversation membership alone did not grant. Built
+   * for the AI copilot's search_team_messages tool: capped and truncated so
+   * one query cannot pull an unbounded amount of team chat into a prompt.
+   */
+  async searchMessages(startupId: string, memberId: string, query: string, limit = 30) {
+    const rows = await prisma.message.findMany({
+      where: {
+        startupId,
+        deletedAt: null,
+        body: { contains: query, mode: "insensitive" },
+        conversation: { members: { some: { memberId } }, archivedAt: null },
+      },
+      select: {
+        id: true,
+        conversationId: true,
+        body: true,
+        createdAt: true,
+        conversation: { select: { type: true, name: true } },
+        sender: { select: { user: { select: { firstName: true, lastName: true } } } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: Math.min(limit, 30),
+    });
+
+    return {
+      data: rows.map((row) => ({
+        id: row.id,
+        conversationId: row.conversationId,
+        conversationName: row.conversation.type === "dm" ? "Direct message" : row.conversation.name ?? "Unnamed channel",
+        sender: this.senderDisplayName(row.sender?.user ?? null),
+        excerpt: row.body.length > 400 ? `${row.body.slice(0, 400)}…` : row.body,
+        createdAt: row.createdAt,
+      })),
+    };
+  }
+
   /** Every reply to one top-level message, oldest first. */
   async listReplies(
     startupId: string,

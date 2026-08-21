@@ -4,7 +4,8 @@ import { cn, getInitials } from "../../lib/utils";
 import { collectMentionRefs } from "../../lib/mentions";
 import type { Message, ResolvedMention } from "../../lib/chat-api";
 import { MessageBody } from "./MessageBody";
-import { EntityUnfurl, isUnfurlable } from "./EntityUnfurl";
+import { EntityUnfurl } from "./EntityUnfurl";
+import { isUnfurlableMention } from "../../lib/mentions";
 import { MessageHoverActions } from "./MessageHoverActions";
 import { ReactionRow } from "./ReactionRow";
 
@@ -37,7 +38,7 @@ type MessageItemProps = {
 
 /** One chat message avatar, name, time, body with reference chips, attachments, reactions, and any unfurl cards. Shared by MessageThread, ThreadDialog and DiscussionTab so a message renders identically everywhere. */
 export function MessageItem({ message, resolved, grouped, meta, onReact, onOpenThread, onDelete }: MessageItemProps) {
-  const refs = collectMentionRefs(message.body).filter((ref) => isUnfurlable(ref.type));
+  const refs = collectMentionRefs(message.body).filter((ref) => isUnfurlableMention(ref.type));
   const hasReplies = message.replyCount > 0;
   const isDeleted = message.deletedAt !== null;
 

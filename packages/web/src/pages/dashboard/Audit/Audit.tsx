@@ -10,7 +10,8 @@ import { useActiveStartupId } from "../../../hooks/useWorkspace";
 import { apiErrorMessage } from "../../../lib/api-error";
 import { exportAuditLogsCsv, getAuditLogFacets, listAuditLogs } from "../../../lib/audit-api";
 import { AuditTimeline } from "./AuditTimeline";
-import { AuditToolbar, EMPTY_AUDIT_FILTERS, type AuditFilters } from "./AuditToolbar";
+import { AuditToolbar } from "./AuditToolbar";
+import { EMPTY_AUDIT_FILTERS, type AuditFilters } from "./audit-filters";
 
 const PAGE_SIZE = 30;
 
