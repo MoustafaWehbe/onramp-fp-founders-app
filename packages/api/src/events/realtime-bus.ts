@@ -19,7 +19,7 @@
  * tests do not need Redis.
  */
 
-import { createRedis, getRedis } from "../db/redis";
+import { createRealtimePublisher, createRedis } from "../db/redis";
 import type IORedis from "ioredis";
 
 export type NotificationEvent =
@@ -135,7 +135,7 @@ export class InProcessRealtimeBus implements RealtimeBus {
  */
 export class RedisRealtimeBus implements RealtimeBus {
   private readonly local = new Map<string, Set<Subscriber>>();
-  private readonly publisher = getRedis();
+  private readonly publisher = createRealtimePublisher();
   private subscriber: IORedis | null = null;
 
   private ensureSubscriber(): IORedis {
@@ -166,7 +166,8 @@ export class RedisRealtimeBus implements RealtimeBus {
 
   publish(userId: string, event: RealtimeEvent): void {
     void this.publisher.publish(channelFor(userId), JSON.stringify(event)).catch((err) => {
-      console.error("[realtime-bus] redis publish failed:", err);
+      // Dropped on purpose when Redis is down — see createRealtimePublisher.
+      console.error("[realtime-bus] redis publish dropped:", err);
     });
   }
 

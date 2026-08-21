@@ -113,6 +113,9 @@ export function FundingHistoryChart({
 
   const events = historyQuery.data ?? [];
   const series = useMemo(() => buildMonthlySeries(events, range), [events, range]);
+  // Events with missing/invalid dates are dropped in buildMonthlySeries — empty
+  // chart data should show the empty state, not a zero badge over a blank plot.
+  const hasSeries = series.length > 0;
   const current = series.at(-1)?.value ?? 0;
   const bodyClass = matchSiblingHeight ? "min-h-[220px] flex-1" : "h-[220px]";
 
@@ -172,7 +175,7 @@ export function FundingHistoryChart({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {!historyQuery.isPending && !historyQuery.isError && events.length > 0 && (
+          {!historyQuery.isPending && !historyQuery.isError && hasSeries && (
             <span className="rounded-full border border-success/20 bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">
               {formatCompactMoney(current, currency)}
             </span>
@@ -189,9 +192,9 @@ export function FundingHistoryChart({
                 aria-pressed={range === option.value}
                 onClick={() => setRange(startupId, option.value)}
                 className={cn(
-                  "rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
+                  "rounded-md px-2 py-1 text-[11px] font-medium shadow-sm transition-colors",
                   range === option.value
-                    ? "bg-card text-foreground shadow-sm"
+                    ? "bg-card text-foreground"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -223,7 +226,7 @@ export function FundingHistoryChart({
         </div>
       )}
 
-      {!historyQuery.isPending && !historyQuery.isError && events.length === 0 && (
+      {!historyQuery.isPending && !historyQuery.isError && !hasSeries && (
         <div
           className={cn(
             "flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/70 text-center",
@@ -238,7 +241,7 @@ export function FundingHistoryChart({
         </div>
       )}
 
-      {!historyQuery.isPending && !historyQuery.isError && events.length > 0 && (
+      {!historyQuery.isPending && !historyQuery.isError && hasSeries && (
         <div
           className={cn(matchSiblingHeight ? "relative min-h-[220px] flex-1" : "h-[220px]")}
           aria-label="Funding progress chart"

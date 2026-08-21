@@ -268,9 +268,9 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     fullName: "Hiroshi Sato",
     email: "h.sato@globalbrain.example.com",
     ventureFirm: "Global Brain",
-    investorType: "vc",
+      investorType: "vc",
     sectorFocus: "Enterprise software",
-    investmentStagePreference: "seed",
+      investmentStagePreference: "seed",
     source: "conference",
     deals: [
       {
@@ -310,13 +310,13 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
   // ── Contacted ──────────────────────────────────────────────────────────────
   {
     key: "marcus",
-    fullName: "Marcus Webb",
-    email: "marcus.webb@indexventures.example.com",
-    ventureFirm: "Index Ventures",
-    investorType: "vc",
-    sectorFocus: "Developer tools",
-    investmentStagePreference: "seed",
-    source: "warm_intro",
+      fullName: "Marcus Webb",
+      email: "marcus.webb@indexventures.example.com",
+      ventureFirm: "Index Ventures",
+      investorType: "vc",
+      sectorFocus: "Developer tools",
+      investmentStagePreference: "seed",
+      source: "warm_intro",
     notes: "Wants to meet the full founding team before going further.",
     notesAuthorKey: "muhamad",
     notesEditorKey: "raymond",
@@ -423,13 +423,13 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
   // ── Meeting scheduled ──────────────────────────────────────────────────────
   {
     key: "james",
-    fullName: "James O'Brien",
-    email: "james.obrien@accel.example.com",
-    ventureFirm: "Accel",
-    investorType: "vc",
-    sectorFocus: "B2B SaaS",
-    investmentStagePreference: "series_a",
-    source: "outbound",
+      fullName: "James O'Brien",
+      email: "james.obrien@accel.example.com",
+      ventureFirm: "Accel",
+      investorType: "vc",
+      sectorFocus: "B2B SaaS",
+      investmentStagePreference: "series_a",
+      source: "outbound",
     notes: "Asked for cohort retention split by segment ahead of the partner meeting.",
     notesAuthorKey: "raymond",
     notesAgeDays: 3,
@@ -883,11 +883,11 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
   // ── Passed ─────────────────────────────────────────────────────────────────
   {
     key: "victor",
-    fullName: "Victor Alvarez",
-    email: "victor.alvarez@bessemer.example.com",
-    ventureFirm: "Bessemer",
-    investorType: "vc",
-    source: "outbound",
+      fullName: "Victor Alvarez",
+      email: "victor.alvarez@bessemer.example.com",
+      ventureFirm: "Bessemer",
+      investorType: "vc",
+      source: "outbound",
     notes: "Passed — too early for the current fund. Revisit at Series A.",
     notesAuthorKey: "muhamad",
     notesAgeDays: 22,
@@ -976,9 +976,9 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     // No email and no deal both nullable paths the Investors list has to
     // render (the per-startup email uniqueness only applies to non-null values).
     key: "yuki",
-    fullName: "Yuki Tanaka",
-    investorType: "other",
-    source: "event",
+      fullName: "Yuki Tanaka",
+      investorType: "other",
+      source: "event",
     notes: "Met briefly at a meetup — no contact details yet.",
     notesAuthorKey: "lopna",
     notesAgeDays: 11,
@@ -1430,7 +1430,7 @@ async function seedWorkspace(
           id: nextId(G.PIPELINE),
       startupId: startup.id,
           roundId: round.id,
-          startupInvestorId: contact.id,
+        startupInvestorId: contact.id,
           stage: deal.stage,
           expectedAmount: deal.expectedAmount ?? null,
           probabilityPercentage: deal.probabilityPercentage ?? null,
@@ -1475,8 +1475,8 @@ async function seedWorkspace(
       const commitment = await prisma.commitment.create({
         data: {
           id: nextId(G.COMMITMENT),
-      startupId: startup.id,
-          startupInvestorId: contact.id,
+        startupId: startup.id,
+        startupInvestorId: contact.id,
           pipelineId: entry.id,
           roundId: round.id,
           amount,
@@ -1484,8 +1484,8 @@ async function seedWorkspace(
           expectedCloseDate:
             expectedCloseInDays === undefined ? null : days(expectedCloseInDays),
           createdAt: days(-history[0].daysAgo),
-    },
-  });
+      },
+    });
       commitmentCount += 1;
 
       // Status history without these the funding chart can only plot the day
@@ -1516,7 +1516,7 @@ async function seedWorkspace(
       await prisma.interactionLog.create({
         data: {
           id: nextId(G.LOG),
-          startupInvestorId: contact.id,
+        startupInvestorId: contact.id,
           pipelineId: entry?.id ?? null,
           createdBy: usersByKey.get(log.authorKey ?? spec.creatorKey)!.id,
           type: log.type,
@@ -1629,15 +1629,15 @@ async function seedChat(
     return prisma.message.create({
       data: {
         id: nextId(G.MESSAGE),
-        startupId: startup.id,
+      startupId: startup.id,
         conversationId,
         senderId: senderMemberId,
         body,
         clientNonce: nextNonce(),
         parentMessageId: parentMessageId ?? null,
         createdAt,
-      },
-    });
+    },
+  });
   }
 
   async function mention(conversationId: string, messageId: string, type: MentionTargetType, targetId: string) {
@@ -1657,13 +1657,13 @@ async function seedChat(
     await prisma.messageMention.create({
       data: {
         id: nextId(G.MESSAGE_MENTION),
-        startupId: startup.id,
+      startupId: startup.id,
         messageId,
         conversationId,
         targetType: type,
         ...column,
-      },
-    });
+    },
+  });
   }
 
   async function react(messageId: string, memberId: string, emoji: string) {
@@ -1683,8 +1683,8 @@ async function seedChat(
           joinedAt: days(-120),
           lastReadSeq: readSeq,
           lastReadAt: readAt,
-        },
-      });
+    },
+  });
     }
   }
 
@@ -2182,10 +2182,10 @@ async function main() {
         id: nextId(G.AUDIT),
         startupId: northbeam.startup.id,
         userId: muhamad.id,
-        ipAddress: "127.0.0.1",
+      ipAddress: "127.0.0.1",
         ...audit,
-      },
-    });
+    },
+  });
   }
 
   // 8. Ready data-room documents (TXT so parse works without LlamaParse).
@@ -2248,7 +2248,7 @@ Notes: figures are illustrative seed data for local demos.
         documentType: docSeed.documentType,
         createdBy: muhamad.id,
         versions: {
-          create: {
+    create: {
             id: versionId,
             versionNumber: 1,
             isCurrent: true,
@@ -2273,8 +2273,8 @@ Notes: figures are illustrative seed data for local demos.
             },
           },
         },
-      },
-    });
+    },
+  });
   }
 
   // 9. A rendered PDF and a "converted" PPTX so the secure reviewer viewer has
@@ -2314,7 +2314,7 @@ Notes: figures are illustrative seed data for local demos.
         documentType: spec.documentType,
         createdBy: muhamad.id,
         versions: {
-          create: {
+    create: {
             id: versionId,
             versionNumber: 1,
             isCurrent: true,
@@ -2330,8 +2330,8 @@ Notes: figures are illustrative seed data for local demos.
             uploadedBy: muhamad.id,
           },
         },
-      },
-    });
+    },
+  });
 
     for (let pageNumber = 1; pageNumber <= spec.pageCount; pageNumber++) {
       const view = await placeholderPage(
