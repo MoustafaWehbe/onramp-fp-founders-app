@@ -477,10 +477,12 @@ describe("Pipeline board", () => {
         expect.objectContaining({ search: "northwind" }),
       ),
     );
-    // The matching request has been sent, but its response still has to land
-    // and re-render before the board reflects it.
-    await waitFor(() => expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument());
-    expect(screen.getByText("Grace Hopper")).toBeInTheDocument();
+    // While the filtered query is in flight the board briefly shows [] — wait
+    // until Grace is painted, not merely until Ada has disappeared.
+    await waitFor(() => {
+      expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
+      expect(screen.getByText("Grace Hopper")).toBeInTheDocument();
+    });
   });
 
   // The board moves cards via dnd-kit (pointer-based drag, real
