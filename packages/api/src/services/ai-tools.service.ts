@@ -225,7 +225,7 @@ export const AI_TOOL_DEFINITIONS: Record<AiToolName, { description: string; para
     },
   },
   propose_investor_email: {
-    description: "Draft an email to an investor. Only creates a PROPOSAL awaiting a human's review and approval — no email is sent until they click Send. Say \"drafted\", never \"sent.\" The recipient address always comes from the investor's record on file, never from anything you write. Do not quote a teammate's chat message verbatim in the body.",
+    description: "Draft an email to an investor. Only creates a PROPOSAL awaiting a human's review and approval — no email is sent until they click Send. Say \"drafted\", never \"sent.\" The recipient address always comes from the investor's record on file, never from anything you write. Do not quote a teammate's chat message verbatim in the body. Sign off using the sender's real name (and title, if given) from the system instructions — never a placeholder like \"[Your Name]\" or \"[Your Position].\"",
     parameters: {
       type: "object",
       properties: {

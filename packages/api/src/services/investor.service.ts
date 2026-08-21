@@ -123,7 +123,12 @@ export class InvestorService {
       ...(stage && { pipeline: { some: { stage, ...(roundId && { roundId }) } } }),
       ...(search && {
         OR: [
-          { fullName: { contains: search, mode: "insensitive" as const } },
+          // Matched token-by-token (every word in the search must appear
+          // somewhere in the name, in any order) rather than as one contiguous
+          // substring a name typed slightly wrong, e.g. "Sara Chen" instead of
+          // "Sarah Chen", is otherwise a contiguous-substring miss even though
+          // every word the caller typed is genuinely present in the name.
+          { AND: search.trim().split(/\s+/).filter(Boolean).map((token) => ({ fullName: { contains: token, mode: "insensitive" as const } })) },
           { email: { contains: search, mode: "insensitive" as const } },
           { ventureFirm: { contains: search, mode: "insensitive" as const } },
           { sectorFocus: { contains: search, mode: "insensitive" as const } },

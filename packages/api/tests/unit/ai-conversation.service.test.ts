@@ -14,6 +14,7 @@ jest.mock("../../src/db/prisma", () => ({
     aiCitation: { createMany: jest.fn() },
     aiAnalysis: { findMany: jest.fn() },
     aiArtifact: { create: jest.fn() },
+    user: { findUnique: jest.fn() },
   },
 }));
 
@@ -217,6 +218,54 @@ describe("AI conversation agent loop", () => {
     }));
   });
 
+  it("does not also render a generic email_draft.v1 card when propose_investor_email already rendered the real action_proposal.v1 card", async () => {
+    (prisma.aiChatMessage.findMany as jest.Mock).mockResolvedValue([{ role: "user", content: "Please draft and send a follow-up email to Sarah about diligence." }]);
+    (prisma.user.findUnique as jest.Mock).mockResolvedValue({ firstName: "Muhamad", lastName: "Houda", title: "Co-Founder & CEO" });
+    (aiToolsService.execute as jest.Mock).mockResolvedValue({
+      actionId: "00000000-0000-0000-0000-000000000099", actionType: "send_investor_email", status: "proposed", expiresAt: new Date("2026-08-22T00:00:00.000Z"),
+    });
+    (prisma.aiArtifact.create as jest.Mock).mockResolvedValue({ id: "artifact-1", artifactType: "action_proposal", schemaVersion: "v1", title: "Proposed action", status: "ready", data: {} });
+    const provider = new FakeAiProvider();
+    provider.streamEventsByTurn = [
+      [{ type: "tool_call", callId: "call-1", name: "propose_investor_email", arguments: "{\"investorId\":\"inv-1\",\"pipelineId\":null,\"subject\":\"Follow-up\",\"body\":\"Hi Sarah\"}" }, { type: "completed", stopReason: "tool_calls" }],
+      [{ type: "delta", text: "I've drafted a follow-up email for you to review." }, { type: "completed", stopReason: "stop" }],
+    ];
+    const proposeAccess = { canReadDocuments: false, canReadFinancial: true, tools: ["propose_investor_email" as const] };
+    const service = new AiConversationService(provider);
+
+    await (service as any).runGeneration(session, "assistant-message", "user-1", proposeAccess);
+
+    const artifactTypes = (prisma.aiArtifact.create as jest.Mock).mock.calls.map((call) => call[0].data.artifactType);
+    expect(artifactTypes).toEqual(["action_proposal"]);
+    expect(artifactTypes).not.toContain("email_draft");
+  });
+
+  it("tells the model the real sender's name and title to sign drafts with, instead of leaving it to invent a placeholder", async () => {
+    (prisma.user.findUnique as jest.Mock).mockResolvedValue({ firstName: "Muhamad", lastName: "Houda", title: "Co-Founder & CEO" });
+    const provider = new FakeAiProvider();
+    provider.streamEventsByTurn = [[{ type: "delta", text: "Sure." }, { type: "completed", stopReason: "stop" }]];
+    const proposeAccess = { canReadDocuments: false, canReadFinancial: true, tools: ["propose_investor_email" as const] };
+    const service = new AiConversationService(provider);
+
+    await (service as any).runGeneration(session, "assistant-message", "user-1", proposeAccess);
+
+    expect(prisma.user.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "user-1" } }));
+    const instructions = (provider.requests[0].input as { instructions: string }).instructions;
+    expect(instructions).toContain("Muhamad Houda");
+    expect(instructions).toContain("Co-Founder & CEO");
+    expect(instructions).toContain("Never write a placeholder");
+  });
+
+  it("skips the sender lookup entirely when no draft-worthy tool is available this turn", async () => {
+    const provider = new FakeAiProvider();
+    provider.streamEventsByTurn = [[{ type: "delta", text: "Sure." }, { type: "completed", stopReason: "stop" }]];
+    const service = new AiConversationService(provider);
+
+    await (service as any).runGeneration(session, "assistant-message", "user-1", loopAccess);
+
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
   it("renders an investor_brief.v1 card whenever get_investor_context actually finds an investor this turn", async () => {
     (aiToolsService.execute as jest.Mock).mockResolvedValue({
       id: "00000000-0000-0000-0000-000000000042", fullName: "Ana Ruiz", ventureFirm: "Acme Ventures", investorType: "vc", sectorFocus: "Fintech", description: "Thesis-driven seed investor.",
@@ -302,5 +351,26 @@ describe("AI conversation agent loop", () => {
     expect(prisma.aiArtifact.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ artifactType: "task_list", data: { tasks: [{ id: "task-1", title: "Follow up", status: "open", priority: "high", dueDate: null, assigned: true }] } }),
     }));
+  });
+
+  it("suppresses the task_list.v1 helper card when list_tasks was only called to resolve an id for a propose_* action this turn", async () => {
+    (prisma.aiArtifact.create as jest.Mock).mockResolvedValue({ id: "artifact-1", artifactType: "action_proposal", schemaVersion: "v1", title: "Proposed action", status: "ready", data: {} });
+    (aiToolsService.execute as jest.Mock)
+      .mockResolvedValueOnce({ data: [{ id: "task-1", title: "Send customer reference list", status: "open", priority: "high", dueDate: null, assigneeId: "member-1" }] })
+      .mockResolvedValueOnce({ actionId: "00000000-0000-0000-0000-000000000099", actionType: "update_task_status", status: "proposed", expiresAt: new Date("2026-08-22T00:00:00.000Z") });
+    const provider = new FakeAiProvider();
+    provider.streamEventsByTurn = [
+      [{ type: "tool_call", callId: "call-1", name: "list_tasks", arguments: "{\"roundId\":null,\"status\":null}" }, { type: "completed", stopReason: "tool_calls" }],
+      [{ type: "tool_call", callId: "call-2", name: "propose_task_status", arguments: "{\"taskId\":\"task-1\",\"status\":\"completed\"}" }, { type: "completed", stopReason: "tool_calls" }],
+      [{ type: "delta", text: "I've drafted marking it done for your review." }, { type: "completed", stopReason: "stop" }],
+    ];
+    const access = { canReadDocuments: false, canReadFinancial: true, tools: ["list_tasks" as const, "propose_task_status" as const] };
+    const service = new AiConversationService(provider);
+
+    await (service as any).runGeneration(session, "assistant-message", "user-1", access);
+
+    const artifactTypes = (prisma.aiArtifact.create as jest.Mock).mock.calls.map((call) => call[0].data.artifactType);
+    expect(artifactTypes).toEqual(["action_proposal"]);
+    expect(artifactTypes).not.toContain("task_list");
   });
 });

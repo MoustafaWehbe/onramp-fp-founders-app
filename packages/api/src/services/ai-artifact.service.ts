@@ -14,7 +14,7 @@ const emailDraftSchema = z.object({ subject: z.string().min(1).max(240), body: z
 const meetingBriefSchema = z.object({ title: z.string().min(1).max(240), talkingPoints: z.array(z.string().min(1).max(1_000)).min(1).max(10), contextLabel: z.string().min(1).max(300), missingInvestorContext: z.boolean() });
 const actionProposalSchema = z.object({
   actionId: z.string().uuid(),
-  actionType: z.enum(["create_task", "log_interaction", "schedule_meeting", "send_investor_email", "update_deal_stage"]),
+  actionType: z.enum(["create_task", "log_interaction", "schedule_meeting", "send_investor_email", "update_deal_stage", "update_task_status"]),
   status: z.enum(["proposed", "approved", "executed", "rejected", "failed", "expired"]),
   payload: z.record(z.unknown()),
   expiresAt: z.string(),

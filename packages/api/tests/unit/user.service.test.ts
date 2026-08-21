@@ -41,6 +41,22 @@ describe("updateUserSchema", () => {
     expect(updateUserSchema.safeParse({ firstName: "" }).success).toBe(false);
   });
 
+  it("accepts a title-only update, trimmed, and treats an empty string as clearing it", () => {
+    const result = updateUserSchema.safeParse({ title: "  Co-Founder & CEO  " });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.title).toBe("Co-Founder & CEO");
+
+    const cleared = updateUserSchema.safeParse({ title: "" });
+    expect(cleared.success).toBe(true);
+    if (cleared.success) expect(cleared.data.title).toBeNull();
+  });
+
+  it("accepts an explicit null for title, the same as clearing it", () => {
+    const result = updateUserSchema.safeParse({ title: null });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.title).toBeNull();
+  });
+
   it("no longer accepts avatarUrl — that moved to PUT/DELETE /users/me/avatar", () => {
     const result = updateUserSchema.safeParse({ firstName: "Ada", avatarUrl: "https://images.example.com/me.jpg" });
     // Unknown keys are just stripped by default Zod object parsing, so this
@@ -83,6 +99,27 @@ describe("UserService.updateProfile", () => {
       code: "NOT_FOUND",
     });
     expect(mockPrisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it("updates the title used to sign AI-drafted emails", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: "user-1" });
+    mockPrisma.user.update.mockResolvedValue({
+      id: "user-1",
+      email: "ada@example.com",
+      firstName: "Ada",
+      lastName: "Lovelace",
+      title: "Co-Founder & CEO",
+      avatarUrl: null,
+      avatarStorageKey: null,
+    });
+
+    const result = await service.updateProfile("user-1", { title: "Co-Founder & CEO" });
+
+    expect(mockPrisma.user.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "user-1" },
+      data: { title: "Co-Founder & CEO" },
+    }));
+    expect(result.title).toBe("Co-Founder & CEO");
   });
 });
 

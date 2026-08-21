@@ -58,6 +58,7 @@ const USER: AuthUser = {
   email: "jane@acme.io",
   firstName: "Jane",
   lastName: "Doe",
+  title: null,
   avatarUrl: null,
 };
 

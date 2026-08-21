@@ -16,6 +16,7 @@ export interface AuthUser {
   email: string;
   firstName: string;
   lastName: string;
+  title: string | null;
   avatarUrl: string | null;
   lastActiveStartupId?: string | null;
 }
@@ -46,6 +47,7 @@ interface AuthContextValue {
 export interface UpdateProfileInput {
   firstName?: string;
   lastName?: string;
+  title?: string | null;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);

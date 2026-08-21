@@ -16,6 +16,10 @@ model User {
   id                  String    @id @default(uuid())
   firstName           String    @map("first_name")
   lastName            String    @map("last_name")
+  // How this person signs off outbound investor communications (e.g. "Co-Founder
+  // & CEO") — the AI copilot uses it to fill a real signature instead of a
+  // "[Your Position]" placeholder when drafting an email.
+  title               String?
   email               String    @unique
   passwordHash        String?   @map("password_hash")
   avatarUrl           String?   @map("avatar_url")

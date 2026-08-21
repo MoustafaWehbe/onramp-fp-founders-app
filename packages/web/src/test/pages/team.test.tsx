@@ -62,6 +62,7 @@ const OWNER: AuthUser = {
   email: "jane@acme.io",
   firstName: "Jane",
   lastName: "Doe",
+  title: null,
   avatarUrl: null,
 };
 const VIEWER: AuthUser = {
@@ -69,6 +70,7 @@ const VIEWER: AuthUser = {
   email: "sam@acme.io",
   firstName: "Sam",
   lastName: "Patel",
+  title: null,
   avatarUrl: null,
 };
 

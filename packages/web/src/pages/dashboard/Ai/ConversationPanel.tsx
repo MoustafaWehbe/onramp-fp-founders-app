@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, ArrowDown, ArrowUp, FileSearch, Loader2, OctagonX, Sparkles, UserRound } from "lucide-react";
+import { AlertCircle, ArrowDown, ArrowUp, FileSearch, Loader2, Sparkles, UserRound } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Markdown } from "../../../components/shared/Markdown";
@@ -11,7 +11,7 @@ import { useAiStream } from "../../../hooks/useAiStream";
 import { useStreamedReveal } from "../../../hooks/useStreamedReveal";
 import { apiErrorMessage } from "../../../lib/api-error";
 import { aiRecordLink } from "../../../lib/ai-record-link";
-import { cancelAiMessage, createAiAnalysis, createAiMessage, listAiAnalyses, listAiMessages, type AiAnalysis, type AiChatMessage, type AiCitation, type AiSession, type AiStreamEvent, type AiToolCallActivity } from "../../../lib/ai-api";
+import { createAiAnalysis, createAiMessage, listAiAnalyses, listAiMessages, type AiAnalysis, type AiChatMessage, type AiCitation, type AiSession, type AiStreamEvent, type AiToolCallActivity } from "../../../lib/ai-api";
 import { listDocuments } from "../../../lib/document-api";
 import { qk } from "../../../lib/query-keys";
 import { cn, formatDate } from "../../../lib/utils";
@@ -61,7 +61,7 @@ type TimelineEntry = { type: "message"; createdAt: string; message: AiChatMessag
 
 export function ConversationPanel({ startupId, session, canCreate, canReadDocuments, prefill, onStartWithPrompt, onSelectPersona }: Props) {
   const queryClient = useQueryClient();
-  const { open, close } = useAiStream();
+  const { open } = useAiStream();
   const [draft, setDraft] = useState("");
   const activeStreamId = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -294,12 +294,6 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
     onError: (error) => toast.error(apiErrorMessage(error, "Could not send your message")),
   });
 
-  const cancelMutation = useMutation({
-    mutationFn: (messageId: string) => cancelAiMessage(startupId, session!.id, messageId),
-    onSuccess: () => close(),
-    onError: (error) => toast.error(apiErrorMessage(error, "Could not stop the response")),
-  });
-
   function submit() {
     const content = draft.trim();
     if (content && !sendMutation.isPending && canCreate) sendMutation.mutate(content);
@@ -383,8 +377,6 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
                   startupId={startupId}
                   onAskFollowup={setDraft}
                   message={entry.message}
-                  onStop={activeAssistant?.id === entry.message.id ? () => cancelMutation.mutate(entry.message.id) : undefined}
-                  stopping={cancelMutation.isPending}
                 />
               ) : (
                 <AnalysisCard
@@ -548,7 +540,7 @@ function Welcome({ canCreate, onSelectPrompt }: { canCreate: boolean; onSelectPr
   );
 }
 
-function MessageBubble({ startupId, message, onStop, stopping, onAskFollowup }: { startupId: string; message: AiChatMessage; onStop?: () => void; stopping: boolean; onAskFollowup: (prompt: string) => void }) {
+function MessageBubble({ startupId, message, onAskFollowup }: { startupId: string; message: AiChatMessage; onAskFollowup: (prompt: string) => void }) {
   const assistant = message.role === "assistant";
   // The source_answer artifact duplicates this same text plus a source list in a
   // bordered card — rendering it instead of the plain bubble made every grounded
@@ -586,12 +578,6 @@ function MessageBubble({ startupId, message, onStop, stopping, onAskFollowup }: 
 
         <div className={cn("mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground", assistant ? "" : "flex-row-reverse")}>
           <span className="opacity-0 transition-opacity group-hover:opacity-100">{formatDate(message.createdAt)}</span>
-          {message.status === "streaming" && <span className="text-primary/80">Streaming</span>}
-          {onStop && (
-            <Button size="sm" variant="ghost" className="h-6 gap-1 px-2 text-[11px]" onClick={onStop} disabled={stopping}>
-              <OctagonX className="h-3 w-3" /> Stop
-            </Button>
-          )}
           {message.status === "failed" && (
             <span className="inline-flex items-center gap-1 text-destructive">
               <AlertCircle className="h-3.5 w-3.5" /> {message.errorMessage ?? "Response failed"}
