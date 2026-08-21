@@ -61,7 +61,7 @@ type TimelineEntry = { type: "message"; createdAt: string; message: AiChatMessag
 
 export function ConversationPanel({ startupId, session, canCreate, canReadDocuments, prefill, onStartWithPrompt, onSelectPersona }: Props) {
   const queryClient = useQueryClient();
-  const { open } = useAiStream();
+  const { open, close } = useAiStream();
   const [draft, setDraft] = useState("");
   const activeStreamId = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);

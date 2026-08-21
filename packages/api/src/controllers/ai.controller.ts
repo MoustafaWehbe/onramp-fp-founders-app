@@ -58,9 +58,30 @@ export const aiController = {
       send({ version: 1, sessionId: req.params.sessionId, messageId: req.params.messageId, sequence: 0, timestamp: new Date().toISOString(), type: "stream.ready", payload: {} });
       if (replay.length) replay.forEach(send);
       else send({ version: 1, sessionId: req.params.sessionId, messageId: req.params.messageId, sequence: 0, timestamp: new Date().toISOString(), type: "message.snapshot", payload: { status: message.status, content: message.content, errorMessage: message.errorMessage } });
-      const unsubscribe = aiConversationService.subscribe(req.params.messageId as string, send);
-      const heartbeat = setInterval(() => res.write(": ping\n\n"), 15_000);
-      const close = () => { clearInterval(heartbeat); unsubscribe(); };
+
+      const terminalSnapshot = ["completed", "failed", "cancelled"].includes(message.status);
+      if (terminalSnapshot || replay.some((event) => event.type === "stream.closed")) {
+        res.end();
+        return;
+      }
+
+      let heartbeat: NodeJS.Timeout | undefined;
+      let unsubscribe = () => {};
+      let closed = false;
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        if (heartbeat) clearInterval(heartbeat);
+        unsubscribe();
+      };
+      unsubscribe = aiConversationService.subscribe(req.params.messageId as string, (event) => {
+        send(event);
+        if (event.type === "stream.closed") {
+          close();
+          res.end();
+        }
+      });
+      heartbeat = setInterval(() => res.write(": ping\n\n"), 15_000);
       req.on("close", close);
       res.on("error", close);
     })().catch(next);

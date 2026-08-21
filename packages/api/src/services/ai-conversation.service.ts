@@ -472,6 +472,11 @@ export class AiConversationService {
       aiStreamBroker.publish(session.id, messageId, "message.failed", { code });
     } finally {
       activeRuns.delete(messageId);
+      // message.completed is intentionally published before optional artifact
+      // generation so the UI can stop showing a spinner immediately. This
+      // separate lifecycle event tells the HTTP layer that all post-processing
+      // is now done and the long-lived response can be ended cleanly.
+      aiStreamBroker.publish(session.id, messageId, "stream.closed", {});
     }
   }
 

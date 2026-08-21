@@ -5,7 +5,6 @@ validateEnv();
 
 import { app } from "./app";
 import { prisma } from "./src/db/prisma";
-import { startWorkers } from "./src/jobs/workers/index";
 import { startCronJobs } from "./src/jobs/cron";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
@@ -20,7 +19,6 @@ async function start(): Promise<void> {
       console.info(`Health check: http://localhost:${PORT}/health`);
     });
 
-    startWorkers();
     startCronJobs();
   } catch (error) {
     console.error("Failed to start server:", error);

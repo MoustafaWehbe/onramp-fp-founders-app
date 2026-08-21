@@ -4,7 +4,7 @@ export interface AiStreamEnvelope {
   messageId: string;
   sequence: number;
   timestamp: string;
-  type: "stream.ready" | "message.started" | "message.delta" | "citation.added" | "artifact.ready" | "artifact.failed" | "message.snapshot" | "tool.started" | "tool.completed" | "message.completed" | "message.failed" | "message.cancelled";
+  type: "stream.ready" | "stream.closed" | "message.started" | "message.delta" | "citation.added" | "artifact.ready" | "artifact.failed" | "message.snapshot" | "tool.started" | "tool.completed" | "message.completed" | "message.failed" | "message.cancelled";
   payload: Record<string, unknown>;
 }
 
