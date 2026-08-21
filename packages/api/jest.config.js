@@ -19,4 +19,9 @@ module.exports = {
   transform: {
     "^.+\\.tsx?$": ["ts-jest", { tsconfig: "./tsconfig.test.json" }],
   },
+  // express-rate-limit's in-memory store and pdfjs's dynamic ESM import leave
+  // handles/timers that keep the worker alive after suites finish. Without this,
+  // Jest force-kills the worker mid-import and pdf-rasterize fails with
+  // "Test environment has been torn down" under coverage in CI.
+  forceExit: true,
 };
