@@ -40,7 +40,10 @@ jobs:
         run: npm run lint
 
       - name: Test
-        run: npm run test
+        # One package at a time: pdfjs + canvas under Jest's experimental VM is
+        # memory-sensitive, and parallel api+web workers were tearing down the
+        # pdf-rasterize suite mid-import on the GitHub runner.
+        run: npx turbo run test --concurrency=1
 
       - name: Build
         run: npm run build

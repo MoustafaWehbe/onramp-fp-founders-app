@@ -9,7 +9,7 @@
     "build": "tsc --project tsconfig.build.json",
     "start": "node dist/server.js",
     "start:worker": "node dist/src/jobs/workers/index.js",
-    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.js --coverage --passWithNoTests",
+    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.js --coverage --passWithNoTests --testPathIgnorePatterns=pdf-rasterize && cross-env NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.js --runInBand --forceExit --passWithNoTests tests/unit/pdf-rasterize.test.ts",
     "lint": "eslint .",
     "clean": "rm -rf dist",
     "db:migrate": "prisma migrate deploy",

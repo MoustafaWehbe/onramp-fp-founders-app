@@ -47,12 +47,6 @@ const WEBP_MAGIC = Buffer.from("WEBP", "ascii");
 describe("rasterizePdf", () => {
   jest.setTimeout(30_000);
 
-  // Load pdfjs once up front so later tests are not racing a worker teardown
-  // that Jest triggers when other suites leave open handles (rate-limit timers).
-  beforeAll(async () => {
-    await rasterizePdf(buildPdf(["warmup"]), async () => {});
-  });
-
   it("renders every page to WebP with usable dimensions", async () => {
     const pages: RasterizedPage[] = [];
     const { pageCount } = await rasterizePdf(buildPdf(["Page One", "Page Two", "Page Three"]), async (page) => {

@@ -61,7 +61,14 @@ type PdfPage = {
 let pdfjsPromise: Promise<PdfjsModule> | null = null;
 
 function loadPdfjs(): Promise<PdfjsModule> {
-  pdfjsPromise ??= importEsm("pdfjs-dist/legacy/build/pdf.mjs");
+  if (!pdfjsPromise) {
+    pdfjsPromise = importEsm("pdfjs-dist/legacy/build/pdf.mjs").catch((err) => {
+      // A torn-down Jest VM (or transient import failure) must not poison every
+      // later call with the same rejected promise.
+      pdfjsPromise = null;
+      throw err;
+    });
+  }
   return pdfjsPromise;
 }
 
