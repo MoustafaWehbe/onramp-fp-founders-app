@@ -13,10 +13,6 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# PR-controlled install/lint/test/build must not get a writable checkout token.
-permissions:
-  contents: read
-
 jobs:
   check:
     name: Lint, test, build
@@ -26,8 +22,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

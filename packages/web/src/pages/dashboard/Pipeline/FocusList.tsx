@@ -90,9 +90,9 @@ export function FocusList({
             aria-pressed={!leadsOnly}
             onClick={() => setLeadsOnly(false)}
             className={cn(
-              "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm shadow-sm transition-colors",
+              "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors",
               !leadsOnly
-                ? "bg-card font-medium text-foreground"
+                ? "bg-card font-medium text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -111,9 +111,9 @@ export function FocusList({
             aria-pressed={leadsOnly}
             onClick={() => setLeadsOnly(true)}
             className={cn(
-              "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm shadow-sm transition-colors",
+              "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors",
               leadsOnly
-                ? "bg-card font-medium text-foreground"
+                ? "bg-card font-medium text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >

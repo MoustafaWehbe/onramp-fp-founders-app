@@ -199,7 +199,7 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
       </div>
 
       <div
-        role="group"
+        role="tablist"
         aria-label="Task view"
         className="inline-flex flex-wrap items-center gap-1 rounded-xl border border-border/70 bg-surface/60 p-1"
       >
@@ -209,13 +209,14 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
           return (
             <button
               key={id}
+              role="tab"
               type="button"
-              aria-pressed={active}
+              aria-selected={active}
               onClick={() => setView(id)}
               className={cn(
-                "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm shadow-sm transition-colors",
+                "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors",
                 active
-                  ? "bg-card font-medium text-foreground"
+                  ? "bg-card font-medium text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >

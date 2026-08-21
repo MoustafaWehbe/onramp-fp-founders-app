@@ -99,11 +99,7 @@ export function Documents() {
 
   useEffect(() => {
     if (!focusedDocumentId) return;
-    // Compare dataset values instead of interpolating into a selector —
-    // a crafted id with quotes/brackets would throw in querySelector.
-    const node = Array.from(window.document.querySelectorAll<HTMLElement>("[data-document-id]")).find(
-      (el) => el.dataset.documentId === focusedDocumentId,
-    );
+    const node = window.document.querySelector(`[data-document-id="${focusedDocumentId}"]`);
     node?.scrollIntoView({ behavior: "smooth", block: "center" });
     const timer = window.setTimeout(() => setFocusedDocumentId(null), 4000);
     return () => window.clearTimeout(timer);
