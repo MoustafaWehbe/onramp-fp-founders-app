@@ -58,6 +58,23 @@ export class AiConversationService {
       take: query.limit,
       include: { citations: { orderBy: { sortOrder: "asc" } }, artifacts: { orderBy: { createdAt: "asc" } } },
     });
+
+    // action_proposal.v1 artifacts are an immutable snapshot of the proposal
+    // as drafted; the actual approve/reject/execute lifecycle lives on the
+    // AiAgentAction row instead. Without this overlay, reloading the page
+    // would always show a freshly-approved card back in its "proposed" state,
+    // re-enabling an Approve button on an action that already ran.
+    const actionIds = messages
+      .flatMap((message) => message.artifacts)
+      .filter((artifact) => artifact.artifactType === "action_proposal")
+      .map((artifact) => (artifact.data as { actionId?: string }).actionId)
+      .filter((id): id is string => typeof id === "string");
+    const liveStatusByActionId = new Map<string, string>();
+    if (actionIds.length) {
+      const actions = await prisma.aiAgentAction.findMany({ where: { id: { in: actionIds }, startupId }, select: { id: true, status: true } });
+      for (const action of actions) liveStatusByActionId.set(action.id, action.status);
+    }
+
     return messages.map((message) => ({
       id: message.id,
       role: message.role,
@@ -76,10 +93,12 @@ export class AiConversationService {
         metadata: citation.metadata,
         sortOrder: citation.sortOrder,
       })),
-      artifacts: message.artifacts.map((artifact) => ({
-        id: artifact.id, type: `${artifact.artifactType}.${artifact.schemaVersion}`, title: artifact.title,
-        status: artifact.status, data: artifact.data, createdAt: artifact.createdAt,
-      })),
+      artifacts: message.artifacts.map((artifact) => {
+        const actionId = artifact.artifactType === "action_proposal" ? (artifact.data as { actionId?: string }).actionId : undefined;
+        const liveStatus = actionId ? liveStatusByActionId.get(actionId) : undefined;
+        const data = liveStatus ? { ...(artifact.data as object), status: liveStatus } : artifact.data;
+        return { id: artifact.id, type: `${artifact.artifactType}.${artifact.schemaVersion}`, title: artifact.title, status: artifact.status, data, createdAt: artifact.createdAt };
+      }),
     }));
   }
 

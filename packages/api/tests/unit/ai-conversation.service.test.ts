@@ -14,6 +14,7 @@ jest.mock("../../src/db/prisma", () => ({
     aiCitation: { createMany: jest.fn() },
     aiAnalysis: { findMany: jest.fn() },
     aiArtifact: { create: jest.fn() },
+    aiAgentAction: { findMany: jest.fn() },
     user: { findUnique: jest.fn() },
   },
 }));
@@ -104,6 +105,45 @@ describe("AI conversation persistence", () => {
     const service = new AiConversationService(new FakeAiProvider());
     await service.cancel("startup-1", "user-1", "session-1", "assistant-message");
     expect(prisma.aiChatMessage.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "cancelled" }) }));
+  });
+});
+
+describe("AiConversationService.listMessages", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("overlays the action's live status onto an action_proposal.v1 artifact instead of its frozen snapshot", async () => {
+    (prisma.aiChatSession.findFirst as jest.Mock).mockResolvedValue(session);
+    const artifact = {
+      id: "artifact-1", artifactType: "action_proposal", schemaVersion: "v1", title: null, status: "ready", createdAt: new Date(),
+      data: { actionId: "action-1", actionType: "send_investor_email", status: "proposed", payload: {}, expiresAt: new Date().toISOString() },
+    };
+    (prisma.aiChatMessage.findMany as jest.Mock).mockResolvedValue([
+      { id: "assistant-message", role: "assistant", content: "", status: "completed", errorCode: null, errorMessage: null, createdAt: new Date(), completedAt: new Date(), citations: [], artifacts: [artifact] },
+    ]);
+    (prisma.aiAgentAction.findMany as jest.Mock).mockResolvedValue([{ id: "action-1", status: "executed" }]);
+
+    const service = new AiConversationService(new FakeAiProvider());
+    const [message] = await service.listMessages("startup-1", "user-1", "session-1", { limit: 50 }, access);
+
+    // A page refresh must reflect that this proposal was already approved and
+    // executed, not the "proposed" status frozen into the artifact at creation
+    // time — otherwise the card re-renders an Approve button on a done action.
+    expect(message.artifacts[0].data).toMatchObject({ status: "executed" });
+    expect(prisma.aiAgentAction.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ["action-1"] }, startupId: "startup-1" } }));
+  });
+
+  it("leaves non-action artifacts untouched and skips the action lookup entirely", async () => {
+    (prisma.aiChatSession.findFirst as jest.Mock).mockResolvedValue(session);
+    const artifact = { id: "artifact-1", artifactType: "source_answer", schemaVersion: "v1", title: null, status: "ready", createdAt: new Date(), data: { answer: "x", sources: [] } };
+    (prisma.aiChatMessage.findMany as jest.Mock).mockResolvedValue([
+      { id: "assistant-message", role: "assistant", content: "x", status: "completed", errorCode: null, errorMessage: null, createdAt: new Date(), completedAt: new Date(), citations: [], artifacts: [artifact] },
+    ]);
+
+    const service = new AiConversationService(new FakeAiProvider());
+    const [message] = await service.listMessages("startup-1", "user-1", "session-1", { limit: 50 }, access);
+
+    expect(message.artifacts[0].data).toEqual(artifact.data);
+    expect(prisma.aiAgentAction.findMany).not.toHaveBeenCalled();
   });
 });
 
