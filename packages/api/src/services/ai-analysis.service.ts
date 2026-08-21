@@ -62,7 +62,7 @@ export class AiAnalysisService {
   }
 
   async list(startupId: string, userId: string, query: ListAiAnalysesQuery) {
-    const rows = await prisma.aiAnalysis.findMany({ where: { startupId, requestedBy: userId, ...(query.documentVersionId ? { documentVersionId: query.documentVersionId } : {}) }, orderBy: { createdAt: "desc" }, take: query.limit });
+    const rows = await prisma.aiAnalysis.findMany({ where: { startupId, requestedBy: userId, ...(query.documentVersionId ? { documentVersionId: query.documentVersionId } : {}), ...(query.sessionId ? { sessionId: query.sessionId } : {}) }, orderBy: { createdAt: "desc" }, take: query.limit });
     return rows.map(serializeAnalysis);
   }
 

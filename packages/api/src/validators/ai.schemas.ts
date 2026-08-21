@@ -49,6 +49,7 @@ export const aiAnalysisIdParamSchema = z.object({ startupId: uuid, analysisId: u
 
 export const listAiAnalysesQuerySchema = z.object({
   documentVersionId: uuid.optional(),
+  sessionId: uuid.optional(),
   limit: z.coerce.number().int().min(1).max(100).default(30),
 });
 

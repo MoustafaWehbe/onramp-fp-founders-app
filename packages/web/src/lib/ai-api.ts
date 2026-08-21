@@ -94,7 +94,7 @@ export async function createAiSession(startupId: string, input: CreateAiSessionI
   return data.data;
 }
 
-export async function updateAiSession(startupId: string, sessionId: string, input: { personaId?: string | null }) {
+export async function updateAiSession(startupId: string, sessionId: string, input: { title?: string; personaId?: string | null }) {
   const { data } = await apiClient.patch<{ data: AiSession }>(`/startups/${startupId}/ai/sessions/${sessionId}`, input);
   return data.data;
 }
@@ -120,8 +120,8 @@ export async function cancelAiMessage(startupId: string, sessionId: string, mess
   await apiClient.post(`/startups/${startupId}/ai/sessions/${sessionId}/messages/${messageId}/cancel`);
 }
 
-export async function listAiAnalyses(startupId: string, documentVersionId?: string) {
-  const { data } = await apiClient.get<{ data: AiAnalysis[] }>(`/startups/${startupId}/ai/analyses`, { params: documentVersionId ? { documentVersionId } : undefined });
+export async function listAiAnalyses(startupId: string, filter?: { documentVersionId?: string; sessionId?: string }) {
+  const { data } = await apiClient.get<{ data: AiAnalysis[] }>(`/startups/${startupId}/ai/analyses`, { params: filter });
   return data.data;
 }
 
