@@ -86,10 +86,10 @@ export class AiConversationService {
   async openStream(startupId: string, userId: string, sessionId: string, messageId: string, access: AiConversationAccess, lastSequence = 0) {
     const session = await this.ownedSession(startupId, userId, sessionId, true);
     this.assertContextAccess(session, access);
-    const message = await prisma.aiChatMessage.findFirst({ where: { id: messageId, sessionId, role: "assistant" } });
+    let message = await prisma.aiChatMessage.findFirst({ where: { id: messageId, sessionId, role: "assistant" } });
     if (!message) throw createError("AI message not found", 404, "AI_MESSAGE_NOT_FOUND");
-    const replay = await aiStreamBroker.replayPersistent(messageId, lastSequence);
 
+    let replay: AiStreamEnvelope[] = [];
     if (message.status === "pending") {
       const activeForUser = [...activeRuns.values()].filter((run) => run.userId === userId).length;
       if (activeForUser >= getAiConfig().concurrentStreamsPerUser) {
@@ -97,6 +97,25 @@ export class AiConversationService {
       }
       const claimed = await prisma.aiChatMessage.updateMany({ where: { id: messageId, status: "pending" }, data: { status: "streaming" } });
       if (claimed.count === 1) void this.runGeneration(session, messageId, userId, access);
+      replay = await aiStreamBroker.replayPersistent(messageId, lastSequence);
+    } else if (message.status === "streaming" && !activeRuns.has(messageId)) {
+      // Orphaned: this process has no record of ever running this generation
+      // (activeRuns is in-memory, wiped on restart), yet the row still says
+      // it's in progress. A prior process died mid-generation — a dev
+      // hot-reload restart, a deploy, a crash — before it could reach either
+      // terminal DB update, and nothing will ever resume it. Sequence numbers
+      // are per-process and reset on restart too, so splicing a recovery
+      // event into the pre-crash replay stream isn't reliable; persist the
+      // terminal state directly and leave replay empty so the snapshot
+      // fallback below reports it. Otherwise the client would replay stale
+      // pre-crash events (or none at all) and sit on "Thinking…"/"Streaming"
+      // forever with no way to recover.
+      message = await prisma.aiChatMessage.update({
+        where: { id: messageId },
+        data: { status: "failed", errorCode: "AI_ORPHANED", errorMessage: "The server restarted while this response was in progress. Please try again.", completedAt: new Date() },
+      });
+    } else {
+      replay = await aiStreamBroker.replayPersistent(messageId, lastSequence);
     }
     return { message, replay };
   }
@@ -188,6 +207,9 @@ export class AiConversationService {
           : "",
         signer
           ? `When drafting an email or meeting invite, sign off as "${signer.firstName} ${signer.lastName}"${signer.title ? ` (${signer.title})` : ""} — this is who is actually sending it. Never write a placeholder like "[Your Name]", "[Your Position]", or "[Your Contact Information]"; the recipient already has the sender's email address, so no contact-info line is needed at all.`
+          : "",
+        toolSchemas.some((tool) => tool.name.startsWith("propose_"))
+          ? "Every propose_* tool needs a real id (investorId, pipelineId, taskId) that a tool call actually returned — never one you remember discussing, since an id is never shown to you as visible text in your own past replies. Even if you already looked up the same investor, deal, or task earlier in this conversation, resolve its id again with a search/list/context tool in THIS turn, immediately before calling the matching propose_* tool. If a propose_* call still fails on an invalid id, immediately retry: call the matching search/list/context tool again in this same turn to get the real id, then call propose_* again — do not give up and ask the user to look it up themselves unless that retry also comes up empty."
           : "",
         analysisContext,
         sources ? `Retrieved document data follows:\n<document_data>\n${sources}\n</document_data>` : "No document evidence was retrieved. State uncertainty rather than inventing facts.",
@@ -300,13 +322,19 @@ export class AiConversationService {
         // them, so they should only fire on a clear, explicit request for that
         // format — never during a persona rehearsal (where "follow-up question"
         // and "prepare for" come up constantly in ordinary investor dialogue and
-        // would otherwise wrap every reply in a stray "email draft" card) — and
-        // never when the model already called the real propose_investor_email /
-        // propose_meeting tool this turn, which renders its own action_proposal.v1
-        // card with the actual draft. Without this check, the same "please draft
-        // an email" request produced two redundant cards: the real actionable
-        // proposal and a second, generic one with no investor context.
-        const proposedEmailThisTurn = toolResults.some((entry) => entry.tool === "propose_investor_email");
+        // would otherwise wrap every reply in a stray card) — and never when the
+        // model already called the real propose_investor_email / propose_meeting
+        // tool this turn, which renders its own action_proposal.v1 card with the
+        // actual draft.
+        //
+        // email_draft.v1 itself is deliberately no longer created here (though it
+        // stays a valid, renderable type for older saved conversations): keyed off
+        // prompt keywords alone, it had no way to tell an actual drafted email
+        // apart from the model's own clarifying question ("can you tell me the
+        // subject?") — that question text was getting reused as the "email body",
+        // shown under a card that also claimed "No investor record selected" even
+        // when one existed. propose_investor_email is strictly better: it always
+        // resolves a real investor and never renders unless a real draft exists.
         const proposedMeetingThisTurn = toolResults.some((entry) => entry.tool === "propose_meeting");
         // True whenever ANY propose_* action was drafted this turn: its own
         // action_proposal.v1 card is already the actionable artifact for this
@@ -316,11 +344,6 @@ export class AiConversationService {
         // repeating information the text answer and the proposal card already
         // cover — pick one artifact per turn, not both.
         const proposedAnyActionThisTurn = toolResults.some((entry) => entry.tool.startsWith("propose_"));
-        const wantsEmailDraft = !session.persona && !proposedEmailThisTurn && /\bemail\b/.test(prompt) && (prompt.includes("draft") || prompt.includes("write") || prompt.includes("send"));
-        if (wantsEmailDraft) {
-          const artifact = await aiArtifactService.createReady({ startupId: session.startupId, sessionId: session.id, messageId, type: "email_draft.v1", title: "Follow-up draft", data: { subject: "Follow-up", body: content, contextLabel, missingInvestorContext } });
-          aiStreamBroker.publish(session.id, messageId, "artifact.ready", { artifact: { id: artifact.id, type: "email_draft.v1", title: artifact.title, status: artifact.status, data: artifact.data } });
-        }
         const wantsMeetingBrief = !session.persona && !proposedMeetingThisTurn && (prompt.includes("meeting brief") || prompt.includes("prepare me for a meeting") || prompt.includes("prepare for a meeting") || prompt.includes("prepare for the meeting"));
         if (wantsMeetingBrief) {
           const talkingPoints = content.split(/\n+|(?<=[.!?])\s+/).map((item) => item.trim()).filter(Boolean).slice(0, 8);

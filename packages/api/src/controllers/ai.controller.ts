@@ -57,7 +57,7 @@ export const aiController = {
       };
       send({ version: 1, sessionId: req.params.sessionId, messageId: req.params.messageId, sequence: 0, timestamp: new Date().toISOString(), type: "stream.ready", payload: {} });
       if (replay.length) replay.forEach(send);
-      else send({ version: 1, sessionId: req.params.sessionId, messageId: req.params.messageId, sequence: 0, timestamp: new Date().toISOString(), type: "message.snapshot", payload: { status: message.status, content: message.content } });
+      else send({ version: 1, sessionId: req.params.sessionId, messageId: req.params.messageId, sequence: 0, timestamp: new Date().toISOString(), type: "message.snapshot", payload: { status: message.status, content: message.content, errorMessage: message.errorMessage } });
       const unsubscribe = aiConversationService.subscribe(req.params.messageId as string, send);
       const heartbeat = setInterval(() => res.write(": ping\n\n"), 15_000);
       const close = () => { clearInterval(heartbeat); unsubscribe(); };

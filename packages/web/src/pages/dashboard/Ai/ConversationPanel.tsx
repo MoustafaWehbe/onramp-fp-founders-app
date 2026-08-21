@@ -219,7 +219,8 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
           // text that's already longer than what the snapshot is offering.
           const incoming = String(event.payload.content ?? "");
           const content = incoming.length >= message.content.length ? incoming : message.content;
-          return { ...message, status: String(event.payload.status ?? message.status) as AiChatMessage["status"], content };
+          const errorMessage = event.payload.errorMessage != null ? String(event.payload.errorMessage) : message.errorMessage;
+          return { ...message, status: String(event.payload.status ?? message.status) as AiChatMessage["status"], content, errorMessage };
         }
         if (event.type === "citation.added") {
           const citation = event.payload.citation as AiCitation | undefined;

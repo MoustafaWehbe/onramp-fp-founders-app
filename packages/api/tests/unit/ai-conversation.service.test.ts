@@ -107,6 +107,68 @@ describe("AI conversation persistence", () => {
   });
 });
 
+describe("AiConversationService.openStream", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("claims a pending message and starts generation", async () => {
+    // A messageId not reused by any other test in this file: aiStreamBroker is
+    // a real module-level singleton here (not mocked), so reusing "assistant-message"
+    // would pick up another test's already-published events on replay.
+    const messageId = "pending-message";
+    (prisma.aiChatSession.findFirst as jest.Mock).mockResolvedValue(session);
+    (prisma.aiChatMessage.findFirst as jest.Mock).mockResolvedValue({ id: messageId, status: "pending", content: "" });
+    (prisma.aiChatMessage.updateMany as jest.Mock).mockResolvedValue({ count: 1 });
+    (prisma.aiRun.create as jest.Mock).mockResolvedValue({ id: "run-1" });
+    (prisma.aiChatMessage.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.aiAnalysis.findMany as jest.Mock).mockResolvedValue([]);
+    const provider = new FakeAiProvider();
+    provider.streamEventsByTurn = [[{ type: "delta", text: "Hi" }, { type: "completed", stopReason: "stop" }]];
+    const service = new AiConversationService(provider);
+
+    const { message, replay } = await service.openStream("startup-1", "user-1", "session-1", messageId, access);
+
+    expect(message.status).toBe("pending");
+    expect(replay).toEqual([]);
+    expect(prisma.aiChatMessage.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: messageId, status: "pending" }, data: { status: "streaming" } }));
+  });
+
+  it("recovers a message orphaned by a crashed or restarted process, instead of leaving the client stuck on \"Thinking…\" forever", async () => {
+    // Reproduces the reported bug: a dev hot-reload restart (or a deploy, or a
+    // crash) kills the process mid-generation before it can reach either
+    // terminal DB update. Nothing else was ever going to pick this back up —
+    // activeRuns is in-memory and was wiped along with the process, so a
+    // reconnect finds a "streaming" row with no owner.
+    (prisma.aiChatSession.findFirst as jest.Mock).mockResolvedValue(session);
+    (prisma.aiChatMessage.findFirst as jest.Mock).mockResolvedValue({ id: "orphan-message", status: "streaming", content: "" });
+    (prisma.aiChatMessage.update as jest.Mock).mockResolvedValue({ id: "orphan-message", status: "failed", errorCode: "AI_ORPHANED" });
+    const service = new AiConversationService(new FakeAiProvider());
+
+    const { message, replay } = await service.openStream("startup-1", "user-1", "session-1", "orphan-message", access);
+
+    expect(prisma.aiChatMessage.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "orphan-message" },
+      data: expect.objectContaining({ status: "failed", errorCode: "AI_ORPHANED" }),
+    }));
+    expect(message.status).toBe("failed");
+    // Sequence numbers reset with the process, so a stale pre-crash replay
+    // can't be trusted to carry the recovery signal — the client must fall
+    // back to the plain snapshot instead, which requires an empty replay.
+    expect(replay).toEqual([]);
+  });
+
+  it("leaves an already-terminal message alone and just replays it, never re-marking it", async () => {
+    (prisma.aiChatSession.findFirst as jest.Mock).mockResolvedValue(session);
+    (prisma.aiChatMessage.findFirst as jest.Mock).mockResolvedValue({ id: "done-message", status: "completed", content: "All set." });
+    const service = new AiConversationService(new FakeAiProvider());
+
+    const { message } = await service.openStream("startup-1", "user-1", "session-1", "done-message", access);
+
+    expect(message.status).toBe("completed");
+    expect(prisma.aiChatMessage.update).not.toHaveBeenCalled();
+    expect(prisma.aiChatMessage.updateMany).not.toHaveBeenCalled();
+  });
+});
+
 describe("AI conversation agent loop", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -240,6 +302,24 @@ describe("AI conversation agent loop", () => {
     expect(artifactTypes).not.toContain("email_draft");
   });
 
+  it("never renders an email_draft.v1 card from prompt keywords alone anymore — a real draft only ever comes from propose_investor_email", async () => {
+    // Regression for a real bug: "email" + "send" in the user's prompt used to
+    // create an email_draft.v1 card whose body was just the model's own reply
+    // text — including a clarifying question ("could you give me the subject?")
+    // rendered as if it were the email itself, alongside "No investor record
+    // selected" even when one existed. That heuristic is gone; propose_investor_email
+    // is the only path to a real draft now.
+    (prisma.aiChatMessage.findMany as jest.Mock).mockResolvedValue([{ role: "user", content: "i want to send an email to sara chen" }]);
+    const provider = new FakeAiProvider();
+    provider.streamEventsByTurn = [[{ type: "delta", text: "Could you tell me the subject and content you'd like to include?" }, { type: "completed", stopReason: "stop" }]];
+    const service = new AiConversationService(provider);
+
+    await (service as any).runGeneration(session, "assistant-message", "user-1", loopAccess);
+
+    const artifactTypes = (prisma.aiArtifact.create as jest.Mock).mock.calls.map((call) => call[0].data.artifactType);
+    expect(artifactTypes).not.toContain("email_draft");
+  });
+
   it("tells the model the real sender's name and title to sign drafts with, instead of leaving it to invent a placeholder", async () => {
     (prisma.user.findUnique as jest.Mock).mockResolvedValue({ firstName: "Muhamad", lastName: "Houda", title: "Co-Founder & CEO" });
     const provider = new FakeAiProvider();
@@ -254,6 +334,19 @@ describe("AI conversation agent loop", () => {
     expect(instructions).toContain("Muhamad Houda");
     expect(instructions).toContain("Co-Founder & CEO");
     expect(instructions).toContain("Never write a placeholder");
+  });
+
+  it("tells the model to re-resolve an id fresh every turn and retry a failed propose_* call, rather than reuse a remembered id or give up", async () => {
+    const provider = new FakeAiProvider();
+    provider.streamEventsByTurn = [[{ type: "delta", text: "Sure." }, { type: "completed", stopReason: "stop" }]];
+    const proposeAccess = { canReadDocuments: false, canReadFinancial: true, tools: ["propose_investor_email" as const, "search_investors" as const] };
+    const service = new AiConversationService(provider);
+
+    await (service as any).runGeneration(session, "assistant-message", "user-1", proposeAccess);
+
+    const instructions = (provider.requests[0].input as { instructions: string }).instructions;
+    expect(instructions).toContain("never one you remember discussing");
+    expect(instructions).toContain("immediately retry");
   });
 
   it("skips the sender lookup entirely when no draft-worthy tool is available this turn", async () => {
