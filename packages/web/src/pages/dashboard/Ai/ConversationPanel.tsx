@@ -46,6 +46,7 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
   const messagesContentRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const initialScrollDoneRef = useRef<string | null>(null);
+  const rehearsalMessageCountAtStartRef = useRef(0);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const draftKey = session ? `ai-draft:${startupId}:${session.id}` : null;
 
@@ -272,10 +273,14 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
   // rehearsal here — once the persona is actually set server-side — makes the
   // investor ask the first question immediately instead of leaving an empty
   // composer as the only feedback that anything happened. Symmetrically,
-  // ending it (persona -> null) should hand back a real wrap-up instead of
-  // just silently dropping the mode with no takeaway from the rehearsal.
+  // ending it (persona -> null) should hand back a real wrap-up — but only
+  // when the founder actually answered something. Otherwise the model has
+  // nothing real to evaluate and will fabricate plausible-sounding feedback
+  // off the deck alone, which reads as an evaluation of an exchange that
+  // never happened.
   async function handleSelectPersona(personaId: string | null) {
     const wasActive = Boolean(session?.persona);
+    const messageCountBeforeStart = messages.length;
     try {
       await onSelectPersona(personaId);
     } catch {
@@ -283,9 +288,15 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
     }
     if (!canCreate || hasActiveAssistantRef.current) return;
     if (personaId) {
+      rehearsalMessageCountAtStartRef.current = messageCountBeforeStart;
       sendMutation.mutate("Let's begin the rehearsal — go ahead and ask your first question.");
     } else if (wasActive) {
-      sendMutation.mutate("That's the end of the rehearsal. Please step out of character and summarize how I did: my strengths, the gaps I should address, and how ready this pitch feels overall.");
+      // The kickoff line itself adds a user + assistant message; anything
+      // beyond that pair means the founder actually replied at least once.
+      const hadRealExchange = messages.length > rehearsalMessageCountAtStartRef.current + 2;
+      if (hadRealExchange) {
+        sendMutation.mutate("That's the end of the rehearsal. Please step out of character and summarize how I did, based only on what I actually said in this conversation — my strengths, the gaps I should address, and how ready this pitch feels overall. If I didn't substantively answer your question(s), say that plainly instead of inventing an evaluation.");
+      }
     }
   }
 

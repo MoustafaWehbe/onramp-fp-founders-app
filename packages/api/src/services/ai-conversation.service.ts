@@ -147,6 +147,11 @@ export class AiConversationService {
         }
       }
       const versionIds = session.documents.map((document: any) => document.documentVersionId);
+      // Give the model the already-computed deck analysis directly instead of making
+      // it re-derive scores and gaps from raw retrieved text every time the user asks
+      // about "this analysis" — that re-derivation was producing a different-sounding
+      // assessment each time instead of referencing the one the user already has.
+      const analysisContext = await this.summarizeSessionAnalyses(session.id);
       // An empty pin list is not "no documents" — it means search every ready document
       // in the workspace instead of a hand-picked subset (retrieveDocumentContext treats
       // an empty pinnedDocumentVersionIds as "no restriction", not "nothing to search").
@@ -177,8 +182,9 @@ export class AiConversationService {
         "Do not claim document facts without citing the supplied source labels in your response.",
         session.persona ? `This is a clearly labeled pitch simulation. Role-play only as the simulated investor persona \"${session.persona.personaName}\" using this investment lens: ${session.persona.description ?? "Ask rigorous, evidence-based investor questions."}. Never claim to be a real investor or have real-world knowledge beyond the supplied context.` : "",
         `Registered presentation types for this request: ${aiCapabilityManifest(access.canReadDocuments ? ["documents:read"] : [], { hasPinnedDocuments: versionIds.length > 0, hasRound: Boolean(session.roundId) }).artifactTypes.join(", ") || "none"}. Never emit an action payload or artifact JSON yourself — those are attached separately by the system.`,
-        "Format the response as markdown where it improves readability: headings, bold/italic, bullet or numbered lists, tables, and code blocks are all rendered. For a multi-section answer, give each section a real markdown heading (## or ###) rather than just bolding the first few words of a paragraph or list item — headings render distinctly larger, so they're how a section title should be marked, not bold text. Do not fabricate clickable links or URLs — reference sources only by their supplied labels.",
+        "Format the response as markdown where it improves readability: headings, bold/italic, bullet or numbered lists, tables, and code blocks are all rendered. For a multi-section answer, give each section a real markdown heading (## or ###) rather than just bolding the first few words of a paragraph or list item — headings render distinctly larger, so they're how a section title should be marked, not bold text. When listing prioritized gaps or issues that each have a severity/status, use a markdown table (columns like Area | Severity | Issue | Recommendation) instead of a bullet list — it renders as an actual table. When giving scores across categories, use a markdown table (Category | Score) too. When giving strengths-and-weaknesses feedback, use the heading \"Strengths\" and a heading from \"Weaknesses\"/\"Gaps\"/\"Areas for Improvement\", each immediately followed by its own bullet list — those exact heading words trigger distinct positive/negative styling on the list that follows. Do not fabricate clickable links or URLs — reference sources only by their supplied labels.",
         toolResults.length ? `Trusted, server-computed application data follows. Explain these values faithfully; do not invent other records:\n${JSON.stringify(toolResults)}` : "",
+        analysisContext,
         sources ? `Retrieved document data follows:\n<document_data>\n${sources}\n</document_data>` : "No document evidence was retrieved. State uncertainty rather than inventing facts.",
       ].join("\n\n");
       for await (const event of this.provider.streamConversation({
@@ -290,6 +296,27 @@ export class AiConversationService {
     } catch {
       // Best-effort: an untitled conversation is a cosmetic gap, not worth failing over.
     }
+  }
+
+  private async summarizeSessionAnalyses(sessionId: string): Promise<string> {
+    const analyses = await prisma.aiAnalysis.findMany({
+      where: { sessionId, status: "completed" },
+      orderBy: { completedAt: "desc" },
+      take: 5,
+      select: { overallScore: true, narrativeScore: true, marketValidationScore: true, financialScore: true, summaryReport: true, result: true, completedAt: true },
+    });
+    if (!analyses.length) return "";
+    const blocks = analyses.map((analysis, index) => {
+      const result = analysis.result as { gaps?: Array<{ section: string; status: string; severity: string; issue: string; recommendation: string }> } | null;
+      const gapLines = (result?.gaps ?? []).map((gap) => `- [${gap.severity}/${gap.status}] ${gap.section}: ${gap.issue} — ${gap.recommendation}`).join("\n") || "(no gaps recorded)";
+      return [
+        `Analysis ${index + 1}${analysis.completedAt ? ` (completed ${analysis.completedAt.toISOString()})` : ""}:`,
+        `Scores — overall ${analysis.overallScore ?? "n/a"}, narrative ${analysis.narrativeScore ?? "n/a"}, market ${analysis.marketValidationScore ?? "n/a"}, financial ${analysis.financialScore ?? "n/a"}.`,
+        analysis.summaryReport ? `Summary: ${analysis.summaryReport}` : "",
+        `Gaps:\n${gapLines}`,
+      ].filter(Boolean).join("\n");
+    });
+    return `A deck analysis has already been run for this conversation — use its results directly when the user asks about "this analysis," gaps, or scores, rather than re-deriving a fresh assessment from raw document text:\n\n${blocks.join("\n\n")}`;
   }
 
   private async ownedSession(startupId: string, userId: string, sessionId: string, includeDocuments: boolean) {

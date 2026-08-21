@@ -1,6 +1,42 @@
+import { createContext, useContext } from "react";
+import { AlertTriangle, Check } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "../../lib/utils";
+
+type ListTone = "positive" | "negative" | null;
+const ListToneContext = createContext<ListTone>(null);
+
+function headingText(node: any): string {
+  if (node.value) return node.value as string;
+  if (Array.isArray(node.children)) return node.children.map(headingText).join("");
+  return "";
+}
+
+// Tags the bullet list immediately following a "Strengths" / "Weaknesses"
+// (or Gaps/Areas for Improvement) heading with a tone, so it can render with
+// distinct positive/negative styling instead of a plain generic bullet —
+// the model is instructed to use exactly these heading words for this to
+// activate reliably.
+function remarkToneLists() {
+  return (tree: any) => {
+    let tone: ListTone = null;
+    for (const node of tree.children ?? []) {
+      if (node.type === "heading") {
+        const text = headingText(node).toLowerCase();
+        if (/\bstrength/.test(text)) tone = "positive";
+        else if (/\bweakness|\bgap|\bimprovement|\bconcern|\brisk/.test(text)) tone = "negative";
+        else tone = null;
+      } else if (node.type === "list") {
+        if (tone) {
+          node.data ??= {};
+          node.data.hProperties = { ...(node.data.hProperties ?? {}), className: `tone-${tone}` };
+        }
+        tone = null;
+      }
+    }
+  };
+}
 
 const components: Components = {
   p: ({ children }) => <p className="leading-relaxed [&:not(:first-child)]:mt-3">{children}</p>,
@@ -15,9 +51,35 @@ const components: Components = {
   h2: ({ children }) => <h2 className="mt-6 border-b border-border/60 pb-1.5 text-xl font-bold tracking-tight text-foreground first:mt-0">{children}</h2>,
   h3: ({ children }) => <h3 className="mt-5 text-lg font-semibold text-foreground first:mt-0">{children}</h3>,
   h4: ({ children }) => <h4 className="mt-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground first:mt-0">{children}</h4>,
-  ul: ({ children }) => <ul className="mt-2 list-disc space-y-1 pl-5 marker:text-muted-foreground first:mt-0">{children}</ul>,
+  ul: ({ children, className }) => {
+    const tone: ListTone = className?.includes("tone-positive") ? "positive" : className?.includes("tone-negative") ? "negative" : null;
+    return (
+      <ListToneContext.Provider value={tone}>
+        <ul className={cn("mt-2 space-y-1.5 first:mt-0", tone ? "list-none pl-0" : "list-disc space-y-1 pl-5 marker:text-muted-foreground")}>{children}</ul>
+      </ListToneContext.Provider>
+    );
+  },
   ol: ({ children }) => <ol className="mt-2 list-decimal space-y-1 pl-5 marker:text-muted-foreground first:mt-0">{children}</ol>,
-  li: ({ children }) => <li className="pl-0.5">{children}</li>,
+  li: ({ children }) => {
+    const tone = useContext(ListToneContext);
+    if (tone === "positive") {
+      return (
+        <li className="flex items-start gap-2">
+          <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
+          <span>{children}</span>
+        </li>
+      );
+    }
+    if (tone === "negative") {
+      return (
+        <li className="flex items-start gap-2">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+          <span>{children}</span>
+        </li>
+      );
+    }
+    return <li className="pl-0.5">{children}</li>;
+  },
   blockquote: ({ children }) => <blockquote className="mt-2 border-l-2 border-primary/40 pl-3 text-muted-foreground first:mt-0">{children}</blockquote>,
   hr: () => <hr className="my-4 border-border/60" />,
   code: ({ className, children, ...props }) => {
@@ -49,7 +111,7 @@ const components: Components = {
 export function Markdown({ children, className }: { children: string; className?: string }) {
   return (
     <div className={cn("text-base leading-relaxed text-foreground/95", className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkToneLists]} components={components}>
         {children}
       </ReactMarkdown>
     </div>
