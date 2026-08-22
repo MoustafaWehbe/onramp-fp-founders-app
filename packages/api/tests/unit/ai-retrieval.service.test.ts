@@ -4,7 +4,14 @@ import { FakeAiProvider } from "../../src/services/ai-provider.service";
 import { AiRetrievalService } from "../../src/services/ai-retrieval.service";
 import type { AiConfig } from "../../src/config/ai";
 
-jest.mock("../../src/db/prisma", () => ({ prisma: { $queryRaw: jest.fn() } }));
+jest.mock("../../src/db/prisma", () => {
+  const prismaMock: { $queryRaw: jest.Mock; $executeRaw: jest.Mock; $transaction: jest.Mock } = {
+    $queryRaw: jest.fn(),
+    $executeRaw: jest.fn(),
+    $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(prismaMock)),
+  };
+  return { prisma: prismaMock };
+});
 
 const config: AiConfig = {
   enabled: true, chatModel: "chat", analysisModel: "analysis", embeddingModel: "embedding", embeddingDimensions: 1536,
