@@ -1,6 +1,7 @@
 import { prisma } from "../db/prisma";
 import { createError, getErrorCode } from "../utils/errors";
 import { hasPermission } from "../middleware/rbac";
+import { consumeMailboxFloodLimit } from "../middleware/rate-limiter";
 import { AUDIT_ACTIONS, recordAuditEvent } from "./audit-writer";
 import { AI_ACTION_PAYLOAD_SCHEMAS, AI_ACTION_PERMISSIONS, type AiActionType } from "../validators/ai-action.schemas";
 import { taskService } from "./task.service";
@@ -63,6 +64,13 @@ export class AiActionsService {
     const permission = AI_ACTION_PERMISSIONS[action.actionType as AiActionType];
     if (!(await hasPermission(roleId, permission.resource, permission.action))) {
       throw createError("Forbidden", 403, "FORBIDDEN");
+    }
+
+    if (action.actionType === "send_investor_email" || action.actionType === "schedule_meeting") {
+      const prefix = action.actionType === "send_investor_email" ? "email-send" : "schedule-meeting";
+      if (!(await consumeMailboxFloodLimit(prefix, userId))) {
+        throw createError("Too many emails or meetings sent recently please wait before approving another.", 429, "AI_ACTION_RATE_LIMITED");
+      }
     }
 
     const schema = AI_ACTION_PAYLOAD_SCHEMAS[action.actionType as AiActionType];

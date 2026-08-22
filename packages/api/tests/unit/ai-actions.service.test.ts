@@ -1,6 +1,7 @@
 import { prisma } from "../../src/db/prisma";
 import { AiActionsService } from "../../src/services/ai-actions.service";
 import { hasPermission } from "../../src/middleware/rbac";
+import { consumeMailboxFloodLimit } from "../../src/middleware/rate-limiter";
 import { taskService } from "../../src/services/task.service";
 import { calendarEventService } from "../../src/services/calendar-event.service";
 import { gmailSendService } from "../../src/services/gmail-send.service";
@@ -17,6 +18,7 @@ jest.mock("../../src/db/prisma", () => ({
 }));
 
 jest.mock("../../src/middleware/rbac", () => ({ hasPermission: jest.fn() }));
+jest.mock("../../src/middleware/rate-limiter", () => ({ consumeMailboxFloodLimit: jest.fn().mockResolvedValue(true) }));
 jest.mock("../../src/services/audit-writer", () => ({ AUDIT_ACTIONS: { CREATE: "create" }, recordAuditEvent: jest.fn() }));
 jest.mock("../../src/services/task.service", () => ({ taskService: { createTask: jest.fn(), updateTask: jest.fn() } }));
 jest.mock("../../src/services/interaction-log.service", () => ({ interactionLogService: { createLog: jest.fn() } }));
@@ -192,6 +194,66 @@ describe("AiActionsService.approveAction", () => {
     // gmailSendService itself resolves the address from StartupInvestor.email
     // this asserts the call carries only investorId, not a caller-supplied address.
     expect(gmailSendService.sendInvestorEmail).toHaveBeenCalledWith(STARTUP_ID, INVESTOR_ID, USER_ID, { subject: "Hi", body: "Hello" });
+  });
+
+  it("draws from the manual endpoint's own mailbox-flood budget before sending an approved email, not a separate unbounded one", async () => {
+    (prisma.aiAgentAction.findFirst as jest.Mock).mockResolvedValue(proposedRow({ actionType: "send_investor_email", payload: { investorId: INVESTOR_ID, subject: "Hi", body: "Hello" } }));
+    (hasPermission as jest.Mock).mockResolvedValue(true);
+    (prisma.aiAgentAction.updateMany as jest.Mock).mockResolvedValue({ count: 1 });
+    (prisma.startupInvestor.findUnique as jest.Mock).mockResolvedValue({ id: INVESTOR_ID });
+    (gmailSendService.sendInvestorEmail as jest.Mock).mockResolvedValue({ messageId: "msg-1", threadId: "thread-1" });
+    (prisma.aiAgentAction.update as jest.Mock).mockResolvedValue(proposedRow({ status: "executed" }));
+
+    await new AiActionsService().approveAction(STARTUP_ID, USER_ID, ROLE_ID, "action-1");
+
+    // "email-send" is the exact prefix emailSendRateLimiter's own makeStore()
+    // uses the same Redis key, so an AI approval and a manual send share one
+    // counter rather than each getting its own budget.
+    expect(consumeMailboxFloodLimit).toHaveBeenCalledWith("email-send", USER_ID);
+  });
+
+  it("refuses to send an approved email once the shared mailbox-flood budget is spent, without executing it", async () => {
+    (prisma.aiAgentAction.findFirst as jest.Mock).mockResolvedValue(proposedRow({ actionType: "send_investor_email", payload: { investorId: INVESTOR_ID, subject: "Hi", body: "Hello" } }));
+    (hasPermission as jest.Mock).mockResolvedValue(true);
+    (consumeMailboxFloodLimit as jest.Mock).mockResolvedValueOnce(false);
+
+    await expect(new AiActionsService().approveAction(STARTUP_ID, USER_ID, ROLE_ID, "action-1"))
+      .rejects.toMatchObject({ statusCode: 429, code: "AI_ACTION_RATE_LIMITED" });
+
+    expect(gmailSendService.sendInvestorEmail).not.toHaveBeenCalled();
+    // Rejected before the row's status changes, so the proposal is still
+    // "proposed" and the user can retry once the window clears rather than
+    // being stuck behind a half-approved action.
+    expect(prisma.aiAgentAction.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("checks the schedule-meeting budget (not email-send) when approving a meeting proposal", async () => {
+    (prisma.aiAgentAction.findFirst as jest.Mock).mockResolvedValue(proposedRow({
+      actionType: "schedule_meeting",
+      payload: { investorId: INVESTOR_ID, type: "meeting", startDateTime: "2026-01-01T10:00:00.000Z", durationMinutes: 30 },
+    }));
+    (hasPermission as jest.Mock).mockResolvedValue(true);
+    (prisma.aiAgentAction.updateMany as jest.Mock).mockResolvedValue({ count: 1 });
+    (prisma.startupInvestor.findUnique as jest.Mock).mockResolvedValue({ id: INVESTOR_ID });
+    (calendarEventService.scheduleMeeting as jest.Mock).mockResolvedValue({ eventId: "evt-1", htmlLink: "https://example.com" });
+    (prisma.aiAgentAction.update as jest.Mock).mockResolvedValue(proposedRow({ status: "executed" }));
+
+    await new AiActionsService().approveAction(STARTUP_ID, USER_ID, ROLE_ID, "action-1");
+
+    expect(consumeMailboxFloodLimit).toHaveBeenCalledWith("schedule-meeting", USER_ID);
+  });
+
+  it("never checks the mailbox-flood budget for an action that doesn't send or schedule anything", async () => {
+    (prisma.aiAgentAction.findFirst as jest.Mock).mockResolvedValue(proposedRow());
+    (hasPermission as jest.Mock).mockResolvedValue(true);
+    (prisma.aiAgentAction.updateMany as jest.Mock).mockResolvedValue({ count: 1 });
+    (prisma.pipeline.findUnique as jest.Mock).mockResolvedValue({ id: PIPELINE_ID });
+    (taskService.createTask as jest.Mock).mockResolvedValue({ data: { id: "task-1" } });
+    (prisma.aiAgentAction.update as jest.Mock).mockResolvedValue(proposedRow({ status: "executed" }));
+
+    await new AiActionsService().approveAction(STARTUP_ID, USER_ID, ROLE_ID, "action-1");
+
+    expect(consumeMailboxFloodLimit).not.toHaveBeenCalled();
   });
 
   it("marks the action failed, with the underlying error code, when the delegated service throws", async () => {

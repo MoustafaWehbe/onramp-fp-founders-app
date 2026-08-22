@@ -71,9 +71,12 @@ export const credentialRateLimiter = rateLimit({
   },
 });
 
+const MAILBOX_FLOOD_WINDOW_MS = 60 * 60 * 1_000; // 1 hour
+const MAILBOX_FLOOD_MAX = 30;
+
 export const emailSendRateLimiter = rateLimit({
-  windowMs: 60 * 60 * 1_000, // 1 hour
-  max: 30,
+  windowMs: MAILBOX_FLOOD_WINDOW_MS,
+  max: MAILBOX_FLOOD_MAX,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   store: makeStore("email-send"),
@@ -89,8 +92,8 @@ export const emailSendRateLimiter = rateLimit({
  * keying, its own budget.
  */
 export const scheduleMeetingRateLimiter = rateLimit({
-  windowMs: 60 * 60 * 1_000, // 1 hour
-  max: 30,
+  windowMs: MAILBOX_FLOOD_WINDOW_MS,
+  max: MAILBOX_FLOOD_MAX,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   store: makeStore("schedule-meeting"),
@@ -99,6 +102,23 @@ export const scheduleMeetingRateLimiter = rateLimit({
     error: "Too many meetings scheduled please wait before scheduling more.",
   },
 });
+
+/**
+ * Same Redis-backed counters as emailSendRateLimiter / scheduleMeetingRateLimiter
+ * (identical key prefix, so hits are additive with the manual endpoint's own),
+ * consumed directly rather than as Express middleware. approveAction has no
+ * req/res to run a limiter against, and which of these two budgets applies
+ * depends on the proposal's actionType only known once the row is loaded
+ * inside the service, not from the route alone. Without this, approving an
+ * AI-drafted send/schedule was a way around the manual endpoint's own cap.
+ */
+export async function consumeMailboxFloodLimit(prefix: "email-send" | "schedule-meeting", userId: string): Promise<boolean> {
+  const redis = getRedis();
+  const key = `rl:${prefix}:${userId}`;
+  const count = await redis.incr(key);
+  if (count === 1) await redis.pexpire(key, MAILBOX_FLOOD_WINDOW_MS);
+  return count <= MAILBOX_FLOOD_MAX;
+}
 
 /**
  * Guards `/access` and `/verify`. These were unrated before an invitation
