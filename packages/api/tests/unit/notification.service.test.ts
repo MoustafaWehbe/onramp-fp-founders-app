@@ -28,11 +28,17 @@ jest.mock("../../src/events/notification-bus", () => ({
   notificationBus: { publish: jest.fn() },
 }));
 
+jest.mock("../../src/utils/logger", () => ({
+  logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
+}));
+
 import { prisma } from "../../src/db/prisma";
 import { notificationBus } from "../../src/events/notification-bus";
+import { logger } from "../../src/utils/logger";
 
 const mockPrisma = prisma as jest.Mocked<typeof prisma>;
 const mockBus = notificationBus as jest.Mocked<typeof notificationBus>;
+const mockLoggerError = logger.error as jest.Mock;
 const service = new NotificationService();
 
 const USER_ID = "00000000-0000-0000-0000-000000000001";
@@ -45,13 +51,8 @@ beforeEach(() => {
 });
 
 async function expectSwallowedFailure(operation: () => Promise<void>): Promise<void> {
-  const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
-  try {
-    await expect(operation()).resolves.toBeUndefined();
-    expect(errorSpy).toHaveBeenCalledTimes(1);
-  } finally {
-    errorSpy.mockRestore();
-  }
+  await expect(operation()).resolves.toBeUndefined();
+  expect(mockLoggerError).toHaveBeenCalledTimes(1);
 }
 
 describe("NotificationService.notifyFollowupDue", () => {

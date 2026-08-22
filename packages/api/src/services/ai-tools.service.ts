@@ -286,17 +286,17 @@ export class AiToolsService {
       });
     }
     if (tool === "get_round_health") {
-      const input = toolInputs.get_round_health.parse(rawInput);
+      const input = parsedInput as z.infer<typeof toolInputs.get_round_health>;
       const round = input.roundId
         ? await fundraisingService.getRound(startupId, input.roundId)
         : (await fundraisingService.listRounds(startupId, { page: 1, limit: 1, status: "active" })).data[0];
       return round ? { round: { id: round.id, name: round.roundName, currency: round.currency }, metrics: await fundraisingService.getRoundMetrics(startupId, round.id) } : { round: null, metrics: null };
     }
-    if (tool === "forecast_round_close") return forecastService.forecastRoundClose(startupId, toolInputs.forecast_round_close.parse(rawInput).roundId ?? undefined);
-    if (tool === "get_pipeline_summary") return pipelineService.getAnalytics(startupId, toolInputs.get_pipeline_summary.parse(rawInput).roundId ?? undefined);
-    if (tool === "get_focus_deals") return pipelineService.getFocus(startupId, toolInputs.get_focus_deals.parse(rawInput).roundId ?? undefined);
+    if (tool === "forecast_round_close") return forecastService.forecastRoundClose(startupId, (parsedInput as z.infer<typeof toolInputs.forecast_round_close>).roundId ?? undefined);
+    if (tool === "get_pipeline_summary") return pipelineService.getAnalytics(startupId, (parsedInput as z.infer<typeof toolInputs.get_pipeline_summary>).roundId ?? undefined);
+    if (tool === "get_focus_deals") return pipelineService.getFocus(startupId, (parsedInput as z.infer<typeof toolInputs.get_focus_deals>).roundId ?? undefined);
     if (tool === "get_investor_context") {
-      const input = toolInputs.get_investor_context.parse(rawInput);
+      const input = parsedInput as z.infer<typeof toolInputs.get_investor_context>;
       const investor = await prisma.startupInvestor.findUnique({
         where: { startupId_id: { startupId, id: input.investorId } },
         select: {
@@ -321,15 +321,15 @@ export class AiToolsService {
       return { ...base, commitments: commitments.map((commitment) => ({ amount: commitment.amount === null ? null : Number(commitment.amount), status: commitment.status, expectedCloseDate: commitment.expectedCloseDate })) };
     }
     if (tool === "get_reviewer_engagement") {
-      const input = toolInputs.get_reviewer_engagement.parse(rawInput);
+      const input = parsedInput as z.infer<typeof toolInputs.get_reviewer_engagement>;
       const versions = await prisma.documentVersion.findMany({ where: { document: { startupId, ...(input.documentId ? { id: input.documentId } : {}) } }, take: 10, select: { id: true, document: { select: { id: true, title: true } } } });
       const counts = await prisma.reviewerInvitationDocument.groupBy({ by: ["documentVersionId"], where: { documentVersionId: { in: versions.map((version) => version.id) } }, _count: { invitationId: true } });
       const countByVersion = new Map(counts.map((count) => [count.documentVersionId, count._count.invitationId]));
       return versions.map((version) => ({ id: version.document.id, title: version.document.title, invitationCount: countByVersion.get(version.id) ?? 0 }));
     }
     if (tool === "search_investors" || tool === "list_investors") {
-      const searchInput = tool === "search_investors" ? toolInputs.search_investors.parse(rawInput) : null;
-      const listInput = tool === "list_investors" ? toolInputs.list_investors.parse(rawInput) : null;
+      const searchInput = tool === "search_investors" ? (parsedInput as z.infer<typeof toolInputs.search_investors>) : null;
+      const listInput = tool === "list_investors" ? (parsedInput as z.infer<typeof toolInputs.list_investors>) : null;
       return investorService.listInvestors(startupId, {
         page: 1,
         limit: 10,
@@ -338,10 +338,10 @@ export class AiToolsService {
         ...(listInput?.stage ? { stage: listInput.stage } : {}),
       });
     }
-    if (tool === "get_pipeline_by_stage") return pipelineService.getByStage(startupId, toolInputs.get_pipeline_by_stage.parse(rawInput).roundId);
-    if (tool === "get_interaction_history") return interactionLogService.listLogsByInvestor(startupId, toolInputs.get_interaction_history.parse(rawInput).investorId, { page: 1, limit: 15 });
+    if (tool === "get_pipeline_by_stage") return pipelineService.getByStage(startupId, (parsedInput as z.infer<typeof toolInputs.get_pipeline_by_stage>).roundId);
+    if (tool === "get_interaction_history") return interactionLogService.listLogsByInvestor(startupId, (parsedInput as z.infer<typeof toolInputs.get_interaction_history>).investorId, { page: 1, limit: 15 });
     if (tool === "list_tasks") {
-      const input = toolInputs.list_tasks.parse(rawInput);
+      const input = parsedInput as z.infer<typeof toolInputs.list_tasks>;
       // Always the caller's own tasks, resolved server-side from the
       // authenticated userId never a model-supplied assignee, the same
       // reasoning as chat access below (this is a "what's on my plate" tool,
@@ -363,7 +363,7 @@ export class AiToolsService {
       // authenticated userId never from a model-supplied id.
       const memberId = await this.resolveMemberId(startupId, context.userId);
       if (tool === "list_team_conversations") return chatService.listConversations(startupId, memberId);
-      return chatService.searchMessages(startupId, memberId, toolInputs.search_team_messages.parse(rawInput).query);
+      return chatService.searchMessages(startupId, memberId, (parsedInput as z.infer<typeof toolInputs.search_team_messages>).query);
     }
 
     // tool is one of the five propose_* write tools: this only ever creates a
