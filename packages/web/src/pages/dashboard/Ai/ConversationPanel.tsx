@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ArrowDown, ArrowUp, FileSearch, Loader2, Sparkles, UserRound } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -541,7 +541,11 @@ function Welcome({ canCreate, onSelectPrompt }: { canCreate: boolean; onSelectPr
   );
 }
 
-function MessageBubble({ startupId, message, onAskFollowup }: { startupId: string; message: AiChatMessage; onAskFollowup: (prompt: string) => void }) {
+// Memoized so an in-flight message.delta event — which only replaces that one
+// message's object reference in the react-query cache — re-renders (and
+// re-parses markdown for) just the bubble that actually changed, instead of
+// every bubble in the conversation on every delta.
+const MessageBubble = memo(function MessageBubble({ startupId, message, onAskFollowup }: { startupId: string; message: AiChatMessage; onAskFollowup: (prompt: string) => void }) {
   const assistant = message.role === "assistant";
   // The source_answer artifact duplicates this same text plus a source list in a
   // bordered card — rendering it instead of the plain bubble made every grounded
@@ -590,4 +594,4 @@ function MessageBubble({ startupId, message, onAskFollowup }: { startupId: strin
       </div>
     </article>
   );
-}
+});
