@@ -203,7 +203,7 @@ export function TaskList({ startupId, pipelineId, dealLabel }: TaskListProps) {
                     aria-label={`Complete task ${task.title}`}
                     disabled={toggleMutation.isPending && toggleMutation.variables?.id === task.id}
                     onClick={() => toggleMutation.mutate(task)}
-                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-success/30 bg-success/[0.06] px-3 text-xs font-semibold text-success transition-colors hover:border-success/50 hover:bg-success/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40 disabled:pointer-events-none disabled:opacity-50"
+                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-success/30 bg-success/6 px-3 text-xs font-semibold text-success transition-colors hover:border-success/50 hover:bg-success/15 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-success/40 disabled:pointer-events-none disabled:opacity-50"
                   >
                     <Check className="h-3.5 w-3.5" />
                     {toggleMutation.isPending && toggleMutation.variables?.id === task.id ? "Finishing…" : "Mark done"}

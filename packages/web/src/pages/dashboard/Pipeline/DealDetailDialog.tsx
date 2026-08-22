@@ -568,7 +568,7 @@ export function DealDetailDialog({
               {activeTab === "overview" && <>
 
               {recommendation && (
-                <section aria-label="Recommended next action" className="relative overflow-hidden rounded-2xl border border-primary/25 bg-primary/[0.055] p-4">
+                <section aria-label="Recommended next action" className="relative overflow-hidden rounded-2xl border border-primary/25 bg-primary/5.5 p-4">
                   <div className="absolute -right-8 -top-10 h-28 w-28 rounded-full bg-primary/10 blur-2xl" />
                   <div className="relative flex flex-wrap items-center gap-3">
                     <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary"><Sparkles className="h-5 w-5" /></div>
@@ -668,7 +668,7 @@ export function DealDetailDialog({
                   disabled={!canUpdate || dealMutation.isPending}
                   onClick={() => setLeadConfirmOpen(true)}
                   className={cn(
-                    "h-8 rounded-full border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+                    "h-8 rounded-full border px-3 text-xs font-semibold transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
                     deal.isLead
                       ? "border-warning/40 bg-warning/15 text-warning hover:bg-warning/20"
                       : "border-border bg-card text-muted-foreground hover:border-warning/40 hover:text-foreground",

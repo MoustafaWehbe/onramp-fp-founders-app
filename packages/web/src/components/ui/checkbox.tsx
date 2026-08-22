@@ -25,7 +25,7 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           else if (forwardedRef) forwardedRef.current = node;
         }}
         className={cn(
-          "h-4 w-4 shrink-0 cursor-pointer rounded border-border bg-background accent-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+          "h-4 w-4 shrink-0 cursor-pointer rounded border-border bg-background accent-primary focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
           className,
         )}
         {...props}

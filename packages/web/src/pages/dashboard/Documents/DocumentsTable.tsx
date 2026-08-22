@@ -80,7 +80,7 @@ export function DocumentsTable({
                 className={cn(
                   "transition-colors",
                   selectionActive ? "cursor-pointer hover:bg-surface-hover/50" : "hover:bg-surface-hover/50",
-                  selected && "bg-primary/[0.06]",
+                  selected && "bg-primary/6",
                   focused && "bg-primary/10 ring-1 ring-inset ring-primary/40",
                 )}
               >

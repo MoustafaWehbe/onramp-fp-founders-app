@@ -92,7 +92,7 @@ export function Notifications() {
                     onClick={() => handleRowClick(n)}
                     className={cn(
                       "flex w-full items-start gap-3 p-4 text-left transition-colors hover:bg-surface-hover/50 sm:gap-4",
-                      !n.read && "bg-primary/[0.03]",
+                      !n.read && "bg-primary/3",
                       href && "cursor-pointer",
                     )}
                   >
@@ -126,7 +126,7 @@ export function Notifications() {
                             }}
                             title="Mark as read"
                             aria-label={`Mark "${n.title}" as read`}
-                            className="group grid h-4 w-4 shrink-0 place-items-center rounded-full focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            className="group grid h-4 w-4 shrink-0 place-items-center rounded-full focus:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                           >
                             <span className="h-1.5 w-1.5 rounded-full bg-primary transition-transform group-hover:scale-150" />
                           </span>

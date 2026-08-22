@@ -109,7 +109,7 @@ export function RolePermissionsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
-        <DialogHeader className="border-b border-border/60 bg-gradient-to-r from-primary/[0.08] via-transparent to-transparent px-6 py-5 pr-14">
+        <DialogHeader className="border-b border-border/60 bg-linear-to-r from-primary/8 via-transparent to-transparent px-6 py-5 pr-14">
           <div className="flex items-start gap-3 text-left">
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
               <ShieldCheck className="h-5 w-5" />
@@ -127,7 +127,7 @@ export function RolePermissionsDialog({
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-col overflow-hidden">
           <div className="scrollbar-slim min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
-            <section className="rounded-xl border border-border/70 bg-muted/[0.12] p-4">
+            <section className="rounded-xl border border-border/70 bg-muted/12 p-4">
               <div className={cn("grid gap-4", mode === "create" && "sm:grid-cols-2")}>
                 {mode === "create" && (
                   <div className="space-y-2">
@@ -223,9 +223,9 @@ export function RolePermissionsDialog({
                               disabled={isSubmitting}
                               onClick={() => toggle(key)}
                               className={cn(
-                                "inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-card disabled:pointer-events-none disabled:opacity-50",
+                                "inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-card disabled:pointer-events-none disabled:opacity-50",
                                 selected
-                                  ? "border-primary/35 bg-primary/12 text-primary shadow-sm"
+                                  ? "border-primary/35 bg-primary/12 text-primary shadow-xs"
                                   : "border-border/70 bg-background/40 text-muted-foreground hover:border-primary/25 hover:bg-surface-hover hover:text-foreground",
                               )}
                             >
@@ -233,7 +233,7 @@ export function RolePermissionsDialog({
                                 "grid h-4 w-4 place-items-center rounded-full border transition-colors",
                                 selected ? "border-primary bg-primary text-primary-foreground" : "border-border",
                               )}>
-                                {selected && <Check className="h-2.5 w-2.5 stroke-[3]" />}
+                                {selected && <Check className="h-2.5 w-2.5 stroke-3" />}
                               </span>
                               {action.label}
                             </button>

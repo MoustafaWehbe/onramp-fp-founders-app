@@ -224,7 +224,7 @@ function Hero() {
           </div>
           <h1 className="mt-6 font-display text-5xl font-semibold leading-[1.05] tracking-tight md:text-7xl">
             Run your fundraise {" "}
-            <span className="bg-gradient-to-r from-primary to-[oklch(0.72_0.2_25)] bg-clip-text text-transparent">
+            <span className="bg-linear-to-r from-primary to-[oklch(0.72_0.2_25)] bg-clip-text text-transparent">
               like an engineer
             </span>
             .

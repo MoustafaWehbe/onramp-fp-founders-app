@@ -340,7 +340,7 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
 
   return (
     <main className="flex min-h-0 min-w-0 flex-col">
-      <div className="flex shrink-0 items-center gap-2.5 border-b border-border/60 bg-card/40 px-6 py-3.5 backdrop-blur-sm">
+      <div className="flex shrink-0 items-center gap-2.5 border-b border-border/60 bg-card/40 px-6 py-3.5 backdrop-blur-xs">
         <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
           <Sparkles className="h-3.5 w-3.5" />
         </span>
@@ -429,7 +429,7 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
               </DropdownMenu>
             </div>
           )}
-          <div className={cn("flex items-end gap-2 rounded-2xl border border-border/70 bg-surface/60 px-3 py-2 shadow-sm transition-colors focus-within:border-primary/40", (!canCreate || Boolean(activeAssistant)) && "opacity-70")}>
+          <div className={cn("flex items-end gap-2 rounded-2xl border border-border/70 bg-surface/60 px-3 py-2 shadow-xs transition-colors focus-within:border-primary/40", (!canCreate || Boolean(activeAssistant)) && "opacity-70")}>
             <Textarea
               ref={textareaRef}
               value={draft}

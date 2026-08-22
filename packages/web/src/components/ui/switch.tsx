@@ -19,10 +19,10 @@ function SwitchIndicator({ checked, className }: { checked: boolean; className?:
     >
       <span
         className={cn(
-          "pointer-events-none block h-3.5 w-3.5 rounded-full shadow-sm transition-transform duration-200",
+          "pointer-events-none block h-3.5 w-3.5 rounded-full shadow-xs transition-transform duration-200",
           checked
-            ? "translate-x-[1.125rem] bg-primary-foreground"
-            : "translate-x-[0.125rem] bg-muted-foreground",
+            ? "translate-x-4.5 bg-primary-foreground"
+            : "translate-x-0.5 bg-muted-foreground",
         )}
       />
     </span>
@@ -48,7 +48,7 @@ const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
         if (!event.defaultPrevented) onCheckedChange(!checked);
       }}
       className={cn(
-        "rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
+        "rounded-full focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       {...props}

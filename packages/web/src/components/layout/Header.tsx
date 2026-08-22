@@ -23,7 +23,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   const { logout } = useAuth();
 
   return (
-    <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-border/60 bg-background/80 px-4 backdrop-blur sm:gap-3 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-border/60 bg-background/80 px-4 backdrop-blur-sm sm:gap-3 sm:px-6 lg:px-8">
       <Button
         type="button"
         variant="ghost"
@@ -132,7 +132,7 @@ function NotificationsMenu() {
                     onClick={() => handleRowClick(n)}
                     className={cn(
                       "flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-surface-hover/60",
-                      !n.read && "bg-primary/[0.03]",
+                      !n.read && "bg-primary/3",
                     )}
                   >
                     <div
@@ -164,7 +164,7 @@ function NotificationsMenu() {
                         }}
                         title="Mark as read"
                         aria-label={`Mark "${n.title}" as read`}
-                        className="group mt-1.5 grid h-4 w-4 shrink-0 place-items-center rounded-full focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        className="group mt-1.5 grid h-4 w-4 shrink-0 place-items-center rounded-full focus:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                       >
                         <span className="h-1.5 w-1.5 rounded-full bg-primary transition-transform group-hover:scale-150" />
                       </span>

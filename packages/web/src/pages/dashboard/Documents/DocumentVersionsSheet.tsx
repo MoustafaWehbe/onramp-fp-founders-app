@@ -79,7 +79,7 @@ export function DocumentVersionsSheet({
                   key={version.id}
                   className={cn(
                     "rounded-lg border border-border p-3",
-                    version.isCurrent && "border-primary/40 bg-primary/[0.04]",
+                    version.isCurrent && "border-primary/40 bg-primary/4",
                   )}
                 >
                   <div className="flex items-start justify-between gap-2">

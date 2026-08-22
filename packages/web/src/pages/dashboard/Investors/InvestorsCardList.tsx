@@ -47,7 +47,7 @@ export function InvestorsCardList({
             className={cn(
               "flex items-start gap-3 p-4",
               selectionActive && "cursor-pointer",
-              selected && "bg-primary/[0.06]",
+              selected && "bg-primary/6",
             )}
           >
             {/* Avatar doubles as the selection indicator in selection mode a

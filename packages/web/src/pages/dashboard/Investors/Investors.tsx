@@ -390,7 +390,7 @@ export function Investors() {
                 className={cn(
                   "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors",
                   active
-                    ? "bg-card font-medium text-foreground shadow-sm"
+                    ? "bg-card font-medium text-foreground shadow-xs"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >

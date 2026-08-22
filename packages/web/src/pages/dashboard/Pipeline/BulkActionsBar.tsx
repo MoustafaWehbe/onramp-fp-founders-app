@@ -104,7 +104,7 @@ export function BulkActionsBar({
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/[0.05] px-3 py-2">
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2">
         <span className="text-sm font-medium">
           {selected.length} selected
         </span>

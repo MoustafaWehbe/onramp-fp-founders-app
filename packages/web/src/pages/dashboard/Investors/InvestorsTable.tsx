@@ -63,7 +63,7 @@ export function InvestorsTable({
                 className={cn(
                   "transition-colors",
                   selectionActive ? "cursor-pointer hover:bg-surface-hover/50" : "hover:bg-surface-hover/50",
-                  selected && "bg-primary/[0.06]",
+                  selected && "bg-primary/6",
                 )}
               >
                 <td className="px-4 py-3">

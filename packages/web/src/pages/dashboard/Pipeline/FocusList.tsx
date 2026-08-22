@@ -92,7 +92,7 @@ export function FocusList({
             className={cn(
               "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors",
               !leadsOnly
-                ? "bg-card font-medium text-foreground shadow-sm"
+                ? "bg-card font-medium text-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -113,7 +113,7 @@ export function FocusList({
             className={cn(
               "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors",
               leadsOnly
-                ? "bg-card font-medium text-foreground shadow-sm"
+                ? "bg-card font-medium text-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -155,7 +155,7 @@ export function FocusList({
                 key={deal.id}
                 className={cn(
                   "flex flex-wrap items-center gap-3 p-4 transition-colors hover:bg-surface/40",
-                  urgent && "bg-destructive/[0.03]",
+                  urgent && "bg-destructive/3",
                 )}
               >
                 <div

@@ -128,7 +128,7 @@ export function AddDealDialog({
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="start"
-                className="w-[var(--radix-dropdown-menu-trigger-width)] max-h-80"
+                className="w-(--radix-dropdown-menu-trigger-width) max-h-80"
                 onCloseAutoFocus={(event) => event.preventDefault()}
               >
                 <DropdownMenuLabel>Available contacts</DropdownMenuLabel>
@@ -200,7 +200,7 @@ export function AddDealDialog({
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="start"
-                className="w-[var(--radix-dropdown-menu-trigger-width)]"
+                className="w-(--radix-dropdown-menu-trigger-width)"
               >
                 {INITIAL_STAGES.map((item) => (
                   <DropdownMenuItem key={item.id} onSelect={() => setStage(item.id)}>

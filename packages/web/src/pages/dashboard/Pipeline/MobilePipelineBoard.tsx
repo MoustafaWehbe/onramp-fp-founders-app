@@ -87,7 +87,7 @@ export function MobilePipelineBoard({
         <ul className="space-y-2" aria-label={`${stage.label} deals`}>
           {deals.map((deal) => (
             <li key={deal.id}>
-              <Card className="relative min-h-[128px] border-border/70 bg-card/95 p-3 shadow-sm">
+              <Card className="relative min-h-[128px] border-border/70 bg-card/95 p-3 shadow-xs">
                 <DealCardBody
                   deal={deal}
                   currency={currency}

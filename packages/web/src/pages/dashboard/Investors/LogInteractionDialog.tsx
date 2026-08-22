@@ -112,7 +112,7 @@ export function LogInteractionDialog({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   align="start"
-                  className="w-[var(--radix-dropdown-menu-trigger-width)]"
+                  className="w-(--radix-dropdown-menu-trigger-width)"
                 >
                   {INTERACTION_TYPES.map((option) => (
                     <DropdownMenuItem key={option} onSelect={() => setType(option)}>

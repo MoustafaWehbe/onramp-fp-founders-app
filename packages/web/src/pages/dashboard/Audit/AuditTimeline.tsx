@@ -135,7 +135,7 @@ function AuditRow({ entry }: { entry: AuditLogEntry }) {
       </button>
 
       {open && hasDetail && (
-        <div className="border-t border-border bg-surface/50 px-4 py-3 pl-[4.25rem]">
+        <div className="border-t border-border bg-surface/50 px-4 py-3 pl-17">
           <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Details
           </p>

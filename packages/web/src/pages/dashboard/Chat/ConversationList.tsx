@@ -73,7 +73,7 @@ function ConversationRow({ conversation, active, onSelect }: ConversationRowProp
           <BellOff className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Muted" />
         )}
         {unread && (
-          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 font-mono text-[10px] font-semibold tabular-nums text-primary-foreground shadow-sm">
+          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 font-mono text-[10px] font-semibold tabular-nums text-primary-foreground shadow-xs">
             {conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}
           </span>
         )}

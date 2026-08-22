@@ -85,7 +85,7 @@ export function MessageItem({ message, resolved, grouped, meta, onReact, onOpenT
                     className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-surface/40 px-2.5 py-1 text-xs"
                   >
                     <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span className="max-w-[14rem] truncate font-medium">{attachment.title}</span>
+                    <span className="max-w-56 truncate font-medium">{attachment.title}</span>
                   </span>
                 ))}
               </div>

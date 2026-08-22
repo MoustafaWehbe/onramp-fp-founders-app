@@ -77,7 +77,7 @@ export function PipelineFunnel({ funnel, conversion, currency }: PipelineFunnelP
                   onMouseEnter={() => setHovered(row.stage)}
                   onFocus={() => setHovered(row.stage)}
                   onClick={() => navigate(`/investors?tab=engaged&stage=${row.stage}`)}
-                  className="group relative block w-full cursor-pointer focus-visible:outline-none"
+                  className="group relative block w-full cursor-pointer focus-visible:outline-hidden"
                   style={{ height: ROW_HEIGHT }}
                   aria-label={`${stage.label}: ${row.everReached} deals ever reached this stage. Open the investor list filtered to this stage.`}
                 >
@@ -102,10 +102,10 @@ export function PipelineFunnel({ funnel, conversion, currency }: PipelineFunnelP
                   </div>
 
                   <div className="pointer-events-none relative flex h-full flex-col items-center justify-center gap-0.5 px-4">
-                    <span className="text-[11px] font-medium text-background/90 drop-shadow-sm">
+                    <span className="text-[11px] font-medium text-background/90 drop-shadow-xs">
                       {stage.label}
                     </span>
-                    <span className="font-display text-lg font-bold leading-none text-background drop-shadow-sm tabular-nums">
+                    <span className="font-display text-lg font-bold leading-none text-background drop-shadow-xs tabular-nums">
                       {row.everReached}
                     </span>
                   </div>
@@ -115,7 +115,7 @@ export function PipelineFunnel({ funnel, conversion, currency }: PipelineFunnelP
                   <div className="relative z-10 -my-2 flex justify-center">
                     <span
                       className={cn(
-                        "inline-flex items-center gap-1 rounded-full border border-border/70 bg-card px-2 py-0.5 font-mono text-[10px] font-medium tabular-nums shadow-sm transition-colors",
+                        "inline-flex items-center gap-1 rounded-full border border-border/70 bg-card px-2 py-0.5 font-mono text-[10px] font-medium tabular-nums shadow-xs transition-colors",
                         hovered === row.stage || hovered === rows[index + 1]?.stage
                           ? "border-primary/50 text-foreground"
                           : "text-muted-foreground",

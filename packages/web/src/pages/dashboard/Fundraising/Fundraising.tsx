@@ -163,7 +163,7 @@ export function Fundraising() {
       })}</div>
       {selectedRound && (
         <section className="space-y-5">
-          <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.10] via-card to-card p-6 sm:p-7">
+          <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-linear-to-br from-primary/10 via-card to-card p-6 sm:p-7">
             <div className="absolute -right-16 -top-20 h-52 w-52 rounded-full bg-primary/10 blur-3xl" />
             <div className="relative flex flex-wrap items-start justify-between gap-4">
               <div>

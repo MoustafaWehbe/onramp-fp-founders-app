@@ -257,7 +257,7 @@ export function TaskDialog({
           </div>
 
           {confirmingDelete ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/35 bg-destructive/[0.06] p-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/35 bg-destructive/6 p-3">
               <p className="text-sm text-destructive">
                 Delete this task? It can't be recovered.
               </p>

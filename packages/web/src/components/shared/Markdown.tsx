@@ -67,7 +67,7 @@ function ListItem({ children }: { children?: React.ReactNode }) {
 }
 
 const components: Components = {
-  p: ({ children }) => <p className="leading-relaxed [&:not(:first-child)]:mt-3">{children}</p>,
+  p: ({ children }) => <p className="leading-relaxed not-first:mt-3">{children}</p>,
   strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
   a: ({ children, href }) => (

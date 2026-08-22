@@ -138,7 +138,7 @@ export function DocumentsToolbar({
       )}
 
       {selectionActive && (
-        <div className="ml-auto flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/[0.05] px-3 py-1.5">
+        <div className="ml-auto flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-1.5">
           <span className="font-mono text-xs text-muted-foreground">{selectedCount} selected</span>
           <Button type="button" variant="ghost" size="sm" disabled={visibleCount === 0} onClick={onSelectAllVisible}>
             Select all

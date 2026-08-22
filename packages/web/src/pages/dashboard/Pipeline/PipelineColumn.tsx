@@ -86,8 +86,8 @@ export const PipelineColumn = memo(function PipelineColumn({
       <div
         ref={setNodeRef}
         className={cn(
-          "scrollbar-none h-[26rem] space-y-2 overflow-y-auto rounded-xl border border-border/70 bg-surface/50 p-2 transition-colors",
-          isOver && "border-primary/50 bg-primary/[0.04]",
+          "scrollbar-none h-104 space-y-2 overflow-y-auto rounded-xl border border-border/70 bg-surface/50 p-2 transition-colors",
+          isOver && "border-primary/50 bg-primary/4",
         )}
       >
         <SortableContext items={dealIds} strategy={verticalListSortingStrategy}>

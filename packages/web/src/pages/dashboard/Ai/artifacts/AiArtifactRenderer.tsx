@@ -438,7 +438,7 @@ function ActionProposalCard({ startupId, proposal }: { startupId: string; propos
 
 function ArtifactShell({ icon: Icon, title, action, children }: { icon: LucideIcon; title: string; action?: ReactNode; children: ReactNode }) {
   return (
-    <section className="mt-2 max-w-full rounded-xl border border-border/60 bg-card/60 p-4 text-left shadow-sm">
+    <section className="mt-2 max-w-full rounded-xl border border-border/60 bg-card/60 p-4 text-left shadow-xs">
       <div className="flex items-center gap-2">
         <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
           <Icon className="h-3.5 w-3.5" />
