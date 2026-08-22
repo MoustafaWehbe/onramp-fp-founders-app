@@ -13,14 +13,14 @@ const comparisonSchema = z.object({
 const emailDraftSchema = z.object({ subject: z.string().min(1).max(240), body: z.string().min(1).max(20_000), contextLabel: z.string().min(1).max(300), missingInvestorContext: z.boolean() });
 const meetingBriefSchema = z.object({ title: z.string().min(1).max(240), talkingPoints: z.array(z.string().min(1).max(1_000)).min(1).max(10), contextLabel: z.string().min(1).max(300), missingInvestorContext: z.boolean() });
 const actionProposalSchema = z.object({
-  actionId: z.string().uuid(),
+  actionId: z.string().guid(),
   actionType: z.enum(["create_task", "log_interaction", "schedule_meeting", "send_investor_email", "update_deal_stage", "update_task_status"]),
   status: z.enum(["proposed", "approved", "executed", "rejected", "failed", "expired"]),
-  payload: z.record(z.unknown()),
+  payload: z.record(z.string(), z.unknown()),
   expiresAt: z.string(),
 });
 const investorBriefSchema = z.object({
-  investorId: z.string().uuid(),
+  investorId: z.string().guid(),
   fullName: z.string().min(1).max(200),
   ventureFirm: z.string().max(200).nullable(),
   investorType: z.string().max(50).nullable(),
@@ -33,7 +33,7 @@ const investorBriefSchema = z.object({
   lastInteractions: z.array(z.object({ type: z.string(), subject: z.string().nullable(), interactionDate: z.string().nullable() })).max(5),
 });
 const focusListSchema = z.object({
-  roundId: z.string().uuid().nullable(),
+  roundId: z.string().guid().nullable(),
   deals: z
     .array(
       z.object({

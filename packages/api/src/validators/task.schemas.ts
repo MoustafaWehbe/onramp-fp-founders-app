@@ -2,11 +2,11 @@ import { z } from "zod";
 import { TASK_STATUSES, PRIORITIES } from "../config/crm";
 
 const taskStatusEnum = z.enum(TASK_STATUSES, {
-  errorMap: () => ({ message: "Invalid task status" }),
+  error: "Invalid task status",
 });
 
 const taskPriorityEnum = z.enum(PRIORITIES, {
-  errorMap: () => ({ message: "Invalid priority" }),
+  error: "Invalid priority",
 });
 
 function optionalText(max: number, label: string) {
@@ -23,7 +23,7 @@ function optionalText(max: number, label: string) {
 function coercedDate(label: string) {
   return z.preprocess(
     (value) => (typeof value === "string" || value instanceof Date ? value : NaN),
-    z.coerce.date({ invalid_type_error: `${label} must be a valid datetime` }),
+    z.coerce.date({ error: `${label} must be a valid datetime` }),
   );
 }
 
@@ -33,19 +33,19 @@ const optionalDatetime = z
   .optional();
 
 export const createTaskSchema = z.object({
-  pipelineId: z.string().uuid("pipelineId must be a valid UUID"),
+  pipelineId: z.string().guid("pipelineId must be a valid UUID"),
   title: z.string().trim().min(1, "Title is required").max(200, "Title must be at most 200 characters"),
   description: optionalText(2000, "Description"),
   priority: taskPriorityEnum.optional(),
   dueDate: optionalDatetime,
-  assigneeId: z.string().uuid("assigneeId must be a valid UUID").nullable().optional(),
+  assigneeId: z.string().guid("assigneeId must be a valid UUID").nullable().optional(),
 });
 
 export const updateTaskSchema = z
   .object({
     // A task filed against the wrong deal used to have to be deleted and
     // retyped; relinking keeps its history, assignee and due date intact.
-    pipelineId: z.string().uuid("pipelineId must be a valid UUID").optional(),
+    pipelineId: z.string().guid("pipelineId must be a valid UUID").optional(),
     title: z
       .string()
       .trim()
@@ -56,19 +56,19 @@ export const updateTaskSchema = z
     status: taskStatusEnum.optional(),
     priority: taskPriorityEnum.optional(),
     dueDate: optionalDatetime,
-    assigneeId: z.string().uuid("assigneeId must be a valid UUID").nullable().optional(),
+    assigneeId: z.string().guid("assigneeId must be a valid UUID").nullable().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one field is required",
   });
 
 export const listTaskQuerySchema = z.object({
-  pipelineId: z.string().uuid("pipelineId must be a valid UUID").optional(),
+  pipelineId: z.string().guid("pipelineId must be a valid UUID").optional(),
   // Every task on every deal in one raise what a cross-deal "my work" view
   // needs, without the client fetching each deal's list separately.
-  roundId: z.string().uuid("roundId must be a valid UUID").optional(),
+  roundId: z.string().guid("roundId must be a valid UUID").optional(),
   status: taskStatusEnum.optional(),
-  assigneeId: z.string().uuid("assigneeId must be a valid UUID").optional(),
+  assigneeId: z.string().guid("assigneeId must be a valid UUID").optional(),
   priority: taskPriorityEnum.optional(),
   page: z.coerce.number().int().min(1, "page must be at least 1").default(1),
   limit: z.coerce
@@ -80,8 +80,8 @@ export const listTaskQuerySchema = z.object({
 });
 
 export const taskIdParamSchema = z.object({
-  startupId: z.string().uuid("startupId must be a valid UUID"),
-  taskId: z.string().uuid("taskId must be a valid UUID"),
+  startupId: z.string().guid("startupId must be a valid UUID"),
+  taskId: z.string().guid("taskId must be a valid UUID"),
 });
 
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;

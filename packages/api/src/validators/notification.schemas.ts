@@ -15,19 +15,19 @@ export const listNotificationsQuerySchema = z.object({
   // Scopes both the list and unreadCount to one workspace - e.g. the
   // currently active one - instead of the global cross-workspace feed.
   // Omitted entirely (not just falsy) means "every workspace".
-  startupId: z.string().uuid().optional(),
+  startupId: z.string().guid().optional(),
 });
 
 export type ListNotificationsQuery = z.infer<typeof listNotificationsQuerySchema>;
 
 export const notificationIdParamSchema = z.object({
-  notificationId: z.string().uuid("Invalid notification ID"),
+  notificationId: z.string().guid("Invalid notification ID"),
 });
 
 // Same scoping as listNotificationsQuerySchema's startupId, so "mark all
 // read" never clears more than what the caller's own feed currently shows.
 export const markAllReadBodySchema = z.object({
-  startupId: z.string().uuid().optional(),
+  startupId: z.string().guid().optional(),
 });
 
 export type MarkAllReadInput = z.infer<typeof markAllReadBodySchema>;

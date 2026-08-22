@@ -19,7 +19,7 @@ export const createReviewerInvitationSchema = z
   .object({
     reviewerName: z.string().trim().min(1).max(120).optional(),
     email: z.string().trim().email().max(255),
-    startupInvestorId: z.string().uuid().optional(),
+    startupInvestorId: z.string().guid().optional(),
     allowDownload: z.boolean().optional().default(false),
     watermarkEnabled: z.boolean().optional().default(true),
     allowPrint: z.boolean().optional().default(false),
@@ -30,7 +30,7 @@ export const createReviewerInvitationSchema = z
     allowedEmailDomains: z.array(domainSchema).max(10).optional(),
     personalMessage: z.string().trim().max(1000).optional(),
     expiresInDays: z.number().int().min(1).max(90).default(14),
-    documentVersionIds: z.array(z.string().uuid()).min(1).max(20),
+    documentVersionIds: z.array(z.string().guid()).min(1).max(20),
   })
   .superRefine((value, ctx) => {
     if (value.requireNda && !value.ndaText) {
@@ -43,8 +43,8 @@ export const createReviewerInvitationSchema = z
   });
 
 export const invitationIdParamSchema = z.object({
-  startupId: z.string().uuid(),
-  invitationId: z.string().uuid(),
+  startupId: z.string().guid(),
+  invitationId: z.string().guid(),
 });
 
 export type ListReviewerInvitationsQuery = z.infer<typeof listReviewerInvitationsQuerySchema>;

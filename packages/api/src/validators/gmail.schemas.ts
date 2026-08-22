@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const sendInvestorEmailSchema = z.object({
-  pipelineId: z.string().uuid("pipelineId must be a valid UUID").optional(),
+  pipelineId: z.string().guid("pipelineId must be a valid UUID").optional(),
   subject: z
     .string()
     .trim()

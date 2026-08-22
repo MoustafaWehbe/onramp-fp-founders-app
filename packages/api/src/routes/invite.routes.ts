@@ -7,7 +7,7 @@ import { inviteController } from "../controllers/invite.controller";
 
 const router = Router();
 
-const memberIdParam = z.object({ memberId: z.string().uuid("Invalid member ID") });
+const memberIdParam = z.object({ memberId: z.string().guid("Invalid member ID") });
 
 // Invitations addressed to the signed-in user. Someone who was already logged
 // in when the invite arrived accepts from inside the app; no emailed token is

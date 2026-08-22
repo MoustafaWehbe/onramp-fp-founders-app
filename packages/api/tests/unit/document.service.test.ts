@@ -33,6 +33,7 @@ jest.mock("../../src/services/audit-writer", () => ({
 }));
 
 jest.mock("../../src/services/storage.service", () => ({
+  ...jest.requireActual("../../src/services/storage.service"),
   storageService: {
     assertUploadConstraints: jest.fn(),
     createSignedUpload: jest.fn(),

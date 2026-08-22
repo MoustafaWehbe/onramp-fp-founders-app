@@ -2,7 +2,7 @@ import { z } from "zod";
 import { MENTION_TARGET_TYPES } from "../utils/mentions";
 
 const mentionTargetTypeEnum = z.enum(MENTION_TARGET_TYPES, {
-  errorMap: () => ({ message: "Invalid mention type" }),
+  error: "Invalid mention type",
 });
 
 export const createConversationSchema = z.object({
@@ -18,8 +18,8 @@ export const createConversationSchema = z.object({
 });
 
 export const conversationIdParamSchema = z.object({
-  startupId: z.string().uuid("startupId must be a valid UUID"),
-  conversationId: z.string().uuid("conversationId must be a valid UUID"),
+  startupId: z.string().guid("startupId must be a valid UUID"),
+  conversationId: z.string().guid("conversationId must be a valid UUID"),
 });
 
 export const sendMessageSchema = z.object({
@@ -30,18 +30,18 @@ export const sendMessageSchema = z.object({
     .max(4000, "Message must be at most 4000 characters"),
   // Client-generated once per send attempt and reused on retry see
   // Message.clientNonce in schema.prisma for why this makes a send exactly-once.
-  clientNonce: z.string().uuid("clientNonce must be a valid UUID"),
+  clientNonce: z.string().guid("clientNonce must be a valid UUID"),
   // Set to reply in a thread. Must name a top-level message in the same
   // conversation enforced in ChatService, not here, since it needs a DB lookup.
-  parentMessageId: z.string().uuid("parentMessageId must be a valid UUID").optional(),
+  parentMessageId: z.string().guid("parentMessageId must be a valid UUID").optional(),
   // Vault documents to attach, beyond anything referenced inline with @doc.
-  documentIds: z.array(z.string().uuid("documentIds must be valid UUIDs")).max(10).optional(),
+  documentIds: z.array(z.string().guid("documentIds must be valid UUIDs")).max(10).optional(),
 });
 
 export const messageIdParamSchema = z.object({
-  startupId: z.string().uuid("startupId must be a valid UUID"),
-  conversationId: z.string().uuid("conversationId must be a valid UUID"),
-  messageId: z.string().uuid("messageId must be a valid UUID"),
+  startupId: z.string().guid("startupId must be a valid UUID"),
+  conversationId: z.string().guid("conversationId must be a valid UUID"),
+  messageId: z.string().guid("messageId must be a valid UUID"),
 });
 
 export const repliesQuerySchema = z.object({
@@ -49,8 +49,8 @@ export const repliesQuerySchema = z.object({
 });
 
 export const reactionIdParamSchema = z.object({
-  startupId: z.string().uuid("startupId must be a valid UUID"),
-  messageId: z.string().uuid("messageId must be a valid UUID"),
+  startupId: z.string().guid("startupId must be a valid UUID"),
+  messageId: z.string().guid("messageId must be a valid UUID"),
 });
 
 export const toggleReactionSchema = z.object({
@@ -66,12 +66,12 @@ export const archiveConversationSchema = z.object({
 
 export const notifyLevelSchema = z.object({
   level: z.enum(["all", "mentions", "none"], {
-    errorMap: () => ({ message: "level must be one of: all, mentions, none" }),
+    error: "level must be one of: all, mentions, none",
   }),
 });
 
 export const startDirectMessageSchema = z.object({
-  memberId: z.string().uuid("memberId must be a valid UUID"),
+  memberId: z.string().guid("memberId must be a valid UUID"),
 });
 
 export const listMessagesQuerySchema = z.object({
@@ -105,7 +105,7 @@ export const resolveMentionsSchema = z.object({
     .array(
       z.object({
         type: mentionTargetTypeEnum,
-        id: z.string().uuid("id must be a valid UUID"),
+        id: z.string().guid("id must be a valid UUID"),
       }),
     )
     .min(1, "At least one item is required")
@@ -114,7 +114,7 @@ export const resolveMentionsSchema = z.object({
 
 export const mentionsBacklinkQuerySchema = z.object({
   targetType: mentionTargetTypeEnum,
-  targetId: z.string().uuid("targetId must be a valid UUID"),
+  targetId: z.string().guid("targetId must be a valid UUID"),
   limit: z.coerce
     .number()
     .int()

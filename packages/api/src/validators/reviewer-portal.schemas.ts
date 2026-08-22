@@ -11,21 +11,21 @@ export const reviewerVerifySchema = z.object({
 });
 
 export const reviewerCommentSchema = z.object({
-  documentId: z.string().uuid().optional(),
-  chunkId: z.string().uuid().optional(),
+  documentId: z.string().guid().optional(),
+  chunkId: z.string().guid().optional(),
   commentText: z.string().trim().min(1).max(4000),
 });
 
 export const reviewerDocumentIdParamSchema = z.object({
-  documentId: z.string().uuid(),
+  documentId: z.string().guid(),
 });
 
 export const reviewerVersionIdParamSchema = z.object({
-  versionId: z.string().uuid(),
+  versionId: z.string().guid(),
 });
 
 export const reviewerPageParamSchema = z.object({
-  versionId: z.string().uuid(),
+  versionId: z.string().guid(),
   // Bounded by MAX_RASTER_PAGES; a page number outside it can never resolve, so
   // reject it before it reaches a query.
   pageNumber: z.coerce.number().int().min(1).max(200),
@@ -42,7 +42,7 @@ export const reviewerPageQuerySchema = z.object({
 // closed rather than accepting arbitrary JSON.
 export const reviewerEventSchema = z.object({
   type: z.enum(["copy_attempt", "print_attempt", "screenshot_attempt"]),
-  documentVersionId: z.string().uuid().optional(),
+  documentVersionId: z.string().guid().optional(),
   pageNumber: z.coerce.number().int().min(1).max(200).optional(),
 });
 
@@ -53,7 +53,7 @@ export const reviewerTelemetrySchema = z.object({
   pages: z
     .array(
       z.object({
-        documentVersionId: z.string().uuid(),
+        documentVersionId: z.string().guid(),
         pageNumber: z.coerce.number().int().min(1).max(200),
         activeMs: z.number().int().min(0).max(120_000),
       }),

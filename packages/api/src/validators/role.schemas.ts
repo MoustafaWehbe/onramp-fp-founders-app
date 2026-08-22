@@ -20,8 +20,8 @@ export const updateRoleSchema = z
   });
 
 export const roleIdParamSchema = z.object({
-  startupId: z.string().uuid("startupId must be a valid UUID"),
-  roleId: z.string().uuid("roleId must be a valid UUID"),
+  startupId: z.string().guid("startupId must be a valid UUID"),
+  roleId: z.string().guid("roleId must be a valid UUID"),
 });
 
 export type CreateRoleInput = z.infer<typeof createRoleSchema>;

@@ -11,11 +11,11 @@ export const DOCUMENT_TYPES = [
 ] as const;
 
 const documentTypeEnum = z.enum(DOCUMENT_TYPES, {
-  errorMap: () => ({ message: "Invalid document type" }),
+  error: "Invalid document type",
 });
 
 const mimeEnum = z.enum(ACCEPTED_MIME_TYPES as unknown as [string, ...string[]], {
-  errorMap: () => ({ message: "Unsupported file type. Allowed: PDF, DOCX, XLSX, PPTX, TXT" }),
+  error: "Unsupported file type. Allowed: PDF, DOCX, XLSX, PPTX, TXT",
 });
 
 export const listDocumentsQuerySchema = z.object({
@@ -42,14 +42,14 @@ export const createVersionUploadSchema = z.object({
 });
 
 export const documentIdParamSchema = z.object({
-  startupId: z.string().uuid(),
-  documentId: z.string().uuid(),
+  startupId: z.string().guid(),
+  documentId: z.string().guid(),
 });
 
 export const versionParamSchema = z.object({
-  startupId: z.string().uuid(),
-  documentId: z.string().uuid(),
-  versionId: z.string().uuid(),
+  startupId: z.string().guid(),
+  documentId: z.string().guid(),
+  versionId: z.string().guid(),
 });
 
 export const updateDocumentSchema = z

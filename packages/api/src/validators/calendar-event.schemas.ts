@@ -1,11 +1,11 @@
 import { z } from "zod";
 
 export const scheduleMeetingSchema = z.object({
-  pipelineId: z.string().uuid("pipelineId must be a valid UUID").optional(),
+  pipelineId: z.string().guid("pipelineId must be a valid UUID").optional(),
   type: z.enum(["call", "meeting"], {
-    errorMap: () => ({ message: "Type must be call or meeting" }),
+    error: "Type must be call or meeting",
   }),
-  startDateTime: z.coerce.date({ invalid_type_error: "startDateTime must be a valid datetime" }),
+  startDateTime: z.coerce.date({ error: "startDateTime must be a valid datetime" }),
   durationMinutes: z
     .number()
     .int("durationMinutes must be a whole number")

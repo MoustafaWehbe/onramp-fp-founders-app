@@ -35,20 +35,20 @@ function stripNulls<T extends Record<string, unknown>>(value: T): Partial<T> {
 
 const toolInputs = {
   get_startup_profile: z.object({}),
-  get_round_health: z.object({ roundId: z.string().uuid().nullish() }),
-  forecast_round_close: z.object({ roundId: z.string().uuid().nullish() }),
-  get_pipeline_summary: z.object({ roundId: z.string().uuid().nullish() }),
-  get_focus_deals: z.object({ roundId: z.string().uuid().nullish() }),
-  get_investor_context: z.object({ investorId: z.string().uuid() }),
-  get_reviewer_engagement: z.object({ documentId: z.string().uuid().nullish() }),
+  get_round_health: z.object({ roundId: z.string().guid().nullish() }),
+  forecast_round_close: z.object({ roundId: z.string().guid().nullish() }),
+  get_pipeline_summary: z.object({ roundId: z.string().guid().nullish() }),
+  get_focus_deals: z.object({ roundId: z.string().guid().nullish() }),
+  get_investor_context: z.object({ investorId: z.string().guid() }),
+  get_reviewer_engagement: z.object({ documentId: z.string().guid().nullish() }),
   search_investors: z.object({ query: z.string().trim().min(1).max(200) }),
-  list_investors: z.object({ roundId: z.string().uuid().nullish(), stage: z.enum(PIPELINE_STAGES).nullish() }),
-  get_pipeline_by_stage: z.object({ roundId: z.string().uuid().nullish() }),
-  get_interaction_history: z.object({ investorId: z.string().uuid() }),
+  list_investors: z.object({ roundId: z.string().guid().nullish(), stage: z.enum(PIPELINE_STAGES).nullish() }),
+  get_pipeline_by_stage: z.object({ roundId: z.string().guid().nullish() }),
+  get_interaction_history: z.object({ investorId: z.string().guid() }),
   // No assigneeId filter: scoped server-side to the caller's own tasks (see
   // resolveMemberId in execute() below), the same way chat access is resolved
   // from the authenticated userId rather than trusted from the model.
-  list_tasks: z.object({ roundId: z.string().uuid().nullish(), status: z.enum(TASK_STATUSES).nullish() }),
+  list_tasks: z.object({ roundId: z.string().guid().nullish(), status: z.enum(TASK_STATUSES).nullish() }),
   list_team_conversations: z.object({}),
   search_team_messages: z.object({ query: z.string().trim().min(1).max(200) }),
   // Nullish rather than the REST endpoints' plain-optional shape: strict
@@ -57,24 +57,24 @@ const toolInputs = {
   // stripNulls() converts these back to "absent" before they reach the same
   // zod schema the manual endpoint uses.
   propose_task: z.object({
-    pipelineId: z.string().uuid(),
+    pipelineId: z.string().guid(),
     title: z.string().trim().min(1).max(200),
     description: z.string().max(2000).nullish(),
     priority: z.enum(PRIORITIES).nullish(),
     dueDate: z.string().nullish(),
-    assigneeId: z.string().uuid().nullish(),
+    assigneeId: z.string().guid().nullish(),
   }),
   propose_interaction_log: z.object({
-    investorId: z.string().uuid(),
-    pipelineId: z.string().uuid().nullish(),
+    investorId: z.string().guid(),
+    pipelineId: z.string().guid().nullish(),
     type: z.enum(["call", "email", "meeting", "note", "other"]),
     interactionDate: z.string(),
     subject: z.string().max(200).nullish(),
     description: z.string().max(2000).nullish(),
   }),
   propose_meeting: z.object({
-    investorId: z.string().uuid(),
-    pipelineId: z.string().uuid().nullish(),
+    investorId: z.string().guid(),
+    pipelineId: z.string().guid().nullish(),
     type: z.enum(["call", "meeting"]),
     startDateTime: z.string(),
     durationMinutes: z.number().int().min(5).max(480),
@@ -82,18 +82,18 @@ const toolInputs = {
     description: z.string().max(2000).nullish(),
   }),
   propose_investor_email: z.object({
-    investorId: z.string().uuid(),
-    pipelineId: z.string().uuid().nullish(),
+    investorId: z.string().guid(),
+    pipelineId: z.string().guid().nullish(),
     subject: z.string().trim().min(1).max(200),
     body: z.string().trim().min(1).max(5000),
   }),
   propose_stage_change: z.object({
-    pipelineId: z.string().uuid(),
+    pipelineId: z.string().guid(),
     toStage: z.enum(PIPELINE_STAGES),
     reason: z.string().max(500).nullish(),
   }),
   propose_task_status: z.object({
-    taskId: z.string().uuid(),
+    taskId: z.string().guid(),
     status: z.enum(TASK_STATUSES),
   }),
 } as const;
