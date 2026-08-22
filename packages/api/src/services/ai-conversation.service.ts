@@ -19,6 +19,19 @@ export interface AiConversationAccess { canReadDocuments: boolean; canReadFinanc
 /** How often to refresh the run's Redis TTL while generating; well under the registry's 20s expiry. */
 const RUN_HEARTBEAT_MS = 8_000;
 
+/**
+ * A single tool call's budget. Generous relative to any tool's normal
+ * latency (these are simple lookups/writes, not model calls), short enough
+ * that one slow or hung tool can never leave the whole turn — and the open
+ * SSE stream with it — waiting indefinitely.
+ */
+const TOOL_CALL_TIMEOUT_MS = 15_000;
+
+/** Distinguishes a timed-out tool call from an ordinary failure, without the underlying operation itself being abortable (see raceToolExecution). */
+class ToolTimeoutError extends Error {}
+/** Distinguishes a tool call cut short by the turn's own cancellation from an ordinary failure. */
+class ToolCancelledError extends Error {}
+
 const TITLE_JSON_SCHEMA = { type: "object", additionalProperties: false, required: ["title"], properties: { title: { type: "string" } } } as const;
 
 type ConversationSession = AiChatSession & {
@@ -300,7 +313,7 @@ export class AiConversationService {
         if (roundStopReason !== "tool_calls" || roundToolCalls.length === 0) { turnsExhausted = false; break; }
 
         aiStreamBroker.publish(session.id, messageId, "tool.started", { calls: roundToolCalls.map((call) => ({ callId: call.callId, name: call.name })) });
-        const executed = await Promise.all(roundToolCalls.map((call) => this.executeToolCall(session.id, session.startupId, messageId, call, allowedTools, toolResults, access.canReadFinancial, userId)));
+        const executed = await Promise.all(roundToolCalls.map((call) => this.executeToolCall(session.id, session.startupId, messageId, call, allowedTools, toolResults, access.canReadFinancial, userId, controller.signal)));
         aiStreamBroker.publish(session.id, messageId, "tool.completed", { calls: executed.map((item) => ({ callId: item.callId, name: item.name, status: item.status })) });
         input = [
           ...input,
@@ -519,6 +532,7 @@ export class AiConversationService {
     toolResults: Array<{ tool: AiToolName; result: unknown }>,
     canReadFinancial: boolean,
     userId: string,
+    signal: AbortSignal,
   ): Promise<{ callId: string; name: string; status: "completed" | "failed"; output: unknown }> {
     const startedAt = Date.now();
     let parsedArgs: unknown;
@@ -530,7 +544,15 @@ export class AiConversationService {
     }
     const toolName = call.name as AiToolName;
     try {
-      const result = await aiToolsService.execute(startupId, toolName, parsedArgs, allowedTools, { canReadFinancial, userId, sessionId, messageId });
+      // Checked before ever dispatching the tool, not just before waiting on
+      // it — a signal that's already aborted by the time this round's calls
+      // run (e.g. cancel() racing in between rounds) means starting the
+      // underlying operation at all would only ever be wasted work.
+      if (signal.aborted) throw new ToolCancelledError("Cancelled");
+      const result = await this.raceToolExecution(
+        aiToolsService.execute(startupId, toolName, parsedArgs, allowedTools, { canReadFinancial, userId, sessionId, messageId }),
+        signal,
+      );
       toolResults.push({ tool: toolName, result });
       await prisma.aiToolCall.create({ data: { messageId, toolName, arguments: parsedArgs as object, status: "completed", durationMs: Date.now() - startedAt, resultSummary: result as object } });
       // A propose_* tool's result carries a fresh AiAgentAction id: surface it
@@ -566,12 +588,36 @@ export class AiConversationService {
       // search_investors to resolve the id) within the same turn instead of
       // giving up and asking the user to supply facts the system already has.
       const invalidArgs = error instanceof ZodError;
+      const timedOut = error instanceof ToolTimeoutError;
+      const cancelled = error instanceof ToolCancelledError;
       const message = invalidArgs
         ? `Invalid arguments: ${error.issues.map((issue) => `${issue.path.join(".") || "input"} ${issue.message}`).join("; ")}. Resolve any id from a search/list tool first — never guess or invent one.`
-        : "This tool is unavailable or the lookup failed.";
-      await prisma.aiToolCall.create({ data: { messageId, toolName: call.name, arguments: parsedArgs as object, status: "failed", durationMs: Date.now() - startedAt, errorCode: invalidArgs ? "AI_TOOL_INVALID_ARGUMENTS" : "AI_TOOL_FAILED" } });
+        : timedOut
+          ? "This tool took too long to respond."
+          : cancelled
+            ? "This request was cancelled."
+            : "This tool is unavailable or the lookup failed.";
+      const errorCode = invalidArgs ? "AI_TOOL_INVALID_ARGUMENTS" : timedOut ? "AI_TOOL_TIMEOUT" : cancelled ? "AI_TOOL_CANCELLED" : "AI_TOOL_FAILED";
+      await prisma.aiToolCall.create({ data: { messageId, toolName: call.name, arguments: parsedArgs as object, status: "failed", durationMs: Date.now() - startedAt, errorCode } });
       return { callId: call.callId, name: call.name, status: "failed", output: { error: message } };
     }
+  }
+
+  private raceToolExecution<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+    if (signal.aborted) return Promise.reject(new ToolCancelledError("Cancelled"));
+    return new Promise<T>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new ToolTimeoutError("Tool call timed out")), TOOL_CALL_TIMEOUT_MS);
+      const onAbort = () => reject(new ToolCancelledError("Cancelled"));
+      signal.addEventListener("abort", onAbort, { once: true });
+      const cleanup = () => {
+        clearTimeout(timeout);
+        signal.removeEventListener("abort", onAbort);
+      };
+      operation.then(
+        (value) => { cleanup(); resolve(value); },
+        (error: unknown) => { cleanup(); reject(error); },
+      );
+    });
   }
 
   private async maybeGenerateTitle(session: { id: string; title: string | null }, firstUserMessage: string, firstAssistantAnswer: string): Promise<void> {
