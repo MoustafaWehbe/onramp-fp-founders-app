@@ -132,6 +132,88 @@ describe("OpenAiProvider", () => {
   });
 });
 
+describe("OpenAiProvider.embedBatch", () => {
+  function embeddingFixture(seed: number): number[] {
+    return Array.from({ length: 1536 }, (_, i) => (i === 0 ? seed : 0));
+  }
+
+  it("embeds every text in one provider call and preserves input order", async () => {
+    const create = jest.fn().mockResolvedValue({
+      data: [
+        { embedding: embeddingFixture(1), index: 0 },
+        { embedding: embeddingFixture(2), index: 1 },
+        { embedding: embeddingFixture(3), index: 2 },
+      ],
+    });
+    const provider = new OpenAiProvider(config, { responses: { create: jest.fn() }, embeddings: { create } });
+
+    const embeddings = await provider.embedBatch(["a", "b", "c"]);
+
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ input: ["a", "b", "c"] }), expect.any(Object));
+    expect(embeddings.map((e) => e[0])).toEqual([1, 2, 3]);
+  });
+
+  it("reorders a response whose items come back out of index order", async () => {
+    // Documented as same-order, but embedBatch trusts each item's own index
+    // rather than array position, so a provider that ever violates that
+    // ordering still lands each embedding against the text it belongs to.
+    const create = jest.fn().mockResolvedValue({
+      data: [
+        { embedding: embeddingFixture(2), index: 1 },
+        { embedding: embeddingFixture(1), index: 0 },
+      ],
+    });
+    const provider = new OpenAiProvider(config, { responses: { create: jest.fn() }, embeddings: { create } });
+
+    const embeddings = await provider.embedBatch(["a", "b"]);
+
+    expect(embeddings.map((e) => e[0])).toEqual([1, 2]);
+  });
+
+  it("splits a batch larger than the provider's per-call limit into multiple calls, still in order", async () => {
+    const texts = Array.from({ length: 150 }, (_, i) => `text-${i}`);
+    const create = jest.fn().mockImplementation((body: { input: string[] }) => Promise.resolve({
+      data: body.input.map((_, i) => ({ embedding: embeddingFixture(i), index: i })),
+    }));
+    const provider = new OpenAiProvider(config, { responses: { create: jest.fn() }, embeddings: { create } });
+
+    const embeddings = await provider.embedBatch(texts);
+
+    expect(create).toHaveBeenCalledTimes(2);
+    expect((create.mock.calls[0][0] as { input: string[] }).input).toHaveLength(100);
+    expect((create.mock.calls[1][0] as { input: string[] }).input).toHaveLength(50);
+    expect(embeddings).toHaveLength(150);
+    // The second call's own item index (0-based within that call) must map
+    // back onto the batch's overall position (100-149), not collide with
+    // the first call's indices.
+    expect(embeddings[100][0]).toBe(0);
+    expect(embeddings[149][0]).toBe(49);
+  });
+
+  it("returns an empty array without calling the provider for an empty batch", async () => {
+    const create = jest.fn();
+    const provider = new OpenAiProvider(config, { responses: { create: jest.fn() }, embeddings: { create } });
+
+    await expect(provider.embedBatch([])).resolves.toEqual([]);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a response whose item count does not match the request", async () => {
+    const create = jest.fn().mockResolvedValue({ data: [{ embedding: embeddingFixture(1), index: 0 }] });
+    const provider = new OpenAiProvider(config, { responses: { create: jest.fn() }, embeddings: { create } });
+
+    await expect(provider.embedBatch(["a", "b"])).rejects.toMatchObject({ code: "AI_MALFORMED_RESPONSE" });
+  });
+
+  it("rejects a malformed individual embedding", async () => {
+    const create = jest.fn().mockResolvedValue({ data: [{ embedding: ["not", "numbers"], index: 0 }] });
+    const provider = new OpenAiProvider(config, { responses: { create: jest.fn() }, embeddings: { create } });
+
+    await expect(provider.embedBatch(["a"])).rejects.toMatchObject({ code: "AI_MALFORMED_RESPONSE" });
+  });
+});
+
 describe("AI provider errors", () => {
   it("fails closed when chat is feature-flagged off", async () => {
     const provider = new OpenAiProvider({ ...config, enabled: false }, { responses: { create: jest.fn() }, embeddings: { create: jest.fn() } });

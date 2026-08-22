@@ -66,12 +66,14 @@ export const documentProcessingJob = {
         orderBy: { chunkIndex: "asc" },
       });
 
-      const { embeddingsQueue } = await import("../queue");
-      for (const chunk of stored) {
-        await embeddingsQueue.add("embed-chunk", {
-          entityId: chunk.id,
+      // One job for every chunk in this version, not one job per chunk -
+      // the embeddings worker batches the provider calls and writes every
+      // embedding back in a single statement (see embeddings.worker.ts).
+      if (stored.length > 0) {
+        const { embeddingsQueue } = await import("../queue");
+        await embeddingsQueue.add("embed-chunks", {
           entityType: "document_chunk",
-          text: chunk.content,
+          items: stored.map((chunk) => ({ entityId: chunk.id, text: chunk.content })),
         });
       }
 
