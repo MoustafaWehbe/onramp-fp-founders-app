@@ -6,11 +6,14 @@ jest.mock("../../src/db/prisma", () => ({
     task: { findMany: jest.fn() },
     startup: { findMany: jest.fn() },
     interactionLog: { groupBy: jest.fn() },
+    notification: { findMany: jest.fn() },
   },
 }));
 
 jest.mock("../../src/services/notification.service", () => ({
   notificationService: { notifyLeadStale: jest.fn(), notifyDealNoNextStep: jest.fn() },
+  NOTIFICATION_TYPES: { LEAD_STALE: "lead_stale", DEAL_NO_NEXT_STEP: "deal_no_next_step" },
+  DEAL_REMINDER_COOLDOWN_DAYS: 7,
 }));
 
 import { prisma } from "../../src/db/prisma";
@@ -56,6 +59,7 @@ function setup({
   dealsWithOpenTasks = [] as string[],
   lastTouchDaysAgo = null as number | null,
   startups = [startupRow()],
+  recentlyNotified = [] as Array<{ type: string; entityId: string }>,
 }) {
   (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue(deals);
   (mockPrisma.task.findMany as jest.Mock).mockResolvedValue(
@@ -75,6 +79,9 @@ function setup({
           },
         ],
   );
+  // Batched cooldown pre-check the job runs before actually notifying; empty
+  // by default so existing tests' deals are treated as due for a reminder.
+  (mockPrisma.notification.findMany as jest.Mock).mockResolvedValue(recentlyNotified);
 }
 
 beforeEach(() => {
@@ -190,5 +197,62 @@ describe("notifyStaleLeadsAndIdleDeals", () => {
     await notifyStaleLeadsAndIdleDeals();
 
     expect(mockLeadStale).toHaveBeenCalledWith(expect.objectContaining({ daysQuiet: 20 }));
+  });
+
+  it("skips a deal the batched cooldown check already knows was reminded recently, without calling notifyLeadStale at all", async () => {
+    setup({
+      deals: [deal({ isLead: true })],
+      dealsWithOpenTasks: [DEAL_ID],
+      lastTouchDaysAgo: 12,
+      recentlyNotified: [{ type: "lead_stale", entityId: DEAL_ID }],
+    });
+
+    await notifyStaleLeadsAndIdleDeals();
+
+    // The batched pre-check is what's under test here — this is the whole
+    // point of it: skip deals already on cooldown before ever reaching the
+    // per-deal notify call, not just let that call no-op internally.
+    expect(mockLeadStale).not.toHaveBeenCalled();
+  });
+
+  it("does not let a cooldown row for a different deal suppress this one", async () => {
+    const otherDealId = "00000000-0000-0000-0000-000000000099";
+    setup({
+      deals: [deal({ isLead: true })],
+      dealsWithOpenTasks: [DEAL_ID],
+      lastTouchDaysAgo: 12,
+      recentlyNotified: [{ type: "lead_stale", entityId: otherDealId }],
+    });
+
+    await notifyStaleLeadsAndIdleDeals();
+
+    expect(mockLeadStale).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: DEAL_ID }));
+  });
+
+  it("does not let a cooldown row of the other reminder type suppress this one", async () => {
+    // A "no next step" cooldown entry for this deal must not suppress a
+    // "lead stale" reminder — the two are tracked as distinct (type, entity)
+    // pairs, same as notification.service.ts's own per-deal dedup.
+    setup({
+      deals: [deal({ isLead: true })],
+      dealsWithOpenTasks: [DEAL_ID],
+      lastTouchDaysAgo: 12,
+      recentlyNotified: [{ type: "deal_no_next_step", entityId: DEAL_ID }],
+    });
+
+    await notifyStaleLeadsAndIdleDeals();
+
+    expect(mockLeadStale).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: DEAL_ID }));
+  });
+
+  it("does not query the cooldown table at all when no deal needs a reminder", async () => {
+    setup({
+      deals: [deal({ createdAt: new Date(Date.now() - 1 * DAY_MS) })],
+      dealsWithOpenTasks: [],
+    });
+
+    await notifyStaleLeadsAndIdleDeals();
+
+    expect(mockPrisma.notification.findMany).not.toHaveBeenCalled();
   });
 });

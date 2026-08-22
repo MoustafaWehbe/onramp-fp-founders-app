@@ -31,8 +31,13 @@ const FORWARD_ALERT_COOLDOWN_HOURS = 24;
  * an overdue task, a quiet lead never "completes" it simply stays quiet so
  * these cannot dedupe on the entity forever or a deal that goes cold again in
  * three months would never be mentioned twice.
+ *
+ * Exported so pipeline-reminders.ts's cron job can pre-filter which deals
+ * still need a reminder in one batched query, using the exact same window
+ * notifyDeal's own per-deal check enforces, rather than duplicating the
+ * number and risking drift.
  */
-const DEAL_REMINDER_COOLDOWN_DAYS = 7;
+export const DEAL_REMINDER_COOLDOWN_DAYS = 7;
 
 const NOTIFICATION_SELECT = {
   id: true,
