@@ -42,14 +42,15 @@ const importEsm = new Function("specifier", "return import(specifier)") as (
   specifier: string,
 ) => Promise<PdfjsModule>;
 
+type PdfLoadingTask = { promise: Promise<PdfDocument>; destroy: () => Promise<void> };
+
 type PdfjsModule = {
-  getDocument: (options: Record<string, unknown>) => { promise: Promise<PdfDocument> };
+  getDocument: (options: Record<string, unknown>) => PdfLoadingTask;
 };
 
 type PdfDocument = {
   numPages: number;
   getPage: (n: number) => Promise<PdfPage>;
-  destroy: () => Promise<void>;
 };
 
 type PdfPage = {
@@ -77,9 +78,13 @@ function loadPdfjs(): Promise<PdfjsModule> {
 // the text missing. These files ship inside pdfjs-dist; point at them on disk.
 function pdfjsAssetPaths() {
   const root = path.dirname(require.resolve("pdfjs-dist/package.json"));
+  // pdfjs-dist validates these as URL-style paths (forward slashes, trailing
+  // slash) regardless of platform path.join on Windows would leave
+  // backslashes here, which pdfjs now rejects as "must include trailing slash".
+  const toAssetUrl = (p: string) => `${p.replace(/\\/g, "/")}/`;
   return {
-    standardFontDataUrl: path.join(root, "standard_fonts") + path.sep,
-    cMapUrl: path.join(root, "cmaps") + path.sep,
+    standardFontDataUrl: toAssetUrl(path.join(root, "standard_fonts")),
+    cMapUrl: toAssetUrl(path.join(root, "cmaps")),
   };
 }
 
@@ -91,29 +96,33 @@ function renderScale(width: number, height: number) {
   return Math.min(MAX_RENDER_SCALE, Math.max(1, VIEW_MAX_EDGE / longest));
 }
 
-export async function openPdf(buffer: Buffer): Promise<{ doc: PdfDocument; pageCount: number }> {
+export async function openPdf(buffer: Buffer): Promise<{ doc: PdfDocument; pageCount: number; destroy: () => Promise<void> }> {
   // Keep the ESM load outside the PDF_UNREADABLE mapping so Jest/runtime
   // failures (e.g. "Test environment has been torn down") are not reported as
   // a bad upload.
   const pdfjs = await loadPdfjs();
+  // Final teardown now lives on the loading task pdfjs.getDocument() returns,
+  // not on the resolved PDFDocumentProxy (which lost its own .destroy()) so
+  // this reference has to be kept alongside the awaited doc.
+  const loadingTask = pdfjs.getDocument({
+    data: new Uint8Array(buffer),
+    // Nothing in a reviewer-supplied PDF should be able to run script.
+    isEvalSupported: false,
+    // Ignore any embedded JS/interactive form actions entirely.
+    disableAutoFetch: true,
+    ...pdfjsAssetPaths(),
+    cMapPacked: true,
+  });
   let doc: PdfDocument;
   try {
-    doc = await pdfjs.getDocument({
-      data: new Uint8Array(buffer),
-      // Nothing in a reviewer-supplied PDF should be able to run script.
-      isEvalSupported: false,
-      // Ignore any embedded JS/interactive form actions entirely.
-      disableAutoFetch: true,
-      ...pdfjsAssetPaths(),
-      cMapPacked: true,
-    }).promise;
+    doc = await loadingTask.promise;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not read PDF";
     throw createError(`Could not read PDF: ${message}`, 422, "PDF_UNREADABLE");
   }
 
   if (doc.numPages > MAX_RASTER_PAGES) {
-    await doc.destroy();
+    await loadingTask.destroy();
     throw createError(
       `This document has ${doc.numPages} pages. The limit for sharing is ${MAX_RASTER_PAGES}.`,
       422,
@@ -121,7 +130,7 @@ export async function openPdf(buffer: Buffer): Promise<{ doc: PdfDocument; pageC
     );
   }
 
-  return { doc, pageCount: doc.numPages };
+  return { doc, pageCount: doc.numPages, destroy: () => loadingTask.destroy() };
 }
 
 /**
@@ -132,7 +141,7 @@ export async function rasterizePdf(
   buffer: Buffer,
   onPage: (page: RasterizedPage) => Promise<void>,
 ): Promise<{ pageCount: number }> {
-  const { doc, pageCount } = await openPdf(buffer);
+  const { doc, pageCount, destroy } = await openPdf(buffer);
 
   try {
     for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
@@ -174,7 +183,7 @@ export async function rasterizePdf(
       }
     }
   } finally {
-    await doc.destroy();
+    await destroy();
   }
 
   return { pageCount };
