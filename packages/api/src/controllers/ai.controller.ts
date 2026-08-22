@@ -1,4 +1,4 @@
-import { hasPermission } from "../middleware/rbac";
+import { getRolePermissions } from "../middleware/rbac";
 import { resolveAiCapabilities } from "../services/ai-capabilities.service";
 import { asyncHandler } from "../utils/errors";
 import { aiChatService } from "../services/ai-chat.service";
@@ -8,11 +8,16 @@ import type { AiStreamEnvelope } from "../services/ai-stream-broker.service";
 import type { CreateAiAnalysisInput, CreateAiMessageInput, CreateAiSessionInput, ListAiAnalysesQuery, ListAiMessagesQuery, ListAiSessionsQuery, UpdateAiSessionInput } from "../validators/ai.schemas";
 import type { NextFunction, Request, Response } from "express";
 
-async function accessFor(req: Express.Request) {
-  const roleId = req.member!.roleId;
-  const grants = (await Promise.all([
-    "startup:read", "documents:read", "financial:read", "pipeline:read", "pipeline:create", "pipeline:update", "ai_reports:read", "ai_reports:create",
-  ].map(async (grant) => { const [resource, action] = grant.split(":"); return (await hasPermission(roleId, resource, action)) ? grant : null; }))).filter((grant): grant is string => Boolean(grant));
+const ACCESS_GRANTS = ["startup:read", "documents:read", "financial:read", "pipeline:read", "pipeline:create", "pipeline:update", "ai_reports:read", "ai_reports:create"] as const;
+
+/**
+ * One query for the caller's whole permission set instead of one findFirst
+ * per grant checked here previously eight separate round trips for what's
+ * really one "what can this role do" question.
+ */
+async function accessFor(req: Request) {
+  const permissions = await getRolePermissions(req.member!.roleId);
+  const grants = ACCESS_GRANTS.filter((grant) => permissions.has(grant));
   const capabilities = resolveAiCapabilities(grants);
   return { canReadDocuments: grants.includes("documents:read"), canReadFinancial: grants.includes("financial:read"), tools: capabilities.tools };
 }

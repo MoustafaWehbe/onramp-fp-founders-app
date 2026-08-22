@@ -45,6 +45,21 @@ export async function hasPermission(roleId: string, resource: string, action: st
   return found !== null;
 }
 
+/**
+ * A role's complete permission set in one query, as "resource:action" strings.
+ * For a caller that needs several yes/no answers (ai.controller.ts's accessFor
+ * checks eight), this replaces one findFirst per permission with one query
+ * total. Never cached beyond the single call always reflects the role's
+ * current grants.
+ */
+export async function getRolePermissions(roleId: string): Promise<Set<string>> {
+  const rows = await prisma.rolePermission.findMany({
+    where: { roleId },
+    select: { permission: { select: { resource: true, action: true } } },
+  });
+  return new Set(rows.map((row) => `${row.permission.resource}:${row.permission.action}`));
+}
+
 export function requirePermission(resource: string, action: string) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {

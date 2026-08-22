@@ -1,15 +1,21 @@
-import { requireMember, requirePermission } from "../../src/middleware/rbac";
+import { getRolePermissions, requireMember, requirePermission } from "../../src/middleware/rbac";
 import { prisma } from "../../src/db/prisma";
 
 jest.mock("../../src/db/prisma", () => ({
   prisma: {
     startupMember: { findUnique: jest.fn() },
-    rolePermission: { findFirst: jest.fn() },
+    rolePermission: { findFirst: jest.fn(), findMany: jest.fn() },
   },
 }));
 
 const mockFindUnique = prisma.startupMember.findUnique as jest.Mock;
 const mockFindFirst = prisma.rolePermission.findFirst as jest.Mock;
+const mockFindMany = prisma.rolePermission.findMany as jest.Mock;
+
+/** Shapes a findMany row the way Prisma's `select: { permission: { select: {...} } }` returns it. */
+function permissionRow(resource: string, action: string) {
+  return { permission: { resource, action } };
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -202,5 +208,38 @@ describe("requirePermission", () => {
 
     expect(next).toHaveBeenCalledWith(dbError);
     expect(res.status).not.toHaveBeenCalled();
+  });
+});
+
+describe("getRolePermissions", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("returns the role's grants as resource:action strings from a single query", async () => {
+    mockFindMany.mockResolvedValue([permissionRow("startup", "read"), permissionRow("documents", "read")]);
+
+    const permissions = await getRolePermissions("role-1");
+
+    expect(mockFindMany).toHaveBeenCalledTimes(1);
+    expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { roleId: "role-1" } }));
+    expect(permissions.has("startup:read")).toBe(true);
+    expect(permissions.has("documents:read")).toBe(true);
+  });
+
+  it("does not let one granted resource:action satisfy a lookup for a different one", async () => {
+    // A role holding only "team:read" must not report "team:delete" as
+    // granted the Set has to match on the full pair, not just the resource.
+    mockFindMany.mockResolvedValue([permissionRow("team", "read")]);
+
+    const permissions = await getRolePermissions("role-1");
+
+    expect(permissions.has("team:delete")).toBe(false);
+  });
+
+  it("returns an empty set when the role has no permission rows", async () => {
+    mockFindMany.mockResolvedValue([]);
+
+    const permissions = await getRolePermissions("role-1");
+
+    expect(permissions.size).toBe(0);
   });
 });
