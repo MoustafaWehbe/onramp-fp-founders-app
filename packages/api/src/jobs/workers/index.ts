@@ -11,6 +11,7 @@ import { gmailLogRetryJob } from "./gmail-log-retry.worker";
 import { aiAnalysisJob } from "./ai-analysis.worker";
 import { prisma } from "../../db/prisma";
 import { closeRedis } from "../../db/redis";
+import { logger } from "../../utils/logger";
 
 interface WorkerDef {
   name: string;
@@ -37,12 +38,12 @@ export function startWorkers(): Worker[] {
   );
 
   workers.forEach((w) => {
-    w.on("completed", (job) => console.info(`[${w.name}] job ${job.id} done`));
-    w.on("failed", (job, err) => console.error(`[${w.name}] job ${job?.id} failed:`, err.message));
-    w.on("error", (err) => console.error(`[${w.name}] error:`, err));
+    w.on("completed", (job) => logger.info({ worker: w.name, jobId: job.id }, "job done"));
+    w.on("failed", (job, err) => logger.error({ worker: w.name, jobId: job?.id, err }, "job failed"));
+    w.on("error", (err) => logger.error({ worker: w.name, err }, "worker error"));
   });
 
-  console.info(`Workers running: ${workers.map((w) => w.name).join(", ")}`);
+  logger.info({ workers: workers.map((w) => w.name) }, "Workers running");
   return workers;
 }
 
@@ -54,18 +55,18 @@ if (require.main === module) {
   async function shutdown(signal: string): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
-    console.info(`\nReceived ${signal}, shutting down...`);
+    logger.info({ signal }, "Received shutdown signal, shutting down...");
     const results = await Promise.allSettled(workers.map((worker) => worker.close()));
     await Promise.allSettled([closeRedis(), prisma.$disconnect()]);
     const failed = results.some((result) => result.status === "rejected");
-    if (failed) console.error("One or more workers failed to close cleanly", results);
+    if (failed) logger.error({ results }, "One or more workers failed to close cleanly");
     process.exitCode = failed ? 1 : 0;
   }
 
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("unhandledRejection", (err) => {
-    console.error("Unhandled rejection:", err);
+    logger.error({ err }, "Unhandled rejection");
     process.exit(1);
   });
 }

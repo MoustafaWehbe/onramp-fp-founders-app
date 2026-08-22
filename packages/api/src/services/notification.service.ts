@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
+import { logger } from "../utils/logger";
 import { notificationBus } from "../events/notification-bus";
 
 /**
@@ -183,7 +184,7 @@ export class NotificationService {
       // whole point, since they may well be signed in already.
       notificationBus.publish(user.id, { type: "notification.created", notification: created });
     } catch (err) {
-      console.error("[notifyInvitedUser] failed:", err);
+      logger.error({ err }, "[notifyInvitedUser] failed");
     }
   }
 
@@ -203,7 +204,7 @@ export class NotificationService {
         notificationBus.publish(userId, { type: "notifications.changed" });
       }
     } catch (err) {
-      console.error("[clearInviteNotification] failed:", err);
+      logger.error({ err }, "[clearInviteNotification] failed");
     }
   }
 
@@ -252,7 +253,7 @@ export class NotificationService {
         notification: created,
       });
     } catch (err) {
-      console.error("[notifyFollowupDue] failed:", err);
+      logger.error({ err }, "[notifyFollowupDue] failed");
     }
   }
 
@@ -282,7 +283,7 @@ export class NotificationService {
         notificationBus.publish(userId, { type: "notifications.changed" });
       }
     } catch (err) {
-      console.error("[clearFollowupNotifications] failed:", err);
+      logger.error({ err }, "[clearFollowupNotifications] failed");
     }
   }
 
@@ -359,7 +360,7 @@ export class NotificationService {
         notification: created,
       });
     } catch (err) {
-      console.error("[notifyTaskAssigned] failed:", err);
+      logger.error({ err }, "[notifyTaskAssigned] failed");
     }
   }
 
@@ -404,7 +405,7 @@ export class NotificationService {
         notification: created,
       });
     } catch (err) {
-      console.error("[notifyMention] failed:", err);
+      logger.error({ err }, "[notifyMention] failed");
     }
   }
 
@@ -440,7 +441,7 @@ export class NotificationService {
         notification: created,
       });
     } catch (err) {
-      console.error("[notifyDirectMessage] failed:", err);
+      logger.error({ err }, "[notifyDirectMessage] failed");
     }
   }
 
@@ -476,7 +477,7 @@ export class NotificationService {
         notification: created,
       });
     } catch (err) {
-      console.error("[notifyReviewerOpened] failed:", err);
+      logger.error({ err }, "[notifyReviewerOpened] failed");
     }
   }
 
@@ -534,7 +535,7 @@ export class NotificationService {
         notification: created,
       });
     } catch (err) {
-      console.error("[notifyForwardSuspected] failed:", err);
+      logger.error({ err }, "[notifyForwardSuspected] failed");
     }
   }
 
@@ -616,7 +617,7 @@ export class NotificationService {
         notification: created,
       });
     } catch (err) {
-      console.error("[notifyDeal] failed:", err);
+      logger.error({ err }, "[notifyDeal] failed");
     }
   }
 
@@ -652,7 +653,7 @@ export class NotificationService {
         notification: created,
       });
     } catch (err) {
-      console.error("[notifyTask] failed:", err);
+      logger.error({ err }, "[notifyTask] failed");
     }
   }
 
@@ -681,7 +682,7 @@ export class NotificationService {
         notificationBus.publish(userId, { type: "notifications.changed" });
       }
     } catch (err) {
-      console.error("[clearTaskNotifications] failed:", err);
+      logger.error({ err }, "[clearTaskNotifications] failed");
     }
   }
 }

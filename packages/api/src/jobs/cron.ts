@@ -6,6 +6,7 @@ import { calendarSyncQueue } from "./queue";
 import { getRedis } from "../db/redis";
 import { isGoogleIntegrationEnabled } from "../config/env";
 import { getAiConfig } from "../config/ai";
+import { logger } from "../utils/logger";
 import type { ScheduledTask } from "node-cron";
 
 /**
@@ -37,9 +38,9 @@ export function startCronJobs(): ScheduledTask[] {
         const { count } = await prisma.pendingRegistration.deleteMany({
           where: { otpExpiresAt: { lt: new Date() } },
         });
-        if (count > 0) console.info(`[cron] Deleted ${count} expired pending registration(s)`);
+        if (count > 0) logger.info({ count }, "[cron] Deleted expired pending registration(s)");
       } catch (err) {
-        console.error("[cron] Failed to clean up pending registrations:", err);
+        logger.error({ err }, "[cron] Failed to clean up pending registrations");
       }
     });
   });
@@ -56,9 +57,9 @@ export function startCronJobs(): ScheduledTask[] {
           const { count } = await prisma.aiChatSession.deleteMany({
             where: { archivedAt: { not: null, lt: cutoff } },
           });
-          if (count > 0) console.info(`[cron] Deleted ${count} AI chat session(s) past retention`);
+          if (count > 0) logger.info({ count }, "[cron] Deleted AI chat session(s) past retention");
         } catch (err) {
-          console.error("[cron] Failed to enforce AI chat retention:", err);
+          logger.error({ err }, "[cron] Failed to enforce AI chat retention");
         }
       });
     });
@@ -73,7 +74,7 @@ export function startCronJobs(): ScheduledTask[] {
       try {
         await notifyOverdueAndDueTodayTasks();
       } catch (err) {
-        console.error("[cron] Failed to notify overdue/due-today tasks:", err);
+        logger.error({ err }, "[cron] Failed to notify overdue/due-today tasks");
       }
 
       // Deliberately after the task pass and in its own try: a deal reminder is
@@ -81,7 +82,7 @@ export function startCronJobs(): ScheduledTask[] {
       try {
         await notifyStaleLeadsAndIdleDeals();
       } catch (err) {
-        console.error("[cron] Failed to notify stale leads / deals without a next step:", err);
+        logger.error({ err }, "[cron] Failed to notify stale leads / deals without a next step");
       }
     });
   });
@@ -105,12 +106,13 @@ export function startCronJobs(): ScheduledTask[] {
           where: { createdAt: { lt: staleCutoff }, versions: { none: {} } },
         });
         if (versionCount > 0 || documentCount > 0) {
-          console.info(
-            `[cron] Cleaned up ${versionCount} stale pending upload(s) and ${documentCount} orphaned document(s)`,
+          logger.info(
+            { versionCount, documentCount },
+            "[cron] Cleaned up stale pending upload(s) and orphaned document(s)",
           );
         }
       } catch (err) {
-        console.error("[cron] Failed to clean up stale document uploads:", err);
+        logger.error({ err }, "[cron] Failed to clean up stale document uploads");
       }
     });
   });
@@ -138,12 +140,12 @@ export function startCronJobs(): ScheduledTask[] {
             );
           }
         } catch (err) {
-          console.error("[cron] Failed to enqueue calendar sync:", err);
+          logger.error({ err }, "[cron] Failed to enqueue calendar sync");
         }
       });
     });
   }
 
-  console.info("Cron jobs scheduled");
+  logger.info("Cron jobs scheduled");
   return [...cron.getTasks().values()];
 }

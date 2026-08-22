@@ -1,5 +1,6 @@
 import type IORedis from "ioredis";
 import { createRedis, getRedis } from "../db/redis";
+import { logger } from "../utils/logger";
 
 /**
  * Cross-process ownership tracking for an in-flight AI generation.
@@ -182,8 +183,8 @@ class RedisAiRunRegistry implements AiRunRegistry {
       const messageId = channel.slice("ai:cancel:".length);
       for (const handler of [...(this.cancelHandlers.get(messageId) ?? [])]) handler();
     });
-    sub.on("error", (err) => console.error("[ai-run-registry] redis subscriber error:", err));
-    void sub.psubscribe("ai:cancel:*").catch((err) => console.error("[ai-run-registry] failed to psubscribe:", err));
+    sub.on("error", (err) => logger.error({ err }, "[ai-run-registry] redis subscriber error"));
+    void sub.psubscribe("ai:cancel:*").catch((err) => logger.error({ err }, "[ai-run-registry] failed to psubscribe"));
 
     this.subscriber = sub;
     return sub;

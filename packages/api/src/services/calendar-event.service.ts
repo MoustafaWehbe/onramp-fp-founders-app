@@ -1,5 +1,6 @@
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
+import { logger } from "../utils/logger";
 import { googleConnectionService } from "./google-connection.service";
 
 const CALENDAR_EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
@@ -133,10 +134,7 @@ export class CalendarEventService {
         },
       });
     } catch (err) {
-      console.error(
-        "[calendar-event] log write failed after event creation, will backfill on next sync:",
-        err,
-      );
+      logger.error({ err }, "[calendar-event] log write failed after event creation, will backfill on next sync");
       logCreated = false;
     }
 

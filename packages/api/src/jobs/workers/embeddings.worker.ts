@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { OpenAiProvider } from "../../services/ai-provider.service";
 import { JOB_NAMES } from "../job-names";
+import { logger } from "../../utils/logger";
 
 export interface EmbeddingsJobItem {
   entityId: string;
@@ -35,7 +36,7 @@ export const embeddingsJob = {
   async process(job: Job<EmbeddingsJobData, EmbeddingsJobResult>): Promise<EmbeddingsJobResult> {
     const { entityType, items } = job.data;
     if (items.length === 0) return { count: 0, dimensions: 0 };
-    console.info(`[embeddings] Generating ${items.length} embedding(s) for ${entityType}`);
+    logger.info({ entityType, count: items.length }, "[embeddings] Generating embedding(s)");
 
     const embeddings = await new OpenAiProvider().embedBatch(items.map((item) => item.text));
     if (embeddings.some((embedding) => embedding.length === 0)) {

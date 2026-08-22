@@ -1,4 +1,5 @@
 import { getAiConfig } from "./ai";
+import { logger } from "../utils/logger";
 
 const REQUIRED: Record<string, string[]> = {
   always: [
@@ -131,7 +132,7 @@ export function validateEnv(): void {
   }
 
   if (problems.length > 0) {
-    console.error(`Invalid environment configuration:\n  ${problems.join("\n  ")}`);
+    logger.error({ problems }, "Invalid environment configuration");
     process.exit(1);
   }
 }
