@@ -216,6 +216,7 @@ describe("AI conversation agent loop", () => {
     (prisma.aiChatMessage.findMany as jest.Mock).mockResolvedValue([{ role: "user", content: "Who should I focus on today?" }]);
     (prisma.aiAnalysis.findMany as jest.Mock).mockResolvedValue([]);
     (prisma.aiChatMessage.update as jest.Mock).mockResolvedValue({});
+    (prisma.aiChatMessage.updateMany as jest.Mock).mockResolvedValue({ count: 1 });
     (prisma.aiRun.update as jest.Mock).mockResolvedValue({});
     (prisma.aiChatSession.update as jest.Mock).mockResolvedValue({});
     (prisma.aiToolCall.create as jest.Mock).mockResolvedValue({});
@@ -238,7 +239,7 @@ describe("AI conversation agent loop", () => {
 
     expect(aiToolsService.execute).toHaveBeenCalledWith("startup-1", "get_focus_deals", { roundId: null }, ["get_focus_deals"], { canReadFinancial: true, userId: "user-1", sessionId: "session-1", messageId: "assistant-message" });
     expect(prisma.aiToolCall.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ toolName: "get_focus_deals", status: "completed" }) }));
-    expect(prisma.aiChatMessage.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "completed", content: "Focus on Ana Ruiz." }) }));
+    expect(prisma.aiChatMessage.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "completed", content: "Focus on Ana Ruiz." }) }));
     // The second streamConversation call must carry the first round's tool call and
     // its output back to the model, not just the original user turn.
     const secondRequest = provider.requests[1].input as { input: unknown[] };
@@ -260,7 +261,7 @@ describe("AI conversation agent loop", () => {
     await (service as any).runGeneration(session, "assistant-message", "user-1", loopAccess);
 
     expect(prisma.aiToolCall.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "failed", errorCode: "AI_TOOL_FAILED" }) }));
-    expect(prisma.aiChatMessage.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "completed" }) }));
+    expect(prisma.aiChatMessage.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "completed" }) }));
   });
 
   it("surfaces the specific validation issue for a bad tool argument (e.g. a hallucinated id), not a generic failure, so the model can self-correct", async () => {
@@ -291,7 +292,7 @@ describe("AI conversation agent loop", () => {
     await (service as any).runGeneration(session, "assistant-message", "user-1", loopAccess);
 
     expect(provider.requests.filter((request) => request.operation === "streamConversation")).toHaveLength(4);
-    expect(prisma.aiChatMessage.update).toHaveBeenCalledWith(expect.objectContaining({
+    expect(prisma.aiChatMessage.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ status: "completed", content: expect.stringContaining("couldn't finish") }),
     }));
   });

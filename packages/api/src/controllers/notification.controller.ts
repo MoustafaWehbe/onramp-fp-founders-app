@@ -3,7 +3,7 @@ import { asyncHandler } from "../utils/errors";
 import { notificationService } from "../services/notification.service";
 import { notificationBus } from "../events/notification-bus";
 import type { RealtimeEvent } from "../events/realtime-bus";
-import type { ListNotificationsQuery } from "../validators/notification.schemas";
+import type { ListNotificationsQuery, MarkAllReadInput } from "../validators/notification.schemas";
 
 /** Browsers reconnect an EventSource on their own; this paces the retries. */
 const RETRY_MS = 5_000;
@@ -64,10 +64,11 @@ export const notificationController = {
   },
 
   list: asyncHandler(async (req, res) => {
-    const { limit, unread } = req.query as unknown as ListNotificationsQuery;
+    const { limit, unread, startupId } = req.query as unknown as ListNotificationsQuery;
     const { items, unreadCount } = await notificationService.list(req.user!.userId, {
       limit,
       unreadOnly: unread,
+      startupId,
     });
 
     res.json({ data: items, meta: { unreadCount } });
@@ -79,7 +80,8 @@ export const notificationController = {
   }),
 
   markAllRead: asyncHandler(async (req, res) => {
-    const updated = await notificationService.markAllRead(req.user!.userId);
+    const { startupId } = req.body as MarkAllReadInput;
+    const updated = await notificationService.markAllRead(req.user!.userId, startupId);
     res.json({ data: { updated } });
   }),
 };

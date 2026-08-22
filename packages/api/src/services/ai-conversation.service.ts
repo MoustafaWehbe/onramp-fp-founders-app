@@ -8,6 +8,7 @@ import { AiRetrievalService } from "./ai-retrieval.service";
 import { aiStreamBroker, type AiStreamEnvelope } from "./ai-stream-broker.service";
 import { aiArtifactService, aiCapabilityManifest } from "./ai-artifact.service";
 import { aiToolsService, toolSchemasFor } from "./ai-tools.service";
+import { aiRunRegistry } from "./ai-run-registry";
 import { forecastService } from "./forecast.service";
 import type { AiToolName } from "./ai-capabilities.service";
 import type { CreateAiMessageInput, ListAiMessagesQuery } from "../validators/ai.schemas";
@@ -15,7 +16,8 @@ import { getAiConfig } from "../config/ai";
 
 export interface AiConversationAccess { canReadDocuments: boolean; canReadFinancial: boolean; tools?: AiToolName[]; }
 
-const activeRuns = new Map<string, { controller: AbortController; userId: string; runId?: string }>();
+/** How often to refresh the run's Redis TTL while generating; well under the registry's 20s expiry. */
+const RUN_HEARTBEAT_MS = 8_000;
 
 const TITLE_JSON_SCHEMA = { type: "object", additionalProperties: false, required: ["title"], properties: { title: { type: "string" } } } as const;
 
@@ -116,25 +118,25 @@ export class AiConversationService {
 
     let replay: AiStreamEnvelope[] = [];
     if (message.status === "pending") {
-      const activeForUser = [...activeRuns.values()].filter((run) => run.userId === userId).length;
+      const activeForUser = await aiRunRegistry.countActive(userId);
       if (activeForUser >= getAiConfig().concurrentStreamsPerUser) {
         throw createError("Too many AI responses are already in progress", 429, "AI_CONCURRENT_STREAM_LIMIT");
       }
       const claimed = await prisma.aiChatMessage.updateMany({ where: { id: messageId, status: "pending" }, data: { status: "streaming" } });
       if (claimed.count === 1) void this.runGeneration(session, messageId, userId, access);
       replay = await aiStreamBroker.replayPersistent(messageId, lastSequence);
-    } else if (message.status === "streaming" && !activeRuns.has(messageId)) {
-      // Orphaned: this process has no record of ever running this generation
-      // (activeRuns is in-memory, wiped on restart), yet the row still says
-      // it's in progress. A prior process died mid-generation — a dev
-      // hot-reload restart, a deploy, a crash — before it could reach either
-      // terminal DB update, and nothing will ever resume it. Sequence numbers
-      // are per-process and reset on restart too, so splicing a recovery
-      // event into the pre-crash replay stream isn't reliable; persist the
-      // terminal state directly and leave replay empty so the snapshot
-      // fallback below reports it. Otherwise the client would replay stale
-      // pre-crash events (or none at all) and sit on "Thinking…"/"Streaming"
-      // forever with no way to recover.
+    } else if (message.status === "streaming" && !(await aiRunRegistry.isActive(messageId))) {
+      // Orphaned: no process — this one or any other, per the Redis-backed
+      // registry — currently holds this run (its TTL key has expired), yet
+      // the row still says it's in progress. A prior process died mid-
+      // generation — a dev hot-reload restart, a deploy, a crash — before it
+      // could reach either terminal DB update, and nothing will ever resume
+      // it. Sequence numbers are per-process and reset on restart too, so
+      // splicing a recovery event into the pre-crash replay stream isn't
+      // reliable; persist the terminal state directly and leave replay empty
+      // so the snapshot fallback below reports it. Otherwise the client
+      // would replay stale pre-crash events (or none at all) and sit on
+      // "Thinking…"/"Streaming" forever with no way to recover.
       message = await prisma.aiChatMessage.update({
         where: { id: messageId },
         data: { status: "failed", errorCode: "AI_ORPHANED", errorMessage: "The server restarted while this response was in progress. Please try again.", completedAt: new Date() },
@@ -149,7 +151,9 @@ export class AiConversationService {
     await this.ownedSession(startupId, userId, sessionId, false);
     const message = await prisma.aiChatMessage.findFirst({ where: { id: messageId, sessionId, role: "assistant", status: { in: ["pending", "streaming"] } }, select: { id: true } });
     if (!message) throw createError("AI message is not active", 409, "AI_MESSAGE_NOT_ACTIVE");
-    activeRuns.get(messageId)?.controller.abort("cancelled");
+    // Reaches the AbortController wherever it actually lives — this process
+    // or another — via the Redis-backed registry's cancel pub/sub.
+    await aiRunRegistry.requestCancel(messageId);
     await prisma.aiChatMessage.update({ where: { id: messageId }, data: { status: "cancelled", completedAt: new Date() } });
     await prisma.aiRun.updateMany({ where: { messageId, status: "started" }, data: { status: "cancelled", errorCode: "AI_CANCELLED", completedAt: new Date() } });
     aiStreamBroker.publish(sessionId, messageId, "message.cancelled", {});
@@ -160,18 +164,23 @@ export class AiConversationService {
   private async runGeneration(session: ConversationSession, messageId: string, userId: string, access: AiConversationAccess): Promise<void> {
     const startedAt = Date.now();
     const controller = new AbortController();
-    activeRuns.set(messageId, { controller, userId });
+    // Claiming and subscribing before any await lets a cancel or an orphan
+    // check that lands moments later see this run as owned immediately,
+    // whether it's checked locally or, via the registry, from another process.
+    await aiRunRegistry.claim(messageId, userId);
+    const unsubscribeCancel = aiRunRegistry.onCancel(messageId, () => controller.abort("cancelled"));
+    const heartbeat = setInterval(() => { void aiRunRegistry.heartbeat(messageId).catch(() => {}); }, RUN_HEARTBEAT_MS);
     let runId: string | undefined;
     let content = "";
     let timeToFirstTokenMs: number | undefined;
     let lastPersistedAt = 0;
+    let pendingContentWrite: Promise<unknown> = Promise.resolve();
     try {
       const run = await prisma.aiRun.create({ data: {
         startupId: session.startupId, userId, sessionId: session.id, messageId,
         operationType: "chat", provider: "openai", model: getAiConfig().chatModel,
       } });
       runId = run.id;
-      activeRuns.set(messageId, { controller, userId, runId });
       aiStreamBroker.publish(session.id, messageId, "message.started", {});
       // The in-flight assistant placeholder (this very message) is excluded so it can
       // never stand in for the user's latest turn; ordering by desc+take then reversing
@@ -271,7 +280,11 @@ export class AiConversationService {
             const now = Date.now();
             if (now - lastPersistedAt >= 750) {
               lastPersistedAt = now;
-              void prisma.aiChatMessage.update({ where: { id: messageId }, data: { content } }).catch(() => {});
+              // Tracked so the final "completed" write below can wait for this to
+              // land first — otherwise an in-flight throttled write carrying
+              // shorter (earlier) content can resolve after it and truncate the
+              // stored answer back down.
+              pendingContentWrite = prisma.aiChatMessage.update({ where: { id: messageId }, data: { content } }).catch(() => {});
             }
           }
           if (event.type === "tool_call") roundToolCalls.push({ callId: event.callId, name: event.name, arguments: event.arguments });
@@ -301,7 +314,15 @@ export class AiConversationService {
       if (turnsExhausted) content = content || "I couldn't finish looking that up — try narrowing the question.";
 
       const completedAt = new Date();
-      await prisma.aiChatMessage.update({ where: { id: messageId }, data: { status: "completed", content, model: getAiConfig().chatModel, inputTokens: usageInputTokens || undefined, outputTokens: usageOutputTokens || undefined, latencyMs: Date.now() - startedAt, completedAt } });
+      // Wait for the last throttled mid-stream write so it can't resolve after
+      // this one and overwrite the finished content with an earlier, shorter
+      // snapshot (see pendingContentWrite's declaration above).
+      await pendingContentWrite;
+      // updateMany + a status guard (not a plain update) so a cancel that lands
+      // in the same instant this turn finishes wins rather than being silently
+      // overwritten back to "completed" a message the user already told to stop.
+      const finalized = await prisma.aiChatMessage.updateMany({ where: { id: messageId, status: { in: ["pending", "streaming"] } }, data: { status: "completed", content, model: getAiConfig().chatModel, inputTokens: usageInputTokens || undefined, outputTokens: usageOutputTokens || undefined, latencyMs: Date.now() - startedAt, completedAt } });
+      if (finalized.count === 0) return;
       await prisma.aiRun.update({ where: { id: runId }, data: { status: "completed", providerRequestId, inputTokens: usageInputTokens || undefined, cachedInputTokens: usageCachedInputTokens || undefined, outputTokens: usageOutputTokens || undefined, latencyMs: Date.now() - startedAt, completedAt } });
       // Keep this raw until deployments run the accompanying migration and
       // regenerate their Prisma client. No prompt, document text, or tool
@@ -477,7 +498,9 @@ export class AiConversationService {
       await prisma.aiChatMessage.update({ where: { id: messageId }, data: { status: "failed", errorCode: code, errorMessage: "The AI response could not be completed.", latencyMs: Date.now() - startedAt, completedAt } });
       aiStreamBroker.publish(session.id, messageId, "message.failed", { code });
     } finally {
-      activeRuns.delete(messageId);
+      clearInterval(heartbeat);
+      unsubscribeCancel();
+      await aiRunRegistry.release(messageId, userId).catch(() => {});
       // message.completed is intentionally published before optional artifact
       // generation so the UI can stop showing a spinner immediately. This
       // separate lifecycle event tells the HTTP layer that all post-processing

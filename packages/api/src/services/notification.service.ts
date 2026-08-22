@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
 import { notificationBus } from "../events/notification-bus";
@@ -47,13 +48,38 @@ const NOTIFICATION_SELECT = {
 
 export class NotificationService {
   /**
+   * Serializes a dedup check-then-create through a Postgres transaction-scoped
+   * advisory lock, keyed by the same tuple the "does one already exist" check
+   * filters on. Without this, two concurrent callers for the same entity (two
+   * overlapping cron ticks, two API replicas) can both pass that findFirst
+   * before either's create lands, producing a duplicate notification no
+   * unique constraint backs this today, so the race was otherwise wide open.
+   * pg_advisory_xact_lock releases automatically at transaction end, so there
+   * is nothing to release even if fn throws.
+   */
+  private async withDedupeLock<T>(key: string, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    return prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+      return fn(tx);
+    });
+  }
+
+  /**
    * Notifications belong to a user, not to a workspace someone who has been
    * invited but has not joined anything yet still needs to see the invitation
-   * sitting on their otherwise empty dashboard.
+   * sitting on their otherwise empty dashboard. An explicit startupId scopes
+   * both the returned page and unreadCount to one workspace (the client uses
+   * this for the active-workspace feed and badge); omitting it returns the
+   * unscoped, cross-workspace view.
+   *
+   * unreadCount is computed under the same scope as the page, not globally
+   * this is what the client's badge should show, not a global figure that
+   * would disagree with what "mark all read" on this page actually clears.
    */
-  async list(userId: string, options: { limit: number; unreadOnly: boolean }) {
+  async list(userId: string, options: { limit: number; unreadOnly: boolean; startupId?: string }) {
+    const scope = { userId, ...(options.startupId ? { startupId: options.startupId } : {}) };
     const where = {
-      userId,
+      ...scope,
       ...(options.unreadOnly ? { readAt: null } : {}),
     };
 
@@ -64,7 +90,7 @@ export class NotificationService {
         orderBy: { createdAt: "desc" },
         take: options.limit,
       }),
-      prisma.notification.count({ where: { userId, readAt: null } }),
+      prisma.notification.count({ where: { ...scope, readAt: null } }),
     ]);
 
     return { items, unreadCount };
@@ -94,9 +120,15 @@ export class NotificationService {
     notificationBus.publish(userId, { type: "notifications.changed" });
   }
 
-  async markAllRead(userId: string) {
+  /**
+   * Scoped to startupId when given so "mark all read" on one workspace's
+   * feed cannot silently clear another workspace's unread notifications too
+   * an unscoped call was previously the only option, which disagreed with
+   * list()'s per-workspace unreadCount the moment that became scoped.
+   */
+  async markAllRead(userId: string, startupId?: string) {
     const { count } = await prisma.notification.updateMany({
-      where: { userId, readAt: null },
+      where: { userId, ...(startupId ? { startupId } : {}), readAt: null },
       data: { readAt: new Date() },
     });
 
@@ -183,29 +215,32 @@ export class NotificationService {
     dueDate: Date;
   }): Promise<void> {
     try {
-      const existing = await prisma.notification.findFirst({
-        where: {
-          userId: input.userId,
-          type: NOTIFICATION_TYPES.FOLLOWUP_DUE,
-          entityType: "interaction_log",
-          entityId: input.logId,
-        },
-        select: { id: true },
-      });
-      if (existing) return;
+      const created = await this.withDedupeLock(`followup_due:${input.logId}`, async (tx) => {
+        const existing = await tx.notification.findFirst({
+          where: {
+            userId: input.userId,
+            type: NOTIFICATION_TYPES.FOLLOWUP_DUE,
+            entityType: "interaction_log",
+            entityId: input.logId,
+          },
+          select: { id: true },
+        });
+        if (existing) return null;
 
-      const created = await prisma.notification.create({
-        data: {
-          userId: input.userId,
-          startupId: input.startupId,
-          type: NOTIFICATION_TYPES.FOLLOWUP_DUE,
-          title: `Follow-up with ${input.investorName} is overdue`,
-          body: `You planned to follow up by ${input.dueDate.toISOString().slice(0, 10)}.`,
-          entityType: "interaction_log",
-          entityId: input.logId,
-        },
-        select: { id: true, type: true, title: true, body: true },
+        return tx.notification.create({
+          data: {
+            userId: input.userId,
+            startupId: input.startupId,
+            type: NOTIFICATION_TYPES.FOLLOWUP_DUE,
+            title: `Follow-up with ${input.investorName} is overdue`,
+            body: `You planned to follow up by ${input.dueDate.toISOString().slice(0, 10)}.`,
+            entityType: "interaction_log",
+            entityId: input.logId,
+          },
+          select: { id: true, type: true, title: true, body: true },
+        });
       });
+      if (!created) return;
 
       notificationBus.publish(input.userId, {
         type: "notification.created",
@@ -455,36 +490,39 @@ export class NotificationService {
     distinctIps: number;
   }): Promise<void> {
     try {
-      const cooldownStart = new Date(Date.now() - FORWARD_ALERT_COOLDOWN_HOURS * 60 * 60 * 1000);
-      const recent = await prisma.notification.findFirst({
-        where: {
-          userId: input.userId,
-          type: NOTIFICATION_TYPES.FORWARD_SUSPECTED,
-          entityType: "reviewer_invitation",
-          entityId: input.invitationId,
-          createdAt: { gte: cooldownStart },
-        },
-        select: { id: true },
-      });
-      if (recent) return;
+      const created = await this.withDedupeLock(`forward_suspected:${input.invitationId}`, async (tx) => {
+        const cooldownStart = new Date(Date.now() - FORWARD_ALERT_COOLDOWN_HOURS * 60 * 60 * 1000);
+        const recent = await tx.notification.findFirst({
+          where: {
+            userId: input.userId,
+            type: NOTIFICATION_TYPES.FORWARD_SUSPECTED,
+            entityType: "reviewer_invitation",
+            entityId: input.invitationId,
+            createdAt: { gte: cooldownStart },
+          },
+          select: { id: true },
+        });
+        if (recent) return null;
 
-      const signal =
-        input.distinctDevices >= 2
-          ? `${input.distinctDevices} devices`
-          : `${input.distinctIps} locations`;
+        const signal =
+          input.distinctDevices >= 2
+            ? `${input.distinctDevices} devices`
+            : `${input.distinctIps} locations`;
 
-      const created = await prisma.notification.create({
-        data: {
-          userId: input.userId,
-          startupId: input.startupId,
-          type: NOTIFICATION_TYPES.FORWARD_SUSPECTED,
-          title: `${input.reviewerLabel}'s link may have been forwarded`,
-          body: `Opened from ${signal}. This is a signal, not proof — worth a look.`,
-          entityType: "reviewer_invitation",
-          entityId: input.invitationId,
-        },
-        select: { id: true, type: true, title: true, body: true },
+        return tx.notification.create({
+          data: {
+            userId: input.userId,
+            startupId: input.startupId,
+            type: NOTIFICATION_TYPES.FORWARD_SUSPECTED,
+            title: `${input.reviewerLabel}'s link may have been forwarded`,
+            body: `Opened from ${signal}. This is a signal, not proof — worth a look.`,
+            entityType: "reviewer_invitation",
+            entityId: input.invitationId,
+          },
+          select: { id: true, type: true, title: true, body: true },
+        });
       });
+      if (!created) return;
 
       notificationBus.publish(input.userId, {
         type: "notification.created",
@@ -537,33 +575,36 @@ export class NotificationService {
     input: { userId: string; startupId: string; pipelineId: string; title: string; body: string },
   ): Promise<void> {
     try {
-      const cooldownStart = new Date(
-        Date.now() - DEAL_REMINDER_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
-      );
-      const recent = await prisma.notification.findFirst({
-        where: {
-          userId: input.userId,
-          type,
-          entityType: "pipeline",
-          entityId: input.pipelineId,
-          createdAt: { gte: cooldownStart },
-        },
-        select: { id: true },
-      });
-      if (recent) return;
+      const created = await this.withDedupeLock(`deal:${type}:${input.pipelineId}`, async (tx) => {
+        const cooldownStart = new Date(
+          Date.now() - DEAL_REMINDER_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
+        );
+        const recent = await tx.notification.findFirst({
+          where: {
+            userId: input.userId,
+            type,
+            entityType: "pipeline",
+            entityId: input.pipelineId,
+            createdAt: { gte: cooldownStart },
+          },
+          select: { id: true },
+        });
+        if (recent) return null;
 
-      const created = await prisma.notification.create({
-        data: {
-          userId: input.userId,
-          startupId: input.startupId,
-          type,
-          title: input.title,
-          body: input.body,
-          entityType: "pipeline",
-          entityId: input.pipelineId,
-        },
-        select: { id: true, type: true, title: true, body: true },
+        return tx.notification.create({
+          data: {
+            userId: input.userId,
+            startupId: input.startupId,
+            type,
+            title: input.title,
+            body: input.body,
+            entityType: "pipeline",
+            entityId: input.pipelineId,
+          },
+          select: { id: true, type: true, title: true, body: true },
+        });
       });
+      if (!created) return;
 
       notificationBus.publish(input.userId, {
         type: "notification.created",
@@ -579,24 +620,27 @@ export class NotificationService {
     input: { userId: string; startupId: string; taskId: string; title: string; body: string; titlePrefix: string },
   ): Promise<void> {
     try {
-      const existing = await prisma.notification.findFirst({
-        where: { userId: input.userId, type, entityType: "task", entityId: input.taskId },
-        select: { id: true },
-      });
-      if (existing) return;
+      const created = await this.withDedupeLock(`task:${type}:${input.taskId}`, async (tx) => {
+        const existing = await tx.notification.findFirst({
+          where: { userId: input.userId, type, entityType: "task", entityId: input.taskId },
+          select: { id: true },
+        });
+        if (existing) return null;
 
-      const created = await prisma.notification.create({
-        data: {
-          userId: input.userId,
-          startupId: input.startupId,
-          type,
-          title: `${input.titlePrefix}: ${input.title}`,
-          body: input.body,
-          entityType: "task",
-          entityId: input.taskId,
-        },
-        select: { id: true, type: true, title: true, body: true },
+        return tx.notification.create({
+          data: {
+            userId: input.userId,
+            startupId: input.startupId,
+            type,
+            title: `${input.titlePrefix}: ${input.title}`,
+            body: input.body,
+            entityType: "task",
+            entityId: input.taskId,
+          },
+          select: { id: true, type: true, title: true, body: true },
+        });
       });
+      if (!created) return;
 
       notificationBus.publish(input.userId, {
         type: "notification.created",

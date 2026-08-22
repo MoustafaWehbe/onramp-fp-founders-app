@@ -29,11 +29,18 @@ export type NotificationPage = {
   unreadCount: number;
 };
 
-export async function listNotifications(): Promise<NotificationPage> {
+/**
+ * Scoping by startupId (typically the active workspace) is done server-side
+ * so the returned page and unreadCount agree with each other a client-side
+ * filter on top of a fixed-size page can silently drop a workspace's own
+ * items (and recompute a wrong badge) once another workspace fills the page.
+ * Omit it for the unscoped, cross-workspace view.
+ */
+export async function listNotifications(startupId?: string): Promise<NotificationPage> {
   const { data } = await apiClient.get<{
     data: AppNotification[];
     meta: { unreadCount: number };
-  }>("/notifications");
+  }>("/notifications", { params: startupId ? { startupId } : undefined });
   return { items: data.data, unreadCount: data.meta.unreadCount };
 }
 
@@ -41,6 +48,7 @@ export async function markNotificationRead(id: string): Promise<void> {
   await apiClient.patch(`/notifications/${id}/read`);
 }
 
-export async function markAllNotificationsRead(): Promise<void> {
-  await apiClient.post("/notifications/read-all");
+/** Scoped to startupId (typically the active workspace) so this only clears what the caller's own feed currently shows. */
+export async function markAllNotificationsRead(startupId?: string): Promise<void> {
+  await apiClient.post("/notifications/read-all", startupId ? { startupId } : {});
 }
