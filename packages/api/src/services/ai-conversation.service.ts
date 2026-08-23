@@ -279,6 +279,9 @@ export class AiConversationService {
       let usageOutputTokens = 0;
       let turnsExhausted = true;
       for (let turn = 0; turn < maxToolTurns; turn += 1) {
+        // Providers can emit speculative prose before deciding to call a tool.
+        // That intermediate prose is not part of the grounded final answer.
+        const contentAtRoundStart = content;
         const roundToolCalls: Array<{ callId: string; name: string; arguments: string }> = [];
         let roundStopReason: "tool_calls" | "stop" | undefined;
         for await (const event of this.provider.streamConversation({ instructions, input, tools: toolSchemas, signal: controller.signal })) {
@@ -317,6 +320,11 @@ export class AiConversationService {
         }
         if (roundStopReason === undefined) throw new Error("AI provider stream ended without a completion event");
         if (roundStopReason !== "tool_calls" || roundToolCalls.length === 0) { turnsExhausted = false; break; }
+
+        if (content !== contentAtRoundStart) {
+          content = contentAtRoundStart;
+          aiStreamBroker.publish(session.id, messageId, "message.delta", { content, replace: true });
+        }
 
         aiStreamBroker.publish(session.id, messageId, "tool.started", { calls: roundToolCalls.map((call) => ({ callId: call.callId, name: call.name })) });
         const executed = await Promise.all(roundToolCalls.map((call) => this.executeToolCall(session.id, session.startupId, messageId, call, allowedTools, toolResults, access.canReadFinancial, userId, session.roundId, controller.signal)));

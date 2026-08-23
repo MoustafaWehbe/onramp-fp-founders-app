@@ -212,7 +212,9 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
           // twice would duplicate words, but taking the longest known snapshot
           // self-corrects regardless of delivery order.
           const incoming = String(event.payload.content ?? message.content + String(event.payload.text ?? ""));
-          const content = incoming.length >= message.content.length ? incoming : message.content;
+          const content = event.payload.replace === true
+            ? incoming
+            : incoming.length >= message.content.length ? incoming : message.content;
           return { ...message, status: "streaming", content };
         }
         if (event.type === "message.snapshot") {
@@ -577,7 +579,7 @@ const MessageBubble = memo(function MessageBubble({ startupId, message, onAskFol
   // started, so the generic thinking spinner would be redundant alongside it.
   const thinking = assistant && !message.content && !message.toolCalls?.some((call) => call.status === "started");
   const revealedContent = useStreamedReveal(message.content, message.status === "pending" || message.status === "streaming");
-  const artifactContent = displayArtifacts.length > 0 ? splitArtifactBackedContent(message.content) : null;
+  const artifactContent = displayArtifacts.length > 0 ? splitArtifactBackedContent(message.content, displayArtifacts) : null;
 
   return (
     <article className={cn("group flex gap-3", assistant ? "flex-row" : "flex-row-reverse")}>

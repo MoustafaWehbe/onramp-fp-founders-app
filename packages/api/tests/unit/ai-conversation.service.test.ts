@@ -249,6 +249,22 @@ describe("AI conversation agent loop", () => {
     ]));
   });
 
+  it("discards speculative prose emitted before a tool call instead of appending it to the grounded answer", async () => {
+    (aiToolsService.execute as jest.Mock).mockResolvedValue({ data: [{ investorId: "inv-1" }] });
+    const provider = new FakeAiProvider();
+    provider.streamEventsByTurn = [
+      [{ type: "delta", text: "Sarah looks important based on what I remember." }, { type: "tool_call", callId: "call-1", name: "get_focus_deals", arguments: "{\"roundId\":null}" }, { type: "completed", stopReason: "tool_calls" }],
+      [{ type: "delta", text: "Here is the grounded priority." }, { type: "completed", stopReason: "stop" }],
+    ];
+    const service = new AiConversationService(provider);
+
+    await (service as any).runGeneration(session, "assistant-message", "user-1", loopAccess);
+
+    expect(prisma.aiChatMessage.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "completed", content: "Here is the grounded priority." }),
+    }));
+  });
+
   it("degrades to a useful answer instead of a failed message when a tool call fails", async () => {
     (aiToolsService.execute as jest.Mock).mockRejectedValue(new Error("boom"));
     const provider = new FakeAiProvider();
