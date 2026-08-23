@@ -110,7 +110,7 @@ export function Reviewers() {
   const readyVersions = useMemo(
     () =>
       (docsQuery.data?.data ?? [])
-        .filter((doc) => doc.currentVersion?.processingStatus === "ready")
+        .filter((doc) => doc.currentVersion?.reviewerShareStatus === "ready")
         .map((doc) => ({
           documentId: doc.id,
           title: doc.title,

@@ -5,6 +5,7 @@ import { createError } from "../utils/errors";
 import { documentProcessingQueue, documentRasterizeQueue } from "../jobs/queue";
 import { storageService } from "./storage.service";
 import { recordAuditEvent } from "./audit-writer";
+import { isOfficeConvertible } from "./office-convert.service";
 import type {
   CreateUploadSessionInput,
   CreateVersionUploadInput,
@@ -47,6 +48,9 @@ function serializeVersion(version: {
   originalFilename: string;
   processingStatus: string;
   processingError: string | null;
+  renderStatus: string;
+  renderError: string | null;
+  pageCount: number | null;
   summary: string | null;
   uploadedBy: string;
   createdAt: Date;
@@ -57,6 +61,18 @@ function serializeVersion(version: {
   // trivially the caller, so nothing bothers to join it there.
   uploader?: { firstName: string; lastName: string } | null;
 }) {
+  const reviewerShareStatus = (() => {
+    if (version.processingStatus === "failed" || version.renderStatus === "failed") return "failed";
+    if (
+      version.mimeType !== "application/pdf" &&
+      !isOfficeConvertible(version.mimeType)
+    ) {
+      return "unsupported";
+    }
+    if (version.processingStatus === "ready" && version.renderStatus === "ready") return "ready";
+    return "processing";
+  })();
+
   return {
     id: version.id,
     documentId: version.documentId,
@@ -67,6 +83,10 @@ function serializeVersion(version: {
     originalFilename: version.originalFilename,
     processingStatus: version.processingStatus,
     processingError: version.processingError,
+    renderStatus: version.renderStatus,
+    renderError: version.renderError,
+    pageCount: version.pageCount,
+    reviewerShareStatus,
     summary: version.summary,
     uploadedBy: version.uploadedBy,
     uploaderName: version.uploader ? `${version.uploader.firstName} ${version.uploader.lastName}` : null,
@@ -490,20 +510,16 @@ export class DocumentService {
       throw createError("Uploaded object is empty or missing", 400, "OBJECT_NOT_FOUND");
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
-      await tx.documentVersion.updateMany({
-        where: { documentId, isCurrent: true },
-        data: { isCurrent: false },
-      });
-      return tx.documentVersion.update({
-        where: { id: versionId },
-        data: {
-          isCurrent: true,
-          fileSize: meta.size,
-          processingStatus: "processing",
-          processingError: null,
-        },
-      });
+    // Do not displace the last healthy current version yet. The processing and
+    // rasterization workers independently promote the newest usable version
+    // once both pipelines have reached a successful terminal state.
+    const updated = await prisma.documentVersion.update({
+      where: { id: versionId },
+      data: {
+        fileSize: meta.size,
+        processingStatus: "processing",
+        processingError: null,
+      },
     });
 
     await documentProcessingQueue.add("process-version", {

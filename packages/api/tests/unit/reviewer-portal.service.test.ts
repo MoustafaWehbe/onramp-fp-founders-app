@@ -65,6 +65,15 @@ jest.mock("../../src/services/pdf-watermark.service", () => ({
   },
 }));
 
+jest.mock("../../src/services/office-convert.service", () => ({
+  isOfficeConvertible: jest.fn(
+    (mime: string) =>
+      mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      mime === "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ),
+  officeConvertService: { convertToPdf: jest.fn() },
+}));
+
 jest.mock("../../src/services/notification.service", () => ({
   notificationService: {
     notifyReviewerOpened: jest.fn(),
@@ -97,6 +106,7 @@ jest.mock("ua-parser-js", () => ({
 import { prisma } from "../../src/db/prisma";
 import { emailQueue } from "../../src/jobs/queue";
 import { reviewerPortalService } from "../../src/services/reviewer-portal.service";
+import { officeConvertService } from "../../src/services/office-convert.service";
 import { storageService } from "../../src/services/storage.service";
 import { watermarkService } from "../../src/services/watermark.service";
 import { pdfWatermarkService } from "../../src/services/pdf-watermark.service";
@@ -530,6 +540,45 @@ describe("ReviewerPortalService.getPageImage", () => {
   });
 });
 
+describe("ReviewerPortalService.createComment", () => {
+  it("accepts a section comment only when the chunk belongs to the pinned document version", async () => {
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue({ id: "pin-1" } as never);
+    mockPrisma.reviewerComment.create.mockResolvedValue({ id: "comment-1" } as never);
+    mockPrisma.reviewerInvitation.update.mockResolvedValue({} as never);
+
+    await reviewerPortalService.createComment(SESSION_ID, STARTUP_ID, INVITE_ID, {
+      documentId: "00000000-0000-0000-0000-000000000040",
+      chunkId: "00000000-0000-0000-0000-000000000041",
+      commentText: "Can you explain this assumption?",
+    });
+
+    expect(mockPrisma.reviewerInvitationDocument.findFirst).toHaveBeenCalledWith({
+      where: {
+        invitationId: INVITE_ID,
+        documentId: "00000000-0000-0000-0000-000000000040",
+        documentVersion: {
+          chunks: { some: { id: "00000000-0000-0000-0000-000000000041" } },
+        },
+      },
+      select: { id: true },
+    });
+    expect(mockPrisma.reviewerComment.create).toHaveBeenCalled();
+  });
+
+  it("rejects a chunk that is not part of the invitation-pinned version", async () => {
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(null);
+
+    await expect(
+      reviewerPortalService.createComment(SESSION_ID, STARTUP_ID, INVITE_ID, {
+        documentId: "00000000-0000-0000-0000-000000000040",
+        chunkId: "00000000-0000-0000-0000-000000000041",
+        commentText: "Cross-document comment",
+      }),
+    ).rejects.toMatchObject({ code: "NOT_SHARED" });
+    expect(mockPrisma.reviewerComment.create).not.toHaveBeenCalled();
+  });
+});
+
 describe("ReviewerPortalService.logEvent", () => {
   it("writes an event with no document context", async () => {
     mockPrisma.reviewerEvent.create.mockResolvedValue({} as never);
@@ -637,6 +686,28 @@ describe("ReviewerPortalService.getDownload", () => {
 
     expect(pdfWatermarkService.watermarkPdf).toHaveBeenCalled();
     expect(result.body.toString()).toBe("watermarked-pdf-bytes");
+  });
+
+  it("converts an Office document to a PDF before applying a download watermark", async () => {
+    const docxMime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue(
+      pinnedVersion({ mimeType: docxMime, originalFilename: "memo.docx" }) as never,
+    );
+    (storageService.readObject as jest.Mock).mockResolvedValue(Buffer.from("docx-bytes"));
+    (officeConvertService.convertToPdf as jest.Mock).mockResolvedValue(Buffer.from("converted-pdf"));
+    (pdfWatermarkService.watermarkPdf as jest.Mock).mockResolvedValue(Buffer.from("watermarked-pdf"));
+    mockPrisma.reviewerEvent.create.mockResolvedValue({} as never);
+    mockPrisma.reviewerInvitation.update.mockResolvedValue({} as never);
+
+    const result = await reviewerPortalService.getDownload(downloadInput({ watermarkEnabled: true }));
+
+    expect(officeConvertService.convertToPdf).toHaveBeenCalledWith(expect.any(Buffer), docxMime);
+    expect(pdfWatermarkService.watermarkPdf).toHaveBeenCalledWith(
+      Buffer.from("converted-pdf"),
+      expect.any(String),
+    );
+    expect(result.mimeType).toBe("application/pdf");
+    expect(result.originalFilename).toBe("memo.pdf");
   });
 });
 

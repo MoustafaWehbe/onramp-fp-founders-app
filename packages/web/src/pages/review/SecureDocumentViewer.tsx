@@ -232,7 +232,7 @@ function useCaptureGuards(versionId: string, screenshotGuard: boolean, allowPrin
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("beforeprint", onBeforePrint);
       window.removeEventListener("afterprint", unblank);
-      window.removeEventListener("blur-sm", blank);
+      window.removeEventListener("blur", blank);
       window.removeEventListener("focus", unblank);
       document.removeEventListener("visibilitychange", onVisibility);
     };

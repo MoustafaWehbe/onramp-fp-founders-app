@@ -18,6 +18,10 @@ export type DocumentVersion = {
   originalFilename: string;
   processingStatus: "pending_upload" | "processing" | "ready" | "failed" | string;
   processingError: string | null;
+  renderStatus: "pending" | "rendering" | "ready" | "unsupported" | "failed" | string;
+  renderError: string | null;
+  pageCount: number | null;
+  reviewerShareStatus: "processing" | "ready" | "unsupported" | "failed";
   summary: string | null;
   uploadedBy: string;
   // Joined only on getDocument's version history; null from the

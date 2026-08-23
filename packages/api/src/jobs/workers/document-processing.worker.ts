@@ -4,6 +4,7 @@ import { prisma } from "../../db/prisma";
 import { chunkMarkdown } from "../../services/document-chunking";
 import { extractDocumentMarkdown } from "../../services/document-parse";
 import { storageService } from "../../services/storage.service";
+import { promoteNewestUsableDocumentVersion } from "../../services/document-version-promotion";
 
 export interface DocumentProcessingJobData {
   startupId: string;
@@ -76,6 +77,8 @@ export const documentProcessingJob = {
           items: stored.map((chunk) => ({ entityId: chunk.id, text: chunk.content })),
         });
       }
+
+      await promoteNewestUsableDocumentVersion(version.documentId);
 
       return { chunkCount: stored.length };
     } catch (err) {

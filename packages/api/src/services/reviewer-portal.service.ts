@@ -10,6 +10,7 @@ import { emailQueue } from "../jobs/queue";
 import { storageService } from "./storage.service";
 import { watermarkService, shortLinkId } from "./watermark.service";
 import { pdfWatermarkService } from "./pdf-watermark.service";
+import { isOfficeConvertible, officeConvertService } from "./office-convert.service";
 import { notificationService } from "./notification.service";
 import { reviewerOtpEmail } from "../emails/templates/reviewer-otp";
 import type {
@@ -485,7 +486,20 @@ export class ReviewerPortalService {
     }
 
     let body = await storageService.readObject(version.storageKey, version.storageProvider);
+    let mimeType = version.mimeType;
+    let originalFilename = version.originalFilename;
     if (input.watermarkEnabled) {
+      if (isOfficeConvertible(version.mimeType)) {
+        body = await officeConvertService.convertToPdf(body, version.mimeType);
+        mimeType = "application/pdf";
+        originalFilename = version.originalFilename.replace(/\.[^.]+$/, "") + ".pdf";
+      } else if (version.mimeType !== "application/pdf") {
+        throw createError(
+          "A watermarked download is not available for this file type",
+          409,
+          "WATERMARK_DOWNLOAD_UNSUPPORTED",
+        );
+      }
       const date = new Date().toISOString().slice(0, 10);
       const text = `${input.email} · ${shortLinkId(input.invitationId)} · ${date}`;
       body = await pdfWatermarkService.watermarkPdf(body, text);
@@ -507,8 +521,8 @@ export class ReviewerPortalService {
 
     return {
       body,
-      mimeType: version.mimeType,
-      originalFilename: version.originalFilename,
+      mimeType,
+      originalFilename,
     };
   }
 
@@ -530,12 +544,33 @@ export class ReviewerPortalService {
     invitationId: string,
     input: ReviewerCommentInput,
   ) {
+    if (input.chunkId && !input.documentId) {
+      throw createError(
+        "A document is required when commenting on a document section",
+        400,
+        "INVALID_COMMENT_TARGET",
+      );
+    }
     if (input.documentId) {
       const pinned = await prisma.reviewerInvitationDocument.findFirst({
-        where: { invitationId, documentId: input.documentId },
+        where: {
+          invitationId,
+          documentId: input.documentId,
+          ...(input.chunkId
+            ? { documentVersion: { chunks: { some: { id: input.chunkId } } } }
+            : {}),
+        },
         select: { id: true },
       });
-      if (!pinned) throw createError("Document is not shared with this invitation", 404, "NOT_SHARED");
+      if (!pinned) {
+        throw createError(
+          input.chunkId
+            ? "Document section is not shared with this invitation"
+            : "Document is not shared with this invitation",
+          404,
+          "NOT_SHARED",
+        );
+      }
     }
 
     const comment = await prisma.reviewerComment.create({

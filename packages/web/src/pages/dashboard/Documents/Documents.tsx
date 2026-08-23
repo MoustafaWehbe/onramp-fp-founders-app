@@ -17,6 +17,7 @@ import {
   createDocumentUploadSession,
   createVersionUploadSession,
   deleteDocument,
+  getDocument,
   getDocumentFileAccess,
   listDocuments,
   updateDocument,
@@ -42,6 +43,10 @@ export function Documents() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [versionTargetId, setVersionTargetId] = useState<string | null>(null);
+  const [pendingPromotion, setPendingPromotion] = useState<{
+    documentId: string;
+    versionId: string;
+  } | null>(null);
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<DocumentFilters>({ documentType: null, status: null });
   const [selectedIds, setSelectedIds] = useState<Set<string> | null>(null);
@@ -91,11 +96,42 @@ export function Documents() {
       const rows = query.state.data?.data ?? [];
       const busy = rows.some((row) => {
         const status = row.currentVersion?.processingStatus;
-        return status === "processing" || status === "pending_upload";
+        return (
+          status === "processing" ||
+          status === "pending_upload" ||
+          row.currentVersion?.reviewerShareStatus === "processing"
+        );
       });
       return busy ? 3000 : false;
     },
   });
+
+  const pendingPromotionQuery = useQuery({
+    queryKey: ["documents", startupId, "detail", pendingPromotion?.documentId],
+    queryFn: () => getDocument(startupId, pendingPromotion!.documentId),
+    enabled: Boolean(pendingPromotion),
+    refetchInterval: 3000,
+  });
+
+  useEffect(() => {
+    if (!pendingPromotion || !pendingPromotionQuery.data) return;
+    const version = pendingPromotionQuery.data.versions.find(
+      (item) => item.id === pendingPromotion.versionId,
+    );
+    if (!version) return;
+
+    const terminalFailure =
+      version.processingStatus === "failed" || version.renderStatus === "failed";
+    if (!version.isCurrent && !terminalFailure) return;
+
+    setPendingPromotion(null);
+    void queryClient.invalidateQueries({ queryKey: ["documents", startupId] });
+    if (terminalFailure) {
+      toast.error("The new version could not be promoted", {
+        description: version.processingError || version.renderError || "The previous ready version is still current.",
+      });
+    }
+  }, [pendingPromotion, pendingPromotionQuery.data, queryClient, startupId]);
 
   useEffect(() => {
     if (!focusedDocumentId) return;
@@ -174,9 +210,11 @@ export function Documents() {
       });
       await uploadToSignedUrl(session.upload.uploadUrl, file, session.upload.headers);
       await confirmDocumentVersion(startupId, documentId, session.upload.versionId);
+      return { documentId, versionId: session.upload.versionId };
     },
-    onSuccess: () => {
+    onSuccess: (pending) => {
       setVersionTargetId(null);
+      setPendingPromotion(pending);
       invalidateDocuments();
       toast.success("New version uploaded — processing started");
     },

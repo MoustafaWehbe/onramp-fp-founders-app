@@ -2375,6 +2375,19 @@ components:
         processingError:
           type: string
           nullable: true
+        renderStatus:
+          type: string
+          enum: [pending, rendering, ready, unsupported, failed]
+        renderError:
+          type: string
+          nullable: true
+        pageCount:
+          type: integer
+          nullable: true
+        reviewerShareStatus:
+          type: string
+          enum: [processing, ready, unsupported, failed]
+          description: Authoritative capability state for sharing this version in the secure reviewer portal.
         summary:
           type: string
           nullable: true

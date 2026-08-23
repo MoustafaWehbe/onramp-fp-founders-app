@@ -10,11 +10,16 @@ export const reviewerVerifySchema = z.object({
   otp: z.string().trim().regex(/^\d{6}$/, "OTP must be a 6-digit code"),
 });
 
-export const reviewerCommentSchema = z.object({
-  documentId: z.string().guid().optional(),
-  chunkId: z.string().guid().optional(),
-  commentText: z.string().trim().min(1).max(4000),
-});
+export const reviewerCommentSchema = z
+  .object({
+    documentId: z.string().guid().optional(),
+    chunkId: z.string().guid().optional(),
+    commentText: z.string().trim().min(1).max(4000),
+  })
+  .refine((value) => !value.chunkId || Boolean(value.documentId), {
+    message: "documentId is required when commenting on a document section",
+    path: ["documentId"],
+  });
 
 export const reviewerDocumentIdParamSchema = z.object({
   documentId: z.string().guid(),

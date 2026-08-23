@@ -116,7 +116,7 @@ describe("DocumentService.createUploadSession", () => {
 });
 
 describe("DocumentService.confirmVersion", () => {
-  it("marks version current, sets processing, and enqueues job", async () => {
+  it("starts processing without displacing the current version, and enqueues both jobs", async () => {
     mockPrisma.document.findUnique.mockResolvedValue({ id: DOC_ID } as never);
     mockPrisma.documentVersion.findFirst.mockResolvedValue({
       id: VER_ID,
@@ -140,7 +140,7 @@ describe("DocumentService.confirmVersion", () => {
       id: VER_ID,
       documentId: DOC_ID,
       versionNumber: 1,
-      isCurrent: true,
+      isCurrent: false,
       fileSize: 10,
       mimeType: "text/plain",
       originalFilename: "pitch.txt",
@@ -155,6 +155,15 @@ describe("DocumentService.confirmVersion", () => {
 
     const result = await documentService.confirmVersion(STARTUP_ID, DOC_ID, VER_ID);
     expect(result.processingStatus).toBe("processing");
+    expect(mockPrisma.documentVersion.updateMany).not.toHaveBeenCalled();
+    expect(mockPrisma.documentVersion.update).toHaveBeenCalledWith({
+      where: { id: VER_ID },
+      data: {
+        fileSize: 10,
+        processingStatus: "processing",
+        processingError: null,
+      },
+    });
     expect(mockQueue.add).toHaveBeenCalledWith("process-version", {
       startupId: STARTUP_ID,
       documentId: DOC_ID,

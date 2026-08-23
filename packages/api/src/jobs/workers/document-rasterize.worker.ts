@@ -4,6 +4,7 @@ import { prisma } from "../../db/prisma";
 import { rasterizePdf } from "../../services/pdf-rasterize";
 import { storageService } from "../../services/storage.service";
 import { isOfficeConvertible, officeConvertService } from "../../services/office-convert.service";
+import { promoteNewestUsableDocumentVersion } from "../../services/document-version-promotion";
 
 export interface DocumentRasterizeJobData {
   startupId: string;
@@ -35,6 +36,7 @@ export const documentRasterizeJob = {
         where: { id: versionId },
         data: { renderStatus: "unsupported", renderError: null, pageCount: null },
       });
+      await promoteNewestUsableDocumentVersion(version.documentId);
       return { pageCount: 0 };
     }
 
@@ -95,6 +97,7 @@ export const documentRasterizeJob = {
         where: { id: versionId },
         data: { renderStatus: "ready", renderError: null, pageCount },
       });
+      await promoteNewestUsableDocumentVersion(version.documentId);
 
       return { pageCount };
     } catch (err) {

@@ -3409,6 +3409,15 @@ export interface components {
             /** @enum {string} */
             processingStatus?: "pending_upload" | "processing" | "ready" | "failed";
             processingError?: string | null;
+            /** @enum {string} */
+            renderStatus?: "pending" | "rendering" | "ready" | "unsupported" | "failed";
+            renderError?: string | null;
+            pageCount?: number | null;
+            /**
+             * @description Authoritative capability state for sharing this version in the secure reviewer portal.
+             * @enum {string}
+             */
+            reviewerShareStatus?: "processing" | "ready" | "unsupported" | "failed";
             /** @description Description of what changed in this version */
             summary?: string | null;
             /** Format: uuid */

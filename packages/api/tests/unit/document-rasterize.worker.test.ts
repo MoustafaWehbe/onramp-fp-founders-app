@@ -30,6 +30,10 @@ jest.mock("../../src/services/office-convert.service", () => ({
   officeConvertService: { convertToPdf: jest.fn() },
 }));
 
+jest.mock("../../src/services/document-version-promotion", () => ({
+  promoteNewestUsableDocumentVersion: jest.fn(),
+}));
+
 import { prisma } from "../../src/db/prisma";
 import { storageService } from "../../src/services/storage.service";
 import { rasterizePdf } from "../../src/services/pdf-rasterize";
