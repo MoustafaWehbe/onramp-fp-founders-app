@@ -1,8 +1,7 @@
 # AGENTS.md
 
-Guidance for AI coding agents working in this repo. `README.md` is stale in
-places (it describes Sequelize, `packages/workers`, `packages/shared` none
-of which exist anymore); this file reflects the codebase as it actually is.
+Guidance for AI coding agents working in this repo. The root `README.md` covers
+onboarding and `docs/architecture.md` is the architecture source of truth.
 
 ## What this is
 
@@ -23,30 +22,33 @@ There is no `packages/workers` or `packages/shared`. Background jobs
 
 | Layer | Technology |
 |---|---|
-| Frontend | React 18, Vite, React Router, TanStack Query, Zustand, Tailwind CSS, Radix + shadcn/ui-style components |
+| Frontend | React 19, Vite, React Router, TanStack Query, Zustand, Tailwind CSS 4, Radix + shadcn/ui-style components |
 | Backend | Express, **Prisma** + PostgreSQL, Zod validation |
 | Auth | JWT access/refresh cookies, Google OAuth, email OTP (Resend) |
 | Background jobs | BullMQ, Redis, node-cron |
 | Monorepo | npm workspaces + Turborepo |
 | Language | TypeScript everywhere |
 
-The root README says "Sequelize" ignore that; the API uses **Prisma**
-(`packages/api/prisma/schema.prisma`, migrations in `prisma/migrations/`).
+The API uses **Prisma** (`packages/api/prisma/schema.prisma`, migrations in
+`prisma/migrations/`).
 
 ## Setup
 
 ```bash
-npm install                      # installs all workspaces, runs `prisma generate` via postinstall
-docker-compose up -d              # postgres (pgvector/pgvector:pg16) on 5432, redis on 6379
-cp .env.example packages/api/.env # then fill in secrets
-cd packages/api && npx prisma migrate deploy && npm run db:seed
+cp packages/api/.env.example packages/api/.env # first: Prisma postinstall loads it
+npm install                                  # installs workspaces and generates Prisma
+docker compose up -d                         # postgres host :5433, redis :6379, worker
+npm run db:migrate --workspace=@raise/api
+npm run db:seed --workspace=@raise/api       # destructive; disposable local DB only
 ```
 
-Seed creates one user/startup you can log in as immediately:
+Seed creates deterministic demo workspaces and accounts. For example:
 
-- `founder@example.com` / `Founder1234!`
-- Startup: "Acme Corp", id `00000000-0000-0000-0000-000000000002`
-  (exported as `SEED_STARTUP_ID` in `packages/web/src/lib/app-store.ts`)
+- `muhamad.houda@gmail.com` / `Founder1234!`
+- Primary startup: "Northbeam"
+
+The seed begins by deleting all application rows. Never run it against a
+valuable database.
 
 ## Commands
 
@@ -101,26 +103,23 @@ throws via `createError(message, statusCode, code)`) → `validators/*.schemas.t
 
 ## Frontend architecture (`packages/web/src`)
 
-- Server state: TanStack Query. Client/UI state: Zustand
-  (`lib/app-store.ts` currently just `activeStartupId` and local
-  notification read-state, persisted to localStorage).
-- **Not every dashboard page is wired to the real API yet.** As of this
-  writing only `pages/dashboard/Pipeline` and `pages/dashboard/Investors`
-  call the backend (`lib/pipeline-api.ts` via `apiClient`). Dashboard,
-  Fundraising, Documents, AI Insights, Team, Notifications, Settings all
-  still render from static fixtures in `lib/mock-data.ts`. Before
-  "fixing" a page that looks broken, check whether it's supposed to be
-  live yet a 403 from `requireMember`/`requirePermission` only shows up
-  on pages that actually call the API.
+- Server state: TanStack Query. Client/UI preferences: Zustand
+  (`lib/app-store.ts` remembers the preferred startup, active rounds, and
+  chart ranges in localStorage). Auth remains in `AuthProvider`; chat drafts
+  use sessionStorage.
+- Product dashboard pages call the real API. `lib/mock-data.ts` remains in
+  production imports for Pipeline stage display configuration; do not add new
+  fixture dependencies there. Split stable configuration from fixtures when
+  working in that area.
 - `ProtectedRoute` only checks that you're logged in; it does not check
   startup membership. Membership/permission failures surface per-request
   (as a 403 toast on the pages that are wired up), not as a route guard.
 - UI primitives in `components/ui/` follow shadcn/ui conventions
   (`class-variance-authority`, `cn()` = `twMerge(clsx(...))`). Dropdown
   and dialog open/close animations depend on the `tailwindcss-animate`
-  Tailwind plugin being registered in `tailwind.config.js` if you ever
-  see Radix `data-[state=open]`/`animate-in` classes doing nothing, check
-  that plugin registration first.
+  Tailwind plugin being registered in `src/styles/globals.css` if you ever see
+  Radix `data-[state=open]`/`animate-in` classes doing nothing, check the
+  `@plugin 'tailwindcss-animate'` declaration first.
   - Box-shadow does not interpolate cleanly across a CSS `transition`
     when the shadow value differs between states (multi-layer shadows
     especially) it can visibly snap/flash instead of animating
@@ -128,25 +127,20 @@ throws via `createError(message, statusCode, code)`) → `validators/*.schemas.t
     `border-color`/`background-color` for state-based trigger styling
     (see the sidebar `UserMenu`/`StartupSwitcher` triggers) rather than
     swapping the shadow itself.
-- Tailwind v3.4 here `line-clamp-*` works out of the box (merged into
-  Tailwind core since 3.3), no separate plugin needed.
+- Tailwind 4 utilities such as `line-clamp-*` work without a separate plugin.
 
 ## Testing
 
 - API: Jest, `packages/api/tests/unit/*.test.ts`, mocks `prisma` per test
   file. Good coverage on services/controllers/schemas for wired resources.
-- Web: Vitest, but coverage is thin only a few `components`/`lib` tests
-  exist (`src/test/`). None of the dashboard pages have tests yet, so
-  don't assume regressions there would be caught by `npm run test`.
+- Web: Vitest + Testing Library under `src/test/`, including page, hook, and
+  client-state coverage. There is no full browser E2E workspace yet, so
+  cross-process regressions still need manual or future E2E verification.
 
 ## Known gotchas hit in this repo
 
-- **Seed data can drift out of sync with app logic.** `prisma/seed.ts`
-  upserts `StartupMember` with `update: {}` (a no-op on existing rows),
-  so if a row's `status` was ever set to anything other than `"active"`
-  (the only value `requireMember` accepts), re-running `db:seed` will
-  *not* self-heal it. If you hit unexpected 403s on the seeded account,
-  check `startup_members.status` directly before assuming an app bug.
+- **The seed is destructive.** `prisma/seed.ts` deletes every application row
+  before recreating demo data. Use it only with a disposable local database.
 - On Windows, `npx prisma generate` can fail with `EPERM` renaming
   `query_engine-windows.dll.node` if another process (a running dev
   server, a stray Jest worker) still has the file open. Stop other
