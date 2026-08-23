@@ -68,6 +68,19 @@ const taskListSchema = z.object({
     )
     .max(20),
 });
+const dailyBriefingSchema = z.object({
+  generatedAt: z.string(),
+  assignedInvestorCount: z.number().int().nonnegative(),
+  focusDeals: z.array(z.object({
+    investorId: z.string(), investorName: z.string(), stage: z.string(),
+    reason: z.enum(["overdue", "today", "missing", "quiet", "priority"]),
+    daysQuiet: z.number().int(), nextTaskDueDate: z.string().nullable(),
+  })).max(15),
+  overdueTasks: z.array(z.object({ id: z.string(), title: z.string(), investorName: z.string(), priority: z.string(), dueDate: z.string().nullable() })).max(20),
+  dueTodayTasks: z.array(z.object({ id: z.string(), title: z.string(), investorName: z.string(), priority: z.string(), dueDate: z.string().nullable() })).max(20),
+  meetings: z.array(z.object({ id: z.string(), type: z.string(), subject: z.string().nullable(), interactionDate: z.string().nullable(), investorName: z.string() })).max(25),
+  roundHealth: z.object({ roundName: z.string(), currency: z.string(), percentToTarget: z.number(), bankableRaised: z.number(), remainingGap: z.number(), daysToClose: z.number().int().nullable() }).nullable(),
+});
 const forecastSchema = z.object({
   roundName: z.string().min(1).max(200),
   currency: z.string().min(1).max(10),
@@ -103,6 +116,7 @@ export const AI_ARTIFACT_REGISTRY = {
   "focus_list.v1": { schema: focusListSchema, requiredPermissions: [] },
   "pipeline_board.v1": { schema: pipelineBoardSchema, requiredPermissions: [] },
   "task_list.v1": { schema: taskListSchema, requiredPermissions: [] },
+  "daily_briefing.v1": { schema: dailyBriefingSchema, requiredPermissions: [] },
 } as const;
 
 export type AiArtifactType = keyof typeof AI_ARTIFACT_REGISTRY;

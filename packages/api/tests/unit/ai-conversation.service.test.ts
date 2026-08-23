@@ -507,4 +507,32 @@ describe("AI conversation agent loop", () => {
     expect(artifactTypes).toEqual(["action_proposal"]);
     expect(artifactTypes).not.toContain("task_list");
   });
+
+  it("renders a daily briefing artifact and instructs prose to add insight instead of repeating its rows", async () => {
+    (prisma.aiArtifact.create as jest.Mock).mockResolvedValue({ id: "artifact-1", artifactType: "daily_briefing", schemaVersion: "v1", title: "Today's briefing", status: "ready", data: {} });
+    (aiToolsService.execute as jest.Mock).mockResolvedValue({
+      generatedAt: "2026-08-23T08:00:00.000Z",
+      assignedInvestors: { total: 1, data: [] },
+      focusDeals: { data: [{ investorId: "inv-1", investor: { fullName: "Ana Ruiz" }, stage: "meeting_scheduled", reason: "today", daysQuiet: 2, nextTaskDueDate: null }] },
+      tasks: { overdue: [], dueToday: [{ id: "task-1", title: "Send deck", status: "open", priority: "high", dueDate: "2026-08-23T12:00:00.000Z", investor: { fullName: "Ana Ruiz" } }], upcoming: [], totalOpen: 1 },
+      meetings: [],
+      roundHealth: null,
+    });
+    const provider = new FakeAiProvider();
+    provider.streamEventsByTurn = [
+      [{ type: "tool_call", callId: "call-1", name: "get_daily_briefing", arguments: "{\"roundId\":null}" }, { type: "completed", stopReason: "tool_calls" }],
+      [{ type: "delta", text: "Here is today's briefing.\n\nThe meeting-stage investor should come first." }, { type: "completed", stopReason: "stop" }],
+    ];
+    const dailyAccess = { canReadDocuments: false, canReadFinancial: true, tools: ["get_daily_briefing" as const] };
+    const service = new AiConversationService(provider);
+
+    await (service as any).runGeneration(session, "assistant-message", "user-1", dailyAccess);
+
+    expect(prisma.aiArtifact.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ artifactType: "daily_briefing", data: expect.objectContaining({ assignedInvestorCount: 1 }) }),
+    }));
+    const instructions = (provider.requests[0].input as { instructions: string }).instructions;
+    expect(instructions).toContain("do not repeat the artifact's rows");
+    expect(instructions).toContain("one short introductory sentence");
+  });
 });

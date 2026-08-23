@@ -346,7 +346,8 @@ export class AiToolsService {
       const overdue = tasks.data.filter((task) => task.dueDate && task.dueDate < dayStart);
       const upcoming = tasks.data.filter((task) => !task.dueDate || task.dueDate > dayEnd);
       const conciseTask = (task: (typeof tasks.data)[number]) => ({
-        id: task.id, title: task.title, priority: task.priority, dueDate: task.dueDate,
+        id: task.id, title: task.title, status: task.status, priority: task.priority, dueDate: task.dueDate,
+        assigneeId: task.assigneeId, assignee: task.assignee,
         investor: task.investor, round: task.round, pipelineStage: task.pipelineStage,
       });
 

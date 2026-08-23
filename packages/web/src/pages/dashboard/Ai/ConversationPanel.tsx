@@ -17,6 +17,7 @@ import { qk } from "../../../lib/query-keys";
 import { cn, formatDate } from "../../../lib/utils";
 import { AnalysisCard } from "./AnalysisCard";
 import { AiArtifactRenderer } from "./artifacts/AiArtifactRenderer";
+import { splitArtifactBackedContent } from "./artifact-content";
 
 const TOOL_ACTIVITY_LABELS: Record<string, string> = {
   get_startup_profile: "your startup profile",
@@ -576,6 +577,7 @@ const MessageBubble = memo(function MessageBubble({ startupId, message, onAskFol
   // started, so the generic thinking spinner would be redundant alongside it.
   const thinking = assistant && !message.content && !message.toolCalls?.some((call) => call.status === "started");
   const revealedContent = useStreamedReveal(message.content, message.status === "pending" || message.status === "streaming");
+  const artifactContent = displayArtifacts.length > 0 ? splitArtifactBackedContent(message.content) : null;
 
   return (
     <article className={cn("group flex gap-3", assistant ? "flex-row" : "flex-row-reverse")}>
@@ -590,13 +592,19 @@ const MessageBubble = memo(function MessageBubble({ startupId, message, onAskFol
           {thinking ? (
             <ThinkingIndicator />
           ) : assistant ? (
-            <Markdown>{revealedContent}</Markdown>
+            <Markdown>{artifactContent?.intro ?? revealedContent}</Markdown>
           ) : (
             <span className="whitespace-pre-wrap">{message.content}</span>
           )}
         </div>
 
         {assistant && displayArtifacts.map((artifact) => <AiArtifactRenderer key={artifact.id} startupId={startupId} artifact={artifact} onAskFollowup={onAskFollowup} />)}
+
+        {assistant && artifactContent?.followup && (
+          <div className="mt-3 text-foreground/90">
+            <Markdown>{artifactContent.followup}</Markdown>
+          </div>
+        )}
 
         <div className={cn("mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground", assistant ? "" : "flex-row-reverse")}>
           <span className="opacity-0 transition-opacity group-hover:opacity-100">{formatDate(message.createdAt)}</span>
