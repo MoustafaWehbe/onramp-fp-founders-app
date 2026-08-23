@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Archive, ArchiveRestore, ArrowLeft, Bell, BellOff, Hash, MessageSquare, User } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "../../../components/ui/avatar";
@@ -43,6 +43,7 @@ function conversationDisplayName(conversation: Conversation): string {
 
 /** Consecutive messages from the same sender, close enough together to read as one run, collapse under a single avatar/name same 5-minute window Slack uses. */
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
+const MESSAGE_PAGE_SIZE = 50;
 
 function isGrouped(previous: Message | undefined, message: Message): boolean {
   if (!previous || !message.senderId || previous.senderId !== message.senderId) return false;
@@ -63,13 +64,31 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
   const currentMemberId = activeStartup?.member.id ?? null;
   const canModerate = can("chat", "manage");
 
-  const messagesQuery = useQuery({
+  const messagesQuery = useInfiniteQuery({
     queryKey: qk.messages(startupId, conversation.id),
-    queryFn: () => listMessages(startupId, conversation.id),
+    queryFn: ({ pageParam }) =>
+      listMessages(startupId, conversation.id, {
+        limit: MESSAGE_PAGE_SIZE,
+        ...(pageParam ? { before: pageParam } : {}),
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (oldestLoadedPage) =>
+      oldestLoadedPage.length === MESSAGE_PAGE_SIZE ? oldestLoadedPage[0]?.seq : undefined,
   });
 
-  const messages = messagesQuery.data ?? [];
+  const messages = useMemo(() => {
+    const seen = new Set<string>();
+    return [...(messagesQuery.data?.pages ?? [])]
+      .reverse()
+      .flat()
+      .filter((message) => {
+        if (seen.has(message.id)) return false;
+        seen.add(message.id);
+        return true;
+      });
+  }, [messagesQuery.data]);
   const resolved = useResolvedMentions(startupId, messages);
+  const newestMessageSeq = messages.at(-1)?.seq ?? null;
 
   /** Scrolling to a sentinel at the very end is more reliable than computing scrollHeight by hand it can't drift out of sync with layout the way a manual scrollTo can. */
   function scrollToBottom(behavior: ScrollBehavior = "auto") {
@@ -80,7 +99,18 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
   // the newest message is what a founder opened the thread to see.
   useEffect(() => {
     scrollToBottom();
-  }, [messages.length, conversation.id]);
+  }, [newestMessageSeq, conversation.id]);
+
+  async function loadOlderMessages() {
+    const viewport = scrollRef.current;
+    const previousHeight = viewport?.scrollHeight ?? 0;
+    const previousTop = viewport?.scrollTop ?? 0;
+    await messagesQuery.fetchNextPage();
+    requestAnimationFrame(() => {
+      if (!viewport) return;
+      viewport.scrollTop = previousTop + viewport.scrollHeight - previousHeight;
+    });
+  }
 
   // Opening a room (or a new message landing while it's open) counts as
   // having seen it clears the unread badge without the founder doing
@@ -205,7 +235,16 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
           </div>
         ) : messagesQuery.isError ? (
           <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-6 text-sm text-destructive">
-            {apiErrorMessage(messagesQuery.error, "Failed to load messages.")}
+            <p>{apiErrorMessage(messagesQuery.error, "Failed to load messages.")}</p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mt-3"
+              onClick={() => void messagesQuery.refetch()}
+            >
+              Retry
+            </Button>
           </div>
         ) : messages.length === 0 ? (
           <EmptyState
@@ -220,6 +259,19 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
           />
         ) : (
           <div>
+            {messagesQuery.hasNextPage && (
+              <div className="mb-4 flex justify-center">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={messagesQuery.isFetchingNextPage}
+                  onClick={() => void loadOlderMessages()}
+                >
+                  {messagesQuery.isFetchingNextPage ? "Loading…" : "Load older messages"}
+                </Button>
+              </div>
+            )}
             {messages.map((message, index) => (
               <MessageItem
                 key={message.id}

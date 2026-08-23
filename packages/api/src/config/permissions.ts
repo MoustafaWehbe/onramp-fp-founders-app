@@ -37,7 +37,7 @@ export const PERMISSIONS = [
   // Team chat
   { resource: "chat", action: "read", description: "View conversations" },
   { resource: "chat", action: "create", description: "Post messages and create channels" },
-  { resource: "chat", action: "manage", description: "Archive channels, remove any message" },
+  { resource: "chat", action: "manage", description: "Archive and restore team channels" },
 ] as const;
 
 export const ROLE_TEMPLATES = {

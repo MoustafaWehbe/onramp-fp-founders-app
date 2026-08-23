@@ -15,11 +15,13 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Crown, Plus } from "lucide-react";
+import { CircleDollarSign, Crown, Plus } from "lucide-react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { Button } from "../../../components/ui/button";
 import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
+import { EmptyState } from "../../../components/shared/EmptyState";
 import { GoogleNotConnectedNotice } from "../../../components/shared/GoogleNotConnectedNotice";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { useAuth } from "../../../hooks/useAuth";
@@ -170,6 +172,7 @@ export function Pipeline() {
   // Collaborators may add and move deals; viewers may only look.
   const canCreate = can("pipeline", "create");
   const canUpdate = can("pipeline", "update");
+  const canCreateRound = can("financial", "create");
   // Below this, the board becomes the tap-driven single-stage list see
   // MobilePipelineBoard for why pointer/keyboard drag isn't offered there.
   const isCompactBoard = useMediaQuery("(max-width: 767px)");
@@ -772,10 +775,17 @@ export function Pipeline() {
             : "A read-only view of where each investor stands."
         }
         actions={
-          canCreate ? (
+          canCreate && activeRound ? (
             <Button size="sm" type="button" onClick={() => setAddOpen(true)}>
               <Plus className="h-4 w-4" />
               Add to pipeline
+            </Button>
+          ) : canCreateRound && roundsQuery.isSuccess ? (
+            <Button size="sm" asChild>
+              <Link to="/fundraising">
+                <Plus className="h-4 w-4" />
+                Create fundraising round
+              </Link>
             </Button>
           ) : null
         }
@@ -817,6 +827,17 @@ export function Pipeline() {
         </div>
       )}
 
+      {roundsQuery.isError && (
+        <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-6 text-sm text-destructive">
+          <p>{apiErrorMessage(roundsQuery.error, "Failed to load fundraising rounds.")}</p>
+          <div className="mt-3">
+            <Button size="sm" variant="outline" onClick={() => void roundsQuery.refetch()}>
+              Retry
+            </Button>
+          </div>
+        </div>
+      )}
+
       {pipelineQuery.isLoading && (
         <div className="rounded-xl border border-border/70 bg-surface/50 px-4 py-10 text-center text-sm text-muted-foreground">
           Loading pipeline…
@@ -831,6 +852,37 @@ export function Pipeline() {
               Retry
             </Button>
           </div>
+        </div>
+      )}
+
+      {roundsQuery.isSuccess && !activeRound && (
+        <div className="rounded-xl border border-dashed border-border/70">
+          <EmptyState
+            icon={CircleDollarSign}
+            title="Create a fundraising round first"
+            description="Pipeline amounts, commitments, and forecasts need a round and currency to belong to."
+            action={canCreateRound ? (
+              <Button size="sm" asChild>
+                <Link to="/fundraising">Create fundraising round</Link>
+              </Button>
+            ) : undefined}
+          />
+        </div>
+      )}
+
+      {boardReady && activeRound && entries.length === 0 && (
+        <div className="rounded-xl border border-dashed border-border/70">
+          <EmptyState
+            icon={Crown}
+            title="Build your investor pipeline"
+            description="Add the first investor to this round, then track outreach, next steps, and commitments here."
+            action={canCreate ? (
+              <Button size="sm" type="button" onClick={() => setAddOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Add first investor
+              </Button>
+            ) : undefined}
+          />
         </div>
       )}
 
@@ -859,7 +911,24 @@ export function Pipeline() {
         </>
       )}
 
-      {boardReady && activeView === "focus" && (
+      {boardReady && entries.length > 0 && activeView === "focus" && focusQuery.isPending && (
+        <div className="rounded-xl border border-border/70 bg-surface/50 px-4 py-10 text-center text-sm text-muted-foreground">
+          Finding deals that need attention…
+        </div>
+      )}
+
+      {boardReady && entries.length > 0 && activeView === "focus" && focusQuery.isError && (
+        <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-6 text-sm text-destructive">
+          <p>{pipelineErrorMessage(focusQuery.error, "Failed to load the attention queue.")}</p>
+          <div className="mt-3">
+            <Button size="sm" variant="outline" onClick={() => void focusQuery.refetch()}>
+              Retry
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {boardReady && entries.length > 0 && activeView === "focus" && focusQuery.isSuccess && (
         <FocusList
           items={focusItems}
           currency={currency}
@@ -872,7 +941,7 @@ export function Pipeline() {
         />
       )}
 
-      {boardReady && activeView === "tasks" && (
+      {boardReady && entries.length > 0 && activeView === "tasks" && (
         <TaskQueue
           startupId={startupId}
           roundId={activeRound?.id ?? null}
@@ -881,7 +950,7 @@ export function Pipeline() {
         />
       )}
 
-      {boardReady && activeView === "analytics" && (
+      {boardReady && entries.length > 0 && activeView === "analytics" && (
         <>
           {analyticsQuery.isPending && (
             <div className="rounded-xl border border-border/70 bg-surface/50 px-4 py-10 text-center text-sm text-muted-foreground">
@@ -951,7 +1020,7 @@ export function Pipeline() {
         </>
       )}
 
-      {boardReady && activeView === "board" && isCompactBoard && (
+      {boardReady && entries.length > 0 && activeView === "board" && isCompactBoard && (
         <MobilePipelineBoard
           stages={visibleStages}
           currency={currency}
@@ -971,7 +1040,7 @@ export function Pipeline() {
         />
       )}
 
-      {boardReady && activeView === "board" && !isCompactBoard && (
+      {boardReady && entries.length > 0 && activeView === "board" && !isCompactBoard && (
         <DndContext
           sensors={sensors}
           collisionDetection={collisionDetection}

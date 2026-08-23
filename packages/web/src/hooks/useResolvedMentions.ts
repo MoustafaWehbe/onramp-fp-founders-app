@@ -6,8 +6,9 @@ import { qk } from "../lib/query-keys";
 
 /**
  * Batch-resolves every distinct reference across a list of messages in one
- * request, rather than one /chat/resolve call per chip a 30-message
- * screen stays at one request. Returns a lookup keyed by "type:id"; a chip
+ * request per API-sized batch, rather than one /chat/resolve call per chip.
+ * Loading older history can exceed the API's 50-item validation ceiling, so
+ * larger sets are split deterministically. Returns a lookup keyed by "type:id"; a chip
  * whose key is missing (unresolved, permission-filtered, or deleted) simply
  * renders without its unfurl card.
  */
@@ -37,7 +38,13 @@ export function useResolvedMentions(startupId: string, messages: Message[]) {
 
   const query = useQuery({
     queryKey: qk.resolveMentions(startupId, digest),
-    queryFn: () => resolveMentions(startupId, refs),
+    queryFn: async () => {
+      const batches: typeof refs[] = [];
+      for (let index = 0; index < refs.length; index += 50) {
+        batches.push(refs.slice(index, index + 50));
+      }
+      return (await Promise.all(batches.map((batch) => resolveMentions(startupId, batch)))).flat();
+    },
     enabled: refs.length > 0,
   });
 

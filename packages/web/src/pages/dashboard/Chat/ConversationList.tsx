@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../../../components/ui/avat
 import { Skeleton } from "../../../components/ui/skeleton";
 import { EmptyState } from "../../../components/shared/EmptyState";
 import { Button } from "../../../components/ui/button";
+import { apiErrorMessage } from "../../../lib/api-error";
 
 /** Short relative label for a channel's last activity "2h", "3d", "just now". */
 function formatRelative(iso: string): string {
@@ -93,6 +94,8 @@ type ConversationListProps = {
   selectedId: string | null;
   onSelect: (id: string) => void;
   isLoading: boolean;
+  error?: unknown;
+  onRetry: () => void;
   canCreate: boolean;
   onCreateChannel: () => void;
   onCreateDm: () => void;
@@ -104,6 +107,8 @@ export function ConversationList({
   selectedId,
   onSelect,
   isLoading,
+  error,
+  onRetry,
   canCreate,
   onCreateChannel,
   onCreateDm,
@@ -139,6 +144,13 @@ export function ConversationList({
             {Array.from({ length: 4 }, (_, i) => (
               <Skeleton key={i} className="h-9 w-full rounded-md" />
             ))}
+          </div>
+        ) : error ? (
+          <div className="m-3 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-4 text-sm text-destructive">
+            <p>{apiErrorMessage(error, "Failed to load conversations.")}</p>
+            <Button type="button" size="sm" variant="outline" className="mt-3" onClick={onRetry}>
+              Retry
+            </Button>
           </div>
         ) : conversations.length === 0 ? (
           <EmptyState
