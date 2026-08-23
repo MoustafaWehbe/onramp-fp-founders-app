@@ -35,6 +35,16 @@ module.exports = tseslint.config(
       // `declare global { namespace Express }` is the supported way to augment
       // Express's Request; module augmentation is not an alternative here.
       "@typescript-eslint/no-namespace": ["error", { allowDeclarations: true }],
+      // The SSE handlers (notification.controller, ai.controller) build a
+      // teardown closure that must reference `writer`/`heartbeat` before either
+      // is assigned — `close()` clears the interval and closes the writer, and
+      // the writer's own onOverflow callback calls `close()`. That mutual
+      // reference forces a `let` declaration, and ai.controller's heartbeat is
+      // additionally assigned only on the path that survives its early returns,
+      // so it can never be `const`. Reporting these is what the rule's
+      // ignoreReadBeforeAssign option exists to prevent; the rule still catches
+      // every ordinary never-reassigned `let`.
+      "prefer-const": ["error", { ignoreReadBeforeAssign: true }],
     },
   },
   {
