@@ -3474,10 +3474,11 @@ export interface components {
             allowPrint: boolean;
             /** @default true */
             screenshotGuard: boolean;
-            /** @default false */
+            /**
+             * @description Require acceptance of the predefined Raise confidentiality agreement before documents open.
+             * @default false
+             */
             requireNda: boolean;
-            /** @description Required when requireNda is true. */
-            ndaText?: string;
             /** @description Optional second factor checked before an OTP is sent. */
             password?: string;
             /** @description Reject creating the invitation unless the email's domain is in this list. */

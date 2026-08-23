@@ -9,6 +9,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { hashPassword } from "../src/utils/auth";
 import { PERMISSIONS, ROLE_TEMPLATES } from "../src/config/permissions";
 import { PIPELINE_STAGES } from "../src/config/crm";
+import { renderReviewerNda } from "../src/config/reviewer-nda";
 import type {
   CommitmentStatus,
   InvestorType,
@@ -2198,7 +2199,6 @@ Notes: figures are illustrative seed data for local demos.
     allowPrint?: boolean;
     screenshotGuard?: boolean;
     requireNda?: boolean;
-    ndaText?: string;
     ndaAcceptedAt?: Date;
     passwordHash?: string;
     allowedEmailDomains?: string[];
@@ -2219,7 +2219,7 @@ Notes: figures are illustrative seed data for local demos.
         allowPrint: input.allowPrint ?? false,
         screenshotGuard: input.screenshotGuard ?? true,
         requireNda: input.requireNda ?? false,
-        ndaText: input.ndaText,
+        ndaText: input.requireNda ? renderReviewerNda(northbeam.startup.name) : undefined,
         ndaAcceptedAt: input.ndaAcceptedAt,
         passwordHash: input.passwordHash,
         allowedEmailDomains: input.allowedEmailDomains ?? [],
@@ -2468,9 +2468,6 @@ Notes: figures are illustrative seed data for local demos.
     allowPrint: true,
     screenshotGuard: true,
     requireNda: true,
-    ndaText:
-      "This mutual non-disclosure agreement covers all materials shared through this data room. " +
-      "By continuing, you agree not to disclose the contents to any third party without Northbeam's written consent.",
     ndaAcceptedAt: elenaNdaAcceptedAt,
     documents: [{ documentId: deckDoc.documentId, versionId: deckDoc.versionId }],
   });

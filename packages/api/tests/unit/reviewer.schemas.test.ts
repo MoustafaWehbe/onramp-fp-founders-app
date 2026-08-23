@@ -21,22 +21,16 @@ describe("createReviewerInvitationSchema", () => {
     ).toBe(true);
   });
 
-  it("requires ndaText when requireNda is set", () => {
-    expect(
-      createReviewerInvitationSchema.safeParse({
-        email: "a@b.com",
-        documentVersionIds: [UUID],
-        requireNda: true,
-      }).success,
-    ).toBe(false);
-    expect(
-      createReviewerInvitationSchema.safeParse({
-        email: "a@b.com",
-        documentVersionIds: [UUID],
-        requireNda: true,
-        ndaText: "Standard mutual NDA terms…",
-      }).success,
-    ).toBe(true);
+  it("uses the predefined NDA and strips attempted custom text", () => {
+    const result = createReviewerInvitationSchema.safeParse({
+      email: "a@b.com",
+      documentVersionIds: [UUID],
+      requireNda: true,
+      ndaText: "Use my custom terms instead",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).not.toHaveProperty("ndaText");
   });
 
   it("validates domain format in allowedEmailDomains", () => {

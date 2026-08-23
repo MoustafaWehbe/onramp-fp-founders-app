@@ -6,6 +6,7 @@ import { hashPassword } from "../utils/auth";
 import { isOfficeConvertible } from "./office-convert.service";
 import { emailQueue } from "../jobs/queue";
 import { getAppUrl } from "../config/env";
+import { renderReviewerNda } from "../config/reviewer-nda";
 import { recordAuditEvent } from "./audit-writer";
 import { reviewerInviteEmail } from "../emails/templates/reviewer-invite";
 import type {
@@ -168,6 +169,12 @@ export class ReviewerInvitationService {
       if (!contact) throw createError("Investor contact not found", 404, "INVESTOR_NOT_FOUND");
     }
 
+    const startup = await prisma.startup.findUnique({
+      where: { id: startupId },
+      select: { name: true },
+    });
+    if (!startup) throw createError("Startup not found", 404, "STARTUP_NOT_FOUND");
+
     const rawToken = randomBytes(32).toString("base64url");
     const expiresAt = new Date(Date.now() + input.expiresInDays * 24 * 60 * 60 * 1000);
     const passwordHash = input.password ? await hashPassword(input.password) : undefined;
@@ -185,7 +192,7 @@ export class ReviewerInvitationService {
         allowPrint: input.allowPrint ?? false,
         screenshotGuard: input.screenshotGuard ?? true,
         requireNda: input.requireNda ?? false,
-        ndaText: input.requireNda ? input.ndaText : undefined,
+        ndaText: input.requireNda ? renderReviewerNda(startup.name) : undefined,
         passwordHash,
         allowedEmailDomains: input.allowedEmailDomains ?? [],
         personalMessage: input.personalMessage,
@@ -205,12 +212,8 @@ export class ReviewerInvitationService {
 
     const accessUrl = `${getAppUrl()}/review/${rawToken}`;
     try {
-      const startup = await prisma.startup.findUnique({
-        where: { id: startupId },
-        select: { name: true },
-      });
       const { subject, html } = reviewerInviteEmail(
-        startup?.name ?? "A startup on FP Founders",
+        startup.name,
         input.reviewerName ?? null,
         accessUrl,
         expiresAt,

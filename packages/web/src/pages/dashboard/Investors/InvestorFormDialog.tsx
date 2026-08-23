@@ -9,12 +9,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../../../components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../../../components/ui/dropdown-menu";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import { Select } from "../../../components/ui/select";
@@ -217,34 +211,18 @@ export function InvestorFormDialog({
           </div>
 
           <div className="space-y-2">
-            <div className="text-sm font-medium">Type</div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-9 w-full justify-between px-3 font-normal sm:w-1/2 sm:pr-8"
-                >
-                  {form.investorType === ""
-                    ? "Not set"
-                    : INVESTOR_TYPE_LABELS[form.investorType]}
-                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="start"
-                className="w-(--radix-dropdown-menu-trigger-width)"
-              >
-                <DropdownMenuItem onSelect={() => set("investorType", "")}>
-                  Not set
-                </DropdownMenuItem>
-                {INVESTOR_TYPES.map((type) => (
-                  <DropdownMenuItem key={type} onSelect={() => set("investorType", type)}>
-                    {INVESTOR_TYPE_LABELS[type]}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Label htmlFor="investor-type">Type</Label>
+            <Select
+              id="investor-type"
+              value={form.investorType}
+              onValueChange={(value) => set("investorType", value as InvestorType | "")}
+              placeholder="Not set"
+              className="sm:w-1/2"
+              options={[
+                { value: "", label: "Not set" },
+                ...INVESTOR_TYPES.map((type) => ({ value: type, label: INVESTOR_TYPE_LABELS[type] })),
+              ]}
+            />
           </div>
 
           <button

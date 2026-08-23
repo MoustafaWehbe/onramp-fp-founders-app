@@ -35,6 +35,7 @@ jest.mock("../../src/services/audit-writer", () => ({
 }));
 
 import { prisma } from "../../src/db/prisma";
+import { renderReviewerNda } from "../../src/config/reviewer-nda";
 import { reviewerInvitationService } from "../../src/services/reviewer-invitation.service";
 
 const mockPrisma = prisma as jest.Mocked<typeof prisma>;
@@ -129,10 +130,19 @@ describe("ReviewerInvitationService.createInvitation", () => {
       email: "investor@acme.com",
       documentVersionIds: [VERSION_A],
       expiresInDays: 14,
+      requireNda: true,
+      ndaText: "Attempted custom terms",
     } as never);
 
     expect(result.invitation.email).toBe("investor@acme.com");
-    expect(mockPrisma.reviewerInvitation.create).toHaveBeenCalled();
+    expect(mockPrisma.reviewerInvitation.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          requireNda: true,
+          ndaText: renderReviewerNda("Acme"),
+        }),
+      }),
+    );
   });
 
   it("rejects a convertible DOCX that is still rendering", async () => {

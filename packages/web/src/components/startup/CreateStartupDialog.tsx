@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
 import {
@@ -11,17 +10,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { Select } from "../ui/select";
 import { Textarea } from "../ui/textarea";
 import { useWorkspace, MY_STARTUPS_KEY } from "../../hooks/useWorkspace";
 import { apiErrorMessage } from "../../lib/api-error";
+import { INDUSTRY_OPTIONS, selectOptions } from "../../lib/form-options";
 import { createStartup, type FundingStage } from "../../lib/startup-api";
 
 /** Matches the funding_stage enum in packages/api/src/validators/startup.schemas.ts. */
@@ -35,7 +30,7 @@ const FUNDING_STAGES: { id: FundingStage; label: string }[] = [
 
 // Mirrors the server-side zod rules so the first failure is inline rather than
 // a toast after a round trip.
-const LIMITS = { name: 100, description: 500, industry: 100 };
+const LIMITS = { name: 100, description: 500 };
 
 type CreateStartupDialogProps = {
   open: boolean;
@@ -58,8 +53,6 @@ export function CreateStartupDialog({ open, onOpenChange }: CreateStartupDialogP
   const [fundingStage, setFundingStage] = useState<FundingStage>("pre_seed");
 
   const isFirstWorkspace = startups.length === 0;
-  const selectedStage = FUNDING_STAGES.find((s) => s.id === fundingStage)!;
-
   // A dismissed half-filled form should not greet them on the way back in.
   useEffect(() => {
     if (open) return;
@@ -151,40 +144,23 @@ export function CreateStartupDialog({ open, onOpenChange }: CreateStartupDialogP
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="startup-industry">Industry</Label>
-              <Input
+              <Select
                 id="startup-industry"
                 value={industry}
-                onChange={(e) => setIndustry(e.target.value)}
-                maxLength={LIMITS.industry}
-                placeholder="Fintech"
-                required
+                onValueChange={setIndustry}
+                options={selectOptions(INDUSTRY_OPTIONS)}
+                placeholder="Select industry"
               />
             </div>
 
             <div className="space-y-2">
-              <div className="text-sm font-medium">Funding stage</div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-9 w-full justify-between px-3 font-normal"
-                  >
-                    {selectedStage.label}
-                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="start"
-                  className="w-(--radix-dropdown-menu-trigger-width)"
-                >
-                  {FUNDING_STAGES.map((stage) => (
-                    <DropdownMenuItem key={stage.id} onSelect={() => setFundingStage(stage.id)}>
-                      {stage.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Label htmlFor="startup-funding-stage">Funding stage</Label>
+              <Select
+                id="startup-funding-stage"
+                value={fundingStage}
+                onValueChange={(value) => setFundingStage(value as FundingStage)}
+                options={FUNDING_STAGES.map((stage) => ({ value: stage.id, label: stage.label }))}
+              />
             </div>
           </div>
 

@@ -28,9 +28,9 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { MultiSelect } from "../../components/ui/multi-select";
+import { Select } from "../../components/ui/select";
 import { Skeleton } from "../../components/ui/skeleton";
 import { SwitchIndicator } from "../../components/ui/switch";
-import { Textarea } from "../../components/ui/textarea";
 import { cn } from "../../lib/utils";
 import {
   Dialog,
@@ -44,6 +44,7 @@ import { usePermissions } from "../../hooks/usePermissions";
 import { useActiveStartupId } from "../../hooks/useWorkspace";
 import { apiErrorMessage } from "../../lib/api-error";
 import { listDocuments } from "../../lib/document-api";
+import { REVIEWER_EXPIRY_OPTIONS } from "../../lib/form-options";
 import {
   createReviewerInvitation,
   listReviewerInvitations,
@@ -76,7 +77,7 @@ export function Reviewers() {
   const [allowPrint, setAllowPrint] = useState(false);
   const [screenshotGuard, setScreenshotGuard] = useState(true);
   const [requireNda, setRequireNda] = useState(false);
-  const [ndaText, setNdaText] = useState("");
+  const [expiresInDays, setExpiresInDays] = useState("14");
   const [password, setPassword] = useState("");
   const [allowedDomains, setAllowedDomains] = useState("");
   const [analyticsInvitationId, setAnalyticsInvitationId] = useState<string | null>(null);
@@ -90,7 +91,7 @@ export function Reviewers() {
     setAllowPrint(false);
     setScreenshotGuard(true);
     setRequireNda(false);
-    setNdaText("");
+    setExpiresInDays("14");
     setPassword("");
     setAllowedDomains("");
   };
@@ -135,13 +136,12 @@ export function Reviewers() {
         email,
         reviewerName: name || undefined,
         documentVersionIds: selectedVersionIds,
-        expiresInDays: 14,
+        expiresInDays: Number(expiresInDays),
         allowDownload,
         watermarkEnabled,
         allowPrint,
         screenshotGuard,
         requireNda,
-        ndaText: requireNda ? ndaText.trim() : undefined,
         password: password.trim() || undefined,
         allowedEmailDomains: allowedDomains
           .split(",")
@@ -393,15 +393,15 @@ export function Reviewers() {
                     onCheckedChange={setRequireNda}
                   />
                   {requireNda && (
-                    <div className="border-t border-border/60 bg-background/40 p-3">
-                      <Textarea
-                        autoFocus
-                        placeholder="Paste the NDA text reviewers must accept…"
-                        value={ndaText}
-                        onChange={(e) => setNdaText(e.target.value)}
-                        rows={4}
-                        className="resize-none"
-                      />
+                    <div className="border-t border-border/60 bg-background/40 px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium">Raise standard confidentiality agreement</p>
+                        <Badge variant="outline" className="text-[10px]">Predefined · v1</Badge>
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        Every reviewer receives the same terms, personalized with your workspace name and saved with the invitation.
+                        Have counsel review the template for your jurisdiction before using it.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -410,7 +410,19 @@ export function Reviewers() {
 
             <section className="space-y-3">
               <SectionLabel icon={KeyRound}>Access gate</SectionLabel>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="reviewer-expiry">Access duration</Label>
+                  <Select
+                    id="reviewer-expiry"
+                    value={expiresInDays}
+                    onValueChange={setExpiresInDays}
+                    options={[...REVIEWER_EXPIRY_OPTIONS]}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Access expires automatically after this period.
+                  </p>
+                </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="reviewer-password">
                     Password <span className="font-normal text-muted-foreground">optional</span>
@@ -459,7 +471,6 @@ export function Reviewers() {
               disabled={
                 !email.trim() ||
                 selectedVersionIds.length === 0 ||
-                (requireNda && !ndaText.trim()) ||
                 inviteMutation.isPending
               }
               onClick={() => inviteMutation.mutate()}

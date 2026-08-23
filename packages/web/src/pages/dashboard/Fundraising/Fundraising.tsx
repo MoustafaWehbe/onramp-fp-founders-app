@@ -14,6 +14,7 @@ import { usePermissions } from "../../../hooks/usePermissions";
 import { useActiveStartupId } from "../../../hooks/useWorkspace";
 import { apiErrorMessage } from "../../../lib/api-error";
 import { useAppStore } from "../../../lib/app-store";
+import { CURRENCY_OPTIONS, ROUND_NAME_OPTIONS, selectOptionsWithCurrent } from "../../../lib/form-options";
 import {
   COMMITMENT_STATUSES, COMMITMENT_STATUS_HINTS, COMMITMENT_STATUS_LABELS, ROUND_STATUSES, ROUND_STATUS_LABELS,
   createCommitment, createFundraisingRound, getRoundMetrics, listCommitments, listFundraisingRounds,
@@ -277,10 +278,57 @@ function CommitmentTable({ commitments, currency, canUpdate, onEdit }: { commitm
 
 function RoundDialog({ round, open, busy, onOpenChange, onSubmit }: { round: FundraisingRound | "new" | null; open: boolean; busy: boolean; onOpenChange: (open: boolean) => void; onSubmit: (input: RoundInput) => void }) {
   const existing = round && round !== "new" ? round : null;
-  const [form, setForm] = useState<{ roundName: string; targetAmount: string; minimumTicketSize: string; equityOfferedPercentage: string; currency: string; status: RoundStatus; firstCloseDate: Date | null; targetCloseDate: Date | null }>({ roundName: "", targetAmount: "", minimumTicketSize: "", equityOfferedPercentage: "", currency: "USD", status: "active", firstCloseDate: null, targetCloseDate: null });
-  useEffect(() => { setForm(existing ? { roundName: existing.roundName, targetAmount: String(existing.targetAmount ?? ""), minimumTicketSize: existing.minimumTicketSize === null ? "" : String(existing.minimumTicketSize), equityOfferedPercentage: existing.equityOfferedPercentage === null ? "" : String(existing.equityOfferedPercentage), currency: existing.currency, status: existing.status, firstCloseDate: dateForPicker(existing.firstCloseDate), targetCloseDate: dateForPicker(existing.targetCloseDate) } : { roundName: "", targetAmount: "", minimumTicketSize: "", equityOfferedPercentage: "", currency: "USD", status: "active", firstCloseDate: null, targetCloseDate: null }); }, [existing, open]);
+  const [form, setForm] = useState<{ roundName: string; targetAmount: string; minimumTicketSize: string; equityOfferedPercentage: string; currency: string; status: RoundStatus; firstCloseDate: Date | null; targetCloseDate: Date | null }>({ roundName: "Seed", targetAmount: "", minimumTicketSize: "", equityOfferedPercentage: "", currency: "USD", status: "active", firstCloseDate: null, targetCloseDate: null });
+  useEffect(() => { setForm(existing ? { roundName: existing.roundName, targetAmount: String(existing.targetAmount ?? ""), minimumTicketSize: existing.minimumTicketSize === null ? "" : String(existing.minimumTicketSize), equityOfferedPercentage: existing.equityOfferedPercentage === null ? "" : String(existing.equityOfferedPercentage), currency: existing.currency, status: existing.status, firstCloseDate: dateForPicker(existing.firstCloseDate), targetCloseDate: dateForPicker(existing.targetCloseDate) } : { roundName: "Seed", targetAmount: "", minimumTicketSize: "", equityOfferedPercentage: "", currency: "USD", status: "active", firstCloseDate: null, targetCloseDate: null }); }, [existing, open]);
   function submit(event: FormEvent) { event.preventDefault(); const targetAmount = Number(form.targetAmount); if (!form.roundName.trim() || !Number.isFinite(targetAmount) || targetAmount < 0) return toast.error("Enter a round name and a valid target."); const minimumTicketSize = form.minimumTicketSize === "" ? undefined : Number(form.minimumTicketSize); const equityOfferedPercentage = form.equityOfferedPercentage === "" ? undefined : Number(form.equityOfferedPercentage); if ((minimumTicketSize !== undefined && (!Number.isFinite(minimumTicketSize) || minimumTicketSize < 0)) || (equityOfferedPercentage !== undefined && (!Number.isFinite(equityOfferedPercentage) || equityOfferedPercentage < 0 || equityOfferedPercentage > 100))) return toast.error("Enter valid optional ticket and equity values."); onSubmit({ roundName: form.roundName, targetAmount, ...(minimumTicketSize !== undefined ? { minimumTicketSize } : existing ? { minimumTicketSize: null } : {}), ...(equityOfferedPercentage !== undefined ? { equityOfferedPercentage } : existing ? { equityOfferedPercentage: null } : {}), currency: form.currency.toUpperCase(), status: form.status, ...(form.firstCloseDate ? { firstCloseDate: form.firstCloseDate.toISOString() } : existing ? { firstCloseDate: null } : {}), ...(form.targetCloseDate ? { targetCloseDate: form.targetCloseDate.toISOString() } : existing ? { targetCloseDate: null } : {}) }); }
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-xl gap-0 overflow-hidden p-0 sm:p-0"><DialogHeader className="border-b border-border/70 bg-surface/40 px-6 py-5"><DialogTitle>{existing ? "Edit fundraising round" : "Create a fundraising round"}</DialogTitle><DialogDescription>Define the target first. Terms and close dates can be refined as the raise develops.</DialogDescription></DialogHeader><form className="space-y-5 px-6 py-5" onSubmit={submit}><section className="space-y-4"><div><h3 className="text-sm font-semibold">Raise essentials</h3><p className="text-xs text-muted-foreground">The name and amount your team will use across the pipeline.</p></div><Field label="Round name"><Input value={form.roundName} onChange={(e) => setForm({ ...form, roundName: e.target.value })} placeholder="Seed round" autoFocus /></Field><div className="grid gap-3 sm:grid-cols-[1fr_120px]"><Field label="Target amount"><Input type="number" min="0" value={form.targetAmount} onChange={(e) => setForm({ ...form, targetAmount: e.target.value })} placeholder="2000000" /></Field><Field label="Currency"><Input maxLength={3} value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value.toUpperCase() })} /></Field></div></section><section className="space-y-4 border-t border-border/70 pt-5"><div><h3 className="text-sm font-semibold">Terms and timing</h3><p className="text-xs text-muted-foreground">Optional details that help the team qualify commitments.</p></div><div className="grid gap-3 sm:grid-cols-2"><Field label="Minimum ticket"><Input type="number" min="0" value={form.minimumTicketSize} onChange={(e) => setForm({ ...form, minimumTicketSize: e.target.value })} placeholder="50000" /></Field><Field label="Equity offered (%)"><Input type="number" min="0" max="100" value={form.equityOfferedPercentage} onChange={(e) => setForm({ ...form, equityOfferedPercentage: e.target.value })} placeholder="15" /></Field></div><div className="grid gap-3 sm:grid-cols-2"><Field label="First close"><DatePicker value={form.firstCloseDate} onChange={(date) => setForm({ ...form, firstCloseDate: date })} /></Field><Field label="Target close"><DatePicker value={form.targetCloseDate} onChange={(date) => setForm({ ...form, targetCloseDate: date })} /></Field></div><Field label="Status"><Select value={form.status} onValueChange={(value) => setForm({ ...form, status: value as RoundStatus })} options={ROUND_STATUSES.map((status) => ({ value: status, label: ROUND_STATUS_LABELS[status] }))} /></Field></section><DialogFooter className="border-t border-border/70 pt-5"><Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit" disabled={busy}>{busy ? "Saving…" : existing ? "Save changes" : "Create round"}</Button></DialogFooter></form></DialogContent></Dialog>;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-xl gap-0 overflow-hidden p-0 sm:p-0">
+        <DialogHeader className="border-b border-border/70 bg-surface/40 px-6 py-5">
+          <DialogTitle>{existing ? "Edit fundraising round" : "Create a fundraising round"}</DialogTitle>
+          <DialogDescription>Define the target first. Terms and close dates can be refined as the raise develops.</DialogDescription>
+        </DialogHeader>
+        <form className="space-y-5 px-6 py-5" onSubmit={submit}>
+          <section className="space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold">Raise essentials</h3>
+              <p className="text-xs text-muted-foreground">The name and amount your team will use across the pipeline.</p>
+            </div>
+            <Field label="Round name">
+              <Select value={form.roundName} onValueChange={(roundName) => setForm({ ...form, roundName })} options={selectOptionsWithCurrent(ROUND_NAME_OPTIONS, form.roundName)} />
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-[1fr_120px]">
+              <Field label="Target amount">
+                <Input type="number" min="0" value={form.targetAmount} onChange={(e) => setForm({ ...form, targetAmount: e.target.value })} placeholder="2000000" autoFocus />
+              </Field>
+              <Field label="Currency">
+                <Select value={form.currency} onValueChange={(currency) => setForm({ ...form, currency })} options={selectOptionsWithCurrent(CURRENCY_OPTIONS, form.currency)} />
+              </Field>
+            </div>
+          </section>
+          <section className="space-y-4 border-t border-border/70 pt-5">
+            <div>
+              <h3 className="text-sm font-semibold">Terms and timing</h3>
+              <p className="text-xs text-muted-foreground">Optional details that help the team qualify commitments.</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Minimum ticket"><Input type="number" min="0" value={form.minimumTicketSize} onChange={(e) => setForm({ ...form, minimumTicketSize: e.target.value })} placeholder="50000" /></Field>
+              <Field label="Equity offered (%)"><Input type="number" min="0" max="100" value={form.equityOfferedPercentage} onChange={(e) => setForm({ ...form, equityOfferedPercentage: e.target.value })} placeholder="15" /></Field>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="First close"><DatePicker value={form.firstCloseDate} onChange={(date) => setForm({ ...form, firstCloseDate: date })} /></Field>
+              <Field label="Target close"><DatePicker value={form.targetCloseDate} onChange={(date) => setForm({ ...form, targetCloseDate: date })} /></Field>
+            </div>
+            <Field label="Status"><Select value={form.status} onValueChange={(value) => setForm({ ...form, status: value as RoundStatus })} options={ROUND_STATUSES.map((status) => ({ value: status, label: ROUND_STATUS_LABELS[status] }))} /></Field>
+          </section>
+          <DialogFooter className="border-t border-border/70 pt-5">
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="submit" disabled={busy}>{busy ? "Saving…" : existing ? "Save changes" : "Create round"}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function CommitmentDialog({ commitment, open, pipeline, round, busy, onOpenChange, onCreate, onUpdate }: { commitment: Commitment | "new" | null; open: boolean; pipeline: PipelineEntry[]; round: FundraisingRound | null; busy: boolean; onOpenChange: (open: boolean) => void; onCreate: (input: CommitmentInput) => void; onUpdate: (input: { amount: number; status: CommitmentStatus; expectedCloseDate?: string | null }) => void }) {

@@ -52,7 +52,6 @@ export async function createReviewerInvitation(
     allowPrint?: boolean;
     screenshotGuard?: boolean;
     requireNda?: boolean;
-    ndaText?: string;
     password?: string;
     allowedEmailDomains?: string[];
     personalMessage?: string;

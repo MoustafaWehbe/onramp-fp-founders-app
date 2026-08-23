@@ -2509,9 +2509,7 @@ components:
         requireNda:
           type: boolean
           default: false
-        ndaText:
-          type: string
-          description: Required when requireNda is true.
+          description: Require acceptance of the predefined Raise confidentiality agreement before documents open.
         password:
           type: string
           minLength: 6
