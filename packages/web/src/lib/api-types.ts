@@ -743,7 +743,7 @@ export interface paths {
         };
         /**
          * List investor contacts for a startup
-         * @description Returns the startup's private investor contacts. Each row is joined to a pipeline entry (null when the contact has not been added to the pipeline). Supplying roundId joins only the entry in that fundraising round, which is useful when choosing contacts to add to a board.
+         * @description Returns the startup's private investor contacts. Each row is joined to a pipeline entry (null when the contact has not been added to the pipeline). Supplying roundId joins only the entry in that fundraising round, which is useful when choosing contacts to add to a board. Set pipelineOnly=true to exclude contacts without a matching deal.
          */
         get: operations["listInvestors"];
         put?: never;
@@ -5708,6 +5708,10 @@ export interface operations {
                 stage?: components["schemas"]["PipelineStage"];
                 /** @description Return the pipeline entry for this fundraising round only. */
                 roundId?: string;
+                /** @description Return investors whose matching pipeline deal is owned by this member. */
+                ownerId?: string;
+                /** @description Exclude contacts without a pipeline deal matching the round, stage, and owner filters. */
+                pipelineOnly?: boolean;
                 /** @description Splits the directory into contacts the startup has actually approached and ones it has not. Omit to span both. */
                 engagement?: components["schemas"]["Engagement"];
             };

@@ -104,6 +104,10 @@ export type ListInvestorsParams = {
   engagement?: Engagement;
   /** Return this contact's deal for one specific round, when present. */
   roundId?: string;
+  /** Restrict matching pipeline deals to one responsible startup member. */
+  ownerId?: string;
+  /** Exclude directory contacts that have no matching pipeline deal. */
+  pipelineOnly?: boolean;
 };
 
 /** Optional text fields accept null to clear a stored value. */

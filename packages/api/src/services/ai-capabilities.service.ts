@@ -9,6 +9,7 @@ export const AI_TOOL_REQUIREMENTS = {
   forecast_round_close: ["financial:read", "pipeline:read"],
   get_pipeline_summary: ["pipeline:read"],
   get_focus_deals: ["pipeline:read"],
+  get_daily_briefing: ["pipeline:read"],
   // Commitment amounts are added on top of this base profile only when the
   // caller also has financial:read (see ai-tools.service.ts) — pipeline access
   // alone is enough for the profile, notes, deal stage, and interaction history.

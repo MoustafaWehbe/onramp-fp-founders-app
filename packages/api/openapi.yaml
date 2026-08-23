@@ -4581,6 +4581,7 @@ paths:
         a pipeline entry (null when the contact has not been added to the
         pipeline). Supplying roundId joins only the entry in that fundraising
         round, which is useful when choosing contacts to add to a board.
+        Set pipelineOnly=true to exclude contacts without a matching deal.
       security:
         - cookieAuth: []
       parameters:
@@ -4606,6 +4607,17 @@ paths:
             type: string
             format: uuid
           description: Return the pipeline entry for this fundraising round only.
+        - name: ownerId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Return investors whose matching pipeline deal is owned by this member.
+        - name: pipelineOnly
+          in: query
+          schema:
+            type: boolean
+          description: Exclude contacts without a pipeline deal matching the round, stage, and owner filters.
         - name: engagement
           in: query
           schema:

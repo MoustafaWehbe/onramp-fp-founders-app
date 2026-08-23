@@ -105,6 +105,13 @@ export const listInvestorsQuerySchema = z.object({
   investorType: investorTypeEnum.optional(),
   stage: pipelineStageEnum.optional(),
   roundId: z.string().guid("roundId must be a valid UUID").optional(),
+  ownerId: z.string().guid("ownerId must be a valid UUID").optional(),
+  // roundId alone keeps directory/contact-picker semantics: return every
+  // contact and only join that round's deal. pipelineOnly turns it into a
+  // true membership filter for pipeline and AI queries.
+  pipelineOnly: z
+    .union([z.boolean(), z.enum(["true", "false"]).transform((value) => value === "true")])
+    .optional(),
   // Splits the directory in two: contacts this startup has actually engaged
   // (they sit in the pipeline, or someone has logged an interaction with them)
   // versus ones that were added or imported but never approached.

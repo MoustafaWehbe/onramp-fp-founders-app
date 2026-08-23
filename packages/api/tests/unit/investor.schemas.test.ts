@@ -186,6 +186,12 @@ describe("listInvestorsQuerySchema", () => {
   it("rejects an invalid fundraising round id", () => {
     expect(listInvestorsQuerySchema.safeParse({ roundId: "not-a-uuid" }).success).toBe(false);
   });
+
+  it("parses ownership and pipeline-only filters without coercing false to true", () => {
+    const result = listInvestorsQuerySchema.safeParse({ ownerId: UUID, pipelineOnly: "false" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).toMatchObject({ ownerId: UUID, pipelineOnly: false });
+  });
 });
 
 describe("investorIdParamSchema", () => {

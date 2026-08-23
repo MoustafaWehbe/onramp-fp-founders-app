@@ -730,12 +730,12 @@ export class PipelineService {
    * aggregation and never has to page through every interaction log to
    * build this list.
    */
-  async getFocus(startupId: string, requestedRoundId?: string) {
+  async getFocus(startupId: string, requestedRoundId?: string, ownerId?: string) {
     const roundId = await this.resolveRoundId(startupId, requestedRoundId);
     const QUIET_AFTER_DAYS = 14;
 
     const entries = await prisma.pipeline.findMany({
-      where: { startupId, roundId, stage: { notIn: ["committed", "passed"] } },
+      where: { startupId, roundId, stage: { notIn: ["committed", "passed"] }, ...(ownerId && { ownerId }) },
       select: ENTRY_SELECT,
     });
     if (entries.length === 0) return { data: [] };

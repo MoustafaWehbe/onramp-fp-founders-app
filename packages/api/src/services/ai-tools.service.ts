@@ -39,10 +39,11 @@ const toolInputs = {
   forecast_round_close: z.object({ roundId: z.string().guid().nullish() }),
   get_pipeline_summary: z.object({ roundId: z.string().guid().nullish() }),
   get_focus_deals: z.object({ roundId: z.string().guid().nullish() }),
+  get_daily_briefing: z.object({ roundId: z.string().guid().nullish() }),
   get_investor_context: z.object({ investorId: z.string().guid() }),
   get_reviewer_engagement: z.object({ documentId: z.string().guid().nullish() }),
   search_investors: z.object({ query: z.string().trim().min(1).max(200) }),
-  list_investors: z.object({ roundId: z.string().guid().nullish(), stage: z.enum(PIPELINE_STAGES).nullish() }),
+  list_investors: z.object({ roundId: z.string().guid().nullish(), stage: z.enum(PIPELINE_STAGES).nullish(), scope: z.enum(["mine", "team"]).nullish() }),
   get_pipeline_by_stage: z.object({ roundId: z.string().guid().nullish() }),
   get_interaction_history: z.object({ investorId: z.string().guid() }),
   // No assigneeId input: "mine" is resolved server-side from the authenticated
@@ -128,6 +129,10 @@ export const AI_TOOL_DEFINITIONS: Record<AiToolName, { description: string; para
     description: "Get the deals that most need attention today, ranked by urgency, for a round.",
     parameters: { type: "object", properties: { roundId: ROUND_ID_PROPERTY }, required: ["roundId"], additionalProperties: false },
   },
+  get_daily_briefing: {
+    description: "Get the caller's complete briefing for today in one grounded result: investors they own, their urgent investor deals, their open tasks grouped into overdue/due today/upcoming, today's scheduled investor calls or meetings, and round health when permitted. Use this for broad prompts like 'what do we have today?', 'give me my daily summary', or 'what needs my attention today?' instead of returning only one list.",
+    parameters: { type: "object", properties: { roundId: ROUND_ID_PROPERTY }, required: ["roundId"], additionalProperties: false },
+  },
   get_investor_context: {
     description: "Get full context for one investor: profile, thesis, check size, notes, pipeline deals, and recent interaction history. Requires the investor's id use search_investors first if you only have a name.",
     parameters: { type: "object", properties: { investorId: { type: "string", description: "UUID of the investor." } }, required: ["investorId"], additionalProperties: false },
@@ -141,14 +146,15 @@ export const AI_TOOL_DEFINITIONS: Record<AiToolName, { description: string; para
     parameters: { type: "object", properties: { query: { type: "string", description: "Search text matched against name, firm, sector, and description." } }, required: ["query"], additionalProperties: false },
   },
   list_investors: {
-    description: "List investors in the pipeline directory, optionally filtered to one round and/or one deal stage.",
+    description: "List investors who actually have pipeline deals, optionally filtered to one round and/or stage. Use scope=mine for investors whose deal owner is the caller; never describe scope=team results as assigned to the caller.",
     parameters: {
       type: "object",
       properties: {
         roundId: ROUND_ID_PROPERTY,
         stage: { type: ["string", "null"], enum: [...PIPELINE_STAGES, null], description: "Pipeline stage to filter to, or null for all stages." },
+        scope: { type: ["string", "null"], enum: ["mine", "team", null], description: "mine for deals owned by the caller; team for every pipeline deal. Null defaults to team." },
       },
-      required: ["roundId", "stage"],
+      required: ["roundId", "stage", "scope"],
       additionalProperties: false,
     },
   },
@@ -304,6 +310,77 @@ export class AiToolsService {
     if (tool === "forecast_round_close") return forecastService.forecastRoundClose(startupId, effectiveRoundId((parsedInput as z.infer<typeof toolInputs.forecast_round_close>).roundId));
     if (tool === "get_pipeline_summary") return pipelineService.getAnalytics(startupId, effectiveRoundId((parsedInput as z.infer<typeof toolInputs.get_pipeline_summary>).roundId));
     if (tool === "get_focus_deals") return pipelineService.getFocus(startupId, effectiveRoundId((parsedInput as z.infer<typeof toolInputs.get_focus_deals>).roundId));
+    if (tool === "get_daily_briefing") {
+      if (!context.userId) throw new Error("AI_TOOL_FORBIDDEN");
+      const input = parsedInput as z.infer<typeof toolInputs.get_daily_briefing>;
+      const roundId = effectiveRoundId(input.roundId);
+      const memberId = await this.resolveMemberId(startupId, context.userId);
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      const [investors, focusDeals, tasks, meetings] = await Promise.all([
+        investorService.listInvestors(startupId, { page: 1, limit: 100, ownerId: memberId, pipelineOnly: true, ...(roundId && { roundId }) }),
+        pipelineService.getFocus(startupId, roundId, memberId),
+        taskService.listTasks(startupId, { page: 1, limit: 100, assigneeId: memberId, status: "open", ...(roundId && { roundId }) }),
+        prisma.interactionLog.findMany({
+          where: {
+            createdBy: context.userId,
+            type: { in: ["call", "meeting"] },
+            interactionDate: { gte: dayStart, lte: dayEnd },
+            startupInvestor: { startupId },
+            ...(roundId && { pipeline: { roundId } }),
+          },
+          orderBy: { interactionDate: "asc" },
+          take: 25,
+          select: {
+            id: true, type: true, subject: true, description: true, interactionDate: true,
+            startupInvestor: { select: { id: true, fullName: true, ventureFirm: true } },
+            pipeline: { select: { id: true, roundId: true, stage: true } },
+          },
+        }),
+      ]);
+
+      const dueToday = tasks.data.filter((task) => task.dueDate && task.dueDate >= dayStart && task.dueDate <= dayEnd);
+      const overdue = tasks.data.filter((task) => task.dueDate && task.dueDate < dayStart);
+      const upcoming = tasks.data.filter((task) => !task.dueDate || task.dueDate > dayEnd);
+      const conciseTask = (task: (typeof tasks.data)[number]) => ({
+        id: task.id, title: task.title, priority: task.priority, dueDate: task.dueDate,
+        investor: task.investor, round: task.round, pipelineStage: task.pipelineStage,
+      });
+
+      let roundHealth: unknown = null;
+      if (context.canReadFinancial) {
+        const round = roundId
+          ? await fundraisingService.getRound(startupId, roundId)
+          : (await fundraisingService.listRounds(startupId, { page: 1, limit: 1, status: "active" })).data[0];
+        if (round) roundHealth = { round: { id: round.id, name: round.roundName, currency: round.currency }, metrics: await fundraisingService.getRoundMetrics(startupId, round.id) };
+      }
+
+      return {
+        generatedAt: new Date().toISOString(),
+        day: { start: dayStart.toISOString(), end: dayEnd.toISOString() },
+        roundId: roundId ?? null,
+        assignedInvestors: {
+          total: investors.meta.total,
+          data: investors.data.map((investor) => ({
+            id: investor.id, fullName: investor.fullName, ventureFirm: investor.ventureFirm,
+            sectorFocus: investor.sectorFocus, investmentStagePreference: investor.investmentStagePreference,
+            pipeline: investor.pipeline,
+          })),
+        },
+        focusDeals,
+        tasks: {
+          totalOpen: tasks.meta.total,
+          overdue: overdue.map(conciseTask),
+          dueToday: dueToday.map(conciseTask),
+          upcoming: upcoming.slice(0, 10).map(conciseTask),
+        },
+        meetings,
+        roundHealth,
+      };
+    }
     if (tool === "get_investor_context") {
       const input = parsedInput as z.infer<typeof toolInputs.get_investor_context>;
       const investor = await prisma.startupInvestor.findUnique({
@@ -354,10 +431,14 @@ export class AiToolsService {
     if (tool === "search_investors" || tool === "list_investors") {
       const searchInput = tool === "search_investors" ? (parsedInput as z.infer<typeof toolInputs.search_investors>) : null;
       const listInput = tool === "list_investors" ? (parsedInput as z.infer<typeof toolInputs.list_investors>) : null;
+      if (listInput?.scope === "mine" && !context.userId) throw new Error("AI_TOOL_FORBIDDEN");
+      const ownerId = listInput?.scope === "mine" ? await this.resolveMemberId(startupId, context.userId) : undefined;
       return investorService.listInvestors(startupId, {
         page: 1,
         limit: 10,
         ...(searchInput ? { search: searchInput.query } : {}),
+        ...(listInput ? { pipelineOnly: true } : {}),
+        ...(ownerId ? { ownerId } : {}),
         ...(listInput && effectiveRoundId(listInput.roundId) ? { roundId: effectiveRoundId(listInput.roundId) } : {}),
         ...(listInput?.stage ? { stage: listInput.stage } : {}),
       });

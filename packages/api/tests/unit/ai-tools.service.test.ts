@@ -17,6 +17,7 @@ jest.mock("../../src/db/prisma", () => ({
     reviewerInvitationDocument: { groupBy: jest.fn() },
     commitment: { findMany: jest.fn() },
     startupMember: { findUnique: jest.fn() },
+    interactionLog: { findMany: jest.fn() },
   },
 }));
 
@@ -118,8 +119,49 @@ describe("AI structured tools", () => {
 
   it("lists investors without a search term for list_investors", async () => {
     (investorService.listInvestors as jest.Mock).mockResolvedValue({ data: [], meta: {} });
-    await new AiToolsService().execute("startup-a", "list_investors", { roundId: null, stage: null }, ["list_investors"]);
+    await new AiToolsService().execute("startup-a", "list_investors", { roundId: null, stage: null, scope: "team" }, ["list_investors"]);
+    expect(investorService.listInvestors).toHaveBeenCalledWith("startup-a", expect.objectContaining({ pipelineOnly: true }));
     expect(investorService.listInvestors).toHaveBeenCalledWith("startup-a", expect.not.objectContaining({ search: expect.anything() }));
+  });
+
+  it("resolves 'my investors' to the caller's member id and never the whole directory", async () => {
+    (prisma.startupMember.findUnique as jest.Mock).mockResolvedValue({ id: "member-7", status: "active" });
+    (investorService.listInvestors as jest.Mock).mockResolvedValue({ data: [], meta: {} });
+
+    await new AiToolsService().execute(
+      "startup-a",
+      "list_investors",
+      { roundId: null, stage: null, scope: "mine" },
+      ["list_investors"],
+      { userId: "user-1", roundId: "00000000-0000-0000-0000-000000000007" },
+    );
+
+    expect(investorService.listInvestors).toHaveBeenCalledWith("startup-a", expect.objectContaining({
+      ownerId: "member-7",
+      pipelineOnly: true,
+      roundId: "00000000-0000-0000-0000-000000000007",
+    }));
+  });
+
+  it("builds a complete daily briefing from owned deals, personal tasks, meetings, and focus signals", async () => {
+    (prisma.startupMember.findUnique as jest.Mock).mockResolvedValue({ id: "member-7", status: "active" });
+    (investorService.listInvestors as jest.Mock).mockResolvedValue({ data: [], meta: { total: 0 } });
+    (pipelineService.getFocus as jest.Mock).mockResolvedValue({ data: [] });
+    (taskService.listTasks as jest.Mock).mockResolvedValue({ data: [], meta: { total: 0 } });
+    (prisma.interactionLog.findMany as jest.Mock).mockResolvedValue([]);
+
+    const result = await new AiToolsService().execute(
+      "startup-a",
+      "get_daily_briefing",
+      { roundId: null },
+      ["get_daily_briefing"],
+      { userId: "user-1", roundId: "00000000-0000-0000-0000-000000000007", canReadFinancial: false },
+    ) as { assignedInvestors: { total: number }; tasks: { totalOpen: number }; meetings: unknown[]; roundHealth: unknown };
+
+    expect(investorService.listInvestors).toHaveBeenCalledWith("startup-a", expect.objectContaining({ ownerId: "member-7", pipelineOnly: true }));
+    expect(pipelineService.getFocus).toHaveBeenCalledWith("startup-a", "00000000-0000-0000-0000-000000000007", "member-7");
+    expect(taskService.listTasks).toHaveBeenCalledWith("startup-a", expect.objectContaining({ assigneeId: "member-7", status: "open" }));
+    expect(result).toMatchObject({ assignedInvestors: { total: 0 }, tasks: { totalOpen: 0 }, meetings: [], roundHealth: null });
   });
 
   it("groups deals by stage via get_pipeline_by_stage", async () => {

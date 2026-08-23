@@ -24,6 +24,7 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
   forecast_round_close: "round forecast",
   get_pipeline_summary: "pipeline summary",
   get_focus_deals: "today's focus deals",
+  get_daily_briefing: "today's complete briefing",
   get_investor_context: "investor context",
   get_reviewer_engagement: "reviewer engagement",
   search_investors: "investors",
