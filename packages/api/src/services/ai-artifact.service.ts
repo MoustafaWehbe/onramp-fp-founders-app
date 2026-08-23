@@ -60,6 +60,10 @@ const taskListSchema = z.object({
         priority: z.string(),
         dueDate: z.string().nullable(),
         assigned: z.boolean(),
+        assigneeName: z.string().nullable(),
+        investor: z.object({ id: z.string(), fullName: z.string(), ventureFirm: z.string().nullable() }),
+        round: z.object({ id: z.string(), roundName: z.string(), status: z.string() }),
+        pipelineStage: z.string(),
       }),
     )
     .max(20),

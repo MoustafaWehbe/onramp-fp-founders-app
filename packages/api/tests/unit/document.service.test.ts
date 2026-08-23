@@ -46,6 +46,7 @@ import { prisma } from "../../src/db/prisma";
 import { documentProcessingQueue, documentRasterizeQueue } from "../../src/jobs/queue";
 import { documentService } from "../../src/services/document.service";
 import { storageService } from "../../src/services/storage.service";
+import { recordAuditEvent } from "../../src/services/audit-writer";
 
 const mockPrisma = prisma as jest.Mocked<typeof prisma>;
 const mockStorage = storageService as jest.Mocked<typeof storageService>;
@@ -270,9 +271,40 @@ describe("DocumentService.getSignedReadUrl", () => {
     } as never);
     mockStorage.createSignedReadUrl.mockResolvedValue("/api/v1/documents/local-download/tok");
 
-    const result = await documentService.getSignedReadUrl(STARTUP_ID, DOC_ID, VER_ID);
+    const result = await documentService.getSignedReadUrl(STARTUP_ID, DOC_ID, USER_ID, VER_ID);
     expect(result.url).toContain("local-download");
     expect(result.mimeType).toBe("text/plain");
+    expect(recordAuditEvent).toHaveBeenCalledWith({
+      startupId: STARTUP_ID,
+      userId: USER_ID,
+      action: "view",
+      entityType: "document",
+      entityId: DOC_ID,
+      changes: { versionId: VER_ID, originalFilename: "pitch.txt" },
+    });
+  });
+
+  it("records a download separately from a preview", async () => {
+    mockPrisma.document.findUnique.mockResolvedValue({
+      id: DOC_ID,
+      versions: [{
+        id: VER_ID,
+        processingStatus: "ready",
+        storageKey: "key",
+        storageProvider: "local",
+        mimeType: "application/pdf",
+        originalFilename: "deck.pdf",
+      }],
+    } as never);
+    mockStorage.createSignedReadUrl.mockResolvedValue("/api/v1/documents/local-download/tok");
+
+    await documentService.getSignedReadUrl(STARTUP_ID, DOC_ID, USER_ID, VER_ID, "download");
+
+    expect(recordAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      action: "download",
+      entityType: "document",
+      entityId: DOC_ID,
+    }));
   });
 });
 

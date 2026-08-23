@@ -45,10 +45,15 @@ const toolInputs = {
   list_investors: z.object({ roundId: z.string().guid().nullish(), stage: z.enum(PIPELINE_STAGES).nullish() }),
   get_pipeline_by_stage: z.object({ roundId: z.string().guid().nullish() }),
   get_interaction_history: z.object({ investorId: z.string().guid() }),
-  // No assigneeId filter: scoped server-side to the caller's own tasks (see
-  // resolveMemberId in execute() below), the same way chat access is resolved
-  // from the authenticated userId rather than trusted from the model.
-  list_tasks: z.object({ roundId: z.string().guid().nullish(), status: z.enum(TASK_STATUSES).nullish() }),
+  // No assigneeId input: "mine" is resolved server-side from the authenticated
+  // user, while "team" is allowed only inside the caller's existing
+  // pipeline:read boundary. The model can never nominate another member id.
+  list_tasks: z.object({
+    investorId: z.string().guid().nullish(),
+    roundId: z.string().guid().nullish(),
+    status: z.enum(TASK_STATUSES).nullish(),
+    scope: z.enum(["mine", "team"]).nullish(),
+  }),
   list_team_conversations: z.object({}),
   search_team_messages: z.object({ query: z.string().trim().min(1).max(200) }),
   // Nullish rather than the REST endpoints' plain-optional shape: strict
@@ -156,14 +161,16 @@ export const AI_TOOL_DEFINITIONS: Record<AiToolName, { description: string; para
     parameters: { type: "object", properties: { investorId: { type: "string", description: "UUID of the investor." } }, required: ["investorId"], additionalProperties: false },
   },
   list_tasks: {
-    description: "List the caller's own tasks (never a teammate's), optionally filtered to one round and/or a status.",
+    description: "List tasks with the investor, fundraising round, current deal stage, and assignee they belong to. Use scope=mine for 'my tasks'; use scope=team when the user asks for all tasks belonging to an investor or the team. Filter by investor after resolving its id with search_investors.",
     parameters: {
       type: "object",
       properties: {
+        investorId: { type: ["string", "null"], description: "UUID of the investor whose deal tasks to return, or null for every investor." },
         roundId: ROUND_ID_PROPERTY,
         status: { type: ["string", "null"], enum: [...TASK_STATUSES, null], description: "Task status to filter to, or null for all statuses." },
+        scope: { type: ["string", "null"], enum: ["mine", "team", null], description: "mine for only the caller's assignments; team for every visible task. Null defaults to mine." },
       },
-      required: ["roundId", "status"],
+      required: ["investorId", "roundId", "status", "scope"],
       additionalProperties: false,
     },
   },
@@ -270,9 +277,10 @@ export function toolSchemasFor(allowedTools: readonly AiToolName[]): AiToolDefin
 }
 
 export class AiToolsService {
-  async execute(startupId: string, tool: AiToolName, rawInput: unknown, allowedTools: readonly AiToolName[], context: { canReadFinancial?: boolean; userId?: string; sessionId?: string; messageId?: string } = {}) {
+  async execute(startupId: string, tool: AiToolName, rawInput: unknown, allowedTools: readonly AiToolName[], context: { canReadFinancial?: boolean; userId?: string; sessionId?: string; messageId?: string; roundId?: string | null } = {}) {
     if (!allowedTools.includes(tool)) throw new Error("AI_TOOL_FORBIDDEN");
     const parsedInput = toolInputs[tool].parse(rawInput) as Record<string, unknown>;
+    const effectiveRoundId = (requestedRoundId: string | null | undefined) => requestedRoundId ?? context.roundId ?? undefined;
 
     if (tool === "get_startup_profile") {
       return prisma.startup.findUnique({
@@ -287,14 +295,15 @@ export class AiToolsService {
     }
     if (tool === "get_round_health") {
       const input = parsedInput as z.infer<typeof toolInputs.get_round_health>;
-      const round = input.roundId
-        ? await fundraisingService.getRound(startupId, input.roundId)
+      const roundId = effectiveRoundId(input.roundId);
+      const round = roundId
+        ? await fundraisingService.getRound(startupId, roundId)
         : (await fundraisingService.listRounds(startupId, { page: 1, limit: 1, status: "active" })).data[0];
       return round ? { round: { id: round.id, name: round.roundName, currency: round.currency }, metrics: await fundraisingService.getRoundMetrics(startupId, round.id) } : { round: null, metrics: null };
     }
-    if (tool === "forecast_round_close") return forecastService.forecastRoundClose(startupId, (parsedInput as z.infer<typeof toolInputs.forecast_round_close>).roundId ?? undefined);
-    if (tool === "get_pipeline_summary") return pipelineService.getAnalytics(startupId, (parsedInput as z.infer<typeof toolInputs.get_pipeline_summary>).roundId ?? undefined);
-    if (tool === "get_focus_deals") return pipelineService.getFocus(startupId, (parsedInput as z.infer<typeof toolInputs.get_focus_deals>).roundId ?? undefined);
+    if (tool === "forecast_round_close") return forecastService.forecastRoundClose(startupId, effectiveRoundId((parsedInput as z.infer<typeof toolInputs.forecast_round_close>).roundId));
+    if (tool === "get_pipeline_summary") return pipelineService.getAnalytics(startupId, effectiveRoundId((parsedInput as z.infer<typeof toolInputs.get_pipeline_summary>).roundId));
+    if (tool === "get_focus_deals") return pipelineService.getFocus(startupId, effectiveRoundId((parsedInput as z.infer<typeof toolInputs.get_focus_deals>).roundId));
     if (tool === "get_investor_context") {
       const input = parsedInput as z.infer<typeof toolInputs.get_investor_context>;
       const investor = await prisma.startupInvestor.findUnique({
@@ -303,7 +312,22 @@ export class AiToolsService {
           id: true, fullName: true, ventureFirm: true, investorType: true, sectorFocus: true,
           description: true, checkSizeMin: true, checkSizeMax: true, geographyFocus: true, portfolioHighlights: true, warmIntroPath: true,
           notes: true,
-          pipeline: { take: 10, select: { id: true, roundId: true, stage: true, priority: true, expectedAmount: true, stageChangedAt: true } },
+          pipeline: {
+            take: 10,
+            orderBy: { updatedAt: "desc" },
+            select: {
+              id: true, roundId: true, stage: true, priority: true, expectedAmount: true, stageChangedAt: true,
+              round: { select: { roundName: true, status: true } },
+              tasks: {
+                take: 25,
+                orderBy: [{ status: "asc" }, { dueDate: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
+                select: {
+                  id: true, title: true, description: true, status: true, priority: true, dueDate: true, assigneeId: true,
+                  assignee: { select: { id: true, invitedEmail: true, user: { select: { firstName: true, lastName: true, email: true } } } },
+                },
+              },
+            },
+          },
           interactionLogs: { take: 10, orderBy: { createdAt: "desc" }, select: { type: true, subject: true, interactionDate: true, description: true } },
         },
       });
@@ -334,24 +358,25 @@ export class AiToolsService {
         page: 1,
         limit: 10,
         ...(searchInput ? { search: searchInput.query } : {}),
-        ...(listInput?.roundId ? { roundId: listInput.roundId } : {}),
+        ...(listInput && effectiveRoundId(listInput.roundId) ? { roundId: effectiveRoundId(listInput.roundId) } : {}),
         ...(listInput?.stage ? { stage: listInput.stage } : {}),
       });
     }
-    if (tool === "get_pipeline_by_stage") return pipelineService.getByStage(startupId, (parsedInput as z.infer<typeof toolInputs.get_pipeline_by_stage>).roundId);
+    if (tool === "get_pipeline_by_stage") return pipelineService.getByStage(startupId, effectiveRoundId((parsedInput as z.infer<typeof toolInputs.get_pipeline_by_stage>).roundId) ?? null);
     if (tool === "get_interaction_history") return interactionLogService.listLogsByInvestor(startupId, (parsedInput as z.infer<typeof toolInputs.get_interaction_history>).investorId, { page: 1, limit: 15 });
     if (tool === "list_tasks") {
       const input = parsedInput as z.infer<typeof toolInputs.list_tasks>;
-      // Always the caller's own tasks, resolved server-side from the
-      // authenticated userId never a model-supplied assignee, the same
-      // reasoning as chat access below (this is a "what's on my plate" tool,
-      // not a "what's on anyone's plate" one).
-      const memberId = await this.resolveMemberId(startupId, context.userId);
+      // "mine" resolves the member id server-side; "team" removes that one
+      // filter but remains inside the same startup + pipeline:read boundary
+      // as the manual task list. A model-supplied member id is never accepted.
+      if (!context.userId) throw new Error("AI_TOOL_FORBIDDEN");
+      const memberId = input.scope === "team" ? undefined : await this.resolveMemberId(startupId, context.userId);
       return taskService.listTasks(startupId, {
         page: 1,
         limit: 25,
-        assigneeId: memberId,
-        ...(input.roundId && { roundId: input.roundId }),
+        ...(memberId && { assigneeId: memberId }),
+        ...(input.investorId && { investorId: input.investorId }),
+        ...(effectiveRoundId(input.roundId) && { roundId: effectiveRoundId(input.roundId)! }),
         ...(input.status && { status: input.status }),
       });
     }
@@ -366,7 +391,7 @@ export class AiToolsService {
       return chatService.searchMessages(startupId, memberId, (parsedInput as z.infer<typeof toolInputs.search_team_messages>).query);
     }
 
-    // tool is one of the five propose_* write tools: this only ever creates a
+    // tool is one of the propose_* write tools: this only ever creates a
     // "proposed" AiAgentAction row it never sends, schedules, or writes
     // anything. Even a successfully prompt-injected model can only get this
     // far, not further — a human still has to click Approve.

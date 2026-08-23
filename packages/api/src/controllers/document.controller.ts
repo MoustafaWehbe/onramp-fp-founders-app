@@ -4,6 +4,7 @@ import { storageService } from "../services/storage.service";
 import type {
   CreateUploadSessionInput,
   CreateVersionUploadInput,
+  FileAccessQuery,
   ListDocumentsQuery,
   UpdateDocumentInput,
 } from "../validators/document.schemas";
@@ -82,10 +83,13 @@ export const documentController = {
   }),
 
   getFileAccess: asyncHandler(async (req, res) => {
+    const { versionId, disposition } = req.query as unknown as FileAccessQuery;
     const access = await documentService.getSignedReadUrl(
       req.params.startupId as string,
       req.params.documentId as string,
-      typeof req.query.versionId === "string" ? req.query.versionId : undefined,
+      req.user!.userId,
+      versionId,
+      disposition,
     );
     res.json({ data: access });
   }),

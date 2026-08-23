@@ -1395,6 +1395,34 @@ components:
           type: string
           format: uuid
           description: The pipeline deal this task belongs to.
+        investor:
+          type: object
+          description: The investor this task belongs to through its pipeline deal.
+          required: [id, fullName, ventureFirm]
+          properties:
+            id:
+              type: string
+              format: uuid
+            fullName:
+              type: string
+            ventureFirm:
+              type: string
+              nullable: true
+        round:
+          type: object
+          description: The fundraising round containing the task's deal.
+          required: [id, roundName, status]
+          properties:
+            id:
+              type: string
+              format: uuid
+            roundName:
+              type: string
+            status:
+              type: string
+        pipelineStage:
+          type: string
+          description: Current stage of the investor deal this task belongs to.
         title:
           type: string
         description:
@@ -1413,6 +1441,21 @@ components:
           format: uuid
           nullable: true
           description: The StartupMember id assigned to this task, if any.
+        assignee:
+          type: object
+          nullable: true
+          description: Human-readable teammate assignment details.
+          required: [id, name, email]
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+              nullable: true
+            email:
+              type: string
+              nullable: true
         completedAt:
           type: string
           format: date-time
@@ -5599,7 +5642,7 @@ paths:
       summary: List tasks in a startup
       operationId: listTasks
       description: >
-        Filterable by pipelineId, roundId, status, assigneeId, and priority —
+        Filterable by pipelineId, investorId, roundId, status, assigneeId, and priority —
         used both for a single deal's task list and cross-deal views.
       security:
         - cookieAuth: []
@@ -5608,6 +5651,12 @@ paths:
         - $ref: "#/components/parameters/LimitParam"
         - name: pipelineId
           in: query
+          schema:
+            type: string
+            format: uuid
+        - name: investorId
+          in: query
+          description: Every task associated with this investor across their pipeline deals.
           schema:
             type: string
             format: uuid
@@ -7424,6 +7473,13 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: disposition
+          in: query
+          description: Whether the teammate is previewing or downloading the file. Recorded in the audit trail.
+          schema:
+            type: string
+            enum: [preview, download]
+            default: preview
       responses:
         "200":
           description: Signed access

@@ -489,6 +489,24 @@ function ToolActivityRow({ calls }: { calls: AiToolCallActivity[] }) {
   );
 }
 
+function ThinkingIndicator() {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 py-1 text-sm text-muted-foreground"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <span className="font-medium text-foreground motion-safe:animate-pulse">Thinking</span>
+      <span className="flex items-center gap-0.5" aria-hidden="true">
+        <span className="h-1 w-1 rounded-full bg-primary/70 motion-safe:animate-bounce [animation-delay:-0.2s]" />
+        <span className="h-1 w-1 rounded-full bg-primary/55 motion-safe:animate-bounce [animation-delay:-0.1s]" />
+        <span className="h-1 w-1 rounded-full bg-primary/40 motion-safe:animate-bounce" />
+      </span>
+    </span>
+  );
+}
+
 function CitationList({ citations }: { citations: AiCitation[] }) {
   return (
     <details className="group mt-2 rounded-lg border border-border/60 bg-background/40 text-xs">
@@ -569,9 +587,7 @@ const MessageBubble = memo(function MessageBubble({ startupId, message, onAskFol
         {assistant && message.toolCalls && message.toolCalls.length > 0 && <ToolActivityRow calls={message.toolCalls} />}
         <div className={cn(!assistant && "max-w-[85%] rounded-2xl rounded-tr-sm bg-primary/15 px-4 py-2.5 text-base leading-relaxed text-foreground")}>
           {thinking ? (
-            <span className="inline-flex items-center gap-2 text-base text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Thinking…
-            </span>
+            <ThinkingIndicator />
           ) : assistant ? (
             <Markdown>{revealedContent}</Markdown>
           ) : (

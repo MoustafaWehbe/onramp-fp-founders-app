@@ -581,7 +581,13 @@ export class DocumentService {
     }
   }
 
-  async getSignedReadUrl(startupId: string, documentId: string, versionId?: string) {
+  async getSignedReadUrl(
+    startupId: string,
+    documentId: string,
+    userId: string,
+    versionId?: string,
+    disposition: "preview" | "download" = "preview",
+  ) {
     const doc = await prisma.document.findUnique({
       where: { startupId_id: { startupId, id: documentId } },
       include: {
@@ -602,6 +608,14 @@ export class DocumentService {
       300,
       { mimeType: version.mimeType, originalFilename: version.originalFilename },
     );
+    await recordAuditEvent({
+      startupId,
+      userId,
+      action: disposition === "download" ? "download" : "view",
+      entityType: "document",
+      entityId: documentId,
+      changes: { versionId: version.id, originalFilename: version.originalFilename },
+    });
     return {
       url,
       expiresInSeconds: 300,

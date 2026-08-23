@@ -74,6 +74,10 @@ const taskList = z.object({
     priority: z.string(),
     dueDate: z.string().nullable(),
     assigned: z.boolean(),
+    assigneeName: z.string().nullable(),
+    investor: z.object({ id: z.string(), fullName: z.string(), ventureFirm: z.string().nullable() }),
+    round: z.object({ id: z.string(), roundName: z.string(), status: z.string() }),
+    pipelineStage: z.string(),
   })).max(20),
 });
 
@@ -296,7 +300,12 @@ export function AiArtifactRenderer({ startupId, artifact, onAskFollowup }: { sta
               <li key={task.id} className="flex items-center justify-between gap-2 py-2 first:pt-0 last:pb-0">
                 <div className="min-w-0">
                   <p className={cn("truncate text-sm font-medium", task.status === "completed" ? "text-muted-foreground line-through" : "text-foreground")}>{task.title}</p>
+                  <p className="truncate text-xs font-medium text-foreground/75">
+                    {task.investor.fullName}{task.investor.ventureFirm ? ` · ${task.investor.ventureFirm}` : ""}
+                  </p>
                   <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <span>{task.round.roundName}</span>
+                    <span>· {task.pipelineStage.replace(/_/g, " ")}</span>
                     <span className="capitalize">{task.priority}</span>
                     {task.dueDate && (
                       <span className={cn("inline-flex items-center gap-0.5", overdue && "text-destructive")}>
@@ -305,6 +314,7 @@ export function AiArtifactRenderer({ startupId, artifact, onAskFollowup }: { sta
                       </span>
                     )}
                     {!task.assigned && <span>· Unassigned</span>}
+                    {task.assigneeName && <span>· {task.assigneeName}</span>}
                   </p>
                 </div>
               </li>

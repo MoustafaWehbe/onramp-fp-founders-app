@@ -20,6 +20,8 @@ export const AUDIT_ACTIONS = {
   ACCEPT: "accept",
   DECLINE: "decline",
   SHARE: "share",
+  VIEW: "view",
+  DOWNLOAD: "download",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS] | (string & {});

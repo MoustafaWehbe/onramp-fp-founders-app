@@ -18,6 +18,20 @@ const TASK_SELECT = {
   createdBy: true,
   createdAt: true,
   updatedAt: true,
+  pipeline: {
+    select: {
+      stage: true,
+      startupInvestor: { select: { id: true, fullName: true, ventureFirm: true } },
+      round: { select: { id: true, roundName: true, status: true } },
+    },
+  },
+  assignee: {
+    select: {
+      id: true,
+      invitedEmail: true,
+      user: { select: { firstName: true, lastName: true, email: true } },
+    },
+  },
 } as const;
 
 type TaskRow = {
@@ -34,6 +48,16 @@ type TaskRow = {
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
+  pipeline: {
+    stage: string;
+    startupInvestor: { id: string; fullName: string; ventureFirm: string | null };
+    round: { id: string; roundName: string; status: string };
+  };
+  assignee: {
+    id: string;
+    invitedEmail: string | null;
+    user: { firstName: string; lastName: string; email: string } | null;
+  } | null;
 };
 
 function serializeTask(row: TaskRow) {
@@ -51,6 +75,18 @@ function serializeTask(row: TaskRow) {
     createdBy: row.createdBy,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    investor: row.pipeline.startupInvestor,
+    round: row.pipeline.round,
+    pipelineStage: row.pipeline.stage,
+    assignee: row.assignee
+      ? {
+          id: row.assignee.id,
+          name: row.assignee.user
+            ? `${row.assignee.user.firstName} ${row.assignee.user.lastName}`.trim()
+            : row.assignee.invitedEmail,
+          email: row.assignee.user?.email ?? row.assignee.invitedEmail,
+        }
+      : null,
   };
 }
 
@@ -123,13 +159,19 @@ export class TaskService {
   }
 
   async listTasks(startupId: string, query: ListTaskQuery) {
-    const { page, limit, pipelineId, roundId, status, assigneeId, priority } = query;
+    const { page, limit, pipelineId, investorId, roundId, status, assigneeId, priority } = query;
+
+    const pipelineFilter = {
+      ...(investorId && { startupInvestorId: investorId }),
+      ...(roundId && { roundId }),
+    };
 
     const where: Prisma.TaskWhereInput = {
       startupId,
       ...(pipelineId && { pipelineId }),
-      // Scoped through the deal, since a task has no round of its own.
-      ...(roundId && { pipeline: { roundId } }),
+      // Scoped through the deal, since a task has no investor or round column
+      // of its own. Both constraints share one relation filter when combined.
+      ...(Object.keys(pipelineFilter).length && { pipeline: pipelineFilter }),
       ...(status && { status }),
       ...(assigneeId && { assigneeId }),
       ...(priority && { priority }),

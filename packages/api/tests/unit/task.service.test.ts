@@ -48,6 +48,12 @@ function taskRow(overrides: Record<string, unknown> = {}) {
     createdBy: USER_ID,
     createdAt: new Date("2026-01-01"),
     updatedAt: new Date("2026-01-01"),
+    pipeline: {
+      stage: "meeting",
+      startupInvestor: { id: "investor-1", fullName: "Ana Ruiz", ventureFirm: "Northstar Ventures" },
+      round: { id: "round-1", roundName: "Seed", status: "active" },
+    },
+    assignee: null,
     ...overrides,
   };
 }
@@ -218,6 +224,23 @@ describe("TaskService.listTasks", () => {
 
     expect(mockPrisma.task.count).toHaveBeenCalledWith({
       where: { startupId: STARTUP_ID, pipeline: { roundId: ROUND_ID } },
+    });
+  });
+
+  it("filters by investor through the deal and returns human-readable deal context", async () => {
+    const INVESTOR_ID = "00000000-0000-0000-0000-000000000008";
+    (mockPrisma.task.count as jest.Mock).mockResolvedValue(1);
+    (mockPrisma.task.findMany as jest.Mock).mockResolvedValue([taskRow()]);
+
+    const result = await service.listTasks(STARTUP_ID, { page: 1, limit: 20, investorId: INVESTOR_ID } as never);
+
+    expect(mockPrisma.task.count).toHaveBeenCalledWith({
+      where: { startupId: STARTUP_ID, pipeline: { startupInvestorId: INVESTOR_ID } },
+    });
+    expect(result.data[0]).toMatchObject({
+      investor: { fullName: "Ana Ruiz", ventureFirm: "Northstar Ventures" },
+      round: { roundName: "Seed" },
+      pipelineStage: "meeting",
     });
   });
 });

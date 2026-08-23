@@ -65,6 +65,13 @@ export function InvestorActions({
         {onEmail && (
           <DropdownMenuItem
             disabled={!investor.email || !googleConnected}
+            title={
+              !investor.email
+                ? "This investor has no email on file"
+                : !googleConnected
+                  ? "Connect your Google account in Settings to send email"
+                  : undefined
+            }
             onSelect={() => onEmail(investor)}
           >
             <Mail className="mr-2 h-4 w-4" /> Send email

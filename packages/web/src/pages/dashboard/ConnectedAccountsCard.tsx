@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
@@ -21,8 +21,6 @@ import { invalidateInteractionData } from "../../lib/query-keys";
 import {
   connectGoogleAccount,
   disconnectGoogleAccount,
-  setCalendarSyncEnabled,
-  triggerCalendarSync,
   type GoogleConnectionStatus,
 } from "../../lib/integrations-api";
 
@@ -71,33 +69,6 @@ export function ConnectedAccountsCard() {
     },
   });
 
-  const syncNowMutation = useMutation({
-    mutationFn: triggerCalendarSync,
-    onSuccess: (stats) => {
-      toast.success(
-        stats.created + stats.updated + stats.retracted === 0
-          ? "No new meetings to log"
-          : `Synced: ${stats.created} new, ${stats.updated} updated, ${stats.retracted} removed`,
-      );
-      void queryClient.invalidateQueries({ queryKey: QUERY_KEY });
-      invalidateInteractionData(queryClient, startupId);
-    },
-    onError: (err) => {
-      toast.error(apiErrorMessage(err, "Could not sync your calendar"));
-    },
-  });
-
-  const pauseMutation = useMutation({
-    mutationFn: (enabled: boolean) => setCalendarSyncEnabled(enabled),
-    onSuccess: (_data, enabled) => {
-      toast.success(enabled ? "Calendar sync resumed" : "Calendar sync paused");
-      void queryClient.invalidateQueries({ queryKey: QUERY_KEY });
-    },
-    onError: (err) => {
-      toast.error(apiErrorMessage(err, "Could not update calendar sync"));
-    },
-  });
-
   const removeSyncedMutation = useMutation({
     mutationFn: () => deleteAllSyncedInteractionLogs(startupId, "google_calendar"),
     onSuccess: (count) => {
@@ -126,10 +97,6 @@ export function ConnectedAccountsCard() {
             status={statusQuery.data}
             onConnect={connectGoogleAccount}
             onDisconnect={() => setDisconnectOpen(true)}
-            onSyncNow={() => syncNowMutation.mutate()}
-            isSyncing={syncNowMutation.isPending}
-            onTogglePause={(enabled) => pauseMutation.mutate(enabled)}
-            isTogglingPause={pauseMutation.isPending}
             onRemoveSynced={() => setRemoveSyncedOpen(true)}
           />
         )}
@@ -164,19 +131,11 @@ function GoogleRow({
   status,
   onConnect,
   onDisconnect,
-  onSyncNow,
-  isSyncing,
-  onTogglePause,
-  isTogglingPause,
   onRemoveSynced,
 }: {
   status: GoogleConnectionStatus | undefined;
   onConnect: () => void;
   onDisconnect: () => void;
-  onSyncNow: () => void;
-  isSyncing: boolean;
-  onTogglePause: (enabled: boolean) => void;
-  isTogglingPause: boolean;
   onRemoveSynced: () => void;
 }) {
   if (!status?.configured) {
@@ -218,19 +177,19 @@ function GoogleRow({
     );
   }
 
-  const syncPaused = status.calendarSyncEnabled === false;
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium">
             Google
-            <Badge variant="secondary" className="gap-1">
+            <Badge
+              variant="outline"
+              className="gap-1 border-transparent bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+            >
               <CheckCircle2 className="h-3 w-3" />
               Connected
             </Badge>
-            {syncPaused && <Badge variant="outline">Sync paused</Badge>}
           </div>
           <p className="text-sm text-muted-foreground">{status.googleEmail}</p>
         </div>
@@ -242,25 +201,13 @@ function GoogleRow({
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/70 bg-surface/40 px-3.5 py-3">
         <div className="space-y-0.5">
           <p className="text-sm font-medium">Calendar meetings</p>
-          <p className="text-xs text-muted-foreground">{formatLastSynced(status.lastSyncedAt)}</p>
+          <p className="text-xs text-muted-foreground">
+            {formatLastSynced(status.lastSyncedAt)} · syncs automatically
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={isTogglingPause}
-            onClick={() => onTogglePause(syncPaused)}
-          >
-            {syncPaused ? "Resume sync" : "Pause sync"}
-          </Button>
-          <Button variant="ghost" size="sm" disabled={isSyncing} onClick={onSyncNow}>
-            <RefreshCw className={isSyncing ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
-            {isSyncing ? "Syncing…" : "Sync now"}
-          </Button>
-          <Button variant="ghost" size="sm" className="text-destructive" onClick={onRemoveSynced}>
-            Remove synced meetings
-          </Button>
-        </div>
+        <Button variant="ghost" size="sm" className="text-destructive" onClick={onRemoveSynced}>
+          Remove synced meetings
+        </Button>
       </div>
     </div>
   );

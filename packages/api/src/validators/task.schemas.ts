@@ -64,6 +64,10 @@ export const updateTaskSchema = z
 
 export const listTaskQuerySchema = z.object({
   pipelineId: z.string().guid("pipelineId must be a valid UUID").optional(),
+  // Tasks are operational work on an investor deal. This filter reaches
+  // through Pipeline so callers can ask for every task associated with one
+  // investor across rounds without first knowing each deal id.
+  investorId: z.string().guid("investorId must be a valid UUID").optional(),
   // Every task on every deal in one raise what a cross-deal "my work" view
   // needs, without the client fetching each deal's list separately.
   roundId: z.string().guid("roundId must be a valid UUID").optional(),

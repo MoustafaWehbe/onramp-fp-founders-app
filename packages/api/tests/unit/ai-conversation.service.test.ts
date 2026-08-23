@@ -471,10 +471,10 @@ describe("AI conversation agent loop", () => {
 
   it("renders a task_list.v1 card from list_tasks, marking assignment by presence of an assigneeId, not by name", async () => {
     (prisma.aiArtifact.create as jest.Mock).mockResolvedValue({ id: "artifact-1", artifactType: "task_list", schemaVersion: "v1", title: "Tasks", status: "ready", data: {} });
-    (aiToolsService.execute as jest.Mock).mockResolvedValue({ data: [{ id: "task-1", title: "Follow up", status: "open", priority: "high", dueDate: null, assigneeId: "member-1" }] });
+    (aiToolsService.execute as jest.Mock).mockResolvedValue({ data: [{ id: "task-1", title: "Follow up", status: "open", priority: "high", dueDate: null, assigneeId: "member-1", assignee: { name: "Maya Chen" }, investor: { id: "inv-1", fullName: "Ana Ruiz", ventureFirm: "Northstar Ventures" }, round: { id: "round-1", roundName: "Seed", status: "active" }, pipelineStage: "meeting" }] });
     const provider = new FakeAiProvider();
     provider.streamEventsByTurn = [
-      [{ type: "tool_call", callId: "call-1", name: "list_tasks", arguments: "{\"roundId\":null,\"status\":null,\"assigneeId\":null}" }, { type: "completed", stopReason: "tool_calls" }],
+      [{ type: "tool_call", callId: "call-1", name: "list_tasks", arguments: "{\"investorId\":null,\"roundId\":null,\"status\":null}" }, { type: "completed", stopReason: "tool_calls" }],
       [{ type: "delta", text: "Here are your tasks." }, { type: "completed", stopReason: "stop" }],
     ];
     const taskAccess = { canReadDocuments: false, canReadFinancial: true, tools: ["list_tasks" as const] };
@@ -483,7 +483,7 @@ describe("AI conversation agent loop", () => {
     await (service as any).runGeneration(session, "assistant-message", "user-1", taskAccess);
 
     expect(prisma.aiArtifact.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ artifactType: "task_list", data: { tasks: [{ id: "task-1", title: "Follow up", status: "open", priority: "high", dueDate: null, assigned: true }] } }),
+      data: expect.objectContaining({ artifactType: "task_list", data: { tasks: [{ id: "task-1", title: "Follow up", status: "open", priority: "high", dueDate: null, assigned: true, assigneeName: "Maya Chen", investor: { id: "inv-1", fullName: "Ana Ruiz", ventureFirm: "Northstar Ventures" }, round: { id: "round-1", roundName: "Seed", status: "active" }, pipelineStage: "meeting" }] } }),
     }));
   });
 
