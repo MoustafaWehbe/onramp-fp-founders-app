@@ -18,10 +18,16 @@ import {
   markConversationRead,
   setConversationArchived,
   setNotifyLevel,
+  sendMessage,
   toggleReaction,
   type Conversation,
   type Message,
 } from "../../../lib/chat-api";
+import {
+  replaceOptimisticMessage,
+  retryInputForMessage,
+  setOptimisticDeliveryState,
+} from "../../../lib/chat-message-cache";
 import { useResolvedMentions } from "../../../hooks/useResolvedMentions";
 import { useTypingUsers } from "../../../hooks/useTypingUsers";
 import { MessageItem } from "../../../components/mentions/MessageItem";
@@ -129,6 +135,24 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
       toggleReaction(startupId, messageId, emoji),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: qk.messages(startupId, conversation.id) }),
     onError: (err) => toast.error(apiErrorMessage(err, "Could not react to that message")),
+  });
+
+  const retrySendMutation = useMutation({
+    mutationFn: async (message: Message) => {
+      const input = retryInputForMessage(message);
+      if (!input) throw new Error("This message can no longer be retried");
+      return sendMessage(startupId, conversation.id, input);
+    },
+    onMutate: (message) => setOptimisticDeliveryState(queryClient, startupId, message, "sending"),
+    onSuccess: (delivered, message) => {
+      replaceOptimisticMessage(queryClient, startupId, message, delivered);
+      void queryClient.invalidateQueries({ queryKey: qk.messages(startupId, conversation.id) });
+      void queryClient.invalidateQueries({ queryKey: qk.conversations(startupId) });
+    },
+    onError: (err, message) => {
+      setOptimisticDeliveryState(queryClient, startupId, message, "failed");
+      toast.error(apiErrorMessage(err, "Message still could not be sent"));
+    },
   });
 
   const muteMutation = useMutation({
@@ -281,6 +305,11 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
                 onReact={canSend ? (emoji) => reactMutation.mutate({ messageId: message.id, emoji }) : undefined}
                 onOpenThread={message.replyCount > 0 || canSend ? () => setThreadMessageId(message.id) : undefined}
                 onDelete={message.senderId === currentMemberId ? () => setDeleteTarget(message) : undefined}
+                onRetry={
+                  message.deliveryState === "failed"
+                    ? () => retrySendMutation.mutate(message)
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -296,7 +325,7 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
         </div>
       )}
 
-      {canSend ? (
+      {canSend && messagesQuery.isSuccess ? (
         <Composer
           startupId={startupId}
           conversationId={conversation.id}
@@ -304,13 +333,15 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
           placeholder={conversation.type === "dm" ? `Message ${displayName}` : undefined}
           onSent={() => scrollToBottom("smooth")}
         />
-      ) : (
+      ) : !messagesQuery.isPending ? (
         <div className="border-t border-border/60 px-4 py-3 text-center text-xs text-muted-foreground">
-          {conversation.archivedAt
+          {messagesQuery.isError
+            ? "Messages must load before you can post here."
+            : conversation.archivedAt
             ? "This channel is archived and read only."
             : "You don't have permission to post in this channel."}
         </div>
-      )}
+      ) : null}
 
       <ThreadDialog
         startupId={startupId}

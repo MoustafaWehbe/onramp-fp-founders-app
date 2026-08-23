@@ -1,4 +1,4 @@
-import { FileText, MessagesSquare } from "lucide-react";
+import { FileText, LoaderCircle, MessagesSquare, RotateCcw } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { cn, getInitials } from "../../lib/utils";
 import { collectMentionRefs } from "../../lib/mentions";
@@ -32,15 +32,19 @@ type MessageItemProps = {
   onReact?: (emoji: string) => void;
   /** Present only on a top-level message in a live channel opens the ThreadDialog. */
   onOpenThread?: () => void;
-  /** Present when the caller may remove this message (their own, or chat:manage). */
+  /** Present when the caller may remove this message. */
   onDelete?: () => void;
+  /** Present for a client-side outbox item whose request failed. */
+  onRetry?: () => void;
 };
 
 /** One chat message avatar, name, time, body with reference chips, attachments, reactions, and any unfurl cards. Shared by MessageThread, ThreadDialog and DiscussionTab so a message renders identically everywhere. */
-export function MessageItem({ message, resolved, grouped, meta, onReact, onOpenThread, onDelete }: MessageItemProps) {
+export function MessageItem({ message, resolved, grouped, meta, onReact, onOpenThread, onDelete, onRetry }: MessageItemProps) {
   const refs = collectMentionRefs(message.body).filter((ref) => isUnfurlableMention(ref.type));
   const hasReplies = message.replyCount > 0;
   const isDeleted = message.deletedAt !== null;
+  const isSending = message.deliveryState === "sending";
+  const isFailed = message.deliveryState === "failed";
 
   return (
     <div
@@ -68,6 +72,12 @@ export function MessageItem({ message, resolved, grouped, meta, onReact, onOpenT
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <span className="text-sm font-semibold text-foreground">{senderName(message.sender)}</span>
             <span className="text-[11px] text-muted-foreground">{formatTime(message.createdAt)}</span>
+            {isSending && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                <LoaderCircle className="h-3 w-3 animate-spin" /> Sending
+              </span>
+            )}
+            {isFailed && <span className="text-[11px] font-medium text-destructive">Not sent</span>}
             {meta}
           </div>
         )}
@@ -96,7 +106,18 @@ export function MessageItem({ message, resolved, grouped, meta, onReact, onOpenT
               return item ? <EntityUnfurl key={`${ref.type}:${ref.id}`} mention={item} /> : null;
             })}
 
-            <ReactionRow reactions={message.reactions} onToggle={onReact} />
+            {!message.deliveryState && <ReactionRow reactions={message.reactions} onToggle={onReact} />}
+
+            {isFailed && onRetry && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-destructive hover:underline"
+              >
+                <RotateCcw className="h-3 w-3" />
+                Retry sending
+              </button>
+            )}
           </>
         )}
 
@@ -112,7 +133,7 @@ export function MessageItem({ message, resolved, grouped, meta, onReact, onOpenT
         )}
       </div>
 
-      {!isDeleted && (
+      {!isDeleted && !message.deliveryState && (
         <MessageHoverActions
           onReact={onReact}
           onOpenThread={!hasReplies ? onOpenThread : undefined}

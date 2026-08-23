@@ -71,6 +71,9 @@ export type Message = {
   createdAt: string;
   reactions: MessageReactionSummary[];
   attachments: MessageAttachment[];
+  /** Client-only outbox state; API responses omit both fields. */
+  deliveryState?: "sending" | "failed";
+  clientNonce?: string;
 };
 
 export type ReplyThread = {

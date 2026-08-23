@@ -13,7 +13,22 @@ import {
 import { apiErrorMessage } from "../../../lib/api-error";
 import { qk } from "../../../lib/query-keys";
 import { usePermissions } from "../../../hooks/usePermissions";
-import { sendMessage, searchMentionables, pingTyping, type MentionableItem } from "../../../lib/chat-api";
+import { useAuth } from "../../../hooks/useAuth";
+import { useWorkspace } from "../../../hooks/useWorkspace";
+import {
+  sendMessage,
+  searchMentionables,
+  pingTyping,
+  type MentionableItem,
+  type Message,
+  type SendMessageInput,
+} from "../../../lib/chat-api";
+import { readChatDraft, writeChatDraft } from "../../../lib/chat-drafts";
+import {
+  insertOptimisticMessage,
+  replaceOptimisticMessage,
+  setOptimisticDeliveryState,
+} from "../../../lib/chat-message-cache";
 import {
   expandComposerMentions,
   mentionDisplay,
@@ -81,17 +96,24 @@ export function Composer({
   onSent,
 }: ComposerProps) {
   const queryClient = useQueryClient();
-  const [body, setBody] = useState("");
+  const initialDraftRef = useRef(readChatDraft(startupId, conversationId, parentMessageId));
+  const [body, setBody] = useState(initialDraftRef.current?.body ?? "");
   /** Maps friendly `@Name` aliases in the draft to wire `@[Name](type:id)` tokens for send. */
-  const [pendingMentions, setPendingMentions] = useState<ComposerMention[]>([]);
+  const [pendingMentions, setPendingMentions] = useState<ComposerMention[]>(
+    initialDraftRef.current?.pendingMentions ?? [],
+  );
   const [mention, setMention] = useState<MentionContext | null>(null);
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
-  const [attachedDocs, setAttachedDocs] = useState<MentionableItem[]>([]);
+  const [attachedDocs, setAttachedDocs] = useState<MentionableItem[]>(
+    initialDraftRef.current?.attachedDocs ?? [],
+  );
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [shareType, setShareType] = useState<MentionTargetType | null>(null);
   const { can } = usePermissions();
-  const nonceRef = useRef(crypto.randomUUID());
+  const { user } = useAuth();
+  const { activeStartup } = useWorkspace();
+  const nonceRef = useRef(initialDraftRef.current?.clientNonce ?? crypto.randomUUID());
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lastTypingPingRef = useRef(0);
 
@@ -105,6 +127,15 @@ export function Composer({
     setHighlightedIndex(0);
   }, [debouncedQuery]);
 
+  useEffect(() => {
+    writeChatDraft(startupId, conversationId, parentMessageId, {
+      body,
+      pendingMentions,
+      attachedDocs,
+      clientNonce: nonceRef.current,
+    });
+  }, [startupId, conversationId, parentMessageId, body, pendingMentions, attachedDocs]);
+
   const mentionablesQuery = useQuery({
     queryKey: qk.mentionables(startupId, debouncedQuery, ["member"]),
     queryFn: () => searchMentionables(startupId, { q: debouncedQuery, types: ["member"] }),
@@ -114,26 +145,55 @@ export function Composer({
   const items = mention ? (mentionablesQuery.data ?? []) : [];
 
   const sendMutation = useMutation({
-    mutationFn: () =>
-      sendMessage(startupId, conversationId, {
-        body: expandComposerMentions(body, pendingMentions).trim(),
-        clientNonce: nonceRef.current,
-        parentMessageId,
-        documentIds: attachedDocs.length > 0 ? attachedDocs.map((d) => d.id) : undefined,
-      }),
-    onSuccess: () => {
+    mutationFn: (input: SendMessageInput) => sendMessage(startupId, conversationId, input),
+    onMutate: (input) => {
+      const optimistic: Message = {
+        id: `optimistic:${input.clientNonce}`,
+        startupId,
+        conversationId,
+        seq: `optimistic:${Date.now()}`,
+        senderId: activeStartup?.member.id ?? null,
+        sender: user
+          ? {
+              id: activeStartup?.member.id ?? "current-member",
+              firstName: user.firstName,
+              lastName: user.lastName,
+              avatarUrl: user.avatarUrl,
+            }
+          : null,
+        body: input.body,
+        parentMessageId: input.parentMessageId ?? null,
+        replyCount: 0,
+        editedAt: null,
+        deletedAt: null,
+        createdAt: new Date().toISOString(),
+        reactions: [],
+        attachments: attachedDocs.map((doc) => ({
+          documentId: doc.id,
+          title: doc.label,
+          documentType: doc.sublabel ?? "document",
+        })),
+        deliveryState: "sending",
+        clientNonce: input.clientNonce,
+      };
+      insertOptimisticMessage(queryClient, startupId, optimistic);
       setBody("");
       setPendingMentions([]);
       setMention(null);
       setAttachedDocs([]);
-      // Only rotate the nonce once the send is confirmed an error leaves it
-      // in place so retrying the same draft can't double-post.
       nonceRef.current = crypto.randomUUID();
+      return { optimistic };
+    },
+    onSuccess: (delivered, _input, context) => {
+      replaceOptimisticMessage(queryClient, startupId, context.optimistic, delivered);
       void queryClient.invalidateQueries({ queryKey: qk.messages(startupId, conversationId) });
       void queryClient.invalidateQueries({ queryKey: qk.conversations(startupId) });
       onSent?.();
     },
-    onError: (err) => toast.error(apiErrorMessage(err, "Could not send that message")),
+    onError: (err, _input, context) => {
+      if (context) setOptimisticDeliveryState(queryClient, startupId, context.optimistic, "failed");
+      toast.error(apiErrorMessage(err, "Message failed to send. Retry it from the conversation."));
+    },
   });
 
   function updateMentionContext(value: string, cursor: number) {
@@ -205,7 +265,12 @@ export function Composer({
 
   function handleSend() {
     if (!body.trim() || sendMutation.isPending) return;
-    sendMutation.mutate();
+    sendMutation.mutate({
+      body: expandComposerMentions(body, pendingMentions).trim(),
+      clientNonce: nonceRef.current,
+      parentMessageId,
+      documentIds: attachedDocs.length > 0 ? attachedDocs.map((doc) => doc.id) : undefined,
+    });
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
