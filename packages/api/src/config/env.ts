@@ -15,7 +15,7 @@ const REQUIRED: Record<string, string[]> = {
     "GOOGLE_CLIENT_ID",
   ],
   // Only required once a deployment actually offers the Google integration —
-  // most self-hosted instances of this starter kit will never set these, and
+  // most self-hosted Raise instances will never set these, and
   // login-with-Google must keep working without them.
   googleIntegration: [
     "GOOGLE_CLIENT_SECRET",

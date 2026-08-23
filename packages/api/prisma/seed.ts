@@ -20,7 +20,7 @@ import type {
 // with src/db/prisma.ts because the seed script runs outside the API process.
 const prisma = new PrismaClient({
   adapter: new PrismaPg(
-    process.env.DATABASE_URL ?? "postgresql://postgres:postgres@localhost:5432/starter_kit",
+    process.env.DATABASE_URL ?? "postgresql://postgres:postgres@localhost:5432/raise",
   ),
 });
 

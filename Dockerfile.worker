@@ -29,10 +29,10 @@ RUN --mount=type=cache,target=/root/.npm \
 FROM deps AS build
 WORKDIR /app
 COPY . .
-RUN npm run build -w @starter-kit/api
+RUN npm run build -w @raise/api
 
 # Prune devDependencies to keep runtime node_modules lightweight
-RUN npm prune --omit=dev --workspace=@starter-kit/api
+RUN npm prune --omit=dev --workspace=@raise/api
 
 # ==========================================
 # Runtime Stage: Isolated Worker Runner

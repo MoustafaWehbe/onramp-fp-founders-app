@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 // Prisma 7 dropped the schema-declared datasource URL; the runtime client now
 // connects through an explicit driver adapter instead (prisma.config.ts
 // carries the URL for the CLI's migrate/studio/db-pull commands only).
-const adapter = new PrismaPg(process.env.DATABASE_URL ?? "postgresql://postgres:postgres@localhost:5432/starter_kit");
+const adapter = new PrismaPg(process.env.DATABASE_URL ?? "postgresql://postgres:postgres@localhost:5432/raise");
 
 export const prisma =
   globalForPrisma.prisma ??

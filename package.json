@@ -1,5 +1,5 @@
 {
-  "name": "starter-kit",
+  "name": "raise",
   "private": true,
   "version": "0.0.1",
   "workspaces": [
@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "dev": "turbo run dev",
-    "worker": "npm run worker --workspace=@starter-kit/api",
+    "worker": "npm run worker --workspace=@raise/api",
     "build": "turbo run build",
     "test": "turbo run test",
     "lint": "turbo run lint",

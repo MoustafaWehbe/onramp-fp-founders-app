@@ -1,4 +1,4 @@
-# Starter Kit
+# Raise
 
 A full-stack TypeScript monorepo with everything pre-configured so you can focus on building features.
 
