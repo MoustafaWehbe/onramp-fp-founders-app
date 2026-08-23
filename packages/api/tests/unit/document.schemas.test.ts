@@ -2,6 +2,7 @@ import {
   createUploadSessionSchema,
   createVersionUploadSchema,
   documentIdParamSchema,
+  documentPageParamSchema,
   listDocumentsQuerySchema,
   updateDocumentSchema,
   versionParamSchema,
@@ -108,5 +109,24 @@ describe("document params", () => {
         versionId: VER_ID,
       }).success,
     ).toBe(true);
+  });
+
+  it("coerces a bounded page number", () => {
+    const result = documentPageParamSchema.safeParse({
+      startupId: UUID,
+      documentId: DOC_ID,
+      versionId: VER_ID,
+      pageNumber: "8",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.pageNumber).toBe(8);
+    expect(
+      documentPageParamSchema.safeParse({
+        startupId: UUID,
+        documentId: DOC_ID,
+        versionId: VER_ID,
+        pageNumber: "0",
+      }).success,
+    ).toBe(false);
   });
 });

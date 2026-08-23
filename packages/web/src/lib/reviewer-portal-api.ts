@@ -134,6 +134,7 @@ export async function listReviewerComments(documentId?: string) {
 
 export async function createReviewerComment(body: {
   documentId?: string;
+  documentVersionId?: string;
   commentText: string;
 }) {
   const { data } = await reviewerPortalClient.post("/comments", body);

@@ -552,16 +552,22 @@ export class ReviewerPortalService {
       );
     }
     let documentTitle: string | null = null;
+    let pinnedVersionId: string | null = null;
     if (input.documentId) {
       const pinned = await prisma.reviewerInvitationDocument.findFirst({
         where: {
           invitationId,
           documentId: input.documentId,
+          ...(input.documentVersionId ? { documentVersionId: input.documentVersionId } : {}),
           ...(input.chunkId
             ? { documentVersion: { chunks: { some: { id: input.chunkId } } } }
             : {}),
         },
-        select: { id: true, document: { select: { title: true } } },
+        select: {
+          id: true,
+          documentVersionId: true,
+          document: { select: { title: true } },
+        },
       });
       if (!pinned) {
         throw createError(
@@ -573,6 +579,7 @@ export class ReviewerPortalService {
         );
       }
       documentTitle = pinned.document.title;
+      pinnedVersionId = pinned.documentVersionId;
     }
 
     const comment = await prisma.reviewerComment.create({
@@ -581,6 +588,7 @@ export class ReviewerPortalService {
         invitationId,
         startupId,
         documentId: input.documentId,
+        documentVersionId: input.documentVersionId ?? pinnedVersionId,
         chunkId: input.chunkId,
         commentText: input.commentText,
       },

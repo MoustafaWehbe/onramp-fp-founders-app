@@ -14,6 +14,7 @@ jest.mock("../../src/db/prisma", () => ({
       update: jest.fn(),
       updateMany: jest.fn(),
     },
+    documentPage: { findUnique: jest.fn() },
     aiAnalysis: { findMany: jest.fn() },
     reviewerInvitationDocument: { findMany: jest.fn() },
     reviewerVisit: { findMany: jest.fn() },
@@ -331,6 +332,42 @@ describe("DocumentService.getSignedReadUrl", () => {
       entityType: "document",
       entityId: DOC_ID,
     }));
+  });
+});
+
+describe("DocumentService.getPageAccess", () => {
+  it("returns only a page belonging to a tenant-scoped document version", async () => {
+    mockPrisma.document.findUnique.mockResolvedValue({ id: DOC_ID, title: "Pitch deck" } as never);
+    mockPrisma.documentVersion.findFirst.mockResolvedValue({
+      id: VER_ID,
+      versionNumber: 2,
+      renderStatus: "ready",
+    } as never);
+    mockPrisma.documentPage.findUnique.mockResolvedValue({
+      id: "page-8",
+      storageKey: "pages/page-8.webp",
+      storageProvider: "local",
+      width: 1200,
+      height: 1600,
+    } as never);
+    mockStorage.createSignedReadUrl.mockResolvedValue("/api/v1/documents/local-download/page");
+
+    const result = await documentService.getPageAccess(
+      STARTUP_ID,
+      DOC_ID,
+      VER_ID,
+      8,
+      USER_ID,
+    );
+
+    expect(result).toMatchObject({ versionId: VER_ID, versionNumber: 2, pageNumber: 8 });
+    expect(mockPrisma.documentVersion.findFirst).toHaveBeenCalledWith({
+      where: { id: VER_ID, documentId: DOC_ID },
+      select: { id: true, versionNumber: true, renderStatus: true },
+    });
+    expect(mockPrisma.documentPage.findUnique).toHaveBeenCalledWith({
+      where: { documentVersionId_pageNumber: { documentVersionId: VER_ID, pageNumber: 8 } },
+    });
   });
 });
 

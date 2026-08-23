@@ -28,6 +28,7 @@ type DocumentVersionsSheetProps = {
   onPreview: (version: DocumentVersion) => void;
   onDownload: (version: DocumentVersion) => void;
   canUpdate: boolean;
+  focusedVersionId?: string | null;
 };
 
 /**
@@ -43,6 +44,7 @@ export function DocumentVersionsSheet({
   onPreview,
   onDownload,
   canUpdate,
+  focusedVersionId = null,
 }: DocumentVersionsSheetProps) {
   const open = documentId !== null;
   const queryClient = useQueryClient();
@@ -126,6 +128,7 @@ export function DocumentVersionsSheet({
                   className={cn(
                     "rounded-lg border border-border p-3",
                     version.isCurrent && "border-primary/40 bg-primary/4",
+                    focusedVersionId === version.id && "ring-2 ring-primary/40",
                   )}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -141,6 +144,11 @@ export function DocumentVersionsSheet({
                           {version.isCurrent && (
                             <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
                               Current
+                            </span>
+                          )}
+                          {focusedVersionId === version.id && !version.isCurrent && (
+                            <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                              Reviewed version
                             </span>
                           )}
                         </div>

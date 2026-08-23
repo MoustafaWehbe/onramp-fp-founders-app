@@ -1,6 +1,7 @@
 import {
   createReviewerInvitationSchema,
   listReviewerInvitationsQuerySchema,
+  reviewerActivityQuerySchema,
 } from "../../src/validators/reviewer.schemas";
 import {
   reviewerAccessSchema,
@@ -79,6 +80,13 @@ describe("listReviewerInvitationsQuerySchema", () => {
   });
 });
 
+describe("reviewerActivityQuerySchema", () => {
+  it("defaults to 50 items and caps the timeline at 100", () => {
+    expect(reviewerActivityQuerySchema.parse({}).limit).toBe(50);
+    expect(reviewerActivityQuerySchema.safeParse({ limit: 101 }).success).toBe(false);
+  });
+});
+
 describe("reviewer portal schemas", () => {
   it("accepts access token", () => {
     expect(
@@ -104,5 +112,21 @@ describe("reviewer portal schemas", () => {
   it("requires comment text", () => {
     expect(reviewerCommentSchema.safeParse({ commentText: "" }).success).toBe(false);
     expect(reviewerCommentSchema.safeParse({ commentText: "Looks strong" }).success).toBe(true);
+  });
+
+  it("requires documentId when a comment pins an exact version", () => {
+    expect(
+      reviewerCommentSchema.safeParse({
+        documentVersionId: UUID,
+        commentText: "Version-specific feedback",
+      }).success,
+    ).toBe(false);
+    expect(
+      reviewerCommentSchema.safeParse({
+        documentId: UUID,
+        documentVersionId: UUID,
+        commentText: "Version-specific feedback",
+      }).success,
+    ).toBe(true);
   });
 });

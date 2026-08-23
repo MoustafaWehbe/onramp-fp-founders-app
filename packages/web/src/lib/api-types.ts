@@ -1663,6 +1663,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/startups/{startupId}/documents/{documentId}/versions/{versionId}/pages/{pageNumber}/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Get short-lived founder access to one rendered page */
+        post: operations["getDocumentPageAccess"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/startups/{startupId}/reviewer-invitations": {
         parameters: {
             query?: never;
@@ -1709,6 +1726,23 @@ export interface paths {
         };
         /** Per-invitation engagement and security analytics */
         get: operations["getReviewerInvitationAnalytics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/reviewer-invitations/{invitationId}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Chronological reviewer delivery, access, engagement, comment, and security activity */
+        get: operations["listReviewerInvitationActivity"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3691,6 +3725,8 @@ export interface components {
             /** Format: uuid */
             documentId?: string | null;
             /** Format: uuid */
+            documentVersionId?: string | null;
+            /** Format: uuid */
             chunkId?: string | null;
             commentText?: string;
             /** Format: date-time */
@@ -3702,9 +3738,29 @@ export interface components {
             /** Format: uuid */
             resolvedBy?: string | null;
         };
+        ReviewerActivity: {
+            id: string;
+            /** @enum {string} */
+            type: "invitation_created" | "invitation_sent" | "access_verified" | "visit_started" | "page_viewed" | "comment_added" | "security_event" | "review_completed" | "invitation_revoked";
+            /** Format: date-time */
+            occurredAt: string;
+            document: {
+                /** Format: uuid */
+                id?: string;
+                title?: string;
+                /** Format: uuid */
+                versionId?: string;
+            } | null;
+            pageNumber: number | null;
+            details: {
+                [key: string]: unknown;
+            };
+        };
         CreateReviewerCommentBody: {
             /** Format: uuid */
             documentId?: string | null;
+            /** Format: uuid */
+            documentVersionId?: string | null;
             /** Format: uuid */
             chunkId?: string | null;
             commentText: string;
@@ -9082,6 +9138,43 @@ export interface operations {
             };
         };
     };
+    getDocumentPageAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                documentId: string;
+                versionId: string;
+                pageNumber: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed rendered-page access and exact document context */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Document, version, or page not found in this startup */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version rendering is not ready */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     listReviewerInvitations: {
         parameters: {
             query?: never;
@@ -9165,6 +9258,33 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listReviewerInvitationActivity: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                startupId: string;
+                invitationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Most recent activity, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["ReviewerActivity"][];
+                    };
+                };
             };
         };
     };

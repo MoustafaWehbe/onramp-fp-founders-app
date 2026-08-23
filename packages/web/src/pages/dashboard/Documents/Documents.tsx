@@ -30,6 +30,10 @@ import {
 } from "../../../lib/document-api";
 import { DocumentAnalyticsSheet } from "./DocumentAnalyticsSheet";
 import { DocumentFormDialog, type DocumentFormValues } from "./DocumentFormDialog";
+import {
+  DocumentPagePreviewDialog,
+  type DocumentPageContext,
+} from "./DocumentPagePreviewDialog";
 import { DocumentVersionsSheet } from "./DocumentVersionsSheet";
 import { DocumentsCardList } from "./DocumentsCardList";
 import { DocumentsTable } from "./DocumentsTable";
@@ -62,8 +66,10 @@ export function Documents() {
   const [editingDoc, setEditingDoc] = useState<VaultDocument | null>(null);
   const [lifecycleTarget, setLifecycleTarget] = useState<VaultDocument | null>(null);
   const [versionsSheetDocId, setVersionsSheetDocId] = useState<string | null>(null);
+  const [focusedVersionId, setFocusedVersionId] = useState<string | null>(null);
   const [analyticsSheetDocId, setAnalyticsSheetDocId] = useState<string | null>(null);
   const [focusedDocumentId, setFocusedDocumentId] = useState<string | null>(null);
+  const [pagePreviewContext, setPagePreviewContext] = useState<DocumentPageContext | null>(null);
 
   useEffect(() => {
     setSelectedIds(null);
@@ -74,22 +80,45 @@ export function Documents() {
   useEffect(() => {
     if (!deepLinkDocumentId) return;
     const id = deepLinkDocumentId;
+    const versionId = searchParams.get("version");
+    const requestedPage = Number(searchParams.get("page"));
+    const previewPage =
+      searchParams.get("preview") === "1" &&
+      Boolean(versionId) &&
+      Number.isInteger(requestedPage) &&
+      requestedPage > 0;
     setFocusedDocumentId(id);
-    // Force a clean open even if the sheet was already showing another doc.
-    setVersionsSheetDocId(null);
-    const timer = window.setTimeout(() => setVersionsSheetDocId(id), 0);
+    let timer: number | undefined;
+    if (previewPage) {
+      setPagePreviewContext({
+        documentId: id,
+        versionId: versionId as string,
+        pageNumber: requestedPage,
+        sectionLabel: searchParams.get("section"),
+      });
+    } else {
+      setFocusedVersionId(versionId);
+      // Force a clean open even if the sheet was already showing another doc.
+      setVersionsSheetDocId(null);
+      timer = window.setTimeout(() => setVersionsSheetDocId(id), 0);
+    }
     setSearchParams(
       (prev) => {
         if (!prev.has("document")) return prev;
         const next = new URLSearchParams(prev);
         next.delete("document");
         next.delete("preview");
+        next.delete("version");
+        next.delete("page");
+        next.delete("section");
         return next;
       },
       { replace: true },
     );
-    return () => window.clearTimeout(timer);
-  }, [deepLinkDocumentId, setSearchParams]);
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [deepLinkDocumentId, searchParams, setSearchParams]);
 
   const queryKey = ["documents", startupId, search, filters.documentType, filters.lifecycle];
 
@@ -470,7 +499,10 @@ export function Documents() {
                   versionInputRef.current?.click();
                 }}
                 onEdit={setEditingDoc}
-                onViewVersions={(doc) => setVersionsSheetDocId(doc.id)}
+                onViewVersions={(doc) => {
+                  setFocusedVersionId(null);
+                  setVersionsSheetDocId(doc.id);
+                }}
                 onViewAnalytics={(doc) => setAnalyticsSheetDocId(doc.id)}
                 onArchive={setLifecycleTarget}
                 onRestore={setLifecycleTarget}
@@ -493,7 +525,10 @@ export function Documents() {
                 versionInputRef.current?.click();
               }}
               onEdit={setEditingDoc}
-              onViewVersions={(doc) => setVersionsSheetDocId(doc.id)}
+              onViewVersions={(doc) => {
+                setFocusedVersionId(null);
+                setVersionsSheetDocId(doc.id);
+              }}
               onViewAnalytics={(doc) => setAnalyticsSheetDocId(doc.id)}
               onArchive={setLifecycleTarget}
               onRestore={setLifecycleTarget}
@@ -527,7 +562,13 @@ export function Documents() {
       <DocumentVersionsSheet
         startupId={startupId}
         documentId={versionsSheetDocId}
-        onOpenChange={(next) => !next && setVersionsSheetDocId(null)}
+        focusedVersionId={focusedVersionId}
+        onOpenChange={(next) => {
+          if (!next) {
+            setVersionsSheetDocId(null);
+            setFocusedVersionId(null);
+          }
+        }}
         onPreview={(version) => openVersion(version, "preview")}
         onDownload={(version) => openVersion(version, "download")}
         canUpdate={canUpdate}
@@ -557,6 +598,12 @@ export function Documents() {
         pendingLabel={lifecycleTarget?.archivedAt ? "Restoring…" : "Archiving…"}
         isPending={lifecycleMutation.isPending}
         onConfirm={() => lifecycleTarget && lifecycleMutation.mutate(lifecycleTarget)}
+      />
+
+      <DocumentPagePreviewDialog
+        startupId={startupId}
+        context={pagePreviewContext}
+        onOpenChange={(next) => !next && setPagePreviewContext(null)}
       />
 
       <ConfirmDialog

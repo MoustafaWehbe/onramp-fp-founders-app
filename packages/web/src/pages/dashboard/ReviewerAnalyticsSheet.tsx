@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Clock, Copy, Eye, FileWarning, Lock, Printer, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, Copy, Eye, FileText, FileWarning, Link2, Lock, MailCheck, MessageSquare, Printer, ShieldCheck, UserCheck } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import {
@@ -13,7 +14,13 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { PerPageTimeChart } from "../../components/shared/PerPageTimeChart";
 import { StatTile } from "../../components/shared/StatTile";
 import { apiErrorMessage } from "../../lib/api-error";
-import { getReviewerInvitationAnalytics, reviewerStatusClass } from "../../lib/reviewer-api";
+import {
+  getReviewerInvitationAnalytics,
+  listReviewerInvitationActivity,
+  reviewerDocumentContextHref,
+  reviewerStatusClass,
+  type ReviewerActivityItem,
+} from "../../lib/reviewer-api";
 import { formatDate, formatDuration } from "../../lib/utils";
 
 type ReviewerAnalyticsSheetProps = {
@@ -30,6 +37,35 @@ const SECURITY_META: Record<string, { label: string; icon: typeof Copy }> = {
   download_completed: { label: "Downloads", icon: FileWarning },
 };
 
+const ACTIVITY_META: Record<ReviewerActivityItem["type"], { label: string; icon: typeof Clock }> = {
+  invitation_created: { label: "Invitation created", icon: Link2 },
+  invitation_sent: { label: "Invitation email sent", icon: MailCheck },
+  access_verified: { label: "Reviewer verified access", icon: UserCheck },
+  visit_started: { label: "Review session started", icon: Eye },
+  page_viewed: { label: "Page viewed", icon: FileText },
+  comment_added: { label: "Comment added", icon: MessageSquare },
+  security_event: { label: "Security signal recorded", icon: AlertTriangle },
+  review_completed: { label: "Review completed", icon: CheckCircle2 },
+  invitation_revoked: { label: "Invitation revoked", icon: Lock },
+};
+
+function activityDescription(item: ReviewerActivityItem) {
+  if (item.type === "visit_started") {
+    const device = [item.details.deviceType, item.details.os, item.details.browser]
+      .filter(Boolean)
+      .join(" · ");
+    return `${item.details.pagesViewed ?? 0} pages · ${formatDuration(Number(item.details.totalActiveMs ?? 0))}${device ? ` · ${device}` : ""}`;
+  }
+  if (item.type === "page_viewed") {
+    return `${item.document?.title ?? "Document"}${item.pageNumber ? ` · page ${item.pageNumber}` : ""} · ${formatDuration(Number(item.details.activeMs ?? 0))}`;
+  }
+  if (item.type === "comment_added") return String(item.details.excerpt ?? "Reviewer feedback");
+  if (item.type === "security_event") {
+    return String(item.details.eventType ?? "Security event").replace(/_/g, " ");
+  }
+  return null;
+}
+
 export function ReviewerAnalyticsSheet({
   startupId,
   invitationId,
@@ -40,6 +76,12 @@ export function ReviewerAnalyticsSheet({
   const query = useQuery({
     queryKey: ["reviewer-invitations", startupId, "analytics", invitationId],
     queryFn: () => getReviewerInvitationAnalytics(startupId, invitationId as string),
+    enabled: open,
+  });
+
+  const activityQuery = useQuery({
+    queryKey: ["reviewer-invitations", startupId, "activity", invitationId],
+    queryFn: () => listReviewerInvitationActivity(startupId, invitationId as string, 50),
     enabled: open,
   });
 
@@ -201,6 +243,70 @@ export function ReviewerAnalyticsSheet({
                     );
                   })}
                 </div>
+              )}
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-sm font-medium">Activity timeline</h3>
+              {activityQuery.isPending ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 4 }, (_, index) => (
+                    <Skeleton key={index} className="h-14 w-full" />
+                  ))}
+                </div>
+              ) : activityQuery.isError ? (
+                <p className="text-xs text-destructive">
+                  {apiErrorMessage(activityQuery.error, "Could not load activity timeline")}
+                </p>
+              ) : activityQuery.data?.length ? (
+                <ol className="space-y-1.5">
+                  {activityQuery.data.map((item) => {
+                    const meta = ACTIVITY_META[item.type];
+                    const Icon = meta.icon;
+                    const description = activityDescription(item);
+                    const contextHref = item.document
+                      ? reviewerDocumentContextHref({
+                          documentId: item.document.id,
+                          versionId: item.document.versionId,
+                          pageNumber: item.pageNumber,
+                          sectionLabel:
+                            typeof item.details.sectionLabel === "string"
+                              ? item.details.sectionLabel
+                              : null,
+                        })
+                      : null;
+                    return (
+                      <li
+                        key={item.id}
+                        className="flex items-start gap-2.5 rounded-md border border-border/70 p-2.5"
+                      >
+                        <div className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                          <Icon className="h-3.5 w-3.5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center justify-between gap-1">
+                            <span className="text-xs font-medium">{meta.label}</span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {formatDate(item.occurredAt)}
+                            </span>
+                          </div>
+                          {description && (
+                            <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                              {description}
+                            </p>
+                          )}
+                          {contextHref && (
+                            <Button asChild variant="link" size="sm" className="mt-1 h-auto p-0 text-xs">
+                              <Link to={contextHref}>Open exact context</Link>
+                            </Button>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : (
+                <p className="text-xs text-muted-foreground">No reviewer activity recorded yet.</p>
               )}
             </div>
           </div>

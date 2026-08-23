@@ -26,9 +26,20 @@ describe("ReviewerCommentService", () => {
         createdAt: new Date(),
         readAt: null,
         resolvedAt: null,
-        invitation: { id: "invite-1", reviewerName: "Ada", emailNormalized: "ada@vc.test" },
+        invitation: {
+          id: "invite-1",
+          reviewerName: "Ada",
+          emailNormalized: "ada@vc.test",
+          documents: [{ documentId: "doc-1", documentVersionId: "version-2" }],
+        },
         document: { id: "doc-1", title: "Series A deck" },
-        chunk: { id: "chunk-1", sectionLabel: "Growth", pageNumber: 8 },
+        documentVersionId: "version-2",
+        chunk: {
+          id: "chunk-1",
+          documentVersionId: "version-2",
+          sectionLabel: "Growth",
+          pageNumber: 8,
+        },
         resolver: null,
       },
     ] as never);
@@ -50,6 +61,7 @@ describe("ReviewerCommentService", () => {
     );
     expect(result.meta).toMatchObject({ total: 1, unreadCount: 1, openCount: 1 });
     expect(result.data[0]).toMatchObject({ reviewerName: "Ada", commentText: expect.any(String) });
+    expect(result.data[0].document).toMatchObject({ versionId: "version-2" });
   });
 
   it("resolves only a comment belonging to the requested startup", async () => {

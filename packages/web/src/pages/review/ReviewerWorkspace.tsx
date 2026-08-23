@@ -34,6 +34,10 @@ export function ReviewerWorkspace() {
 
   const documents = useMemo(() => workspaceQuery.data?.documents ?? [], [workspaceQuery.data]);
   const activeDocumentId = selectedDocumentId ?? documents[0]?.documentId ?? null;
+  const activeDoc = useMemo(
+    () => documents.find((doc) => doc.documentId === activeDocumentId) ?? null,
+    [activeDocumentId, documents],
+  );
 
   const commentsQuery = useQuery({
     queryKey: ["reviewer-comments", activeDocumentId],
@@ -63,6 +67,7 @@ export function ReviewerWorkspace() {
     mutationFn: () =>
       createReviewerComment({
         documentId: activeDocumentId ?? undefined,
+        documentVersionId: activeDoc?.versionId,
         commentText: comment.trim(),
       }),
     onSuccess: () => {
@@ -92,11 +97,6 @@ export function ReviewerWorkspace() {
     onSuccess: () => void workspaceQuery.refetch(),
     onError: (error) => toast.error(apiErrorMessage(error, "Could not record NDA acceptance")),
   });
-
-  const activeDoc = useMemo(
-    () => documents.find((doc) => doc.documentId === activeDocumentId) ?? null,
-    [activeDocumentId, documents],
-  );
 
   if (workspaceQuery.isError) {
     navigate("/review/expired", { replace: true });

@@ -13,11 +13,16 @@ export const reviewerVerifySchema = z.object({
 export const reviewerCommentSchema = z
   .object({
     documentId: z.string().guid().optional(),
+    documentVersionId: z.string().guid().optional(),
     chunkId: z.string().guid().optional(),
     commentText: z.string().trim().min(1).max(4000),
   })
   .refine((value) => !value.chunkId || Boolean(value.documentId), {
     message: "documentId is required when commenting on a document section",
+    path: ["documentId"],
+  })
+  .refine((value) => !value.documentVersionId || Boolean(value.documentId), {
+    message: "documentId is required when commenting on a document version",
     path: ["documentId"],
   });
 

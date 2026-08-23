@@ -2650,6 +2650,10 @@ components:
           type: string
           format: uuid
           nullable: true
+        documentVersionId:
+          type: string
+          format: uuid
+          nullable: true
         chunkId:
           type: string
           format: uuid
@@ -2672,11 +2676,45 @@ components:
           format: uuid
           nullable: true
 
+    ReviewerActivity:
+      type: object
+      required: [id, type, occurredAt, document, pageNumber, details]
+      properties:
+        id: { type: string }
+        type:
+          type: string
+          enum:
+            - invitation_created
+            - invitation_sent
+            - access_verified
+            - visit_started
+            - page_viewed
+            - comment_added
+            - security_event
+            - review_completed
+            - invitation_revoked
+        occurredAt: { type: string, format: date-time }
+        document:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string, format: uuid }
+            title: { type: string }
+            versionId: { type: string, format: uuid }
+        pageNumber: { type: integer, nullable: true }
+        details:
+          type: object
+          additionalProperties: true
+
     CreateReviewerCommentBody:
       type: object
       required: [commentText]
       properties:
         documentId:
+          type: string
+          format: uuid
+          nullable: true
+        documentVersionId:
           type: string
           format: uuid
           nullable: true
@@ -7657,6 +7695,38 @@ paths:
         "200":
           description: Signed access
 
+  /startups/{startupId}/documents/{documentId}/versions/{versionId}/pages/{pageNumber}/access:
+    post:
+      tags: [Document Versions]
+      summary: Get short-lived founder access to one rendered page
+      operationId: getDocumentPageAccess
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: versionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: pageNumber
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1, maximum: 500 }
+      responses:
+        "200":
+          description: Signed rendered-page access and exact document context
+        "404":
+          description: Document, version, or page not found in this startup
+        "409":
+          description: Version rendering is not ready
+
   /startups/{startupId}/reviewer-invitations:
     parameters:
       - name: startupId
@@ -7737,6 +7807,37 @@ paths:
       responses:
         "200":
           description: Analytics
+
+  /startups/{startupId}/reviewer-invitations/{invitationId}/activity:
+    get:
+      tags: [Reviewer Invitations]
+      summary: Chronological reviewer delivery, access, engagement, comment, and security activity
+      operationId: listReviewerInvitationActivity
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: invitationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        "200":
+          description: Most recent activity, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/ReviewerActivity" }
 
   /startups/{startupId}/reviewer-invitations/{invitationId}/resend:
     post:

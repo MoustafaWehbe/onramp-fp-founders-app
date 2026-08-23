@@ -361,27 +361,30 @@ model ReviewerSession {
 }
 
 model ReviewerComment {
-  id           String    @id @default(uuid())
-  sessionId    String    @map("session_id")
-  invitationId String    @map("invitation_id")
-  startupId    String    @map("startup_id")
-  documentId   String?   @map("document_id")
-  chunkId      String?   @map("chunk_id")
-  commentText  String    @map("comment_text")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  readAt       DateTime? @map("read_at")
-  resolvedAt   DateTime? @map("resolved_at")
-  resolvedBy   String?   @map("resolved_by")
+  id                String    @id @default(uuid())
+  sessionId         String    @map("session_id")
+  invitationId      String    @map("invitation_id")
+  startupId         String    @map("startup_id")
+  documentId        String?   @map("document_id")
+  documentVersionId String?   @map("document_version_id")
+  chunkId           String?   @map("chunk_id")
+  commentText       String    @map("comment_text")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  readAt            DateTime? @map("read_at")
+  resolvedAt        DateTime? @map("resolved_at")
+  resolvedBy        String?   @map("resolved_by")
 
-  session    ReviewerSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  invitation ReviewerInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
-  startup    Startup            @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  document   Document?          @relation(fields: [documentId], references: [id])
-  chunk      DocumentChunk?     @relation(fields: [chunkId], references: [id])
-  resolver   User?              @relation("ReviewerCommentResolver", fields: [resolvedBy], references: [id], onDelete: SetNull)
+  session         ReviewerSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  invitation      ReviewerInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  startup         Startup            @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  document        Document?          @relation(fields: [documentId], references: [id])
+  documentVersion DocumentVersion?   @relation(fields: [documentVersionId], references: [id])
+  chunk           DocumentChunk?     @relation(fields: [chunkId], references: [id])
+  resolver        User?              @relation("ReviewerCommentResolver", fields: [resolvedBy], references: [id], onDelete: SetNull)
 
   @@index([startupId, resolvedAt, createdAt])
   @@index([invitationId, createdAt])
+  @@index([documentVersionId, createdAt])
   @@map("reviewer_comments")
 }
 
@@ -729,6 +732,7 @@ model DocumentVersion {
   aiAnalyses                  AiAnalysis[]
   aiChatSessionDocuments      AiChatSessionDocument[]
   reviewerInvitationDocuments ReviewerInvitationDocument[]
+  reviewerComments            ReviewerComment[]
 
   @@unique([documentId, versionNumber])
   @@unique([documentId, id])

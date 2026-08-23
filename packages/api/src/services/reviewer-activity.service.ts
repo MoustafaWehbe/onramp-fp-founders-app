@@ -48,7 +48,7 @@ export class ReviewerActivityService {
         where: { invitationId, verifiedAt: { not: null } },
         orderBy: { verifiedAt: "desc" },
         take: limit,
-        select: { id: true, verifiedAt: true, userAgent: true },
+        select: { id: true, verifiedAt: true },
       }),
       prisma.reviewerVisit.findMany({
         where: { invitationId },
@@ -86,6 +86,7 @@ export class ReviewerActivityService {
         select: {
           id: true,
           documentId: true,
+          documentVersionId: true,
           commentText: true,
           createdAt: true,
           chunk: { select: { documentVersionId: true, pageNumber: true, sectionLabel: true } },
@@ -156,7 +157,7 @@ export class ReviewerActivityService {
         occurredAt: session.verifiedAt,
         document: null,
         pageNumber: null,
-        details: { userAgent: session.userAgent },
+        details: {},
       });
     }
     for (const visit of visits) {
@@ -188,7 +189,7 @@ export class ReviewerActivityService {
       });
     }
     for (const comment of comments) {
-      const versionId = comment.chunk?.documentVersionId;
+      const versionId = comment.documentVersionId ?? comment.chunk?.documentVersionId;
       items.push({
         id: `comment-added-${comment.id}`,
         type: "comment_added",

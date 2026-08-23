@@ -545,6 +545,7 @@ describe("ReviewerPortalService.createComment", () => {
   it("accepts a section comment only when the chunk belongs to the pinned document version", async () => {
     mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue({
       id: "pin-1",
+      documentVersionId: VERSION_ID,
       document: { title: "Series A deck" },
     } as never);
     mockPrisma.reviewerComment.create.mockResolvedValue({ id: "comment-1" } as never);
@@ -564,9 +565,15 @@ describe("ReviewerPortalService.createComment", () => {
           chunks: { some: { id: "00000000-0000-0000-0000-000000000041" } },
         },
       },
-      select: { id: true, document: { select: { title: true } } },
+      select: {
+        id: true,
+        documentVersionId: true,
+        document: { select: { title: true } },
+      },
     });
-    expect(mockPrisma.reviewerComment.create).toHaveBeenCalled();
+    expect(mockPrisma.reviewerComment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ documentVersionId: VERSION_ID }),
+    });
   });
 
   it("rejects a chunk that is not part of the invitation-pinned version", async () => {

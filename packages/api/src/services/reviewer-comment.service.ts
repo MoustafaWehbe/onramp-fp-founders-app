@@ -61,6 +61,7 @@ export class ReviewerCommentService {
           ? {
               ...row.document,
               versionId:
+                row.documentVersionId ??
                 row.chunk?.documentVersionId ??
                 row.invitation.documents.find((item) => item.documentId === row.documentId)
                   ?.documentVersionId ??
