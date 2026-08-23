@@ -5,6 +5,7 @@ import path from "path";
 import { createHash } from "crypto";
 import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { hashPassword } from "../src/utils/auth";
 import { PERMISSIONS, ROLE_TEMPLATES } from "../src/config/permissions";
 import { PIPELINE_STAGES } from "../src/config/crm";
@@ -15,7 +16,13 @@ import type {
   Priority,
 } from "../src/config/crm";
 
-const prisma = new PrismaClient();
+// Prisma 7 requires an explicit driver adapter at runtime. Keep this in sync
+// with src/db/prisma.ts because the seed script runs outside the API process.
+const prisma = new PrismaClient({
+  adapter: new PrismaPg(
+    process.env.DATABASE_URL ?? "postgresql://postgres:postgres@localhost:5432/starter_kit",
+  ),
+});
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
