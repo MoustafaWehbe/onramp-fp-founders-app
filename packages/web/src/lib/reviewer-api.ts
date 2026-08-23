@@ -240,11 +240,14 @@ export type ReviewerActivityItem = {
 export async function listReviewerInvitationActivity(
   startupId: string,
   invitationId: string,
-  limit = 50,
+  options: { limit?: number; cursor?: string } = {},
 ) {
-  const { data } = await apiClient.get<{ data: ReviewerActivityItem[] }>(
+  const { data } = await apiClient.get<{
+    data: ReviewerActivityItem[];
+    pagination: { hasMore: boolean; nextCursor: string | null };
+  }>(
     `/startups/${startupId}/reviewer-invitations/${invitationId}/activity`,
-    { params: { limit } },
+    { params: { limit: options.limit ?? 25, cursor: options.cursor } },
   );
-  return data.data;
+  return data;
 }

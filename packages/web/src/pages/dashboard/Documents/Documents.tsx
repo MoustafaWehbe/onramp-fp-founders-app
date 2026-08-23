@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, Upload } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
@@ -77,6 +77,22 @@ export function Documents() {
 
   // Header search deep-link: open that exact document's versions panel.
   const deepLinkDocumentId = searchParams.get("document");
+  const clearDeepLinkContext = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        if (!prev.has("document")) return prev;
+        const next = new URLSearchParams(prev);
+        next.delete("document");
+        next.delete("preview");
+        next.delete("version");
+        next.delete("page");
+        next.delete("section");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [setSearchParams]);
+
   useEffect(() => {
     if (!deepLinkDocumentId) return;
     const id = deepLinkDocumentId;
@@ -102,23 +118,10 @@ export function Documents() {
       setVersionsSheetDocId(null);
       timer = window.setTimeout(() => setVersionsSheetDocId(id), 0);
     }
-    setSearchParams(
-      (prev) => {
-        if (!prev.has("document")) return prev;
-        const next = new URLSearchParams(prev);
-        next.delete("document");
-        next.delete("preview");
-        next.delete("version");
-        next.delete("page");
-        next.delete("section");
-        return next;
-      },
-      { replace: true },
-    );
     return () => {
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [deepLinkDocumentId, searchParams, setSearchParams]);
+  }, [deepLinkDocumentId, searchParams]);
 
   const queryKey = ["documents", startupId, search, filters.documentType, filters.lifecycle];
 
@@ -567,6 +570,7 @@ export function Documents() {
           if (!next) {
             setVersionsSheetDocId(null);
             setFocusedVersionId(null);
+            clearDeepLinkContext();
           }
         }}
         onPreview={(version) => openVersion(version, "preview")}
@@ -603,7 +607,12 @@ export function Documents() {
       <DocumentPagePreviewDialog
         startupId={startupId}
         context={pagePreviewContext}
-        onOpenChange={(next) => !next && setPagePreviewContext(null)}
+        onOpenChange={(next) => {
+          if (!next) {
+            setPagePreviewContext(null);
+            clearDeepLinkContext();
+          }
+        }}
       />
 
       <ConfirmDialog

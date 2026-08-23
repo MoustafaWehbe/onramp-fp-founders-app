@@ -70,12 +70,13 @@ export const reviewerInvitationController = {
   }),
 
   listActivity: asyncHandler(async (req, res) => {
+    const query = req.query as unknown as ReviewerActivityQuery;
     const activity = await reviewerActivityService.list(
       req.params.startupId as string,
       req.params.invitationId as string,
-      (req.query as unknown as ReviewerActivityQuery).limit,
+      query,
     );
-    res.json({ data: activity });
+    res.json(activity);
   }),
 
   revokeInvitation: asyncHandler(async (req, res) => {

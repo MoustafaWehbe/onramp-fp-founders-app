@@ -81,9 +81,14 @@ describe("listReviewerInvitationsQuerySchema", () => {
 });
 
 describe("reviewerActivityQuerySchema", () => {
-  it("defaults to 50 items and caps the timeline at 100", () => {
-    expect(reviewerActivityQuerySchema.parse({}).limit).toBe(50);
+  it("defaults to 25 items and caps the timeline at 100", () => {
+    expect(reviewerActivityQuerySchema.parse({}).limit).toBe(25);
     expect(reviewerActivityQuerySchema.safeParse({ limit: 101 }).success).toBe(false);
+  });
+
+  it("accepts only bounded URL-safe cursors", () => {
+    expect(reviewerActivityQuerySchema.safeParse({ cursor: "abc_DEF-123" }).success).toBe(true);
+    expect(reviewerActivityQuerySchema.safeParse({ cursor: "not a cursor" }).success).toBe(false);
   });
 });
 

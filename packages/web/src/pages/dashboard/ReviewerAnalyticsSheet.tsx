@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Clock, Copy, Eye, FileText, FileWarning, Link2, Lock, MailCheck, MessageSquare, Printer, ShieldCheck, UserCheck } from "lucide-react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { AlertTriangle, CheckCircle2, Clock, Copy, Eye, FileText, FileWarning, Link2, Loader2, Lock, MailCheck, MessageSquare, Printer, ShieldCheck, UserCheck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -79,13 +79,20 @@ export function ReviewerAnalyticsSheet({
     enabled: open,
   });
 
-  const activityQuery = useQuery({
+  const activityQuery = useInfiniteQuery({
     queryKey: ["reviewer-invitations", startupId, "activity", invitationId],
-    queryFn: () => listReviewerInvitationActivity(startupId, invitationId as string, 50),
+    queryFn: ({ pageParam }) =>
+      listReviewerInvitationActivity(startupId, invitationId as string, {
+        limit: 25,
+        cursor: pageParam,
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.pagination.nextCursor ?? undefined,
     enabled: open,
   });
 
   const data = query.data;
+  const activity = activityQuery.data?.pages.flatMap((page) => page.data) ?? [];
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -254,13 +261,14 @@ export function ReviewerAnalyticsSheet({
                     <Skeleton key={index} className="h-14 w-full" />
                   ))}
                 </div>
-              ) : activityQuery.isError ? (
+              ) : activityQuery.isError && activity.length === 0 ? (
                 <p className="text-xs text-destructive">
                   {apiErrorMessage(activityQuery.error, "Could not load activity timeline")}
                 </p>
-              ) : activityQuery.data?.length ? (
-                <ol className="space-y-1.5">
-                  {activityQuery.data.map((item) => {
+              ) : activity.length ? (
+                <>
+                <ol className="space-y-1.5" aria-label="Reviewer activity, newest first">
+                  {activity.map((item) => {
                     const meta = ACTIVITY_META[item.type];
                     const Icon = meta.icon;
                     const description = activityDescription(item);
@@ -297,7 +305,9 @@ export function ReviewerAnalyticsSheet({
                           )}
                           {contextHref && (
                             <Button asChild variant="link" size="sm" className="mt-1 h-auto p-0 text-xs">
-                              <Link to={contextHref}>Open exact context</Link>
+                              <Link to={contextHref} aria-label={`Open ${item.document?.title ?? "document"}${item.pageNumber ? ` at page ${item.pageNumber}` : ""}`}>
+                                Open exact context
+                              </Link>
                             </Button>
                           )}
                         </div>
@@ -305,6 +315,39 @@ export function ReviewerAnalyticsSheet({
                     );
                   })}
                 </ol>
+                {activityQuery.hasNextPage && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 w-full"
+                    disabled={activityQuery.isFetchingNextPage}
+                    onClick={() => void activityQuery.fetchNextPage()}
+                  >
+                    {activityQuery.isFetchingNextPage ? (
+                      <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Loading earlier activity</>
+                    ) : (
+                      "Load earlier activity"
+                    )}
+                  </Button>
+                )}
+                {activityQuery.isFetchNextPageError && (
+                  <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
+                    <span>{apiErrorMessage(activityQuery.error, "Could not load earlier activity")}</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void activityQuery.fetchNextPage()}
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                )}
+                <span className="sr-only" role="status" aria-live="polite">
+                  {activityQuery.isFetchingNextPage ? "Loading earlier reviewer activity" : `${activity.length} activity items loaded`}
+                </span>
+                </>
               ) : (
                 <p className="text-xs text-muted-foreground">No reviewer activity recorded yet.</p>
               )}

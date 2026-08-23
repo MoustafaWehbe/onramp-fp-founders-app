@@ -1,5 +1,6 @@
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
+import type { ReviewerActivityQuery } from "../validators/reviewer.schemas";
 
 export type ReviewerActivityType =
   | "invitation_created"
@@ -21,8 +22,42 @@ type ActivityItem = {
   details: Record<string, string | number | boolean | null>;
 };
 
+type ActivityCursor = Pick<ActivityItem, "id" | "occurredAt">;
+
+function encodeCursor(item: ActivityCursor) {
+  return Buffer.from(JSON.stringify({ id: item.id, occurredAt: item.occurredAt.toISOString() }))
+    .toString("base64url");
+}
+
+function decodeCursor(value?: string): ActivityCursor | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as {
+      id?: unknown;
+      occurredAt?: unknown;
+    };
+    if (typeof parsed.id !== "string" || typeof parsed.occurredAt !== "string") throw new Error();
+    const occurredAt = new Date(parsed.occurredAt);
+    if (Number.isNaN(occurredAt.getTime())) throw new Error();
+    return { id: parsed.id, occurredAt };
+  } catch {
+    throw createError("Invalid activity cursor", 400, "INVALID_ACTIVITY_CURSOR");
+  }
+}
+
+function compareActivity(a: ActivityCursor, b: ActivityCursor) {
+  const timeDifference = b.occurredAt.getTime() - a.occurredAt.getTime();
+  return timeDifference || b.id.localeCompare(a.id);
+}
+
+function isAfterCursor(item: ActivityCursor, cursor: ActivityCursor | null) {
+  return cursor === null || compareActivity(item, cursor) > 0;
+}
+
 export class ReviewerActivityService {
-  async list(startupId: string, invitationId: string, limit: number) {
+  async list(startupId: string, invitationId: string, query: ReviewerActivityQuery) {
+    const { limit } = query;
+    const take = limit + 1;
     const invitation = await prisma.reviewerInvitation.findUnique({
       where: { startupId_id: { startupId, id: invitationId } },
       select: {
@@ -35,6 +70,9 @@ export class ReviewerActivityService {
     });
     if (!invitation) throw createError("Invitation not found", 404, "INVITATION_NOT_FOUND");
 
+    const cursor = decodeCursor(query.cursor);
+    const throughCursor = cursor ? { lte: cursor.occurredAt } : undefined;
+
     const [pinned, sessions, visits, pageViews, comments, events] = await Promise.all([
       prisma.reviewerInvitationDocument.findMany({
         where: { invitationId },
@@ -45,15 +83,18 @@ export class ReviewerActivityService {
         },
       }),
       prisma.reviewerSession.findMany({
-        where: { invitationId, verifiedAt: { not: null } },
-        orderBy: { verifiedAt: "desc" },
-        take: limit,
+        where: {
+          invitationId,
+          verifiedAt: cursor ? { not: null, lte: cursor.occurredAt } : { not: null },
+        },
+        orderBy: [{ verifiedAt: "desc" }, { id: "desc" }],
+        take,
         select: { id: true, verifiedAt: true },
       }),
       prisma.reviewerVisit.findMany({
-        where: { invitationId },
-        orderBy: { startedAt: "desc" },
-        take: limit,
+        where: { invitationId, ...(throughCursor ? { startedAt: throughCursor } : {}) },
+        orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+        take,
         select: {
           id: true,
           startedAt: true,
@@ -67,9 +108,12 @@ export class ReviewerActivityService {
         },
       }),
       prisma.reviewerPageView.findMany({
-        where: { visit: { invitationId } },
-        orderBy: { firstViewedAt: "desc" },
-        take: limit,
+        where: {
+          visit: { invitationId },
+          ...(throughCursor ? { firstViewedAt: throughCursor } : {}),
+        },
+        orderBy: [{ firstViewedAt: "desc" }, { id: "desc" }],
+        take,
         select: {
           id: true,
           documentVersionId: true,
@@ -80,9 +124,9 @@ export class ReviewerActivityService {
         },
       }),
       prisma.reviewerComment.findMany({
-        where: { startupId, invitationId },
-        orderBy: { createdAt: "desc" },
-        take: limit,
+        where: { startupId, invitationId, ...(throughCursor ? { createdAt: throughCursor } : {}) },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take,
         select: {
           id: true,
           documentId: true,
@@ -93,9 +137,9 @@ export class ReviewerActivityService {
         },
       }),
       prisma.reviewerEvent.findMany({
-        where: { startupId, invitationId },
-        orderBy: { createdAt: "desc" },
-        take: limit,
+        where: { startupId, invitationId, ...(throughCursor ? { createdAt: throughCursor } : {}) },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take,
         select: { id: true, type: true, documentVersionId: true, pageNumber: true, createdAt: true },
       }),
     ]);
@@ -219,9 +263,17 @@ export class ReviewerActivityService {
       });
     }
 
-    return items
-      .sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime())
-      .slice(0, limit);
+    const eligible = items.sort(compareActivity).filter((item) => isAfterCursor(item, cursor));
+    const page = eligible.slice(0, limit);
+    const hasMore = eligible.length > limit;
+
+    return {
+      data: page,
+      pagination: {
+        hasMore,
+        nextCursor: hasMore && page.length > 0 ? encodeCursor(page[page.length - 1]) : null,
+      },
+    };
   }
 }
 

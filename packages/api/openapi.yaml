@@ -7826,7 +7826,11 @@ paths:
           schema: { type: string, format: uuid }
         - name: limit
           in: query
-          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+        - name: cursor
+          in: query
+          description: Opaque cursor returned by the previous page.
+          schema: { type: string, maxLength: 500 }
       responses:
         "200":
           description: Most recent activity, newest first
@@ -7834,10 +7838,17 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [data, pagination]
                 properties:
                   data:
                     type: array
                     items: { $ref: "#/components/schemas/ReviewerActivity" }
+                  pagination:
+                    type: object
+                    required: [hasMore, nextCursor]
+                    properties:
+                      hasMore: { type: boolean }
+                      nextCursor: { type: string, nullable: true }
 
   /startups/{startupId}/reviewer-invitations/{invitationId}/resend:
     post:

@@ -48,7 +48,14 @@ export const listFounderReviewerCommentsQuerySchema = z.object({
 });
 
 export const reviewerActivityQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  cursor: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500)
+    .regex(/^[A-Za-z0-9_-]+$/, "Invalid activity cursor")
+    .optional(),
 });
 
 export type ListReviewerInvitationsQuery = z.infer<typeof listReviewerInvitationsQuerySchema>;

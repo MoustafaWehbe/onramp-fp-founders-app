@@ -9265,6 +9265,8 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
+                /** @description Opaque cursor returned by the previous page. */
+                cursor?: string;
             };
             header?: never;
             path: {
@@ -9282,7 +9284,11 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        data?: components["schemas"]["ReviewerActivity"][];
+                        data: components["schemas"]["ReviewerActivity"][];
+                        pagination: {
+                            hasMore: boolean;
+                            nextCursor: string | null;
+                        };
                     };
                 };
             };

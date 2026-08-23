@@ -357,6 +357,7 @@ model ReviewerSession {
   comments   ReviewerComment[]
 
   @@index([invitationId])
+  @@index([invitationId, verifiedAt])
   @@map("reviewer_sessions")
 }
 
@@ -448,6 +449,7 @@ model ReviewerPageView {
   visit ReviewerVisit @relation(fields: [visitId], references: [id], onDelete: Cascade)
 
   @@unique([visitId, documentVersionId, pageNumber])
+  @@index([visitId, firstViewedAt])
   @@index([documentVersionId, pageNumber])
   @@map("reviewer_page_views")
 }
