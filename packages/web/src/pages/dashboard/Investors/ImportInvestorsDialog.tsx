@@ -13,19 +13,6 @@ import { apiErrorMessage } from "../../../lib/api-error";
 import { runWithConcurrency } from "../../../lib/concurrency";
 import { parseCsv } from "../../../lib/csv";
 import { createInvestor, INVESTOR_TYPES, type InvestorInput, type InvestorType } from "../../../lib/investor-api";
-import { cn } from "../../../lib/utils";
-
-const COLUMN_GUIDE: { label: string; required?: boolean; example: string }[] = [
-  { label: "name", required: true, example: "Ada Lovelace" },
-  { label: "email", example: "ada@fund.com" },
-  { label: "firm", example: "Analytical Ventures" },
-  { label: "type", example: "vc" },
-  { label: "sector", example: "Fintech" },
-  { label: "stage", example: "Seed" },
-  { label: "linkedin", example: "https://linkedin.com/in/ada" },
-  { label: "source", example: "Conference" },
-  { label: "notes", example: "" },
-];
 
 const HEADER_ALIASES: Record<string, keyof InvestorInput> = {
   fullname: "fullName",
@@ -173,6 +160,11 @@ export function ImportInvestorsDialog({
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
+  function handleOpenChange(next: boolean) {
+    onOpenChange(next);
+    if (!next) reset();
+  }
+
   function handleFile(file: File) {
     setFileName(file.name);
     setOutcome(null);
@@ -207,67 +199,16 @@ export function ImportInvestorsDialog({
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        onOpenChange(next);
-        if (!next) reset();
-      }}
-    >
-      <DialogContent className="max-w-lg">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Import investors from CSV</DialogTitle>
+          <DialogTitle>Import investors</DialogTitle>
           <DialogDescription>
-            Upload a CSV of investor contacts columns are matched automatically.
+            Choose a CSV file to add investors in bulk.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-w-0 space-y-4">
-          <div className="min-w-0 rounded-lg border border-border/70 bg-surface/40 p-3">
-            <div className="flex flex-wrap gap-1.5">
-              {COLUMN_GUIDE.map((col) => (
-                <span
-                  key={col.label}
-                  className={cn(
-                    "rounded-full px-2 py-0.5 font-mono text-[10px] font-medium",
-                    col.required ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {col.label}
-                  {col.required && " *"}
-                </span>
-              ))}
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Only <span className="font-medium text-foreground">name</span> is required column
-              order doesn't matter, and unrecognized columns are ignored. Valid types:{" "}
-              {INVESTOR_TYPES.join(", ")}.
-            </p>
-
-            <div className="scrollbar-slim mt-3 min-w-0 overflow-x-auto rounded-md border border-border/60">
-              <table className="min-w-full text-left font-mono text-[11px]">
-                <thead className="bg-surface/70 text-muted-foreground">
-                  <tr>
-                    {COLUMN_GUIDE.map((col) => (
-                      <th key={col.label} className="whitespace-nowrap px-2 py-1 font-medium">
-                        {col.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="text-foreground/80">
-                    {COLUMN_GUIDE.map((col) => (
-                      <td key={col.label} className="whitespace-nowrap px-2 py-1">
-                        {col.example || "—"}
-                      </td>
-                    ))}
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
+        <div className="space-y-3">
           <input
             ref={fileInputRef}
             type="file"
@@ -281,24 +222,26 @@ export function ImportInvestorsDialog({
           <Button
             type="button"
             variant="outline"
-            className="w-full"
+            className="h-auto w-full justify-start gap-3 border-dashed px-4 py-4 text-left"
             onClick={() => fileInputRef.current?.click()}
           >
-            <Upload className="h-4 w-4" />
-            {fileName ?? "Choose a CSV file"}
+            <Upload className="h-5 w-5 shrink-0 text-muted-foreground" />
+            <span className="min-w-0">
+              <span className="block truncate font-medium">
+                {fileName ?? "Choose a CSV file"}
+              </span>
+              <span className="block text-xs font-normal text-muted-foreground">
+                The file must include a name column
+              </span>
+            </span>
           </Button>
 
           {parsed && !outcome && (
-            <div className="space-y-2 text-sm">
-              <p>
-                <span className="font-medium text-foreground">{parsed.rows.length}</span> ready to
-                import
-                {parsed.skipped.length > 0 && (
-                  <>
-                    , <span className="font-medium text-destructive">{parsed.skipped.length}</span>{" "}
-                    skipped
-                  </>
-                )}
+            <div className="space-y-1.5 text-sm">
+              <p className="text-muted-foreground">
+                <span className="font-medium text-foreground">{parsed.rows.length}</span>{" "}
+                {parsed.rows.length === 1 ? "investor" : "investors"} ready
+                {parsed.skipped.length > 0 && ` · ${parsed.skipped.length} skipped`}
               </p>
               {parsed.truncated && (
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -307,47 +250,34 @@ export function ImportInvestorsDialog({
                 </p>
               )}
               {parsed.skipped.length > 0 && (
-                <div className="scrollbar-slim max-h-32 space-y-1 overflow-y-auto rounded-lg border border-border/70 bg-surface/50 p-2 text-xs">
-                  {parsed.skipped.map((row) => (
-                    <div key={row.line}>
-                      <span className="font-medium text-foreground">
-                        Line {row.line} ({row.label}):
-                      </span>{" "}
-                      <span className="text-muted-foreground">{row.reason}</span>
-                    </div>
-                  ))}
-                </div>
+                <p className="flex items-start gap-1.5 text-xs text-destructive">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  Line {parsed.skipped[0].line}: {parsed.skipped[0].reason}
+                  {parsed.skipped.length > 1 && ` (and ${parsed.skipped.length - 1} more)`}
+                </p>
               )}
             </div>
           )}
 
           {outcome && (
-            <div className="space-y-2 text-sm">
-              <p>
+            <div className="space-y-1.5 text-sm">
+              <p className="text-muted-foreground">
                 <span className="font-medium text-foreground">{outcome.succeeded}</span> imported
-                {outcome.failed.length > 0 && (
-                  <>
-                    , <span className="font-medium text-destructive">{outcome.failed.length}</span>{" "}
-                    failed
-                  </>
-                )}
+                {outcome.failed.length > 0 && ` · ${outcome.failed.length} failed`}
               </p>
               {outcome.failed.length > 0 && (
-                <div className="scrollbar-slim max-h-32 space-y-1 overflow-y-auto rounded-lg border border-border/70 bg-surface/50 p-2 text-xs">
-                  {outcome.failed.map((row, index) => (
-                    <div key={index}>
-                      <span className="font-medium text-foreground">{row.label}:</span>{" "}
-                      <span className="text-muted-foreground">{row.reason}</span>
-                    </div>
-                  ))}
-                </div>
+                <p className="flex items-start gap-1.5 text-xs text-destructive">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  {outcome.failed[0].label}: {outcome.failed[0].reason}
+                  {outcome.failed.length > 1 && ` (and ${outcome.failed.length - 1} more)`}
+                </p>
               )}
             </div>
           )}
         </div>
 
         <DialogFooter>
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="ghost" onClick={() => handleOpenChange(false)}>
             {outcome ? "Close" : "Cancel"}
           </Button>
           {!outcome && (
