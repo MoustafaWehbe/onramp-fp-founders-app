@@ -4,6 +4,7 @@ import {
   authRateLimiter,
   credentialRateLimiter,
   emailSendRateLimiter,
+  reviewerDownloadRateLimiter,
 } from "../../src/middleware/rate-limiter";
 
 // These limiters are module-level singletons sharing one in-memory store keyed
@@ -104,5 +105,36 @@ describe("emailSendRateLimiter", () => {
     // Same test process, same IP, different user must not inherit the block.
     const otherFounder = await request(app).post("/").set("x-test-user", "founder-b").send({});
     expect(otherFounder.status).toBe(200);
+  });
+});
+
+describe("reviewerDownloadRateLimiter", () => {
+  const app = express();
+  app.use((req, _res, next) => {
+    req.reviewer = {
+      sessionId: req.header("x-reviewer-session") ?? "reviewer-a",
+      invitationId: "invitation-1",
+      startupId: "startup-1",
+      allowDownload: true,
+      watermarkEnabled: true,
+      requireNda: false,
+      ndaAccepted: true,
+      email: "reviewer@example.com",
+      reviewerName: null,
+    };
+    next();
+  });
+  app.get("/", reviewerDownloadRateLimiter, (_req, res) => res.json({ ok: true }));
+
+  it("caps expensive downloads per reviewer session without blocking another reviewer", async () => {
+    for (let i = 0; i < 10; i++) {
+      expect((await request(app).get("/").set("x-reviewer-session", "reviewer-a")).status).toBe(200);
+    }
+
+    const blocked = await request(app).get("/").set("x-reviewer-session", "reviewer-a");
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error).toBe("Too many download attempts, please wait before retrying.");
+
+    expect((await request(app).get("/").set("x-reviewer-session", "reviewer-b")).status).toBe(200);
   });
 });

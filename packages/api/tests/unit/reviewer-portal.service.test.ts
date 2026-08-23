@@ -85,6 +85,7 @@ jest.mock("../../src/services/notification.service", () => ({
 jest.mock("../../src/utils/auth", () => ({
   hashToken: jest.fn((v: string) => `hash:${v}`),
   hashOTP: jest.fn((v: string) => `otp:${v}`),
+  verifyOTP: jest.fn((otp: string, hash: string) => `otp:${otp}` === hash),
   generateOTP: jest.fn(() => ({ raw: "123456", hash: "otp:123456" })),
   hashForwardSignal: jest.fn((v: string) => `fwd:${v}`),
   verifyPassword: jest.fn(),
@@ -150,6 +151,7 @@ describe("ReviewerPortalService.requestAccess", () => {
     );
 
     expect(result.emailHint).toContain("***");
+    expect(result.challengeId).toBe("sess-1");
     expect(emailQueue.add).toHaveBeenCalled();
     expect(mockPrisma.reviewerSession.create).toHaveBeenCalled();
   });
@@ -228,6 +230,69 @@ describe("ReviewerPortalService.requestAccess", () => {
     await expect(
       reviewerPortalService.requestAccess({ token: "raw-token-value-1234567890" }, {}),
     ).rejects.toMatchObject({ code: "INVITATION_EXPIRED" });
+  });
+});
+
+describe("ReviewerPortalService.verifyAccess", () => {
+  const challengeId = "00000000-0000-0000-0000-000000000099";
+
+  it("verifies only the challenge that issued the OTP", async () => {
+    mockPrisma.reviewerInvitation.findUnique.mockResolvedValue({
+      id: INVITE_ID,
+      startupId: STARTUP_ID,
+      status: "opened",
+      expiresAt: new Date(Date.now() + 86_400_000),
+      revokedAt: null,
+      allowDownload: false,
+      reviewerName: "Ada Investor",
+      emailNormalized: "ada@example.com",
+      documents: [],
+    } as never);
+    mockPrisma.reviewerSession.findFirst.mockResolvedValue({
+      id: challengeId,
+      verificationCodeHash: "otp:123456",
+      verificationExpiresAt: new Date(Date.now() + 60_000),
+      ipAddress: null,
+      userAgent: null,
+    } as never);
+    mockPrisma.reviewerSession.update.mockResolvedValue({
+      id: challengeId,
+      expiresAt: new Date(Date.now() + 60_000),
+    } as never);
+    mockPrisma.reviewerInvitation.update.mockResolvedValue({} as never);
+
+    await reviewerPortalService.verifyAccess(
+      { token: "raw-token-value-1234567890", challengeId, otp: "123456" },
+      {},
+    );
+
+    expect(mockPrisma.reviewerSession.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: challengeId,
+        invitationId: INVITE_ID,
+        verifiedAt: null,
+        revokedAt: null,
+      },
+    });
+  });
+
+  it("does not fall back to another pending challenge", async () => {
+    mockPrisma.reviewerInvitation.findUnique.mockResolvedValue({
+      id: INVITE_ID,
+      status: "opened",
+      expiresAt: new Date(Date.now() + 86_400_000),
+      revokedAt: null,
+      documents: [],
+    } as never);
+    mockPrisma.reviewerSession.findFirst.mockResolvedValue(null);
+
+    await expect(
+      reviewerPortalService.verifyAccess(
+        { token: "raw-token-value-1234567890", challengeId, otp: "123456" },
+        {},
+      ),
+    ).rejects.toMatchObject({ code: "NO_CHALLENGE" });
+    expect(mockPrisma.reviewerSession.update).not.toHaveBeenCalled();
   });
 });
 

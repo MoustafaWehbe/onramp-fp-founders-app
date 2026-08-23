@@ -8070,6 +8070,22 @@ paths:
       responses:
         "200":
           description: OTP sent
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [challengeId, emailHint, expiresInSeconds]
+                    properties:
+                      challengeId:
+                        type: string
+                        format: uuid
+                        description: Bind this value to the OTP verification request.
+                      emailHint: { type: string }
+                      expiresInSeconds: { type: integer }
         "401":
           description: Password required or incorrect
           content:
@@ -8088,12 +8104,16 @@ paths:
           application/json:
             schema:
               type: object
-              required: [token, otp]
+              required: [token, challengeId, otp]
               properties:
                 token:
                   type: string
+                challengeId:
+                  type: string
+                  format: uuid
                 otp:
                   type: string
+                  pattern: '^\d{6}$'
       responses:
         "200":
           description: Verified reviewer session established
@@ -8101,7 +8121,7 @@ paths:
             Set-Cookie:
               schema:
                 type: string
-                example: reviewerSessionToken=...; HttpOnly; Path=/api/reviewer-portal
+                example: reviewerSessionToken=...; HttpOnly; Path=/api/v1/reviewer-portal
           content:
             application/json:
               schema:
@@ -8110,17 +8130,11 @@ paths:
                   data:
                     $ref: "#/components/schemas/ReviewerPortalSession"
         "400":
-          description: Code incorrect, expired, or token invalid
+          description: Code incorrect, expired, token invalid, or request validation failed
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
 
   /reviewer-portal/workspace:
     get:
@@ -8200,6 +8214,8 @@ paths:
             Version is not viewable RENDER_PENDING, RENDER_FAILED, or
             RENDER_UNSUPPORTED and other 409, NDA_REQUIRED when the
             invitation requires NDA acceptance that hasn't happened yet.
+        "429":
+          description: Secure content request budget exceeded for this reviewer session.
 
   /reviewer-portal/pages/{versionId}/{pageNumber}:
     get:
@@ -8250,6 +8266,8 @@ paths:
           description: Page token invalid or expired
         "404":
           description: Page not found or version not shared
+        "429":
+          description: Secure content request budget exceeded for this reviewer session.
         "409":
           description: NDA_REQUIRED — invitation requires NDA acceptance that hasn't happened yet.
 
@@ -8285,6 +8303,8 @@ paths:
           description: Downloads are disabled for this invitation
         "404":
           description: Version is not shared with this invitation
+        "429":
+          description: Download-attempt budget exceeded for this reviewer session.
         "409":
           description: NDA_REQUIRED — invitation requires NDA acceptance that hasn't happened yet.
 
@@ -8295,6 +8315,10 @@ paths:
       operationId: reviewerPortalListComments
       security:
         - reviewerSessionAuth: []
+      parameters:
+        - name: documentId
+          in: query
+          schema: { type: string, format: uuid }
       responses:
         "200":
           description: Comments
@@ -8307,6 +8331,8 @@ paths:
       responses:
         "201":
           description: Created
+        "429":
+          description: Comment-submission budget exceeded for this reviewer session.
 
   /reviewer-portal/events:
     post:

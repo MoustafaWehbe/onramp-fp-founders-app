@@ -7,7 +7,12 @@ export const reviewerAccessSchema = z.object({
 
 export const reviewerVerifySchema = z.object({
   token: z.string().trim().min(20).max(200),
+  challengeId: z.string().guid(),
   otp: z.string().trim().regex(/^\d{6}$/, "OTP must be a 6-digit code"),
+});
+
+export const reviewerCommentsQuerySchema = z.object({
+  documentId: z.string().guid().optional(),
 });
 
 export const reviewerCommentSchema = z
@@ -74,6 +79,7 @@ export const reviewerTelemetrySchema = z.object({
 export type ReviewerAccessInput = z.infer<typeof reviewerAccessSchema>;
 export type ReviewerVerifyInput = z.infer<typeof reviewerVerifySchema>;
 export type ReviewerCommentInput = z.infer<typeof reviewerCommentSchema>;
+export type ReviewerCommentsQuery = z.infer<typeof reviewerCommentsQuerySchema>;
 export type ReviewerPageParams = z.infer<typeof reviewerPageParamSchema>;
 export type ReviewerPageQuery = z.infer<typeof reviewerPageQuerySchema>;
 export type ReviewerEventInput = z.infer<typeof reviewerEventSchema>;

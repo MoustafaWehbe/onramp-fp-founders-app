@@ -8,6 +8,7 @@ import {
 import type {
   ReviewerAccessInput,
   ReviewerCommentInput,
+  ReviewerCommentsQuery,
   ReviewerEventInput,
   ReviewerPageParams,
   ReviewerPageQuery,
@@ -112,8 +113,7 @@ export const reviewerPortalController = {
   }),
 
   listComments: asyncHandler(async (req, res) => {
-    const documentId =
-      typeof req.query.documentId === "string" ? req.query.documentId : undefined;
+    const { documentId } = req.query as unknown as ReviewerCommentsQuery;
     const result = await reviewerPortalService.listComments(
       req.reviewer!.sessionId,
       req.reviewer!.startupId,

@@ -9484,7 +9484,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            /**
+                             * Format: uuid
+                             * @description Bind this value to the OTP verification request.
+                             */
+                            challengeId: string;
+                            emailHint: string;
+                            expiresInSeconds: number;
+                        };
+                    };
+                };
             };
             /** @description Password required or incorrect */
             401: {
@@ -9508,6 +9520,8 @@ export interface operations {
             content: {
                 "application/json": {
                     token: string;
+                    /** Format: uuid */
+                    challengeId: string;
                     otp: string;
                 };
             };
@@ -9525,22 +9539,13 @@ export interface operations {
                     };
                 };
             };
-            /** @description Code incorrect, expired, or token invalid */
+            /** @description Code incorrect, expired, token invalid, or request validation failed */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
@@ -9632,6 +9637,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Secure content request budget exceeded for this reviewer session. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     reviewerPortalPageImage: {
@@ -9680,6 +9692,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Secure content request budget exceeded for this reviewer session. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     reviewerPortalDownload: {
@@ -9723,11 +9742,20 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Download-attempt budget exceeded for this reviewer session. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     reviewerPortalListComments: {
         parameters: {
-            query?: never;
+            query?: {
+                documentId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9754,6 +9782,13 @@ export interface operations {
         responses: {
             /** @description Created */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Comment-submission budget exceeded for this reviewer session. */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

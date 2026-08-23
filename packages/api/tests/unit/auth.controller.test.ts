@@ -10,6 +10,9 @@ jest.mock("../../src/middleware/rate-limiter", () => ({
   reviewerAccessRateLimiter: (_req: any, _res: any, next: any) => next(),
   reviewerEventRateLimiter: (_req: any, _res: any, next: any) => next(),
   reviewerTelemetryRateLimiter: (_req: any, _res: any, next: any) => next(),
+  reviewerContentRateLimiter: (_req: any, _res: any, next: any) => next(),
+  reviewerDownloadRateLimiter: (_req: any, _res: any, next: any) => next(),
+  reviewerCommentRateLimiter: (_req: any, _res: any, next: any) => next(),
   aiMessageRateLimiter: (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../src/db/prisma", () => ({

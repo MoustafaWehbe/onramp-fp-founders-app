@@ -106,12 +106,16 @@ describe("reviewer portal schemas", () => {
   });
 
   it("requires 6-digit otp", () => {
+    const challengeId = "00000000-0000-0000-0000-000000000099";
     expect(
-      reviewerVerifySchema.safeParse({ token: "a".repeat(32), otp: "12345" }).success,
+      reviewerVerifySchema.safeParse({ token: "a".repeat(32), challengeId, otp: "12345" }).success,
     ).toBe(false);
     expect(
-      reviewerVerifySchema.safeParse({ token: "a".repeat(32), otp: "123456" }).success,
+      reviewerVerifySchema.safeParse({ token: "a".repeat(32), challengeId, otp: "123456" }).success,
     ).toBe(true);
+    expect(
+      reviewerVerifySchema.safeParse({ token: "a".repeat(32), otp: "123456" }).success,
+    ).toBe(false);
   });
 
   it("requires comment text", () => {

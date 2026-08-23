@@ -4,7 +4,7 @@ import { UAParser } from "ua-parser-js";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
 import { logger } from "../utils/logger";
-import { generateOTP, hashOTP, hashToken, hashForwardSignal, verifyPassword } from "../utils/auth";
+import { generateOTP, hashToken, hashForwardSignal, verifyOTP, verifyPassword } from "../utils/auth";
 import { createPageToken, verifyPageToken, PAGE_TOKEN_TTL_SECONDS } from "../utils/page-token";
 import { emailQueue } from "../jobs/queue";
 import { storageService } from "./storage.service";
@@ -138,7 +138,7 @@ export class ReviewerPortalService {
     return {
       invitationId: invitation.id,
       emailHint: emailHint(invitation.emailNormalized),
-      sessionPendingId: session.id,
+      challengeId: session.id,
       expiresInSeconds: Math.floor(OTP_TTL_MS / 1000),
     };
   }
@@ -153,11 +153,11 @@ export class ReviewerPortalService {
 
     const pending = await prisma.reviewerSession.findFirst({
       where: {
+        id: input.challengeId,
         invitationId: invitation.id,
         verifiedAt: null,
         revokedAt: null,
       },
-      orderBy: { createdAt: "desc" },
     });
 
     if (!pending?.verificationCodeHash || !pending.verificationExpiresAt) {
@@ -166,7 +166,7 @@ export class ReviewerPortalService {
     if (pending.verificationExpiresAt.getTime() < Date.now()) {
       throw createError("Verification code expired", 400, "OTP_EXPIRED");
     }
-    if (hashOTP(input.otp) !== pending.verificationCodeHash) {
+    if (!verifyOTP(input.otp, pending.verificationCodeHash)) {
       throw createError("Invalid verification code", 400, "OTP_INVALID");
     }
 

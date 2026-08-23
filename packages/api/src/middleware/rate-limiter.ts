@@ -186,6 +186,49 @@ export const reviewerTelemetryRateLimiter = rateLimit({
 });
 
 /**
+ * Bounds authenticated secure-viewer reads. Rendering/watermarking page bytes
+ * is substantially more expensive than an ordinary JSON request, so it gets
+ * a separate per-session budget in addition to the broad global API ceiling.
+ */
+export const reviewerContentRateLimiter = rateLimit({
+  windowMs: 5 * 60 * 1_000,
+  max: 120,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  store: makeStore("reviewer-content"),
+  keyGenerator: (req) => req.reviewer?.sessionId ?? ipOrUnknown(req),
+  message: {
+    error: "Too many document requests, please wait before continuing.",
+  },
+});
+
+/** Watermarked downloads are CPU-heavy and should never be scriptable at scale. */
+export const reviewerDownloadRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1_000,
+  max: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  store: makeStore("reviewer-download"),
+  keyGenerator: (req) => req.reviewer?.sessionId ?? ipOrUnknown(req),
+  message: {
+    error: "Too many download attempts, please wait before retrying.",
+  },
+});
+
+/** Prevents a valid reviewer session from flooding the founder's feedback inbox. */
+export const reviewerCommentRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1_000,
+  max: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  store: makeStore("reviewer-comment"),
+  keyGenerator: (req) => req.reviewer?.sessionId ?? ipOrUnknown(req),
+  message: {
+    error: "Too many comments submitted, please wait before retrying.",
+  },
+});
+
+/**
  * AI prompts have a separate, deliberately small user budget. It prevents a
  * single member from exhausting model capacity while leaving ordinary API
  * traffic governed by the global limiter above.
