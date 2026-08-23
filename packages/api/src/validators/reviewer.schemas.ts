@@ -47,6 +47,11 @@ export const listFounderReviewerCommentsQuerySchema = z.object({
   status: z.enum(["all", "unread", "open", "resolved"]).default("open"),
 });
 
+export const reviewerActivityQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
 export type ListReviewerInvitationsQuery = z.infer<typeof listReviewerInvitationsQuerySchema>;
 export type CreateReviewerInvitationInput = z.infer<typeof createReviewerInvitationSchema>;
 export type ListFounderReviewerCommentsQuery = z.infer<typeof listFounderReviewerCommentsQuerySchema>;
+export type ReviewerActivityQuery = z.infer<typeof reviewerActivityQuerySchema>;

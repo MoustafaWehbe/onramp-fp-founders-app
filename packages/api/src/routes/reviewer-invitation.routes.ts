@@ -9,6 +9,7 @@ import {
   listFounderReviewerCommentsQuerySchema,
   listReviewerInvitationsQuerySchema,
   reviewerCommentIdParamSchema,
+  reviewerActivityQuerySchema,
 } from "../validators/reviewer.schemas";
 import { reviewerInvitationController } from "../controllers/reviewer-invitation.controller";
 
@@ -78,6 +79,16 @@ router.post(
   requireMember,
   requirePermission("documents", "share"),
   reviewerInvitationController.resendInvitation,
+);
+
+router.get(
+  "/:invitationId/activity",
+  authenticate,
+  validate(invitationIdParamSchema, "params"),
+  requireMember,
+  requirePermission("documents", "read"),
+  validate(reviewerActivityQuerySchema, "query"),
+  reviewerInvitationController.listActivity,
 );
 
 router.post(

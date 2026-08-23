@@ -1544,6 +1544,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/startups/{startupId}/documents/{documentId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive a document while retaining its versions and history */
+        post: operations["archiveDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/documents/{documentId}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore an archived document to the active data room */
+        post: operations["restoreDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/startups/{startupId}/documents/{documentId}/versions/upload-sessions": {
         parameters: {
             query?: never;
@@ -1572,6 +1606,40 @@ export interface paths {
         put?: never;
         /** Confirm uploaded version and enqueue processing */
         post: operations["confirmDocumentVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/documents/{documentId}/versions/{versionId}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry the failed extraction and/or rendering pipeline */
+        post: operations["retryDocumentVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/documents/{documentId}/versions/{versionId}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Make a fully processed historical version current */
+        post: operations["promoteDocumentVersion"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2327,6 +2395,8 @@ export interface components {
             fundingStage?: components["schemas"]["FundingStage"];
             /** Format: uuid */
             createdBy?: string;
+            /** Format: date-time */
+            archivedAt?: string | null;
             /** Format: date-time */
             createdAt?: string;
             /** Format: date-time */
@@ -8708,6 +8778,8 @@ export interface operations {
                 limit?: components["parameters"]["LimitParam"];
                 search?: string;
                 documentType?: components["schemas"]["DocumentType"];
+                /** @description Active documents are returned by default; archived documents remain recoverable. */
+                lifecycle?: "active" | "archived" | "all";
             };
             header?: never;
             path: {
@@ -8838,6 +8910,48 @@ export interface operations {
             };
         };
     };
+    archiveDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                documentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archived; idempotent when already archived */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    restoreDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                documentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Restored; idempotent when already active */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     createDocumentVersionUploadSession: {
         parameters: {
             query?: never;
@@ -8878,6 +8992,64 @@ export interface operations {
         responses: {
             /** @description Confirmed */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    retryDocumentVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                documentId: string;
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Retry queued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version is not failed or the document is archived */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    promoteDocumentVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                documentId: string;
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Version is current */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version is not fully processed or the document is archived */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

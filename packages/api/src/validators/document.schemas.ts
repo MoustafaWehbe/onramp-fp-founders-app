@@ -23,6 +23,7 @@ export const listDocumentsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().trim().max(100).optional().transform((v) => v || undefined),
   documentType: documentTypeEnum.optional(),
+  lifecycle: z.enum(["active", "archived", "all"]).default("active"),
 });
 
 export const fileAccessQuerySchema = z.object({
@@ -57,6 +58,10 @@ export const versionParamSchema = z.object({
   startupId: z.string().guid(),
   documentId: z.string().guid(),
   versionId: z.string().guid(),
+});
+
+export const documentPageParamSchema = versionParamSchema.extend({
+  pageNumber: z.coerce.number().int().min(1).max(500),
 });
 
 export const updateDocumentSchema = z

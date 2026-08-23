@@ -13,6 +13,7 @@ import { useActiveStartupId } from "../../../hooks/useWorkspace";
 import { apiErrorMessage } from "../../../lib/api-error";
 import { runWithConcurrency } from "../../../lib/concurrency";
 import {
+  archiveDocument,
   confirmDocumentVersion,
   createDocumentUploadSession,
   createVersionUploadSession,
@@ -20,6 +21,7 @@ import {
   getDocument,
   getDocumentFileAccess,
   listDocuments,
+  restoreDocument,
   updateDocument,
   uploadToSignedUrl,
   type DocumentType,
@@ -48,16 +50,24 @@ export function Documents() {
     versionId: string;
   } | null>(null);
   const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState<DocumentFilters>({ documentType: null, status: null });
+  const [filters, setFilters] = useState<DocumentFilters>({
+    documentType: null,
+    status: null,
+    lifecycle: "active",
+  });
   const [selectedIds, setSelectedIds] = useState<Set<string> | null>(null);
-  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  const [bulkLifecycleConfirm, setBulkLifecycleConfirm] = useState(false);
 
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [editingDoc, setEditingDoc] = useState<VaultDocument | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<VaultDocument | null>(null);
+  const [lifecycleTarget, setLifecycleTarget] = useState<VaultDocument | null>(null);
   const [versionsSheetDocId, setVersionsSheetDocId] = useState<string | null>(null);
   const [analyticsSheetDocId, setAnalyticsSheetDocId] = useState<string | null>(null);
   const [focusedDocumentId, setFocusedDocumentId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedIds(null);
+  }, [filters.lifecycle]);
 
   // Header search deep-link: open that exact document's versions panel.
   const deepLinkDocumentId = searchParams.get("document");
@@ -81,7 +91,7 @@ export function Documents() {
     return () => window.clearTimeout(timer);
   }, [deepLinkDocumentId, setSearchParams]);
 
-  const queryKey = ["documents", startupId, search, filters.documentType];
+  const queryKey = ["documents", startupId, search, filters.documentType, filters.lifecycle];
 
   const docsQuery = useQuery({
     queryKey,
@@ -91,6 +101,7 @@ export function Documents() {
         limit: 100,
         search: search.trim() || undefined,
         documentType: filters.documentType || undefined,
+        lifecycle: filters.lifecycle,
       }),
     refetchInterval: (query) => {
       const rows = query.state.data?.data ?? [];
@@ -150,7 +161,7 @@ export function Documents() {
 
   const canUpload = can("documents", "create");
   const canUpdate = can("documents", "update");
-  const canDelete = can("documents", "delete");
+  const canArchive = can("documents", "delete");
   const canReadAiAnalyses = can("ai_reports", "read");
   const canCreateAiAnalysis = can("ai_reports", "create") && can("documents", "read");
 
@@ -188,6 +199,7 @@ export function Documents() {
     },
     onSuccess: () => {
       setPendingFile(null);
+      setFilters((current) => ({ ...current, lifecycle: "active" }));
       invalidateDocuments();
       toast.success("Document uploaded — processing started");
     },
@@ -237,34 +249,40 @@ export function Documents() {
     onError: (error) => toast.error(apiErrorMessage(error, "Could not update document")),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (documentId: string) => deleteDocument(startupId, documentId),
-    onSuccess: () => {
-      setDeleteTarget(null);
+  const lifecycleMutation = useMutation({
+    mutationFn: (document: VaultDocument) =>
+      document.archivedAt
+        ? restoreDocument(startupId, document.id)
+        : archiveDocument(startupId, document.id),
+    onSuccess: (_result, document) => {
+      const restored = Boolean(document.archivedAt);
+      setLifecycleTarget(null);
       invalidateDocuments();
-      toast.success("Document deleted");
+      toast.success(restored ? "Document restored" : "Document archived");
     },
-    onError: (error) => toast.error(apiErrorMessage(error, "Could not delete document")),
+    onError: (error) => toast.error(apiErrorMessage(error, "Could not update document")),
   });
 
-  const bulkDeleteMutation = useMutation({
-    mutationFn: async (ids: string[]) => {
-      const settled = await runWithConcurrency(ids, 5, (id) => deleteDocument(startupId, id));
+  const bulkLifecycleMutation = useMutation({
+    mutationFn: async ({ ids, lifecycle }: { ids: string[]; lifecycle: "active" | "archived" }) => {
+      const action = lifecycle === "archived" ? restoreDocument : archiveDocument;
+      const settled = await runWithConcurrency(ids, 5, (id) => action(startupId, id));
       const failedIds = ids.filter((_, index) => settled[index].status === "rejected");
       const firstFailure = settled.find(
         (result): result is PromiseRejectedResult => result.status === "rejected",
       )?.reason;
-      return { succeeded: ids.length - failedIds.length, failedIds, firstFailure };
+      return { succeeded: ids.length - failedIds.length, failedIds, firstFailure, lifecycle };
     },
-    onSuccess: ({ succeeded, failedIds, firstFailure }) => {
-      setBulkDeleteConfirm(false);
+    onSuccess: ({ succeeded, failedIds, firstFailure, lifecycle }) => {
+      setBulkLifecycleConfirm(false);
       setSelectedIds(new Set(failedIds));
       invalidateDocuments();
+      const verb = lifecycle === "archived" ? "restored" : "archived";
       if (failedIds.length === 0) {
-        toast.success(`${succeeded} document${succeeded === 1 ? "" : "s"} deleted`);
+        toast.success(`${succeeded} document${succeeded === 1 ? "" : "s"} ${verb}`);
       } else {
         toast.error(
-          `${succeeded} deleted, ${failedIds.length} could not be removed — ${apiErrorMessage(firstFailure, "some have related records")}`,
+          `${succeeded} ${verb}, ${failedIds.length} could not be updated — ${apiErrorMessage(firstFailure, "please retry")}`,
         );
       }
     },
@@ -378,15 +396,17 @@ export function Documents() {
         onQueryChange={setSearch}
         filters={filters}
         onFilterChange={(key, value) => setFilters((prev) => ({ ...prev, [key]: value }))}
-        onClearFilters={() => setFilters({ documentType: null, status: null })}
-        canSelect={canDelete}
+        onClearFilters={() =>
+          setFilters({ documentType: null, status: null, lifecycle: "active" })
+        }
+        canSelect={canArchive}
         selectionActive={selectionActive}
         onToggleSelection={toggleSelection}
         onSelectAllVisible={() => setSelectedIds(new Set(rows.map((r) => r.id)))}
         visibleCount={rows.length}
         selectedCount={selectedCount}
-        onBulkDelete={() => setBulkDeleteConfirm(true)}
-        bulkDeleting={bulkDeleteMutation.isPending}
+        onBulkLifecycleAction={() => setBulkLifecycleConfirm(true)}
+        bulkActionPending={bulkLifecycleMutation.isPending}
       />
 
       {docsQuery.isPending ? (
@@ -408,14 +428,22 @@ export function Documents() {
         <div className="card-elevated">
           <EmptyState
             icon={FileText}
-            title={allRows.length === 0 ? "No documents yet" : "No documents match your filters"}
+            title={
+              allRows.length === 0
+                ? filters.lifecycle === "archived"
+                  ? "No archived documents"
+                  : "No documents yet"
+                : "No documents match your filters"
+            }
             description={
               allRows.length === 0
-                ? "Upload a PDF, DOCX, XLSX, PPTX, or TXT file to start your data room."
+                ? filters.lifecycle === "archived"
+                  ? "Archived documents remain recoverable and keep their complete version history."
+                  : "Upload a PDF, DOCX, XLSX, PPTX, or TXT file to start your data room."
                 : "Try a different search term or clear the active filters."
             }
             action={
-              allRows.length === 0 && canUpload ? (
+              allRows.length === 0 && canUpload && filters.lifecycle === "active" ? (
                 <Button onClick={() => fileInputRef.current?.click()}>
                   <Upload className="mr-1.5 h-4 w-4" /> Upload
                 </Button>
@@ -433,7 +461,7 @@ export function Documents() {
                 focusedDocumentId={focusedDocumentId}
                 onToggleOne={toggleOne}
                 canUpdate={canUpdate}
-                canDelete={canDelete}
+                canArchive={canArchive}
                 uploadingVersionId={versionMutation.isPending ? versionTargetId : null}
                 onPreview={(doc) => openDocument(doc, "preview")}
                 onDownload={(doc) => openDocument(doc, "download")}
@@ -444,7 +472,8 @@ export function Documents() {
                 onEdit={setEditingDoc}
                 onViewVersions={(doc) => setVersionsSheetDocId(doc.id)}
                 onViewAnalytics={(doc) => setAnalyticsSheetDocId(doc.id)}
-                onDelete={setDeleteTarget}
+                onArchive={setLifecycleTarget}
+                onRestore={setLifecycleTarget}
               />
             </div>
           </div>
@@ -455,7 +484,7 @@ export function Documents() {
               focusedDocumentId={focusedDocumentId}
               onToggleOne={toggleOne}
               canUpdate={canUpdate}
-              canDelete={canDelete}
+              canArchive={canArchive}
               uploadingVersionId={versionMutation.isPending ? versionTargetId : null}
               onPreview={(doc) => openDocument(doc, "preview")}
               onDownload={(doc) => openDocument(doc, "download")}
@@ -466,7 +495,8 @@ export function Documents() {
               onEdit={setEditingDoc}
               onViewVersions={(doc) => setVersionsSheetDocId(doc.id)}
               onViewAnalytics={(doc) => setAnalyticsSheetDocId(doc.id)}
-              onDelete={setDeleteTarget}
+              onArchive={setLifecycleTarget}
+              onRestore={setLifecycleTarget}
             />
           </div>
         </>
@@ -500,6 +530,7 @@ export function Documents() {
         onOpenChange={(next) => !next && setVersionsSheetDocId(null)}
         onPreview={(version) => openVersion(version, "preview")}
         onDownload={(version) => openVersion(version, "download")}
+        canUpdate={canUpdate}
       />
 
       <DocumentAnalyticsSheet
@@ -512,29 +543,40 @@ export function Documents() {
       />
 
       <ConfirmDialog
-        open={deleteTarget !== null}
-        onOpenChange={(next) => !next && setDeleteTarget(null)}
-        title="Delete document?"
+        open={lifecycleTarget !== null}
+        onOpenChange={(next) => !next && setLifecycleTarget(null)}
+        title={lifecycleTarget?.archivedAt ? "Restore document?" : "Archive document?"}
         description={
-          deleteTarget
-            ? `“${deleteTarget.title}” and all of its versions will be permanently removed. This can't be undone.`
+          lifecycleTarget
+            ? lifecycleTarget.archivedAt
+              ? `“${lifecycleTarget.title}” will return to the active data room.`
+              : `“${lifecycleTarget.title}” will leave the active data room but retain its versions, comments, and audit history. Existing reviewer links keep their pinned access until you revoke them.`
             : ""
         }
-        confirmLabel="Delete document"
-        pendingLabel="Deleting…"
-        isPending={deleteMutation.isPending}
-        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+        confirmLabel={lifecycleTarget?.archivedAt ? "Restore document" : "Archive document"}
+        pendingLabel={lifecycleTarget?.archivedAt ? "Restoring…" : "Archiving…"}
+        isPending={lifecycleMutation.isPending}
+        onConfirm={() => lifecycleTarget && lifecycleMutation.mutate(lifecycleTarget)}
       />
 
       <ConfirmDialog
-        open={bulkDeleteConfirm}
-        onOpenChange={setBulkDeleteConfirm}
-        title={`Delete ${selectedCount} document${selectedCount === 1 ? "" : "s"}?`}
-        description="Every version of each selected document will be permanently removed. This can't be undone."
-        confirmLabel="Delete selected"
-        pendingLabel="Deleting…"
-        isPending={bulkDeleteMutation.isPending}
-        onConfirm={() => bulkDeleteMutation.mutate(Array.from(selectedIds ?? []))}
+        open={bulkLifecycleConfirm}
+        onOpenChange={setBulkLifecycleConfirm}
+        title={`${filters.lifecycle === "archived" ? "Restore" : "Archive"} ${selectedCount} document${selectedCount === 1 ? "" : "s"}?`}
+        description={
+          filters.lifecycle === "archived"
+            ? "The selected documents will return to the active data room."
+            : "The selected documents will leave the active data room while retaining their history. Existing reviewer links keep their pinned access until revoked."
+        }
+        confirmLabel={filters.lifecycle === "archived" ? "Restore selected" : "Archive selected"}
+        pendingLabel={filters.lifecycle === "archived" ? "Restoring…" : "Archiving…"}
+        isPending={bulkLifecycleMutation.isPending}
+        onConfirm={() =>
+          bulkLifecycleMutation.mutate({
+            ids: Array.from(selectedIds ?? []),
+            lifecycle: filters.lifecycle,
+          })
+        }
       />
     </div>
   );

@@ -63,6 +63,23 @@ beforeEach(() => {
   (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: any) => fn(mockPrisma));
 });
 
+describe("DocumentService.listDocuments", () => {
+  it("requests only archived rows for the archived lifecycle view", async () => {
+    mockPrisma.document.count.mockResolvedValue(0);
+    mockPrisma.document.findMany.mockResolvedValue([]);
+
+    await documentService.listDocuments(STARTUP_ID, {
+      page: 1,
+      limit: 20,
+      lifecycle: "archived",
+    });
+
+    expect(mockPrisma.document.count).toHaveBeenCalledWith({
+      where: { startupId: STARTUP_ID, archivedAt: { not: null } },
+    });
+  });
+});
+
 describe("DocumentService.createUploadSession", () => {
   it("persists document + pending version and returns upload URL", async () => {
     mockStorage.createSignedUpload.mockResolvedValue({
@@ -314,6 +331,150 @@ describe("DocumentService.getSignedReadUrl", () => {
       entityType: "document",
       entityId: DOC_ID,
     }));
+  });
+});
+
+describe("DocumentService lifecycle operations", () => {
+  it("archives a tenant-scoped document without deleting its versions", async () => {
+    mockPrisma.document.findUnique.mockResolvedValue({
+      id: DOC_ID,
+      title: "Pitch deck",
+      archivedAt: null,
+    } as never);
+    mockPrisma.document.update.mockResolvedValue({ id: DOC_ID } as never);
+
+    const result = await documentService.archiveDocument(STARTUP_ID, DOC_ID, USER_ID);
+
+    expect(result.archivedAt).toBeInstanceOf(Date);
+    expect(mockPrisma.document.update).toHaveBeenCalledWith({
+      where: { id: DOC_ID },
+      data: { archivedAt: expect.any(Date) },
+    });
+    expect(mockPrisma.document.delete).not.toHaveBeenCalled();
+    expect(recordAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "archive", entityId: DOC_ID }),
+    );
+  });
+
+  it("restores an archived document", async () => {
+    mockPrisma.document.findUnique.mockResolvedValue({
+      id: DOC_ID,
+      title: "Pitch deck",
+      archivedAt: new Date(),
+    } as never);
+    mockPrisma.document.update.mockResolvedValue({ id: DOC_ID } as never);
+
+    await documentService.restoreDocument(STARTUP_ID, DOC_ID, USER_ID);
+
+    expect(mockPrisma.document.update).toHaveBeenCalledWith({
+      where: { id: DOC_ID },
+      data: { archivedAt: null },
+    });
+  });
+});
+
+describe("DocumentService.retryVersion", () => {
+  it("retries only the failed processing pipeline", async () => {
+    mockPrisma.document.findUnique.mockResolvedValue({ id: DOC_ID, archivedAt: null } as never);
+    mockPrisma.documentVersion.findFirst.mockResolvedValue({
+      id: VER_ID,
+      documentId: DOC_ID,
+      versionNumber: 2,
+      isCurrent: false,
+      fileSize: 100,
+      mimeType: "application/pdf",
+      originalFilename: "deck.pdf",
+      processingStatus: "failed",
+      processingError: "parse failed",
+      renderStatus: "ready",
+      renderError: null,
+      pageCount: 4,
+      summary: null,
+      uploadedBy: USER_ID,
+      createdAt: new Date(),
+      storageProvider: "local",
+      storageKey: "key",
+    } as never);
+    mockPrisma.documentVersion.update.mockResolvedValue({
+      id: VER_ID,
+      documentId: DOC_ID,
+      versionNumber: 2,
+      isCurrent: false,
+      fileSize: 100,
+      mimeType: "application/pdf",
+      originalFilename: "deck.pdf",
+      processingStatus: "processing",
+      processingError: null,
+      renderStatus: "ready",
+      renderError: null,
+      pageCount: 4,
+      summary: null,
+      uploadedBy: USER_ID,
+      createdAt: new Date(),
+      storageProvider: "local",
+      storageKey: "key",
+    } as never);
+
+    await documentService.retryVersion(STARTUP_ID, DOC_ID, VER_ID, USER_ID);
+
+    expect(mockQueue.add).toHaveBeenCalledWith("process-version", {
+      startupId: STARTUP_ID,
+      documentId: DOC_ID,
+      versionId: VER_ID,
+    });
+    expect(mockRasterizeQueue.add).not.toHaveBeenCalled();
+  });
+
+  it("rejects retrying a healthy version", async () => {
+    mockPrisma.document.findUnique.mockResolvedValue({ id: DOC_ID, archivedAt: null } as never);
+    mockPrisma.documentVersion.findFirst.mockResolvedValue({
+      id: VER_ID,
+      documentId: DOC_ID,
+      processingStatus: "ready",
+      renderStatus: "ready",
+    } as never);
+
+    await expect(
+      documentService.retryVersion(STARTUP_ID, DOC_ID, VER_ID, USER_ID),
+    ).rejects.toMatchObject({ code: "VERSION_NOT_FAILED", statusCode: 409 });
+  });
+});
+
+describe("DocumentService.promoteVersion", () => {
+  it("makes a fully processed historical version current atomically", async () => {
+    mockPrisma.document.findUnique.mockResolvedValue({ id: DOC_ID, archivedAt: null } as never);
+    mockPrisma.documentVersion.findFirst.mockResolvedValue({
+      id: VER_ID,
+      documentId: DOC_ID,
+      versionNumber: 1,
+      isCurrent: false,
+      fileSize: 100,
+      mimeType: "application/pdf",
+      originalFilename: "deck.pdf",
+      processingStatus: "ready",
+      processingError: null,
+      renderStatus: "ready",
+      renderError: null,
+      pageCount: 4,
+      summary: null,
+      uploadedBy: USER_ID,
+      createdAt: new Date(),
+      storageProvider: "local",
+      storageKey: "key",
+    } as never);
+    mockPrisma.documentVersion.updateMany.mockResolvedValue({ count: 1 } as never);
+    mockPrisma.documentVersion.update.mockResolvedValue({ id: VER_ID, isCurrent: true } as never);
+
+    const result = await documentService.promoteVersion(STARTUP_ID, DOC_ID, VER_ID, USER_ID);
+
+    expect(result.isCurrent).toBe(true);
+    expect(mockPrisma.documentVersion.updateMany).toHaveBeenCalledWith({
+      where: { documentId: DOC_ID, isCurrent: true, id: { not: VER_ID } },
+      data: { isCurrent: false },
+    });
+    expect(recordAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "promote", entityId: VER_ID }),
+    );
   });
 });
 

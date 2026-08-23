@@ -1,5 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
-import { Download, Eye, FileText } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Download, Eye, FileText, RotateCcw, Star } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "../../../components/ui/button";
 import {
   Sheet,
@@ -10,7 +11,12 @@ import {
 } from "../../../components/ui/sheet";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { apiErrorMessage } from "../../../lib/api-error";
-import { getDocument, type DocumentVersion } from "../../../lib/document-api";
+import {
+  getDocument,
+  promoteDocumentVersion,
+  retryDocumentVersion,
+  type DocumentVersion,
+} from "../../../lib/document-api";
 import { cn, formatDate } from "../../../lib/utils";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
 import { formatFileSize, statusOf } from "./document-types";
@@ -21,6 +27,7 @@ type DocumentVersionsSheetProps = {
   onOpenChange: (open: boolean) => void;
   onPreview: (version: DocumentVersion) => void;
   onDownload: (version: DocumentVersion) => void;
+  canUpdate: boolean;
 };
 
 /**
@@ -35,8 +42,10 @@ export function DocumentVersionsSheet({
   onOpenChange,
   onPreview,
   onDownload,
+  canUpdate,
 }: DocumentVersionsSheetProps) {
   const open = documentId !== null;
+  const queryClient = useQueryClient();
 
   const query = useQuery({
     queryKey: ["documents", startupId, "detail", documentId],
@@ -48,6 +57,33 @@ export function DocumentVersionsSheet({
   // every search selection look like "Northbeam Product Teaser".
   const doc = query.data?.id === documentId ? query.data : undefined;
   const showLoading = open && (query.isPending || query.isFetching) && !doc;
+
+  const refresh = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["documents", startupId, "detail", documentId] }),
+      queryClient.invalidateQueries({ queryKey: ["documents", startupId] }),
+    ]);
+  };
+
+  const retryMutation = useMutation({
+    mutationFn: (versionId: string) =>
+      retryDocumentVersion(startupId, documentId as string, versionId),
+    onSuccess: async () => {
+      await refresh();
+      toast.success("Document processing restarted");
+    },
+    onError: (error) => toast.error(apiErrorMessage(error, "Could not retry processing")),
+  });
+
+  const promoteMutation = useMutation({
+    mutationFn: (versionId: string) =>
+      promoteDocumentVersion(startupId, documentId as string, versionId),
+    onSuccess: async () => {
+      await refresh();
+      toast.success("Current version updated");
+    },
+    onError: (error) => toast.error(apiErrorMessage(error, "Could not make version current")),
+  });
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -74,6 +110,16 @@ export function DocumentVersionsSheet({
             {doc?.versions.map((version) => {
               const status = statusOf(version);
               const canOpen = status === "ready";
+              const canPromote =
+                canUpdate &&
+                !doc?.archivedAt &&
+                !version.isCurrent &&
+                version.processingStatus === "ready" &&
+                ["ready", "unsupported"].includes(version.renderStatus);
+              const canRetry =
+                canUpdate &&
+                !doc?.archivedAt &&
+                (version.processingStatus === "failed" || version.renderStatus === "failed");
               return (
                 <li
                   key={version.id}
@@ -109,8 +155,10 @@ export function DocumentVersionsSheet({
                     <DocumentStatusBadge status={status} />
                   </div>
 
-                  {version.processingError && (
-                    <p className="mt-2 line-clamp-2 text-xs text-destructive">{version.processingError}</p>
+                  {(version.processingError || version.renderError) && (
+                    <p className="mt-2 line-clamp-2 text-xs text-destructive">
+                      {version.processingError || version.renderError}
+                    </p>
                   )}
 
                   <div className="mt-2.5 flex gap-1.5">
@@ -133,6 +181,32 @@ export function DocumentVersionsSheet({
                       <Download className="mr-1 h-3.5 w-3.5" /> Download
                     </Button>
                   </div>
+                  {(canRetry || canPromote) && (
+                    <div className="mt-1.5 flex gap-1.5 border-t border-border/60 pt-2">
+                      {canRetry && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 flex-1 text-xs"
+                          disabled={retryMutation.isPending}
+                          onClick={() => retryMutation.mutate(version.id)}
+                        >
+                          <RotateCcw className="mr-1 h-3.5 w-3.5" /> Retry
+                        </Button>
+                      )}
+                      {canPromote && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 flex-1 text-xs"
+                          disabled={promoteMutation.isPending}
+                          onClick={() => promoteMutation.mutate(version.id)}
+                        >
+                          <Star className="mr-1 h-3.5 w-3.5" /> Make current
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </li>
               );
             })}

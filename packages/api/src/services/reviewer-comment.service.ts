@@ -26,9 +26,23 @@ export class ReviewerCommentService {
         skip: (query.page - 1) * query.limit,
         take: query.limit,
         include: {
-          invitation: { select: { id: true, reviewerName: true, emailNormalized: true } },
+          invitation: {
+            select: {
+              id: true,
+              reviewerName: true,
+              emailNormalized: true,
+              documents: { select: { documentId: true, documentVersionId: true } },
+            },
+          },
           document: { select: { id: true, title: true } },
-          chunk: { select: { id: true, sectionLabel: true, pageNumber: true } },
+          chunk: {
+            select: {
+              id: true,
+              documentVersionId: true,
+              sectionLabel: true,
+              pageNumber: true,
+            },
+          },
           resolver: { select: { id: true, firstName: true, lastName: true } },
         },
       }),
@@ -43,7 +57,16 @@ export class ReviewerCommentService {
         invitationId: row.invitationId,
         reviewerName: row.invitation.reviewerName,
         reviewerEmail: row.invitation.emailNormalized,
-        document: row.document,
+        document: row.document
+          ? {
+              ...row.document,
+              versionId:
+                row.chunk?.documentVersionId ??
+                row.invitation.documents.find((item) => item.documentId === row.documentId)
+                  ?.documentVersionId ??
+                null,
+            }
+          : null,
         section: row.chunk
           ? { id: row.chunk.id, label: row.chunk.sectionLabel, pageNumber: row.chunk.pageNumber }
           : null,

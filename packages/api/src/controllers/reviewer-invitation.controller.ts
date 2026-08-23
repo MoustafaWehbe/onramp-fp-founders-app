@@ -4,8 +4,10 @@ import type {
   CreateReviewerInvitationInput,
   ListFounderReviewerCommentsQuery,
   ListReviewerInvitationsQuery,
+  ReviewerActivityQuery,
 } from "../validators/reviewer.schemas";
 import { reviewerCommentService } from "../services/reviewer-comment.service";
+import { reviewerActivityService } from "../services/reviewer-activity.service";
 
 export const reviewerInvitationController = {
   listInvitations: asyncHandler(async (req, res) => {
@@ -65,6 +67,15 @@ export const reviewerInvitationController = {
       req.params.invitationId as string,
     );
     res.json({ data: result });
+  }),
+
+  listActivity: asyncHandler(async (req, res) => {
+    const activity = await reviewerActivityService.list(
+      req.params.startupId as string,
+      req.params.invitationId as string,
+      (req.query as unknown as ReviewerActivityQuery).limit,
+    );
+    res.json({ data: activity });
   }),
 
   revokeInvitation: asyncHandler(async (req, res) => {

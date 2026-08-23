@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Circle, MessageSquare, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 import { Button } from "../../components/ui/button";
 import {
   Sheet,
@@ -16,6 +17,7 @@ import {
   listFounderReviewerComments,
   markFounderReviewerCommentRead,
   resolveFounderReviewerComment,
+  reviewerDocumentContextHref,
 } from "../../lib/reviewer-api";
 import { cn, formatDate } from "../../lib/utils";
 
@@ -155,6 +157,31 @@ export function ReviewerCommentsSheet({
                           onClick={() => resolveMutation.mutate(comment.id)}
                         >
                           <Check className="h-3.5 w-3.5" /> Resolve
+                        </Button>
+                      )}
+                      {comment.document && (
+                        <Button
+                          asChild
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs"
+                        >
+                          <Link
+                            to={reviewerDocumentContextHref({
+                              documentId: comment.document.id,
+                              versionId: comment.document.versionId,
+                              pageNumber: comment.section?.pageNumber,
+                              sectionLabel: comment.section?.label,
+                            })}
+                            onClick={() => {
+                              if (!comment.readAt && !comment.resolvedAt) {
+                                readMutation.mutate(comment.id);
+                              }
+                              onOpenChange(false);
+                            }}
+                          >
+                            Open context
+                          </Link>
                         </Button>
                       )}
                       {comment.resolvedAt && (

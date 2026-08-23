@@ -18,6 +18,7 @@ describe("listDocumentsQuerySchema", () => {
     if (result.success) {
       expect(result.data.page).toBe(1);
       expect(result.data.limit).toBe(20);
+      expect(result.data.lifecycle).toBe("active");
     }
   });
 
@@ -31,6 +32,12 @@ describe("listDocumentsQuerySchema", () => {
 
   it("rejects invalid documentType", () => {
     expect(listDocumentsQuerySchema.safeParse({ documentType: "pptx" }).success).toBe(false);
+  });
+
+  it("accepts archived and all lifecycle views", () => {
+    expect(listDocumentsQuerySchema.safeParse({ lifecycle: "archived" }).success).toBe(true);
+    expect(listDocumentsQuerySchema.safeParse({ lifecycle: "all" }).success).toBe(true);
+    expect(listDocumentsQuerySchema.safeParse({ lifecycle: "deleted" }).success).toBe(false);
   });
 });
 

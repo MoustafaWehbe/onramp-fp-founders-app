@@ -391,6 +391,10 @@ components:
         createdBy:
           type: string
           format: uuid
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -7358,6 +7362,13 @@ paths:
           in: query
           schema:
             $ref: "#/components/schemas/DocumentType"
+        - name: lifecycle
+          in: query
+          description: Active documents are returned by default; archived documents remain recoverable.
+          schema:
+            type: string
+            enum: [active, archived, all]
+            default: active
       responses:
         "200":
           description: List of documents
@@ -7458,6 +7469,46 @@ paths:
         "200":
           description: Analytics
 
+  /startups/{startupId}/documents/{documentId}/archive:
+    post:
+      tags: [Documents]
+      summary: Archive a document while retaining its versions and history
+      operationId: archiveDocument
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Archived; idempotent when already archived
+
+  /startups/{startupId}/documents/{documentId}/restore:
+    post:
+      tags: [Documents]
+      summary: Restore an archived document to the active data room
+      operationId: restoreDocument
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Restored; idempotent when already active
+
   /startups/{startupId}/documents/{documentId}/versions/upload-sessions:
     post:
       tags: [Document Versions]
@@ -7517,6 +7568,58 @@ paths:
       responses:
         "200":
           description: Confirmed
+
+  /startups/{startupId}/documents/{documentId}/versions/{versionId}/retry:
+    post:
+      tags: [Document Versions]
+      summary: Retry the failed extraction and/or rendering pipeline
+      operationId: retryDocumentVersion
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: versionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Retry queued
+        "409":
+          description: Version is not failed or the document is archived
+
+  /startups/{startupId}/documents/{documentId}/versions/{versionId}/promote:
+    post:
+      tags: [Document Versions]
+      summary: Make a fully processed historical version current
+      operationId: promoteDocumentVersion
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: versionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Version is current
+        "409":
+          description: Version is not fully processed or the document is archived
 
   /startups/{startupId}/documents/{documentId}/file-access:
     post:

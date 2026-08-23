@@ -98,7 +98,7 @@ export type FounderReviewerComment = {
   invitationId: string;
   reviewerName: string | null;
   reviewerEmail: string;
-  document: { id: string; title: string } | null;
+  document: { id: string; title: string; versionId: string | null } | null;
   section: { id: string; label: string | null; pageNumber: number | null } | null;
   commentText: string;
   createdAt: string;
@@ -106,6 +106,22 @@ export type FounderReviewerComment = {
   resolvedAt: string | null;
   resolvedBy: { id: string; name: string } | null;
 };
+
+export function reviewerDocumentContextHref(context: {
+  documentId: string;
+  versionId?: string | null;
+  pageNumber?: number | null;
+  sectionLabel?: string | null;
+}) {
+  const params = new URLSearchParams({ document: context.documentId });
+  if (context.versionId) params.set("version", context.versionId);
+  if (context.pageNumber) {
+    params.set("page", String(context.pageNumber));
+    params.set("preview", "1");
+  }
+  if (context.sectionLabel) params.set("section", context.sectionLabel);
+  return `/documents?${params.toString()}`;
+}
 
 export async function listFounderReviewerComments(
   startupId: string,
@@ -199,6 +215,36 @@ export type ReviewerInvitationAnalytics = {
 export async function getReviewerInvitationAnalytics(startupId: string, invitationId: string) {
   const { data } = await apiClient.get<{ data: ReviewerInvitationAnalytics }>(
     `/startups/${startupId}/reviewer-invitations/${invitationId}/analytics`,
+  );
+  return data.data;
+}
+
+export type ReviewerActivityItem = {
+  id: string;
+  type:
+    | "invitation_created"
+    | "invitation_sent"
+    | "access_verified"
+    | "visit_started"
+    | "page_viewed"
+    | "comment_added"
+    | "security_event"
+    | "review_completed"
+    | "invitation_revoked";
+  occurredAt: string;
+  document: { id: string; title: string; versionId: string } | null;
+  pageNumber: number | null;
+  details: Record<string, string | number | boolean | null>;
+};
+
+export async function listReviewerInvitationActivity(
+  startupId: string,
+  invitationId: string,
+  limit = 50,
+) {
+  const { data } = await apiClient.get<{ data: ReviewerActivityItem[] }>(
+    `/startups/${startupId}/reviewer-invitations/${invitationId}/activity`,
+    { params: { limit } },
   );
   return data.data;
 }

@@ -1,4 +1,4 @@
-import { BarChart3, Download, Eye, History, MoreHorizontal, Pencil, Trash2, Upload } from "lucide-react";
+import { Archive, ArchiveRestore, BarChart3, Download, Eye, History, MoreHorizontal, Pencil, Upload } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import {
   DropdownMenu,
@@ -13,7 +13,7 @@ type DocumentActionsProps = {
   document: VaultDocument;
   canOpen: boolean;
   canUpdate: boolean;
-  canDelete: boolean;
+  canArchive: boolean;
   uploadingVersion: boolean;
   onPreview: (doc: VaultDocument) => void;
   onDownload: (doc: VaultDocument) => void;
@@ -21,7 +21,8 @@ type DocumentActionsProps = {
   onEdit: (doc: VaultDocument) => void;
   onViewVersions: (doc: VaultDocument) => void;
   onViewAnalytics: (doc: VaultDocument) => void;
-  onDelete: (doc: VaultDocument) => void;
+  onArchive: (doc: VaultDocument) => void;
+  onRestore: (doc: VaultDocument) => void;
   /**
    * Table rows have no other affordance for these, so the menu is the only
    * way to reach them. Cards already show Preview/Download/Upload-version as
@@ -34,7 +35,7 @@ export function DocumentActions({
   document,
   canOpen,
   canUpdate,
-  canDelete,
+  canArchive,
   uploadingVersion,
   onPreview,
   onDownload,
@@ -42,7 +43,8 @@ export function DocumentActions({
   onEdit,
   onViewVersions,
   onViewAnalytics,
-  onDelete,
+  onArchive,
+  onRestore,
   includeQuickActions = true,
 }: DocumentActionsProps) {
   return (
@@ -72,7 +74,7 @@ export function DocumentActions({
           <BarChart3 className="mr-2 h-4 w-4" /> Analytics
         </DropdownMenuItem>
 
-        {canUpdate && (
+        {canUpdate && !document.archivedAt && (
           <>
             <DropdownMenuItem onSelect={() => onEdit(document)}>
               <Pencil className="mr-2 h-4 w-4" /> Edit details
@@ -89,11 +91,18 @@ export function DocumentActions({
           </>
         )}
 
-        {canDelete && (
+        {canArchive && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive" onSelect={() => onDelete(document)}>
-              <Trash2 className="mr-2 h-4 w-4" /> Delete document
+            <DropdownMenuItem
+              onSelect={() => (document.archivedAt ? onRestore(document) : onArchive(document))}
+            >
+              {document.archivedAt ? (
+                <ArchiveRestore className="mr-2 h-4 w-4" />
+              ) : (
+                <Archive className="mr-2 h-4 w-4" />
+              )}
+              {document.archivedAt ? "Restore document" : "Archive document"}
             </DropdownMenuItem>
           </>
         )}

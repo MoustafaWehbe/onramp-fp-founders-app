@@ -18,7 +18,7 @@ type DocumentsTableProps = {
   focusedDocumentId?: string | null;
   onToggleOne: (id: string) => void;
   canUpdate: boolean;
-  canDelete: boolean;
+  canArchive: boolean;
   uploadingVersionId: string | null;
   onPreview: (doc: VaultDocument) => void;
   onDownload: (doc: VaultDocument) => void;
@@ -26,7 +26,8 @@ type DocumentsTableProps = {
   onEdit: (doc: VaultDocument) => void;
   onViewVersions: (doc: VaultDocument) => void;
   onViewAnalytics: (doc: VaultDocument) => void;
-  onDelete: (doc: VaultDocument) => void;
+  onArchive: (doc: VaultDocument) => void;
+  onRestore: (doc: VaultDocument) => void;
 };
 
 export function DocumentsTable({
@@ -35,7 +36,7 @@ export function DocumentsTable({
   focusedDocumentId = null,
   onToggleOne,
   canUpdate,
-  canDelete,
+  canArchive,
   uploadingVersionId,
   onPreview,
   onDownload,
@@ -43,7 +44,8 @@ export function DocumentsTable({
   onEdit,
   onViewVersions,
   onViewAnalytics,
-  onDelete,
+  onArchive,
+  onRestore,
 }: DocumentsTableProps) {
   const selectionActive = selectedIds !== null;
 
@@ -132,7 +134,7 @@ export function DocumentsTable({
                     document={doc}
                     canOpen={status === "ready"}
                     canUpdate={canUpdate}
-                    canDelete={canDelete}
+                    canArchive={canArchive}
                     uploadingVersion={uploadingVersionId === doc.id}
                     onPreview={onPreview}
                     onDownload={onDownload}
@@ -140,7 +142,8 @@ export function DocumentsTable({
                     onEdit={onEdit}
                     onViewVersions={onViewVersions}
                     onViewAnalytics={onViewAnalytics}
-                    onDelete={onDelete}
+                    onArchive={onArchive}
+                    onRestore={onRestore}
                   />
                 </td>
               </tr>

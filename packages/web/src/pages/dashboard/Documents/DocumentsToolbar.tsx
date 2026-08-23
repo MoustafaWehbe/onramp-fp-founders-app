@@ -1,4 +1,4 @@
-import { Check, CheckSquare, Filter, Search, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, CheckSquare, Filter, Search, X } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import {
   DropdownMenu,
@@ -10,7 +10,7 @@ import {
 } from "../../../components/ui/dropdown-menu";
 import { Input } from "../../../components/ui/input";
 import { cn } from "../../../lib/utils";
-import { STATUS_FILTER_OPTIONS, TYPE_OPTIONS } from "./document-types";
+import { LIFECYCLE_FILTER_OPTIONS, STATUS_FILTER_OPTIONS, TYPE_OPTIONS } from "./document-types";
 
 type Option = { value: string; label: string };
 
@@ -50,6 +50,7 @@ function FilterMenu({ label, options, value, onChange, showIcon }: FilterMenuPro
 export type DocumentFilters = {
   documentType: string | null;
   status: string | null;
+  lifecycle: "active" | "archived";
 };
 
 type DocumentsToolbarProps = {
@@ -64,8 +65,8 @@ type DocumentsToolbarProps = {
   onSelectAllVisible: () => void;
   visibleCount: number;
   selectedCount: number;
-  onBulkDelete: () => void;
-  bulkDeleting: boolean;
+  onBulkLifecycleAction: () => void;
+  bulkActionPending: boolean;
 };
 
 export function DocumentsToolbar({
@@ -80,10 +81,14 @@ export function DocumentsToolbar({
   onSelectAllVisible,
   visibleCount,
   selectedCount,
-  onBulkDelete,
-  bulkDeleting,
+  onBulkLifecycleAction,
+  bulkActionPending,
 }: DocumentsToolbarProps) {
-  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const activeFilterCount =
+    Number(Boolean(filters.documentType)) +
+    Number(Boolean(filters.status)) +
+    Number(filters.lifecycle === "archived");
+  const showingArchived = filters.lifecycle === "archived";
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -110,6 +115,14 @@ export function DocumentsToolbar({
         options={STATUS_FILTER_OPTIONS}
         value={filters.status}
         onChange={(value) => onFilterChange("status", value)}
+      />
+      <FilterMenu
+        label="View"
+        options={LIFECYCLE_FILTER_OPTIONS}
+        value={filters.lifecycle}
+        onChange={(value) =>
+          onFilterChange("lifecycle", value === "archived" ? "archived" : "active")
+        }
       />
 
       {activeFilterCount > 0 && (
@@ -146,12 +159,15 @@ export function DocumentsToolbar({
           <Button
             variant="outline"
             size="sm"
-            className="text-destructive hover:text-destructive"
-            disabled={bulkDeleting || selectedCount === 0}
-            onClick={onBulkDelete}
+            disabled={bulkActionPending || selectedCount === 0}
+            onClick={onBulkLifecycleAction}
           >
-            <Trash2 className="h-3.5 w-3.5" />
-            {bulkDeleting ? "Deleting…" : "Delete"}
+            {showingArchived ? (
+              <ArchiveRestore className="h-3.5 w-3.5" />
+            ) : (
+              <Archive className="h-3.5 w-3.5" />
+            )}
+            {bulkActionPending ? "Working…" : showingArchived ? "Restore" : "Archive"}
           </Button>
           <Button type="button" variant="ghost" size="sm" onClick={onToggleSelection} aria-label="Leave selection mode">
             <X className="h-3.5 w-3.5" /> Done
