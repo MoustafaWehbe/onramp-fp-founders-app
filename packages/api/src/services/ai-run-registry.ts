@@ -23,6 +23,8 @@ import { logger } from "../utils/logger";
 export interface AiRunRegistry {
   /** Marks messageId as actively generating on this process. Call once, when generation starts. */
   claim(messageId: string, userId: string): Promise<void>;
+  /** Atomically enforces the per-user limit and claims this message. */
+  tryClaim(messageId: string, userId: string, limit: number): Promise<"claimed" | "already_active" | "limit_reached">;
   /** Keeps the claim alive; call on an interval shorter than the TTL while generating. */
   heartbeat(messageId: string): Promise<void>;
   /** Call once from generation's finally block, regardless of outcome. */
@@ -35,6 +37,8 @@ export interface AiRunRegistry {
   requestCancel(messageId: string): Promise<void>;
   /** Registers a local handler for cancel requests targeting messageId. Returns an unsubscribe function. */
   onCancel(messageId: string, handler: () => void): () => void;
+  /** Resolves once cross-process cancellation requests can reach this process. */
+  readyForCancellation(): Promise<void>;
 }
 
 const RUN_TTL_SECONDS = 20;
@@ -46,6 +50,13 @@ class InMemoryAiRunRegistry implements AiRunRegistry {
 
   async claim(messageId: string, userId: string): Promise<void> {
     this.owners.set(messageId, userId);
+  }
+
+  async tryClaim(messageId: string, userId: string, limit: number): Promise<"claimed" | "already_active" | "limit_reached"> {
+    if (this.owners.has(messageId)) return "already_active";
+    if ((await this.countActive(userId)) >= limit) return "limit_reached";
+    this.owners.set(messageId, userId);
+    return "claimed";
   }
 
   async heartbeat(): Promise<void> {}
@@ -81,6 +92,8 @@ class InMemoryAiRunRegistry implements AiRunRegistry {
       if (handlers?.size === 0) this.cancelHandlers.delete(messageId);
     };
   }
+
+  async readyForCancellation(): Promise<void> {}
 }
 
 /**
@@ -96,9 +109,10 @@ class InMemoryAiRunRegistry implements AiRunRegistry {
  * messageId (i.e. the one actually running the generation) does anything
  * with it.
  */
-class RedisAiRunRegistry implements AiRunRegistry {
+export class RedisAiRunRegistry implements AiRunRegistry {
   private readonly redis = getRedis();
   private subscriber: IORedis | null = null;
+  private subscriberReady: Promise<void> | null = null;
   private readonly cancelHandlers = new Map<string, Set<() => void>>();
 
   private runKey(messageId: string): string {
@@ -118,6 +132,32 @@ class RedisAiRunRegistry implements AiRunRegistry {
       this.redis.set(this.runKey(messageId), "1", "EX", RUN_TTL_SECONDS),
       this.redis.sadd(this.streamsKey(userId), messageId),
     ]);
+  }
+
+  async tryClaim(messageId: string, userId: string, limit: number): Promise<"claimed" | "already_active" | "limit_reached"> {
+    const result = Number(await this.redis.eval(
+      `local members = redis.call('SMEMBERS', KEYS[2])
+       local active = 0
+       for _, member in ipairs(members) do
+         if redis.call('EXISTS', 'ai:run:' .. member) == 1 then
+           active = active + 1
+         else
+           redis.call('SREM', KEYS[2], member)
+         end
+       end
+       if redis.call('EXISTS', KEYS[1]) == 1 then return 0 end
+       if active >= tonumber(ARGV[2]) then return -1 end
+       redis.call('SET', KEYS[1], '1', 'EX', ARGV[3])
+       redis.call('SADD', KEYS[2], ARGV[1])
+       return 1`,
+      2,
+      this.runKey(messageId),
+      this.streamsKey(userId),
+      messageId,
+      limit,
+      RUN_TTL_SECONDS,
+    ));
+    return result === 1 ? "claimed" : result === 0 ? "already_active" : "limit_reached";
   }
 
   async heartbeat(messageId: string): Promise<void> {
@@ -150,6 +190,9 @@ class RedisAiRunRegistry implements AiRunRegistry {
   }
 
   async requestCancel(messageId: string): Promise<void> {
+    // Handles the common same-process case immediately and also closes the
+    // tiny window before this process's Redis pattern subscription is ready.
+    for (const handler of [...(this.cancelHandlers.get(messageId) ?? [])]) handler();
     await this.redis.publish(this.cancelChannel(messageId), "1");
   }
 
@@ -172,6 +215,11 @@ class RedisAiRunRegistry implements AiRunRegistry {
     };
   }
 
+  async readyForCancellation(): Promise<void> {
+    this.ensureSubscriber();
+    await this.subscriberReady;
+  }
+
   private ensureSubscriber(): IORedis {
     if (this.subscriber) return this.subscriber;
 
@@ -184,7 +232,9 @@ class RedisAiRunRegistry implements AiRunRegistry {
       for (const handler of [...(this.cancelHandlers.get(messageId) ?? [])]) handler();
     });
     sub.on("error", (err) => logger.error({ err }, "[ai-run-registry] redis subscriber error"));
-    void sub.psubscribe("ai:cancel:*").catch((err) => logger.error({ err }, "[ai-run-registry] failed to psubscribe"));
+    this.subscriberReady = sub.psubscribe("ai:cancel:*")
+      .then(() => undefined)
+      .catch((err) => logger.error({ err }, "[ai-run-registry] failed to psubscribe"));
 
     this.subscriber = sub;
     return sub;

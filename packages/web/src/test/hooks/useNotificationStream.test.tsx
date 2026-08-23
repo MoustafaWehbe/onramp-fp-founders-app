@@ -120,6 +120,17 @@ describe("useNotificationStream", () => {
     ]);
   });
 
+  it("reconciles persisted notifications whenever the stream connects", () => {
+    const { source } = render();
+
+    act(() => source.emit("ready", {}));
+
+    expect(invalidatedKeys()).toEqual([
+      JSON.stringify(NOTIFICATIONS_KEY),
+      JSON.stringify(MY_INVITES_KEY),
+    ]);
+  });
+
   it("surfaces a new notification as a toast", () => {
     const { source } = render();
 

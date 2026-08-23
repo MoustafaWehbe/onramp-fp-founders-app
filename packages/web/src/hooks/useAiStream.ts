@@ -7,6 +7,16 @@ type StreamOptions = {
   onError: () => void;
 };
 
+const MAX_RECONNECT_ATTEMPTS = 8;
+const RECONNECT_BASE_MS = 750;
+const RECONNECT_CAP_MS = 15_000;
+
+/** Capped exponential backoff with a small jitter to avoid reconnect storms after a deploy. */
+export function aiReconnectDelayMs(attempt: number, jitter = Math.random()): number {
+  const exponential = Math.min(RECONNECT_CAP_MS, RECONNECT_BASE_MS * 2 ** Math.max(0, attempt));
+  return exponential + Math.floor(Math.max(0, Math.min(1, jitter)) * 300);
+}
+
 /**
  * Fetch-based SSE keeps the authenticated cookie flow intact and lets us send
  * Last-Event-ID on reconnect. EventSource cannot set that header itself.
@@ -25,7 +35,7 @@ export function useAiStream() {
     controllerRef.current = controller;
     let lastEventId = 0;
 
-    for (let attempt = 0; attempt < 3 && !controller.signal.aborted; attempt += 1) {
+    for (let attempt = 0; attempt < MAX_RECONNECT_ATTEMPTS && !controller.signal.aborted; attempt += 1) {
       try {
         const response = await fetch(url, {
           credentials: "include",
@@ -65,7 +75,9 @@ export function useAiStream() {
       } catch {
         if (controller.signal.aborted) return;
       }
-      if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 600 * (attempt + 1)));
+      if (attempt < MAX_RECONNECT_ATTEMPTS - 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, aiReconnectDelayMs(attempt)));
+      }
     }
     if (!controller.signal.aborted) onError();
   }, [close]);
