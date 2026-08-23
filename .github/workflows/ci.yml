@@ -26,7 +26,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # pdfjs-dist 6 uses Node APIs introduced in 22.13 for loading its
+          # standard-font data. On Node 20, text is silently rendered blank.
+          node-version: "22.13"
           cache: npm
 
       # Dummy URL is enough for `prisma generate` during postinstall; unit tests

@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-starter_kit}
+      POSTGRES_DB: ${POSTGRES_DB:-raise}
     ports:
       - '5433:5432'
     volumes:
@@ -45,7 +45,7 @@ services:
     environment:
       # Overrides the host-oriented values from packages/api/.env — inside
       # the compose network, postgres/redis are reachable by service name.
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-starter_kit}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-raise}
       REDIS_URL: redis://redis:6379
     depends_on:
       postgres:

@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, memo, useContext } from "react";
 import { AlertTriangle, Check } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -67,7 +67,7 @@ function ListItem({ children }: { children?: React.ReactNode }) {
 }
 
 const components: Components = {
-  p: ({ children }) => <p className="leading-relaxed [&:not(:first-child)]:mt-3">{children}</p>,
+  p: ({ children }) => <p className="leading-relaxed not-first:mt-3">{children}</p>,
   strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
   a: ({ children, href }) => (
@@ -117,12 +117,17 @@ const components: Components = {
   td: ({ children }) => <td className="border-b border-border/40 px-2.5 py-1.5 align-top text-foreground/90">{children}</td>,
 };
 
-export function Markdown({ children, className }: { children: string; className?: string }) {
+const remarkPlugins = [remarkGfm, remarkToneLists];
+
+// Memoized: parsing markdown into an AST is real work, and a parent re-render
+// (e.g. a tool-call status update) shouldn't force it to redo that work when
+// the text itself hasn't changed.
+export const Markdown = memo(function Markdown({ children, className }: { children: string; className?: string }) {
   return (
     <div className={cn("text-base leading-relaxed text-foreground/95", className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkToneLists]} components={components}>
+      <ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
         {children}
       </ReactMarkdown>
     </div>
   );
-}
+});

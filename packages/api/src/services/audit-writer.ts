@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
+import { logger } from "../utils/logger";
 
 /**
  * Common verbs, kept as constants so call sites don't drift into synonyms
@@ -19,6 +20,8 @@ export const AUDIT_ACTIONS = {
   ACCEPT: "accept",
   DECLINE: "decline",
   SHARE: "share",
+  VIEW: "view",
+  DOWNLOAD: "download",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS] | (string & {});
@@ -51,11 +54,10 @@ export async function recordAuditEvent(input: RecordAuditInput): Promise<void> {
       },
     });
   } catch (error) {
-    console.error("[audit] failed to record event", {
-      entityType: input.entityType,
-      action: input.action,
-      error: error instanceof Error ? error.message : error,
-    });
+    logger.error(
+      { entityType: input.entityType, action: input.action, err: error },
+      "[audit] failed to record event",
+    );
   }
 }
 
@@ -79,10 +81,9 @@ export async function recordAccountAuditEvent(
       memberships.map((membership) => recordAuditEvent({ ...input, startupId: membership.startupId })),
     );
   } catch (error) {
-    console.error("[audit] failed to resolve memberships for account event", {
-      entityType: input.entityType,
-      action: input.action,
-      error: error instanceof Error ? error.message : error,
-    });
+    logger.error(
+      { entityType: input.entityType, action: input.action, err: error },
+      "[audit] failed to resolve memberships for account event",
+    );
   }
 }

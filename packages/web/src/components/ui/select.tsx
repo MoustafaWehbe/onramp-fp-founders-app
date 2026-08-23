@@ -17,8 +17,8 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      "flex h-9 w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-3 text-sm outline-none transition-colors",
-      "focus:ring-1 focus:ring-ring data-[placeholder]:text-muted-foreground",
+      "flex h-9 w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-3 text-sm outline-hidden transition-colors",
+      "focus:ring-1 focus:ring-ring data-placeholder:text-muted-foreground",
       "disabled:cursor-not-allowed disabled:opacity-50 [&>span]:truncate",
       className,
     )}
@@ -71,9 +71,9 @@ const SelectContent = React.forwardRef<
       // Matches the dropdown-menu surface so the two never look like they come
       // from different design systems.
       className={cn(
-        "relative z-50 max-h-[var(--radix-select-content-available-height)] min-w-[8rem] overflow-hidden rounded-lg border border-border/80 bg-card/95 font-sans text-sm text-card-foreground shadow-2xl backdrop-blur-xl duration-200",
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-select-content-transform-origin]",
-        position === "popper" && "w-[var(--radix-select-trigger-width)]",
+        "relative z-50 max-h-(--radix-select-content-available-height) min-w-32 overflow-hidden rounded-lg border border-border/80 bg-card/95 font-sans text-sm text-card-foreground shadow-2xl backdrop-blur-xl duration-200",
+        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 origin-(--radix-select-content-transform-origin)",
+        position === "popper" && "w-(--radix-select-trigger-width)",
         className,
       )}
       {...props}
@@ -110,9 +110,9 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex w-full cursor-pointer select-none items-center gap-2 rounded-md py-2 pl-2.5 pr-8 text-sm font-medium outline-none transition-colors",
-      "focus:bg-surface-hover focus:text-foreground data-[highlighted]:bg-surface-hover data-[highlighted]:text-foreground",
-      "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "relative flex w-full cursor-pointer select-none items-center gap-2 rounded-md py-2 pl-2.5 pr-8 text-sm font-medium outline-hidden transition-colors",
+      "focus:bg-surface-hover focus:text-foreground data-highlighted:bg-surface-hover data-highlighted:text-foreground",
+      "data-disabled:pointer-events-none data-disabled:opacity-50",
       className,
     )}
     {...props}

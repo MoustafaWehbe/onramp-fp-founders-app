@@ -233,7 +233,7 @@ export function InvestorFormDialog({
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="start"
-                className="w-[var(--radix-dropdown-menu-trigger-width)]"
+                className="w-(--radix-dropdown-menu-trigger-width)"
               >
                 <DropdownMenuItem onSelect={() => set("investorType", "")}>
                   Not set

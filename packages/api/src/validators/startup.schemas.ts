@@ -8,7 +8,7 @@ const httpUrlSchema = z
     message: "Website must use http or https",
   });
 const fundingStageEnum = z.enum(["pre_seed", "seed", "series_a", "series_b", "series_c"], {
-  errorMap: () => ({ message: "Invalid funding stage" }),
+  error: "Invalid funding stage",
 });
 
 function optionalText(max: number, label: string) {
@@ -25,7 +25,7 @@ function optionalText(max: number, label: string) {
 function coercedDate(label: string) {
   return z.preprocess(
     (value) => (typeof value === "string" || value instanceof Date ? value : NaN),
-    z.coerce.date({ invalid_type_error: `${label} must be a valid datetime` }),
+    z.coerce.date({ error: `${label} must be a valid datetime` }),
   );
 }
 
@@ -123,7 +123,7 @@ export const updateStartupSchema = z
   }));
 
 export const startupIdParamSchema = z.object({
-  startupId: z.string().uuid("startupId must be a valid UUID"),
+  startupId: z.string().guid("startupId must be a valid UUID"),
 });
 
 export type CreateStartupInput = z.infer<typeof createStartupSchema>;

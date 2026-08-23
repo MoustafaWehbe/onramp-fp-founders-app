@@ -148,7 +148,7 @@ function PageCanvas({
   return (
     <div
       ref={wrapperRef}
-      className="relative w-full overflow-hidden rounded-md border border-border bg-white shadow-sm"
+      className="relative w-full overflow-hidden rounded-md border border-border bg-white shadow-xs"
       style={{ aspectRatio: `${page.width} / ${page.height}` }}
     >
       <canvas
@@ -232,7 +232,7 @@ function useCaptureGuards(versionId: string, screenshotGuard: boolean, allowPrin
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("beforeprint", onBeforePrint);
       window.removeEventListener("afterprint", unblank);
-      window.removeEventListener("blur", blank);
+      window.removeEventListener("blur-sm", blank);
       window.removeEventListener("focus", unblank);
       document.removeEventListener("visibilitychange", onVisibility);
     };
@@ -333,7 +333,7 @@ function WatermarkOverlay({ email }: { email: string }) {
   }, []);
 
   return (
-    <div className="pointer-events-none fixed bottom-3 right-3 z-50 rounded bg-black/60 px-2.5 py-1 text-[11px] text-white/90 shadow-sm">
+    <div className="pointer-events-none fixed bottom-3 right-3 z-50 rounded bg-black/60 px-2.5 py-1 text-[11px] text-white/90 shadow-xs">
       {email} · {now.toLocaleString()}
     </div>
   );
@@ -460,7 +460,7 @@ export function SecureDocumentViewer({
         )}
       </div>
       {blanked && (
-        <div className="absolute inset-0 z-40 grid place-items-center rounded-md bg-background/95 backdrop-blur-sm">
+        <div className="absolute inset-0 z-40 grid place-items-center rounded-md bg-background/95 backdrop-blur-xs">
           <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
             <EyeOff className="h-6 w-6" />
             <span>Content hidden</span>

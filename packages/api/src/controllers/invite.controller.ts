@@ -1,4 +1,5 @@
 import { asyncHandler } from "../utils/errors";
+import { logger } from "../utils/logger";
 import { inviteService } from "../services/invite.service";
 import { notificationService } from "../services/notification.service";
 import { prisma } from "../db/prisma";
@@ -33,7 +34,7 @@ async function queueInviteEmail(
     await emailQueue.add("send-invite", { to, subject, html });
     return { queued: true, startupName };
   } catch (err) {
-    console.error(`[${context}] email enqueue failed:`, err);
+    logger.error({ err, context }, "email enqueue failed");
     return { queued: false, startupName };
   }
 }

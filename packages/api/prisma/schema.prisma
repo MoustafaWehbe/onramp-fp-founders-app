@@ -6,7 +6,6 @@ generator client {
 
 datasource db {
   provider   = "postgresql"
-  url        = env("DATABASE_URL")
   extensions = [vector]
 }
 
@@ -1253,5 +1252,8 @@ model Notification {
 
   @@index([userId, readAt])
   @@index([startupId, createdAt])
+  @@index([userId, startupId, readAt])
+  @@index([userId, createdAt])
+  @@index([entityType, entityId, type, createdAt])
   @@map("notifications")
 }

@@ -102,7 +102,7 @@ function OtpInput({
             "w-12 h-14 text-center text-2xl font-semibold",
             "rounded-xl border-2 bg-background text-foreground",
             "caret-transparent transition-colors duration-100",
-            "focus:outline-none focus:border-primary",
+            "focus:outline-hidden focus:border-primary",
             digit ? "border-foreground/25" : "border-border",
             disabled ? "opacity-50 cursor-not-allowed" : "",
           ].join(" ")}

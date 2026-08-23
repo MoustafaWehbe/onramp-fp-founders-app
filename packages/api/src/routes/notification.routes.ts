@@ -4,6 +4,7 @@ import { authenticate } from "../middleware/auth";
 import { notificationController } from "../controllers/notification.controller";
 import {
   listNotificationsQuerySchema,
+  markAllReadBodySchema,
   notificationIdParamSchema,
 } from "../validators/notification.schemas";
 
@@ -18,7 +19,7 @@ router.get("/", validate(listNotificationsQuerySchema, "query"), notificationCon
 // Long-lived: registered before the :notificationId routes so "stream" is never
 // read as an id.
 router.get("/stream", notificationController.stream);
-router.post("/read-all", notificationController.markAllRead);
+router.post("/read-all", validate(markAllReadBodySchema, "body"), notificationController.markAllRead);
 router.patch(
   "/:notificationId/read",
   validate(notificationIdParamSchema, "params"),

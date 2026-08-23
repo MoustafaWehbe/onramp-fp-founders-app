@@ -92,9 +92,9 @@ export function Ai() {
           <EmptyState icon={Bot} title="Copilot is unavailable" description="You do not have access to AI Copilot in this workspace." />
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 grid-rows-[1fr] overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm xl:grid-cols-[272px_minmax(0,1fr)]">
+        <div className="grid min-h-0 flex-1 grid-rows-[1fr] overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs xl:grid-cols-[272px_minmax(0,1fr)]">
           <aside className="flex min-h-0 flex-col border-b border-border/60 bg-surface/30 p-3 xl:border-b-0 xl:border-r">
-            <Button className="mb-3 w-full shrink-0 shadow-sm" size="sm" onClick={() => createSessionMutation.mutate(undefined)} disabled={!canCreateSession || createSessionMutation.isPending}>
+            <Button className="mb-3 w-full shrink-0 shadow-xs" size="sm" onClick={() => createSessionMutation.mutate(undefined)} disabled={!canCreateSession || createSessionMutation.isPending}>
               {createSessionMutation.isPending ? <Loader2 className="animate-spin" /> : <MessageSquarePlus />} New conversation
             </Button>
             <div className="mb-2 flex shrink-0 items-center justify-between px-1">
@@ -176,7 +176,7 @@ function SessionButton({
   }
 
   return (
-    <div className={cn("group relative w-full rounded-xl border px-3 py-2.5 transition-colors", selected ? "border-primary/25 bg-primary/10 shadow-sm" : "border-transparent hover:border-border hover:bg-background")}>
+    <div className={cn("group relative w-full rounded-xl border px-3 py-2.5 transition-colors", selected ? "border-primary/25 bg-primary/10 shadow-xs" : "border-transparent hover:border-border hover:bg-background")}>
       {renaming ? (
         <div className="flex items-center gap-2">
           <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
@@ -197,7 +197,7 @@ function SessionButton({
                 setRenaming(false);
               }
             }}
-            className="min-w-0 flex-1 rounded-md border border-primary/40 bg-background px-1.5 py-0.5 text-sm font-medium text-foreground outline-none"
+            className="min-w-0 flex-1 rounded-md border border-primary/40 bg-background px-1.5 py-0.5 text-sm font-medium text-foreground outline-hidden"
           />
         </div>
       ) : (

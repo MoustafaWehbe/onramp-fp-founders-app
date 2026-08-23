@@ -21,7 +21,7 @@ export function AppLayout() {
           inert background content, and body scroll lock. */}
       <DialogPrimitive.Root open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <DialogPrimitive.Portal>
-          <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm lg:hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-background/80 backdrop-blur-xs lg:hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
           <DialogPrimitive.Content
             aria-describedby={undefined}
             className="fixed inset-y-0 left-0 z-50 flex h-full w-[min(18rem,88vw)] shadow-2xl duration-200 lg:hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left"

@@ -59,11 +59,21 @@ export function InvestorsTable({
               <tr
                 key={investor.id}
                 aria-selected={selectionActive ? selected : undefined}
-                onClick={selectionActive ? () => onToggleOne(investor.id) : undefined}
+                aria-label={`${selectionActive ? "Select" : "View"} ${investor.name}`}
+                tabIndex={0}
+                onClick={() =>
+                  selectionActive ? onToggleOne(investor.id) : onViewHistory(investor)
+                }
+                onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return;
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  if (selectionActive) onToggleOne(investor.id);
+                  else onViewHistory(investor);
+                }}
                 className={cn(
-                  "transition-colors",
-                  selectionActive ? "cursor-pointer hover:bg-surface-hover/50" : "hover:bg-surface-hover/50",
-                  selected && "bg-primary/[0.06]",
+                  "group cursor-pointer transition-colors hover:bg-primary/[0.045] focus-visible:bg-primary/[0.045] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                  selected && "bg-primary/6",
                 )}
               >
                 <td className="px-4 py-3">
@@ -84,7 +94,9 @@ export function InvestorsTable({
                       {selected ? <Check className="h-4 w-4" /> : getInitials(investor.name)}
                     </div>
                     <div className="min-w-0">
-                      <div className="truncate font-medium text-foreground">{investor.name}</div>
+                      <div className="truncate font-medium text-foreground transition-colors group-hover:text-primary">
+                        {investor.name}
+                      </div>
                       <div className="truncate text-xs text-muted-foreground">
                         {investor.email || "No email"}
                       </div>

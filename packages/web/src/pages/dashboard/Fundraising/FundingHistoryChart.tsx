@@ -191,7 +191,7 @@ export function FundingHistoryChart({
                 className={cn(
                   "rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
                   range === option.value
-                    ? "bg-card text-foreground shadow-sm"
+                    ? "bg-card text-foreground shadow-xs"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -211,7 +211,7 @@ export function FundingHistoryChart({
       {historyQuery.isError && (
         <div
           className={cn(
-            "flex flex-col items-center justify-center gap-2 rounded-lg border border-destructive/30 bg-destructive/[0.05] text-center text-sm text-destructive",
+            "flex flex-col items-center justify-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 text-center text-sm text-destructive",
             bodyClass,
           )}
         >

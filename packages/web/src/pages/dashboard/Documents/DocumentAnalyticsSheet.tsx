@@ -104,14 +104,14 @@ export function DocumentAnalyticsSheet({
             <button
               type="button"
               onClick={() => setTab("engagement")}
-              className={cn("flex-1 rounded-md py-1.5 font-medium transition-colors", tab === "engagement" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+              className={cn("flex-1 rounded-md py-1.5 font-medium transition-colors", tab === "engagement" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground")}
             >
               <Eye className="mr-1.5 inline h-3.5 w-3.5" /> Engagement
             </button>
             <button
               type="button"
               onClick={() => setTab("ai")}
-              className={cn("flex-1 rounded-md py-1.5 font-medium transition-colors", tab === "ai" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+              className={cn("flex-1 rounded-md py-1.5 font-medium transition-colors", tab === "ai" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground")}
             >
               <Sparkles className="mr-1.5 inline h-3.5 w-3.5" /> AI analysis
             </button>
@@ -132,7 +132,7 @@ export function DocumentAnalyticsSheet({
             ))}
           </div>
         ) : query.isError ? (
-          <div className="flex flex-col items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/[0.05] p-6 text-center text-sm text-destructive">
+          <div className="flex flex-col items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-center text-sm text-destructive">
             <AlertTriangle className="h-5 w-5" />
             {apiErrorMessage(query.error, "Could not load analytics.")}
             <Button size="sm" variant="outline" onClick={() => void query.refetch()}>

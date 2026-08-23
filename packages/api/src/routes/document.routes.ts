@@ -7,6 +7,7 @@ import {
   createUploadSessionSchema,
   createVersionUploadSchema,
   documentIdParamSchema,
+  fileAccessQuerySchema,
   listDocumentsQuerySchema,
   updateDocumentSchema,
   versionParamSchema,
@@ -98,6 +99,7 @@ router.post(
   validate(documentIdParamSchema, "params"),
   requireMember,
   requirePermission("documents", "read"),
+  validate(fileAccessQuerySchema, "query"),
   documentController.getFileAccess,
 );
 

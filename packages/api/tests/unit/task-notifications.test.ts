@@ -1,11 +1,12 @@
 import { notifyOverdueAndDueTodayTasks } from "../../src/jobs/task-notifications";
 
 jest.mock("../../src/db/prisma", () => ({
-  prisma: { task: { findMany: jest.fn() } },
+  prisma: { task: { findMany: jest.fn() }, notification: { findMany: jest.fn() } },
 }));
 
 jest.mock("../../src/services/notification.service", () => ({
   notificationService: { notifyTaskOverdue: jest.fn(), notifyTaskDueToday: jest.fn() },
+  NOTIFICATION_TYPES: { TASK_OVERDUE: "task_overdue", TASK_DUE_TODAY: "task_due_today" },
 }));
 
 import { prisma } from "../../src/db/prisma";
@@ -21,6 +22,9 @@ const TASK_ID = "00000000-0000-0000-0000-000000000003";
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Batched "already notified" pre-check the job runs before actually
+  // notifying; empty by default so existing tests' tasks are treated as due.
+  (mockPrisma.notification.findMany as jest.Mock).mockResolvedValue([]);
 });
 
 describe("notifyOverdueAndDueTodayTasks", () => {
@@ -116,5 +120,40 @@ describe("notifyOverdueAndDueTodayTasks", () => {
 
     expect(mockOverdue).not.toHaveBeenCalled();
     expect(mockDueToday).not.toHaveBeenCalled();
+  });
+
+  it("skips a task the batched pre-check already knows was notified, without calling notifyTaskOverdue at all", async () => {
+    const dueDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    (mockPrisma.task.findMany as jest.Mock).mockResolvedValue([
+      { id: TASK_ID, startupId: STARTUP_ID, title: "Send follow-up deck", dueDate, assignee: { userId: USER_ID } },
+    ]);
+    (mockPrisma.notification.findMany as jest.Mock).mockResolvedValue([{ type: "task_overdue", entityId: TASK_ID }]);
+
+    await notifyOverdueAndDueTodayTasks();
+
+    expect(mockOverdue).not.toHaveBeenCalled();
+  });
+
+  it("does not let an overdue cooldown row suppress a distinct due-today notification for the same task", async () => {
+    // A task that was overdue and got its task_overdue notification, then
+    // had its due date pushed to today, still needs its own task_due_today
+    // notification — the two are tracked as distinct (type, entity) pairs.
+    const dueDate = new Date(Date.now() + 60 * 60 * 1000);
+    (mockPrisma.task.findMany as jest.Mock).mockResolvedValue([
+      { id: TASK_ID, startupId: STARTUP_ID, title: "Send follow-up deck", dueDate, assignee: { userId: USER_ID } },
+    ]);
+    (mockPrisma.notification.findMany as jest.Mock).mockResolvedValue([{ type: "task_overdue", entityId: TASK_ID }]);
+
+    await notifyOverdueAndDueTodayTasks();
+
+    expect(mockDueToday).toHaveBeenCalledWith(expect.objectContaining({ taskId: TASK_ID }));
+  });
+
+  it("does not query the notification table at all when there are no candidate tasks", async () => {
+    (mockPrisma.task.findMany as jest.Mock).mockResolvedValue([]);
+
+    await notifyOverdueAndDueTodayTasks();
+
+    expect(mockPrisma.notification.findMany).not.toHaveBeenCalled();
   });
 });

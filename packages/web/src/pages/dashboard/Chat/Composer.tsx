@@ -293,7 +293,7 @@ export function Composer({
               key={doc.id}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-surface/40 py-1 pl-2.5 pr-1.5 text-xs"
             >
-              <span className="max-w-[10rem] truncate font-medium">{doc.label}</span>
+              <span className="max-w-40 truncate font-medium">{doc.label}</span>
               <button
                 type="button"
                 aria-label={`Remove ${doc.label}`}
@@ -357,7 +357,7 @@ export function Composer({
           }
           placeholder={placeholder ?? `@ to mention a teammate`}
           rows={1}
-          className="min-h-[2.5rem] resize-none py-2"
+          className="min-h-10 resize-none py-2"
           disabled={sendMutation.isPending}
         />
         <Button

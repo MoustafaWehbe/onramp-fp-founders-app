@@ -21,6 +21,8 @@ export interface AiProvider {
   streamConversation(request: StreamConversationRequest): AsyncIterable<AiStreamEvent>;
   generateStructuredObject(request: StructuredObjectRequest): Promise<StructuredObjectResult>;
   embedQuery(text: string, signal?: AbortSignal): Promise<number[]>;
+  /** Embeds many texts in as few provider round trips as possible, order-preserving. For bulk ingestion (e.g. a document's chunks); embedQuery stays the one-off path for a live search query. */
+  embedBatch(texts: string[], signal?: AbortSignal): Promise<number[][]>;
 }
 
 interface OpenAiClient {
@@ -72,6 +74,14 @@ function normalizeError(error: unknown, signal?: AbortSignal): AiProviderError {
 function isAsyncIterable(value: unknown): value is AsyncIterable<ProviderStreamEvent> {
   return typeof value === "object" && value !== null && Symbol.asyncIterator in value;
 }
+
+/**
+ * OpenAI's embeddings endpoint accepts up to 2048 inputs per call; capped well
+ * under that so one call's total tokens stay comfortably inside the request
+ * budget too (document chunks average ~650 tokens each, per
+ * document-chunking.ts's TARGET_TOKENS, so 100 of them is ~65k tokens).
+ */
+const EMBEDDING_BATCH_SIZE = 100;
 
 export class OpenAiProvider implements AiProvider {
   private readonly client: OpenAiClient;
@@ -144,6 +154,28 @@ export class OpenAiProvider implements AiProvider {
     return embedding;
   }
 
+  async embedBatch(texts: string[], signal?: AbortSignal): Promise<number[][]> {
+    this.assertEmbeddingAvailable();
+    if (texts.length === 0) return [];
+    const results: number[][] = new Array(texts.length);
+    for (let start = 0; start < texts.length; start += EMBEDDING_BATCH_SIZE) {
+      const slice = texts.slice(start, start + EMBEDDING_BATCH_SIZE);
+      const response = await this.withRetries((requestAbort) => this.client.embeddings.create({ model: this.config.embeddingModel, input: slice.map((text) => text.slice(0, 20_000)), dimensions: this.config.embeddingDimensions }, { signal: requestAbort }), signal);
+      const data = (response as { data?: Array<{ embedding?: unknown; index?: number }> }).data;
+      if (!Array.isArray(data) || data.length !== slice.length) throw new AiProviderError("AI provider returned a mismatched embedding batch", "AI_MALFORMED_RESPONSE");
+      // The API documents same-order response data, but each item also carries
+      // its own index defending on that explicitly is one line and rules out
+      // a subtle silent mis-assignment if that guarantee is ever loosened.
+      for (const item of [...data].sort((a, b) => (a.index ?? 0) - (b.index ?? 0))) {
+        const offset = start + (item.index ?? 0);
+        const embedding = item.embedding;
+        if (!Array.isArray(embedding) || embedding.length !== this.config.embeddingDimensions || !embedding.every(Number.isFinite)) throw new AiProviderError("AI provider returned an invalid embedding", "AI_MALFORMED_RESPONSE");
+        results[offset] = embedding;
+      }
+    }
+    return results;
+  }
+
   private assertEnabled() { if (!this.config.enabled) throw new AiProviderError("AI is disabled", "AI_DISABLED"); }
   private assertEmbeddingAvailable() {
     if (!this.hasInjectedClient && !process.env.OPENAI_API_KEY?.trim()) {
@@ -173,6 +205,8 @@ export class FakeAiProvider implements AiProvider {
   private streamTurn = 0;
   public structuredValue: unknown = {};
   public embedding: number[] = Array.from({ length: 1536 }, () => 0);
+  /** When set, returned verbatim by embedBatch; otherwise every text gets `embedding`. */
+  public embeddingBatch: number[][] | null = null;
   public error?: Error;
   async *streamConversation(request: StreamConversationRequest): AsyncIterable<AiStreamEvent> {
     this.requests.push({ operation: "streamConversation", input: request });
@@ -187,4 +221,5 @@ export class FakeAiProvider implements AiProvider {
   }
   async generateStructuredObject(request: StructuredObjectRequest): Promise<StructuredObjectResult> { this.requests.push({ operation: "generateStructuredObject", input: request }); if (this.error) throw this.error; return { value: this.structuredValue, providerRequestId: "fake-request" }; }
   async embedQuery(text: string): Promise<number[]> { this.requests.push({ operation: "embedQuery", input: text }); if (this.error) throw this.error; return this.embedding; }
+  async embedBatch(texts: string[]): Promise<number[][]> { this.requests.push({ operation: "embedBatch", input: texts }); if (this.error) throw this.error; return this.embeddingBatch ?? texts.map(() => this.embedding); }
 }

@@ -155,7 +155,7 @@ export function Startup() {
               value={form.funding_stage}
               disabled={!canEdit}
               onChange={(event) => updateField("funding_stage", event.target.value)}
-              className="flex h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus:outline-hidden focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
             >
               {fundingStages.map((stage) => <option key={stage.value} value={stage.value}>{stage.label}</option>)}
             </select>

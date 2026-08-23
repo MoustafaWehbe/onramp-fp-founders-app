@@ -11,11 +11,11 @@ export const DOCUMENT_TYPES = [
 ] as const;
 
 const documentTypeEnum = z.enum(DOCUMENT_TYPES, {
-  errorMap: () => ({ message: "Invalid document type" }),
+  error: "Invalid document type",
 });
 
 const mimeEnum = z.enum(ACCEPTED_MIME_TYPES as unknown as [string, ...string[]], {
-  errorMap: () => ({ message: "Unsupported file type. Allowed: PDF, DOCX, XLSX, PPTX, TXT" }),
+  error: "Unsupported file type. Allowed: PDF, DOCX, XLSX, PPTX, TXT",
 });
 
 export const listDocumentsQuerySchema = z.object({
@@ -23,6 +23,13 @@ export const listDocumentsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().trim().max(100).optional().transform((v) => v || undefined),
   documentType: documentTypeEnum.optional(),
+});
+
+export const fileAccessQuerySchema = z.object({
+  versionId: z.string().guid("versionId must be a valid UUID").optional(),
+  // A signed URL is issued for both paths, but keeping the caller's intent
+  // lets the audit trail distinguish opening a file from downloading it.
+  disposition: z.enum(["preview", "download"]).default("preview"),
 });
 
 export const createUploadSessionSchema = z.object({
@@ -42,14 +49,14 @@ export const createVersionUploadSchema = z.object({
 });
 
 export const documentIdParamSchema = z.object({
-  startupId: z.string().uuid(),
-  documentId: z.string().uuid(),
+  startupId: z.string().guid(),
+  documentId: z.string().guid(),
 });
 
 export const versionParamSchema = z.object({
-  startupId: z.string().uuid(),
-  documentId: z.string().uuid(),
-  versionId: z.string().uuid(),
+  startupId: z.string().guid(),
+  documentId: z.string().guid(),
+  versionId: z.string().guid(),
 });
 
 export const updateDocumentSchema = z
@@ -60,6 +67,7 @@ export const updateDocumentSchema = z
   .refine((data) => Object.keys(data).length > 0, { message: "At least one field is required" });
 
 export type ListDocumentsQuery = z.infer<typeof listDocumentsQuerySchema>;
+export type FileAccessQuery = z.infer<typeof fileAccessQuerySchema>;
 export type CreateUploadSessionInput = z.infer<typeof createUploadSessionSchema>;
 export type CreateVersionUploadInput = z.infer<typeof createVersionUploadSchema>;
 export type UpdateDocumentInput = z.infer<typeof updateDocumentSchema>;

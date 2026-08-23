@@ -129,7 +129,7 @@ export function DealCardBody({
           onClick={() =>
             selected == null || dragOverlay ? onOpen(deal.id) : onToggleSelected?.(deal.id)
           }
-          className="min-w-0 flex-1 text-left after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+          className="min-w-0 flex-1 text-left after:absolute after:inset-0 after:content-[''] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
           aria-label={
             selected == null || dragOverlay ? `Open ${investor.fullName}` : `Select ${investor.fullName}`
           }
@@ -296,16 +296,16 @@ export const DealCard = memo(function DealCard(props: DealCardProps) {
         // A fixed floor means the placeholder below never has to measure the
         // card it's standing in for, and no card visibly resizes as its
         // owner badge or focus-reason chip come and go.
-        "relative min-h-[128px] touch-none border-border/70 bg-card/95 p-3 shadow-sm transition-[border-color,opacity,background-color] hover:border-primary/40",
+        "relative min-h-[128px] touch-none border-border/70 bg-card/95 p-3 shadow-xs transition-[border-color,opacity,background-color] hover:border-primary/40",
         canUpdate && "cursor-grab active:cursor-grabbing",
         isDragging
           ? // The card being dragged stays in the DOM (dnd-kit needs its layout
             // to keep measuring), but shows only a dashed outline in the slot
             // it's about to fill the drop position, not just a blank gap —
             // while the DragOverlay copy follows the cursor instead.
-            "border-2 border-dashed border-primary/40 bg-primary/[0.04] shadow-none"
+            "border-2 border-dashed border-primary/40 bg-primary/4 shadow-none"
           : focusReason && "border-l-2 border-l-warning",
-        selected && !isDragging && "border-primary bg-primary/[0.06] ring-1 ring-primary/40",
+        selected && !isDragging && "border-primary bg-primary/6 ring-1 ring-primary/40",
       )}
     >
       {!isDragging && <DealCardBody {...props} />}

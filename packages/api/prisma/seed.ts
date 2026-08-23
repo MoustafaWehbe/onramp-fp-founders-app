@@ -5,6 +5,7 @@ import path from "path";
 import { createHash } from "crypto";
 import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { hashPassword } from "../src/utils/auth";
 import { PERMISSIONS, ROLE_TEMPLATES } from "../src/config/permissions";
 import { PIPELINE_STAGES } from "../src/config/crm";
@@ -15,7 +16,13 @@ import type {
   Priority,
 } from "../src/config/crm";
 
-const prisma = new PrismaClient();
+// Prisma 7 requires an explicit driver adapter at runtime. Keep this in sync
+// with src/db/prisma.ts because the seed script runs outside the API process.
+const prisma = new PrismaClient({
+  adapter: new PrismaPg(
+    process.env.DATABASE_URL ?? "postgresql://postgres:postgres@localhost:5432/raise",
+  ),
+});
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -384,48 +391,6 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     ],
   },
   {
-    key: "tom",
-    fullName: "Tom Reilly",
-    email: "tom.reilly@example.com",
-      investorType: "angel",
-    sectorFocus: "Marketplaces",
-    source: "linkedin",
-    checkSizeMin: 25_000,
-    checkSizeMax: 100_000,
-    deals: [
-      // Passed on the pre-seed, back in the funnel for the seed the same
-      // contact legitimately appears in two rounds.
-      {
-        round: "pre_seed",
-        stage: "passed",
-        passedAfter: "contacted",
-        sourcedDaysAgo: 320,
-        stageChangedDaysAgo: 296,
-        expectedAmount: 50_000,
-        probabilityPercentage: 0,
-      },
-      {
-        round: "seed",
-        stage: "contacted",
-        sourcedDaysAgo: 24,
-        stageChangedDaysAgo: 16,
-        expectedAmount: 100_000,
-        probabilityPercentage: 30,
-        priority: "low",
-        ownerKey: "raymond",
-      },
-    ],
-    logs: [
-      {
-        type: "note",
-        subject: "Passed on pre-seed",
-        description: "Timing, not conviction asked to be kept warm for the seed.",
-        daysAgo: 296,
-        authorKey: "muhamad",
-      },
-    ],
-  },
-  {
     key: "clara",
     fullName: "Clara Beaumont",
     email: "clara@kimaventures.example.com",
@@ -671,112 +636,8 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
       },
     ],
   },
-  {
-    key: "dmitri",
-      fullName: "Dmitri Volkov",
-      email: "dmitri@volkovfamily.example.com",
-      ventureFirm: "Volkov Family Office",
-      investorType: "family_office",
-      sectorFocus: "Diversified",
-      source: "referral",
-    description: "Family office allocating a small venture sleeve, slower diligence but a reliable close once committed.",
-    checkSizeMin: 250_000,
-    checkSizeMax: 750_000,
-    geographyFocus: "No preference",
-    deals: [
-      {
-        round: "seed",
-        stage: "due_diligence",
-        sourcedDaysAgo: 61,
-        stageChangedDaysAgo: 18,
-        expectedAmount: 500_000,
-        probabilityPercentage: 60,
-        priority: "medium",
-        investorFitScore: 64,
-        ownerKey: "rana",
-      },
-    ],
-    logs: [
-      {
-        type: "email",
-        subject: "Data room access request",
-        daysAgo: 19,
-        authorKey: "rana",
-      },
-    ],
-  },
-  {
-    key: "grace",
-    fullName: "Grace Lin",
-    email: "grace@vertexcollective.example.com",
-    ventureFirm: "Vertex Collective",
-    investorType: "vc",
-    sectorFocus: "Fintech",
-    investmentStagePreference: "seed",
-    source: "conference",
-    description: "Fintech-focused fund, thorough on compliance and data-security diligence.",
-    checkSizeMin: 500_000,
-    checkSizeMax: 1_500_000,
-    geographyFocus: "North America",
-    portfolioHighlights: "Ramp, Mercury",
-    deals: [
-      {
-        round: "seed",
-        stage: "due_diligence",
-        sourcedDaysAgo: 55,
-        stageChangedDaysAgo: 4,
-        expectedAmount: 750_000,
-        probabilityPercentage: 65,
-        priority: "high",
-        investorFitScore: 79,
-        ownerKey: "raymond",
-      },
-    ],
-  },
 
   // ── Term sheet ─────────────────────────────────────────────────────────────
-  {
-    key: "lena",
-    fullName: "Lena Park",
-    email: "lena.park@lightspeed.example.com",
-    ventureFirm: "Lightspeed",
-    investorType: "vc",
-    sectorFocus: "Infrastructure",
-    investmentStagePreference: "series_a",
-    source: "conference",
-    description: "Infrastructure-focused partner, verbally committed pending IC sign-off.",
-    checkSizeMin: 750_000,
-    checkSizeMax: 2_000_000,
-    geographyFocus: "US, willing to invest globally for the right team",
-    portfolioHighlights: "Snap, Affirm, Rubrik",
-    deals: [
-      {
-        round: "seed",
-        stage: "term_sheet",
-        sourcedDaysAgo: 80,
-        stageChangedDaysAgo: 7,
-        expectedAmount: 1_000_000,
-        probabilityPercentage: 80,
-        priority: "high",
-        investorFitScore: 86,
-        ownerKey: "muhamad",
-        commitment: {
-          amount: 1_000_000,
-          history: [{ status: "soft_circled", daysAgo: 7 }],
-          expectedCloseInDays: 21,
-        },
-      },
-    ],
-    logs: [
-      {
-        type: "call",
-        subject: "Term sheet walkthrough",
-        description: "Verbal yes at $1M pending IC sign-off. Docs to follow.",
-        daysAgo: 7,
-        authorKey: "muhamad",
-      },
-    ],
-  },
   {
     key: "owen",
     fullName: "Owen Wright",
@@ -813,273 +674,10 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
   },
 
   // ── Committed ──────────────────────────────────────────────────────────────
-  {
-    key: "priya",
-    fullName: "Priya Anand",
-    email: "priya.anand@example.com",
-    investorType: "angel",
-    sectorFocus: "Fintech, SaaS",
-      investmentStagePreference: "pre_seed",
-    source: "referral",
-    description: "Former operator turned angel, wrote the first pre-seed cheque and doubled down on the seed.",
-    checkSizeMin: 50_000,
-    checkSizeMax: 250_000,
-    warmIntroPath: "Referred by a portfolio founder from a prior fund.",
-    deals: [
-      {
-        round: "pre_seed",
-        stage: "committed",
-        sourcedDaysAgo: 410,
-        stageChangedDaysAgo: 370,
-        expectedAmount: 150_000,
-        probabilityPercentage: 100,
-        commitment: {
-          amount: 150_000,
-          history: [
-            { status: "soft_circled", daysAgo: 380 },
-            { status: "hard_circled", daysAgo: 374 },
-            { status: "wired", daysAgo: 368 },
-          ],
-      },
-    },
-    {
-        round: "seed",
-        stage: "committed",
-        sourcedDaysAgo: 90,
-        stageChangedDaysAgo: 25,
-        expectedAmount: 250_000,
-        probabilityPercentage: 100,
-        priority: "high",
-        investorFitScore: 90,
-        ownerKey: "muhamad",
-        commitment: {
-          amount: 250_000,
-          history: [
-            { status: "soft_circled", daysAgo: 34 },
-            { status: "hard_circled", daysAgo: 27 },
-            { status: "wired", daysAgo: 19 },
-          ],
-        },
-      },
-    ],
-    logs: [
-      {
-        type: "meeting",
-        subject: "Demo and commitment",
-        description: "Committed on the spot after the product walkthrough.",
-        daysAgo: 34,
-        authorKey: "muhamad",
-      },
-      {
-        type: "other",
-        subject: "SAFE countersigned",
-        daysAgo: 27,
-        authorKey: "muhamad",
-      },
-      {
-        type: "note",
-        subject: "Background note",
-        description: "Former operator, wrote the first pre-seed cheque and doubled down on the seed.",
-        daysAgo: 30,
-        authorKey: "muhamad",
-      },
-    ],
-  },
-  {
-    key: "daniel",
-    fullName: "Daniel Okafor",
-    email: "d.okafor@northwind.example.com",
-    ventureFirm: "Northwind Capital",
-      investorType: "vc",
-    sectorFocus: "B2B SaaS",
-      investmentStagePreference: "seed",
-      source: "outbound",
-    description: "Signed at $400k, wire scheduled with the round close.",
-    checkSizeMin: 200_000,
-    checkSizeMax: 800_000,
-    geographyFocus: "North America",
-    deals: [
-      {
-        round: "seed",
-        stage: "committed",
-        sourcedDaysAgo: 85,
-        stageChangedDaysAgo: 20,
-        expectedAmount: 400_000,
-        probabilityPercentage: 100,
-        priority: "high",
-        investorFitScore: 83,
-        ownerKey: "raymond",
-        commitment: {
-          amount: 400_000,
-          history: [
-            { status: "soft_circled", daysAgo: 29 },
-            { status: "hard_circled", daysAgo: 18 },
-          ],
-          expectedCloseInDays: 10,
-        },
-      },
-    ],
-    logs: [
-      {
-        type: "call",
-        subject: "Allocation confirmed",
-        description: "Signed at $400k. Wire scheduled with the round close.",
-        daysAgo: 18,
-        authorKey: "raymond",
-      },
-    ],
-  },
-  {
-    key: "sofia",
-    fullName: "Sofia Marino",
-    email: "sofia@harborangels.example.com",
-    ventureFirm: "Harbor Angels",
-    investorType: "angel",
-    sectorFocus: "Marketplaces",
-    investmentStagePreference: "pre_seed",
-    source: "event",
-    checkSizeMin: 50_000,
-    checkSizeMax: 300_000,
-    geographyFocus: "US East Coast",
-    deals: [
-      {
-        round: "seed",
-        stage: "committed",
-        sourcedDaysAgo: 70,
-        stageChangedDaysAgo: 12,
-        expectedAmount: 200_000,
-        probabilityPercentage: 90,
-        priority: "medium",
-        ownerKey: "rana",
-        commitment: {
-          amount: 200_000,
-          history: [{ status: "soft_circled", daysAgo: 12 }],
-          expectedCloseInDays: 30,
-        },
-      },
-    ],
-  },
 
   // ── Passed ─────────────────────────────────────────────────────────────────
-  {
-    key: "victor",
-    fullName: "Victor Alvarez",
-    email: "victor.alvarez@bessemer.example.com",
-    ventureFirm: "Bessemer",
-    investorType: "vc",
-    source: "outbound",
-    description: "Growth-stage fund, deploys mainly at Series A and beyond.",
-    checkSizeMin: 2_000_000,
-    checkSizeMax: 8_000_000,
-    geographyFocus: "Global",
-    notes: "Passed — too early for the current fund. Revisit at Series A.",
-    notesAuthorKey: "muhamad",
-    notesAgeDays: 22,
-    deals: [
-      {
-        round: "seed",
-        stage: "passed",
-        passedAfter: "meeting_scheduled",
-        sourcedDaysAgo: 50,
-        stageChangedDaysAgo: 22,
-        probabilityPercentage: 0,
-      },
-    ],
-    logs: [
-      {
-        type: "email",
-        subject: "Pass too early",
-        description: "Fund is deploying at Series A. Offered to intro two seed funds.",
-        daysAgo: 22,
-        authorKey: "muhamad",
-      },
-    ],
-  },
-  {
-    key: "amara",
-    fullName: "Amara Chen",
-    email: "amara@atlasvc.example.com",
-    ventureFirm: "Atlas Ventures",
-    investorType: "vc",
-    sectorFocus: "AI / Infrastructure",
-    investmentStagePreference: "seed",
-    source: "referral",
-    description: "Withdrew a soft circle during diligence a portfolio conflict, not a fit issue.",
-    checkSizeMin: 200_000,
-    checkSizeMax: 600_000,
-    geographyFocus: "US",
-    deals: [
-      // Soft-circled, then pulled out during diligence the withdrawn path the
-      // funding chart must not count as raised.
-      {
-        round: "seed",
-        stage: "passed",
-        passedAfter: "due_diligence",
-        sourcedDaysAgo: 66,
-        stageChangedDaysAgo: 30,
-        expectedAmount: 300_000,
-        probabilityPercentage: 0,
-        ownerKey: "muhamad",
-        commitment: {
-          amount: 300_000,
-          history: [
-            { status: "soft_circled", daysAgo: 44 },
-            { status: "withdrawn", daysAgo: 30 },
-          ],
-        },
-      },
-    ],
-    logs: [
-      {
-        type: "call",
-        subject: "Withdrawing from the round",
-        description: "Portfolio conflict surfaced during diligence.",
-        daysAgo: 30,
-        authorKey: "muhamad",
-      },
-    ],
-  },
 
   // ── Not in any pipeline the "Add to pipeline" roster ─────────────────────
-  {
-    key: "ethan",
-    fullName: "Ethan Brooks",
-    email: "ethan@quantleap.example.com",
-    ventureFirm: "Quantleap Fund",
-    investorType: "vc",
-    sectorFocus: "AI / Infrastructure",
-    investmentStagePreference: "series_a",
-    source: "linkedin",
-  },
-  {
-    key: "karl",
-    fullName: "Karl Mendes",
-    email: "karl@techstars.example.com",
-    ventureFirm: "Techstars",
-    investorType: "accelerator",
-    investmentStagePreference: "pre_seed",
-    source: "program",
-  },
-  {
-    // No email and no deal both nullable paths the Investors list has to
-    // render (the per-startup email uniqueness only applies to non-null values).
-    key: "yuki",
-    fullName: "Yuki Tanaka",
-    investorType: "other",
-    source: "event",
-    notes: "Met briefly at a meetup — no contact details yet.",
-    notesAuthorKey: "lopna",
-    notesAgeDays: 11,
-    logs: [
-      {
-        type: "note",
-        subject: "How we met",
-        description: "Met briefly at a meetup no contact details yet.",
-        daysAgo: 11,
-        authorKey: "lopna",
-      },
-    ],
-  },
 ];
 
 const NORTHBEAM_TASKS: TaskSeed[] = [
@@ -1199,6 +797,11 @@ const NORTHBEAM_TASKS: TaskSeed[] = [
 ];
 
 // ─── Drift Labs a second workspace, non-USD, where the owner is a guest ─────
+
+// Keep only tasks whose contact remains in the compact default fixture.
+const NORTHBEAM_SEED_TASKS = NORTHBEAM_TASKS.filter((task) =>
+  NORTHBEAM_CONTACTS.some((contact) => contact.key === task.contactKey),
+);
 
 const DRIFT_MEMBERS: MemberSeed[] = [
   { userKey: "karim", role: "owner" },
@@ -2115,7 +1718,7 @@ async function main() {
         },
       ],
       contacts: NORTHBEAM_CONTACTS,
-      tasks: NORTHBEAM_TASKS,
+      tasks: NORTHBEAM_SEED_TASKS,
     },
     usersByKey,
     permByKey,

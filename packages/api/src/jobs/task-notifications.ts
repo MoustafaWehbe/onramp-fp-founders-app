@@ -1,5 +1,5 @@
 import { prisma } from "../db/prisma";
-import { notificationService } from "../services/notification.service";
+import { NOTIFICATION_TYPES, notificationService } from "../services/notification.service";
 
 /**
  * Finds every open task that is overdue or due today and notifies its
@@ -27,27 +27,40 @@ export async function notifyOverdueAndDueTodayTasks(): Promise<void> {
   });
 
   const now = Date.now();
-  for (const task of dueTasks) {
-    const userId = task.assignee?.userId;
-    if (!userId) continue;
+  const candidates = dueTasks
+    .filter((task): task is typeof task & { assignee: { userId: string } } => Boolean(task.assignee?.userId))
+    .map((task) => {
+      const dueDate = task.dueDate as Date;
+      const type = dueDate.getTime() < now ? NOTIFICATION_TYPES.TASK_OVERDUE : NOTIFICATION_TYPES.TASK_DUE_TODAY;
+      return { task, dueDate, type };
+    });
+  if (candidates.length === 0) return;
 
-    const dueDate = task.dueDate as Date;
-    if (dueDate.getTime() < now) {
-      await notificationService.notifyTaskOverdue({
-        userId,
-        startupId: task.startupId,
-        taskId: task.id,
-        title: task.title,
-        dueDate,
-      });
-    } else {
-      await notificationService.notifyTaskDueToday({
-        userId,
-        startupId: task.startupId,
-        taskId: task.id,
-        title: task.title,
-        dueDate,
-      });
-    }
-  }
+  // notifyTaskOverdue/notifyTaskDueToday already dedupe forever per task
+  // (findFirst then create, under an advisory lock see notification.service.ts),
+  // but that check ran once per task, serially, every single cron tick even
+  // for tasks that plainly already have their notification. This batches that
+  // same "already told them" question into one query so only tasks that might
+  // actually need a new notification pay for the per-task lock+transaction.
+  const alreadyNotified = await prisma.notification.findMany({
+    where: {
+      type: { in: [NOTIFICATION_TYPES.TASK_OVERDUE, NOTIFICATION_TYPES.TASK_DUE_TODAY] },
+      entityType: "task",
+      entityId: { in: candidates.map((candidate) => candidate.task.id) },
+    },
+    select: { type: true, entityId: true },
+  });
+  const notified = new Set(alreadyNotified.map((n) => `${n.type}:${n.entityId}`));
+
+  await Promise.all(
+    candidates
+      .filter((candidate) => !notified.has(`${candidate.type}:${candidate.task.id}`))
+      .map((candidate) => {
+        const { task, dueDate, type } = candidate;
+        const input = { userId: task.assignee.userId, startupId: task.startupId, taskId: task.id, title: task.title, dueDate };
+        return type === NOTIFICATION_TYPES.TASK_OVERDUE
+          ? notificationService.notifyTaskOverdue(input)
+          : notificationService.notifyTaskDueToday(input);
+      }),
+  );
 }

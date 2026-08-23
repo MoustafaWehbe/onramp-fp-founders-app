@@ -5,7 +5,7 @@ import { createInteractionLogSchema } from "./interaction-log.schemas";
 import { scheduleMeetingSchema } from "./calendar-event.schemas";
 import { sendInvestorEmailSchema } from "./gmail.schemas";
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 
 // Every AI-proposed write is validated against exactly the same shape the
 // manual endpoint for that action accepts (imported directly, not
@@ -57,7 +57,7 @@ export const aiActionIdParamSchema = z.object({ startupId: uuid, actionId: uuid 
 export const approveAiActionSchema = z.object({
   // User-edited fields, merged over the proposed payload and re-validated
   // against the same schema above never trusted as a full replacement.
-  payload: z.record(z.unknown()).optional(),
+  payload: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type ApproveAiActionInput = z.infer<typeof approveAiActionSchema>;

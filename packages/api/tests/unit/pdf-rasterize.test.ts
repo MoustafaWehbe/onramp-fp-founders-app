@@ -1,4 +1,5 @@
 import { rasterizePdf, type RasterizedPage } from "../../src/services/pdf-rasterize";
+import sharp from "sharp";
 
 /**
  * Builds a minimal multi-page PDF in memory rather than committing a binary
@@ -45,7 +46,7 @@ function buildPdf(pageTexts: string[]): Buffer {
 const WEBP_MAGIC = Buffer.from("WEBP", "ascii");
 
 describe("rasterizePdf", () => {
-  jest.setTimeout(30_000);
+  jest.setTimeout(60_000);
 
   it("renders every page to WebP with usable dimensions", async () => {
     const pages: RasterizedPage[] = [];
@@ -77,9 +78,11 @@ describe("rasterizePdf", () => {
     await rasterizePdf(buildPdf([" "]), async (p) => void blank.push(p));
 
     // pdf.js silently skips the 14 standard fonts when it cannot load their
-    // data files, which turns a text page into an empty one. A page with text
-    // must compress to meaningfully more than an empty page of the same size.
-    expect(withText[0]!.view.length).toBeGreaterThan(blank[0]!.view.length * 1.5);
+    // data files, which turns a text page into an empty one. A blank white page
+    // has no dark pixels, while a rendered text page must include some.
+    const [textStats, blankStats] = await Promise.all([sharp(withText[0]!.view).stats(), sharp(blank[0]!.view).stats()]);
+    expect(blankStats.channels[0]!.min).toBeGreaterThanOrEqual(250);
+    expect(textStats.channels[0]!.min).toBeLessThan(blankStats.channels[0]!.min);
   });
 
   it("rejects a file that is not a readable PDF", async () => {

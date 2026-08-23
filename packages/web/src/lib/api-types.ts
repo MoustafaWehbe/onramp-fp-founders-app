@@ -743,7 +743,7 @@ export interface paths {
         };
         /**
          * List investor contacts for a startup
-         * @description Returns the startup's private investor contacts. Each row is joined to a pipeline entry (null when the contact has not been added to the pipeline). Supplying roundId joins only the entry in that fundraising round, which is useful when choosing contacts to add to a board.
+         * @description Returns the startup's private investor contacts. Each row is joined to a pipeline entry (null when the contact has not been added to the pipeline). Supplying roundId joins only the entry in that fundraising round, which is useful when choosing contacts to add to a board. Set pipelineOnly=true to exclude contacts without a matching deal.
          */
         get: operations["listInvestors"];
         put?: never;
@@ -985,7 +985,7 @@ export interface paths {
         };
         /**
          * List tasks in a startup
-         * @description Filterable by pipelineId, roundId, status, assigneeId, and priority — used both for a single deal's task list and cross-deal views.
+         * @description Filterable by pipelineId, investorId, roundId, status, assigneeId, and priority — used both for a single deal's task list and cross-deal views.
          */
         get: operations["listTasks"];
         put?: never;
@@ -2850,6 +2850,22 @@ export interface components {
              * @description The pipeline deal this task belongs to.
              */
             pipelineId?: string;
+            /** @description The investor this task belongs to through its pipeline deal. */
+            investor?: {
+                /** Format: uuid */
+                id: string;
+                fullName: string;
+                ventureFirm: string | null;
+            };
+            /** @description The fundraising round containing the task's deal. */
+            round?: {
+                /** Format: uuid */
+                id: string;
+                roundName: string;
+                status: string;
+            };
+            /** @description Current stage of the investor deal this task belongs to. */
+            pipelineStage?: string;
             title?: string;
             description?: string | null;
             status?: components["schemas"]["TaskStatus"];
@@ -2861,6 +2877,13 @@ export interface components {
              * @description The StartupMember id assigned to this task, if any.
              */
             assigneeId?: string | null;
+            /** @description Human-readable teammate assignment details. */
+            assignee?: {
+                /** Format: uuid */
+                id: string;
+                name: string | null;
+                email: string | null;
+            } | null;
             /**
              * Format: date-time
              * @description Set server-side when status becomes "completed"; cleared on reopen.
@@ -5685,6 +5708,10 @@ export interface operations {
                 stage?: components["schemas"]["PipelineStage"];
                 /** @description Return the pipeline entry for this fundraising round only. */
                 roundId?: string;
+                /** @description Return investors whose matching pipeline deal is owned by this member. */
+                ownerId?: string;
+                /** @description Exclude contacts without a pipeline deal matching the round, stage, and owner filters. */
+                pipelineOnly?: boolean;
                 /** @description Splits the directory into contacts the startup has actually approached and ones it has not. Omit to span both. */
                 engagement?: components["schemas"]["Engagement"];
             };
@@ -6803,6 +6830,8 @@ export interface operations {
                 /** @description Number of items per page */
                 limit?: components["parameters"]["LimitParam"];
                 pipelineId?: string;
+                /** @description Every task associated with this investor across their pipeline deals. */
+                investorId?: string;
                 /** @description Every task on every deal in one fundraising round, scoped through the deal since a task carries no round of its own. */
                 roundId?: string;
                 status?: components["schemas"]["TaskStatus"];
@@ -8758,6 +8787,8 @@ export interface operations {
         parameters: {
             query?: {
                 versionId?: string;
+                /** @description Whether the teammate is previewing or downloading the file. Recorded in the audit trail. */
+                disposition?: "preview" | "download";
             };
             header?: never;
             path: {

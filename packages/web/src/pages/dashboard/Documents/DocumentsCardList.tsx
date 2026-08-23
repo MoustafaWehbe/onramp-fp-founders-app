@@ -66,8 +66,8 @@ export function DocumentsCardList({
             className={cn(
               "card-elevated group p-4 transition-colors",
               selectionActive ? "cursor-pointer" : "hover:border-primary/40",
-              selected && "border-primary/50 bg-primary/[0.04]",
-              focused && "border-primary/60 bg-primary/[0.06] ring-1 ring-primary/30",
+              selected && "border-primary/50 bg-primary/4",
+              focused && "border-primary/60 bg-primary/6 ring-1 ring-primary/30",
             )}
           >
             <div className="mb-3 flex items-start justify-between gap-2">

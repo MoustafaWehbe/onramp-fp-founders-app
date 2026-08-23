@@ -1,25 +1,44 @@
 import { NotificationService } from "../../src/services/notification.service";
 
-jest.mock("../../src/db/prisma", () => ({
-  prisma: {
+jest.mock("../../src/db/prisma", () => {
+  // $transaction just invokes the callback with this same mock, so every
+  // dedup method's tx.notification.findFirst/create calls land on the exact
+  // jest.fn()s below assertions against prisma.notification.* keep working
+  // unchanged whether or not the method under test wraps its writes in a
+  // withDedupeLock transaction.
+  const prismaMock: {
+    notification: { findFirst: jest.Mock; findMany: jest.Mock; create: jest.Mock; deleteMany: jest.Mock; count: jest.Mock };
+    $executeRaw: jest.Mock;
+    $transaction: jest.Mock;
+  } = {
     notification: {
       findFirst: jest.fn(),
       findMany: jest.fn(),
       create: jest.fn(),
       deleteMany: jest.fn(),
+      count: jest.fn(),
     },
-  },
-}));
+    $executeRaw: jest.fn(),
+    $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(prismaMock)),
+  };
+  return { prisma: prismaMock };
+});
 
 jest.mock("../../src/events/notification-bus", () => ({
   notificationBus: { publish: jest.fn() },
 }));
 
+jest.mock("../../src/utils/logger", () => ({
+  logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
+}));
+
 import { prisma } from "../../src/db/prisma";
 import { notificationBus } from "../../src/events/notification-bus";
+import { logger } from "../../src/utils/logger";
 
 const mockPrisma = prisma as jest.Mocked<typeof prisma>;
 const mockBus = notificationBus as jest.Mocked<typeof notificationBus>;
+const mockLoggerError = logger.error as jest.Mock;
 const service = new NotificationService();
 
 const USER_ID = "00000000-0000-0000-0000-000000000001";
@@ -32,13 +51,8 @@ beforeEach(() => {
 });
 
 async function expectSwallowedFailure(operation: () => Promise<void>): Promise<void> {
-  const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
-  try {
-    await expect(operation()).resolves.toBeUndefined();
-    expect(errorSpy).toHaveBeenCalledTimes(1);
-  } finally {
-    errorSpy.mockRestore();
-  }
+  await expect(operation()).resolves.toBeUndefined();
+  expect(mockLoggerError).toHaveBeenCalledTimes(1);
 }
 
 describe("NotificationService.notifyFollowupDue", () => {
@@ -241,5 +255,43 @@ describe("NotificationService.clearTaskNotifications", () => {
     (mockPrisma.notification.findMany as jest.Mock).mockRejectedValue(new Error("db down"));
 
     await expectSwallowedFailure(() => service.clearTaskNotifications([TASK_ID]));
+  });
+});
+
+describe("NotificationService.list", () => {
+  beforeEach(() => {
+    (mockPrisma.notification.findMany as jest.Mock).mockResolvedValue([]);
+    (mockPrisma.notification.count as jest.Mock).mockResolvedValue(0);
+  });
+
+  it("scopes both the page and unreadCount to startupId when given, not just the page", async () => {
+    await service.list(USER_ID, { limit: 30, unreadOnly: false, startupId: STARTUP_ID });
+
+    expect(mockPrisma.notification.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: USER_ID, startupId: STARTUP_ID } }),
+    );
+    // Without this, a workspace whose notifications fell outside the page
+    // window (or off it entirely, filtered client-side) reported someone
+    // else's unread count instead of its own.
+    expect(mockPrisma.notification.count).toHaveBeenCalledWith({
+      where: { userId: USER_ID, startupId: STARTUP_ID, readAt: null },
+    });
+  });
+
+  it("omits the startupId filter entirely when none is given, not just a falsy one", async () => {
+    await service.list(USER_ID, { limit: 30, unreadOnly: false });
+
+    expect(mockPrisma.notification.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: USER_ID } }),
+    );
+    expect(mockPrisma.notification.count).toHaveBeenCalledWith({ where: { userId: USER_ID, readAt: null } });
+  });
+
+  it("combines the startupId scope with unreadOnly", async () => {
+    await service.list(USER_ID, { limit: 30, unreadOnly: true, startupId: STARTUP_ID });
+
+    expect(mockPrisma.notification.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: USER_ID, startupId: STARTUP_ID, readAt: null } }),
+    );
   });
 });

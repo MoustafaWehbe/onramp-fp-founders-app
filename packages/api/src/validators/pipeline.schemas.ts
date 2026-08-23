@@ -7,44 +7,44 @@ import {
 } from "../config/crm";
 
 const pipelineStageEnum = z.enum(PIPELINE_STAGES, {
-  errorMap: () => ({ message: "Invalid pipeline stage" }),
+  error: "Invalid pipeline stage",
 });
 
 const initialPipelineStageEnum = z.enum(INITIAL_PIPELINE_STAGES, {
-  errorMap: () => ({ message: "A new deal must start before committed or passed" }),
+  error: "A new deal must start before committed or passed",
 });
 
 const priorityEnum = z.enum(PRIORITIES, {
-  errorMap: () => ({ message: "Invalid priority" }),
+  error: "Invalid priority",
 });
 
 const optionalInvestorFitScore = z
-  .number({ invalid_type_error: "investorFitScore must be a number" })
+  .number({ error: "investorFitScore must be a number" })
   .int("investorFitScore must be an integer")
   .min(0, "investorFitScore must be at least 0")
   .max(100, "investorFitScore must be at most 100")
   .optional();
 
 const optionalExpectedAmount = z
-  .number({ invalid_type_error: "expectedAmount must be a number" })
+  .number({ error: "expectedAmount must be a number" })
   .finite("expectedAmount must be a finite number")
   .min(0, "expectedAmount must be at least 0")
   .optional();
 
 const optionalProbability = z
-  .number({ invalid_type_error: "probabilityPercentage must be a number" })
+  .number({ error: "probabilityPercentage must be a number" })
   .int("probabilityPercentage must be an integer")
   .min(0, "probabilityPercentage must be at least 0")
   .max(100, "probabilityPercentage must be at most 100")
   .optional();
 
 export const createPipelineEntrySchema = z.object({
-  roundId: z.string().uuid("roundId must be a valid UUID").optional(),
-  investorId: z.string().uuid("investorId must be a valid UUID"),
+  roundId: z.string().guid("roundId must be a valid UUID").optional(),
+  investorId: z.string().guid("investorId must be a valid UUID"),
   stage: initialPipelineStageEnum,
   expectedAmount: optionalExpectedAmount,
   probabilityPercentage: optionalProbability,
-  ownerId: z.string().uuid("ownerId must be a valid UUID").optional(),
+  ownerId: z.string().guid("ownerId must be a valid UUID").optional(),
   priority: priorityEnum.optional(),
   investorFitScore: optionalInvestorFitScore,
   isLead: z.boolean().optional(),
@@ -55,12 +55,12 @@ export const updatePipelineEntrySchema = z
     // Carrying an un-closed deal into the next raise. Refused when the deal
     // has commitments, since that money belongs to the round it was pledged
     // to; see PipelineService.updateEntry.
-    roundId: z.string().uuid("roundId must be a valid UUID").optional(),
+    roundId: z.string().guid("roundId must be a valid UUID").optional(),
     stage: pipelineStageEnum.optional(),
     expectedAmount: z
       .union([
         z
-          .number({ invalid_type_error: "expectedAmount must be a number" })
+          .number({ error: "expectedAmount must be a number" })
           .finite("expectedAmount must be a finite number")
           .min(0, "expectedAmount must be at least 0"),
         z.null(),
@@ -69,7 +69,7 @@ export const updatePipelineEntrySchema = z
     probabilityPercentage: z
       .union([
         z
-          .number({ invalid_type_error: "probabilityPercentage must be a number" })
+          .number({ error: "probabilityPercentage must be a number" })
           .int("probabilityPercentage must be an integer")
           .min(0, "probabilityPercentage must be at least 0")
           .max(100, "probabilityPercentage must be at most 100"),
@@ -80,15 +80,15 @@ export const updatePipelineEntrySchema = z
     // midpoint of the two cards it was dropped between so the server just
     // stores whatever value places it there; it doesn't renumber anything.
     sortOrder: z
-      .number({ invalid_type_error: "sortOrder must be a number" })
+      .number({ error: "sortOrder must be a number" })
       .finite("sortOrder must be a finite number")
       .optional(),
-    ownerId: z.union([z.string().uuid("ownerId must be a valid UUID"), z.null()]).optional(),
+    ownerId: z.union([z.string().guid("ownerId must be a valid UUID"), z.null()]).optional(),
     priority: z.union([priorityEnum, z.null()]).optional(),
     investorFitScore: z
       .union([
         z
-          .number({ invalid_type_error: "investorFitScore must be a number" })
+          .number({ error: "investorFitScore must be a number" })
           .int("investorFitScore must be an integer")
           .min(0, "investorFitScore must be at least 0")
           .max(100, "investorFitScore must be at most 100"),
@@ -112,12 +112,12 @@ export const updatePipelineEntrySchema = z
     commitment: z
       .object({
         amount: z
-          .number({ invalid_type_error: "commitment.amount must be a number" })
+          .number({ error: "commitment.amount must be a number" })
           .finite("commitment.amount must be a finite number")
           .min(0, "commitment.amount must be at least 0"),
         status: z
           .enum(COMMITMENT_STATUSES, {
-            errorMap: () => ({ message: "Invalid commitment status" }),
+            error: "Invalid commitment status",
           })
           .optional(),
         expectedCloseDate: z.union([z.coerce.date(), z.null()]).optional(),
@@ -134,7 +134,7 @@ const optionalBooleanFlag = z
   .transform((v) => (v === undefined ? undefined : v === "true"));
 
 export const listPipelineQuerySchema = z.object({
-  roundId: z.string().uuid("roundId must be a valid UUID").optional(),
+  roundId: z.string().guid("roundId must be a valid UUID").optional(),
   page: z.coerce.number().int().min(1, "page must be at least 1").default(1),
   limit: z.coerce
     .number()
@@ -146,7 +146,7 @@ export const listPipelineQuerySchema = z.object({
   // Matched against the investor's name and firm, server-side the board
   // never filters an already-fetched page in memory.
   search: z.string().trim().min(1).max(100).optional(),
-  ownerId: z.string().uuid("ownerId must be a valid UUID").optional(),
+  ownerId: z.string().guid("ownerId must be a valid UUID").optional(),
   // Narrows to exactly what getFocus() would return the same criteria
   // used to badge deals as needing attention.
   attentionOnly: optionalBooleanFlag,
@@ -155,12 +155,12 @@ export const listPipelineQuerySchema = z.object({
 });
 
 export const pipelineAnalyticsQuerySchema = z.object({
-  roundId: z.string().uuid("roundId must be a valid UUID").optional(),
+  roundId: z.string().guid("roundId must be a valid UUID").optional(),
 });
 
 export const pipelineIdParamSchema = z.object({
-  startupId: z.string().uuid("startupId must be a valid UUID"),
-  pipelineId: z.string().uuid("pipelineId must be a valid UUID"),
+  startupId: z.string().guid("startupId must be a valid UUID"),
+  pipelineId: z.string().guid("pipelineId must be a valid UUID"),
 });
 
 export type CreatePipelineEntryInput = z.infer<typeof createPipelineEntrySchema>;

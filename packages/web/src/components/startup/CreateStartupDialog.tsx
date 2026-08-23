@@ -176,7 +176,7 @@ export function CreateStartupDialog({ open, onOpenChange }: CreateStartupDialogP
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   align="start"
-                  className="w-[var(--radix-dropdown-menu-trigger-width)]"
+                  className="w-(--radix-dropdown-menu-trigger-width)"
                 >
                   {FUNDING_STAGES.map((stage) => (
                     <DropdownMenuItem key={stage.id} onSelect={() => setFundingStage(stage.id)}>

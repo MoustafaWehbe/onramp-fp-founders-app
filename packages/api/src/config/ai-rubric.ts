@@ -31,7 +31,7 @@ const scoreSchema = z.number().int().min(0).max(100);
 const boundedText = (max: number) => z.string().trim().min(1).max(max);
 
 export const pitchDeckEvidenceSchema = z.object({
-  documentChunkId: z.string().uuid(),
+  documentChunkId: z.string().guid(),
   label: boundedText(160),
   excerpt: boundedText(600),
 });

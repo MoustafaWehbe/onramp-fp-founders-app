@@ -62,7 +62,7 @@ export function ReviewerAnalyticsSheet({
             ))}
           </div>
         ) : query.isError ? (
-          <div className="flex flex-col items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/[0.05] p-6 text-center text-sm text-destructive">
+          <div className="flex flex-col items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-center text-sm text-destructive">
             <AlertTriangle className="h-5 w-5" />
             {apiErrorMessage(query.error, "Could not load analytics.")}
             <Button size="sm" variant="outline" onClick={() => void query.refetch()}>

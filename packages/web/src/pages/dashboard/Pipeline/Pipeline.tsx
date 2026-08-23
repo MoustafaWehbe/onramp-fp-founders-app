@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { Button } from "../../../components/ui/button";
 import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
+import { GoogleNotConnectedNotice } from "../../../components/shared/GoogleNotConnectedNotice";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { useAuth } from "../../../hooks/useAuth";
 import { useMediaQuery } from "../../../hooks/useMediaQuery";
@@ -779,6 +780,10 @@ export function Pipeline() {
           ) : null
         }
       />
+
+      {googleStatus.data?.configured && !googleStatus.data.connected && (
+        <GoogleNotConnectedNotice action="send emails and schedule meetings" />
+      )}
 
       {roundsQuery.isSuccess && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/70 bg-surface/50 px-3 py-2 text-sm">

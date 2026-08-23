@@ -110,7 +110,7 @@ export function InviteMemberDialog({
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="start"
-                className="w-[var(--radix-dropdown-menu-trigger-width)]"
+                className="w-(--radix-dropdown-menu-trigger-width)"
               >
                 {assignableRoles.map((role) => (
                   <DropdownMenuItem key={role.id} onSelect={() => setRoleId(role.id)}>

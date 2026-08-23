@@ -80,7 +80,7 @@ export function Chat() {
   const selected = conversations.find((c) => c.id === selectedId) ?? null;
 
   return (
-    <div className="flex h-[calc(100dvh-11.5rem)] min-h-[26rem] flex-col gap-4 sm:h-[calc(100dvh-12.5rem)]">
+    <div className="flex h-[calc(100dvh-11.5rem)] min-h-104 flex-col gap-4 sm:h-[calc(100dvh-12.5rem)]">
       <PageHeader title="Chat" description="Talk with your team, right next to the deals you're working." />
 
       <div className="card-elevated flex min-h-0 flex-1 overflow-hidden">

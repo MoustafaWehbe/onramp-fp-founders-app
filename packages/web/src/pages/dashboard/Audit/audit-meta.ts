@@ -7,6 +7,8 @@ import {
   Pencil,
   Plus,
   Share2,
+  Download,
+  Eye,
   ShieldQuestion,
   Trash2,
   X,
@@ -33,6 +35,8 @@ const ACTION_META: Record<string, ActionMeta> = {
   accept: { verb: "accepted", icon: Check, tone: "success" },
   decline: { verb: "declined", icon: X, tone: "warning" },
   share: { verb: "shared", icon: Share2, tone: "info" },
+  view: { verb: "viewed", icon: Eye, tone: "info" },
+  download: { verb: "downloaded", icon: Download, tone: "info" },
 };
 
 const DEFAULT_ACTION_META: ActionMeta = { verb: "acted on", icon: ShieldQuestion, tone: "neutral" };

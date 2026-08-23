@@ -1,6 +1,7 @@
 import type { Job } from "bullmq";
 import { JOB_NAMES } from "../job-names";
 import { calendarSyncService, type SyncStats } from "../../services/calendar-sync.service";
+import { logger } from "../../utils/logger";
 
 export interface CalendarSyncJobData {
   userId: string;
@@ -15,9 +16,7 @@ export const calendarSyncJob = {
   async process(job: Job<CalendarSyncJobData, SyncStats>): Promise<SyncStats> {
     const { userId } = job.data;
     const stats = await calendarSyncService.syncUserCalendar(userId);
-    console.info(
-      `[calendar-sync] user ${userId}: +${stats.created} ~${stats.updated} -${stats.retracted} (${stats.skipped} skipped)`,
-    );
+    logger.info({ userId, ...stats }, "[calendar-sync] sync complete");
     return stats;
   },
 };

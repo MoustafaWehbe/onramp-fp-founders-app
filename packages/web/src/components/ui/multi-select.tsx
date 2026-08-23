@@ -78,7 +78,7 @@ export function MultiSelect({
             <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-[--radix-popover-trigger-width] p-0">
+        <PopoverContent align="start" className="w-(--radix-popover-trigger-width) p-0">
           <div className="flex items-center gap-2 border-b border-border px-3 py-2">
             <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <Input

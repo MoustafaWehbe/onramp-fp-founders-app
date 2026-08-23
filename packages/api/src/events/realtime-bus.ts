@@ -20,6 +20,7 @@
  */
 
 import { createRedis, getRedis } from "../db/redis";
+import { logger } from "../utils/logger";
 import type IORedis from "ioredis";
 
 export type NotificationEvent =
@@ -80,7 +81,7 @@ function dispatchLocal(
       listener(event);
     } catch (err) {
       // One broken stream must not stop the others from being told.
-      console.error("[realtime-bus] subscriber threw:", err);
+      logger.error({ err }, "[realtime-bus] subscriber threw");
     }
   }
 }
@@ -151,13 +152,13 @@ export class RedisRealtimeBus implements RealtimeBus {
       try {
         event = JSON.parse(raw) as RealtimeEvent;
       } catch (err) {
-        console.error("[realtime-bus] ignored malformed redis payload:", err);
+        logger.error({ err }, "[realtime-bus] ignored malformed redis payload");
         return;
       }
       dispatchLocal(this.local.get(userId), event);
     });
     sub.on("error", (err) => {
-      console.error("[realtime-bus] redis subscriber error:", err);
+      logger.error({ err }, "[realtime-bus] redis subscriber error");
     });
 
     this.subscriber = sub;
@@ -166,7 +167,7 @@ export class RedisRealtimeBus implements RealtimeBus {
 
   publish(userId: string, event: RealtimeEvent): void {
     void this.publisher.publish(channelFor(userId), JSON.stringify(event)).catch((err) => {
-      console.error("[realtime-bus] redis publish failed:", err);
+      logger.error({ err }, "[realtime-bus] redis publish failed");
     });
   }
 
@@ -184,7 +185,7 @@ export class RedisRealtimeBus implements RealtimeBus {
       void this.ensureSubscriber()
         .subscribe(channel)
         .catch((err) => {
-          console.error(`[realtime-bus] failed to subscribe ${channel}:`, err);
+          logger.error({ err, channel }, "[realtime-bus] failed to subscribe");
         });
     }
 
@@ -200,7 +201,7 @@ export class RedisRealtimeBus implements RealtimeBus {
       const channel = channelFor(userId);
       if (this.subscriber) {
         void this.subscriber.unsubscribe(channel).catch((err) => {
-          console.error(`[realtime-bus] failed to unsubscribe ${channel}:`, err);
+          logger.error({ err, channel }, "[realtime-bus] failed to unsubscribe");
         });
       }
     };

@@ -1,3 +1,5 @@
+import { getRedis } from "../db/redis";
+
 export interface AiStreamEnvelope {
   version: 1;
   sessionId: string;
@@ -73,4 +75,3 @@ export class AiStreamBroker {
 }
 
 export const aiStreamBroker = new AiStreamBroker();
-import { getRedis } from "../db/redis";

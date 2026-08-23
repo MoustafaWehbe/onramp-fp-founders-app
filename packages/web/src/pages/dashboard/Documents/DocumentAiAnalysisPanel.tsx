@@ -66,7 +66,7 @@ export function DocumentAiAnalysisPanel({ startupId, documentVersionId, canReadA
   }
   if (analysesQuery.isError) {
     return (
-      <div className="flex flex-col items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/[0.05] p-6 text-center text-sm text-destructive">
+      <div className="flex flex-col items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-center text-sm text-destructive">
         <AlertCircle className="h-5 w-5" />
         {apiErrorMessage(analysesQuery.error, "Could not load AI analyses.")}
         <Button size="sm" variant="outline" onClick={() => void analysesQuery.refetch()}>

@@ -241,7 +241,7 @@ export function Documents() {
     const previewTab = disposition === "preview" ? window.open("about:blank", "_blank") : null;
 
     try {
-      const access = await getDocumentFileAccess(startupId, documentId, versionId);
+      const access = await getDocumentFileAccess(startupId, documentId, versionId, disposition);
       const fileRes = await fetch(access.url);
       if (!fileRes.ok) throw new Error(`Could not fetch file (${fileRes.status})`);
       const blob = await fileRes.blob();

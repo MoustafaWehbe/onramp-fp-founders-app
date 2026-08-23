@@ -444,6 +444,36 @@ describe("InvestorService.listInvestors", () => {
     expect(where.pipeline).toEqual({ some: { stage: "term_sheet" } });
   });
 
+  it("filters contacts to pipeline deals owned by one member in one round", async () => {
+    const ROUND_ID = "00000000-0000-0000-0000-000000000010";
+    const OWNER_ID = "00000000-0000-0000-0000-000000000011";
+    (mockPrisma.startupInvestor.count as jest.Mock).mockResolvedValue(0);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.listInvestors(STARTUP_ID, {
+      ...DEFAULT_QUERY,
+      roundId: ROUND_ID,
+      ownerId: OWNER_ID,
+      pipelineOnly: true,
+    } as never);
+
+    const { where, select } = (mockPrisma.startupInvestor.findMany as jest.Mock).mock.calls[0][0];
+    expect(where.pipeline).toEqual({ some: { roundId: ROUND_ID, ownerId: OWNER_ID } });
+    expect(select.pipeline.where).toEqual({ roundId: ROUND_ID, ownerId: OWNER_ID });
+  });
+
+  it("keeps roundId as join-only for the contact picker unless pipelineOnly is requested", async () => {
+    const ROUND_ID = "00000000-0000-0000-0000-000000000010";
+    (mockPrisma.startupInvestor.count as jest.Mock).mockResolvedValue(0);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.listInvestors(STARTUP_ID, { ...DEFAULT_QUERY, roundId: ROUND_ID } as never);
+
+    const { where, select } = (mockPrisma.startupInvestor.findMany as jest.Mock).mock.calls[0][0];
+    expect(where).not.toHaveProperty("pipeline");
+    expect(select.pipeline.where).toEqual({ roundId: ROUND_ID });
+  });
+
   it("filters on investor type", async () => {
     (mockPrisma.startupInvestor.count as jest.Mock).mockResolvedValue(0);
     (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([]);

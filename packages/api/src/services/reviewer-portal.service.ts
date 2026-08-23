@@ -3,6 +3,7 @@ import type { Response } from "express";
 import { UAParser } from "ua-parser-js";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
+import { logger } from "../utils/logger";
 import { generateOTP, hashOTP, hashToken, hashForwardSignal, verifyPassword } from "../utils/auth";
 import { createPageToken, verifyPageToken, PAGE_TOKEN_TTL_SECONDS } from "../utils/page-token";
 import { emailQueue } from "../jobs/queue";
@@ -130,7 +131,7 @@ export class ReviewerPortalService {
     await emailQueue.add("send-reviewer-otp", { to: invitation.emailNormalized, subject, html });
 
     if (process.env.NODE_ENV !== "production") {
-      console.info(`[reviewer-portal] OTP for ${invitation.emailNormalized}: ${raw}`);
+      logger.info({ email: invitation.emailNormalized, otp: raw }, "[reviewer-portal] dev OTP");
     }
 
     return {

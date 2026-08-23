@@ -37,15 +37,22 @@ function relativeAge(iso: string): string {
  * The notification feed, shared by the header menu and the full page so both
  * read the same cache entry and a read in one is reflected in the other.
  *
- * The API returns every workspace the user belongs to; we scope the list and
- * unread badge to the active startup so switching Northbeam ↔ Drift Labs
- * swaps the feed without touching other dashboard queries.
+ * Scoped to the active startup server-side (both the page and unreadCount)
+ * so switching Northbeam ↔ Drift Labs swaps the feed without touching other
+ * dashboard queries, and the badge always agrees with what the page shows -
+ * a client-side filter on top of a fixed-size page could previously drop a
+ * workspace's own items (and miscount unread) once another workspace's
+ * notifications filled the page ahead of them.
  */
 export function useNotifications() {
   const queryClient = useQueryClient();
   const { activeStartupId } = useWorkspace();
 
-  const query = useQuery({ queryKey: NOTIFICATIONS_KEY, queryFn: listNotifications });
+  const queryKey = useMemo(() => [...NOTIFICATIONS_KEY, activeStartupId] as const, [activeStartupId]);
+  const query = useQuery({
+    queryKey,
+    queryFn: () => listNotifications(activeStartupId ?? undefined),
+  });
 
   const invalidate = useCallback(
     () => queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY }),
@@ -54,26 +61,20 @@ export function useNotifications() {
 
   const readMutation = useMutation({ mutationFn: markNotificationRead, onSuccess: invalidate });
   const readAllMutation = useMutation({
-    mutationFn: markAllNotificationsRead,
+    mutationFn: () => markAllNotificationsRead(activeStartupId ?? undefined),
     onSuccess: invalidate,
   });
 
   const items: NotificationRow[] = useMemo(() => {
     const all = query.data?.items ?? [];
-    const scoped = activeStartupId
-      ? all.filter((n) => n.startup?.id === activeStartupId)
-      : all;
-    return scoped.map((n) => ({
+    return all.map((n) => ({
       ...n,
       read: n.readAt !== null,
       when: relativeAge(n.createdAt),
     }));
-  }, [query.data?.items, activeStartupId]);
+  }, [query.data?.items]);
 
-  const unreadCount = useMemo(
-    () => items.reduce((count, n) => count + (n.read ? 0 : 1), 0),
-    [items],
-  );
+  const unreadCount = query.data?.unreadCount ?? 0;
 
   return {
     items,

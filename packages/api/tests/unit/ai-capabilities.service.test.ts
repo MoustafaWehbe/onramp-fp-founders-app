@@ -14,6 +14,7 @@ describe("AI capability policy", () => {
     expect(capabilities.tools).toEqual([
       "get_pipeline_summary",
       "get_focus_deals",
+      "get_daily_briefing",
       "get_investor_context",
       "get_reviewer_engagement",
       "search_investors",

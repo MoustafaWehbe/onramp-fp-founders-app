@@ -2,11 +2,11 @@ import { z } from "zod";
 import { INVESTOR_TYPES, PIPELINE_STAGES } from "../config/crm";
 
 const investorTypeEnum = z.enum(INVESTOR_TYPES, {
-  errorMap: () => ({ message: "Invalid investor type" }),
+  error: "Invalid investor type",
 });
 
 const pipelineStageEnum = z.enum(PIPELINE_STAGES, {
-  errorMap: () => ({ message: "Invalid pipeline stage" }),
+  error: "Invalid pipeline stage",
 });
 
 function optionalText(max: number, label: string) {
@@ -49,7 +49,7 @@ const fullNameSchema = z
 const optionalCheckSize = (label: string) =>
   z
     .union([
-      z.number({ invalid_type_error: `${label} must be a number` }).finite(`${label} must be a finite number`).min(0, `${label} must be at least 0`),
+      z.number({ error: `${label} must be a number` }).finite(`${label} must be a finite number`).min(0, `${label} must be at least 0`),
       z.null(),
     ])
     .optional();
@@ -104,20 +104,27 @@ export const listInvestorsQuerySchema = z.object({
     .optional(),
   investorType: investorTypeEnum.optional(),
   stage: pipelineStageEnum.optional(),
-  roundId: z.string().uuid("roundId must be a valid UUID").optional(),
+  roundId: z.string().guid("roundId must be a valid UUID").optional(),
+  ownerId: z.string().guid("ownerId must be a valid UUID").optional(),
+  // roundId alone keeps directory/contact-picker semantics: return every
+  // contact and only join that round's deal. pipelineOnly turns it into a
+  // true membership filter for pipeline and AI queries.
+  pipelineOnly: z
+    .union([z.boolean(), z.enum(["true", "false"]).transform((value) => value === "true")])
+    .optional(),
   // Splits the directory in two: contacts this startup has actually engaged
   // (they sit in the pipeline, or someone has logged an interaction with them)
   // versus ones that were added or imported but never approached.
   engagement: z
     .enum(["engaged", "prospect"], {
-      errorMap: () => ({ message: "engagement must be 'engaged' or 'prospect'" }),
+      error: "engagement must be 'engaged' or 'prospect'",
     })
     .optional(),
 });
 
 export const investorIdParamSchema = z.object({
-  startupId: z.string().uuid("startupId must be a valid UUID"),
-  investorId: z.string().uuid("investorId must be a valid UUID"),
+  startupId: z.string().guid("startupId must be a valid UUID"),
+  investorId: z.string().guid("investorId must be a valid UUID"),
 });
 
 export type CreateInvestorInput = z.infer<typeof createInvestorSchema>;

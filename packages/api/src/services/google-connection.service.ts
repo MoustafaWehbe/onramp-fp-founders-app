@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { prisma } from "../db/prisma";
 import { getRedis } from "../db/redis";
 import { createError } from "../utils/errors";
+import { logger } from "../utils/logger";
 import { encryptSecret, decryptSecret } from "../utils/crypto";
 import { createGoogleOAuthClient, GOOGLE_OAUTH_SCOPES } from "../config/google";
 import { isGoogleIntegrationEnabled } from "../config/env";
@@ -232,7 +233,7 @@ export class GoogleConnectionService {
       // Already revoked at Google (e.g. the user disconnected from their
       // Google Account settings first) is the common case here, not an error
       // worth failing the request over we still clear our own side below.
-      console.error("[google-connection] revoke failed, clearing local record anyway:", err);
+      logger.error({ err }, "[google-connection] revoke failed, clearing local record anyway");
     }
 
     await prisma.googleConnection.delete({ where: { userId } });

@@ -81,7 +81,7 @@ export function PipelineSummary({
         className={cn(
           "rounded-xl border p-4 text-left transition-colors",
           totals.attentionCount > 0
-            ? "border-warning/40 bg-warning/[0.06] hover:border-warning/70"
+            ? "border-warning/40 bg-warning/6 hover:border-warning/70"
             : "border-border/70 bg-surface/50 hover:border-border",
           attentionActive && "border-warning ring-1 ring-warning/40",
         )}

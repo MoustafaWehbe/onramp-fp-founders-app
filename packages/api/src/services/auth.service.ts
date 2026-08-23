@@ -13,6 +13,7 @@ import {
 import { sendOTP, sendPasswordReset } from "./email.service";
 import { prisma } from "../db/prisma";
 import { createError, type AppError } from "../utils/errors";
+import { logger } from "../utils/logger";
 import { inviteService } from "./invite.service";
 import { storageService } from "./storage.service";
 import { getAppUrl } from "../config/env";
@@ -360,7 +361,7 @@ export class AuthService {
     try {
       await sendPasswordReset(user.email, user.firstName, resetUrl);
     } catch (err) {
-      console.error("[forgotPassword] email enqueue failed:", err);
+      logger.error({ err }, "[forgotPassword] email enqueue failed");
     }
 
     return {

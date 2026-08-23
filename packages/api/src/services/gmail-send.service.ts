@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
+import { logger } from "../utils/logger";
 import { getAppUrl } from "../config/env";
 import { googleConnectionService } from "./google-connection.service";
 import { gmailLogRetryQueue } from "../jobs/queue";
@@ -186,7 +187,7 @@ export class GmailSendService {
         data: { ...logData, interactionDate: new Date(logData.interactionDate) },
       });
     } catch (err) {
-      console.error("[gmail-send] log write failed after a successful send, retrying on queue:", err);
+      logger.error({ err }, "[gmail-send] log write failed after a successful send, retrying on queue");
       await gmailLogRetryQueue.add("gmail-log-retry", logData);
       logCreated = false;
     }

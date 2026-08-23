@@ -23,3 +23,18 @@ describe("action_proposal.v1 schema", () => {
     }
   });
 });
+
+describe("daily_briefing.v1 schema", () => {
+  it("accepts a compact briefing that owns the repeated list data", () => {
+    const result = AI_ARTIFACT_REGISTRY["daily_briefing.v1"].schema.safeParse({
+      generatedAt: "2026-08-23T08:00:00.000Z",
+      assignedInvestorCount: 2,
+      focusDeals: [{ investorId: "inv-1", investorName: "Ana Ruiz", stage: "meeting_scheduled", reason: "today", daysQuiet: 2, nextTaskDueDate: null }],
+      overdueTasks: [],
+      dueTodayTasks: [{ id: "task-1", title: "Send deck", investorName: "Ana Ruiz", priority: "high", dueDate: "2026-08-23T12:00:00.000Z" }],
+      meetings: [{ id: "meeting-1", type: "meeting", subject: "Intro", interactionDate: "2026-08-23T15:00:00.000Z", investorName: "Ana Ruiz" }],
+      roundHealth: { roundName: "Seed", currency: "USD", percentToTarget: 40, bankableRaised: 400000, remainingGap: 600000, daysToClose: 30 },
+    });
+    expect(result.success).toBe(true);
+  });
+});

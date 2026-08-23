@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const interactionTypeEnum = z.enum(["call", "email", "meeting", "note", "other"], {
-  errorMap: () => ({ message: "Invalid interaction type" }),
+  error: "Invalid interaction type",
 });
 
 function optionalText(max: number, label: string) {
@@ -18,7 +18,7 @@ function optionalText(max: number, label: string) {
 function coercedDate(label: string) {
   return z.preprocess(
     (value) => (typeof value === "string" || value instanceof Date ? value : NaN),
-    z.coerce.date({ invalid_type_error: `${label} must be a valid datetime` }),
+    z.coerce.date({ error: `${label} must be a valid datetime` }),
   );
 }
 
@@ -26,8 +26,8 @@ function coercedDate(label: string) {
 // schemas: tasks superseded follow-ups, so no new log sets one. Existing rows
 // stay readable; they just cannot be written any more.
 export const createInteractionLogSchema = z.object({
-  investorId: z.string().uuid("investorId must be a valid UUID"),
-  pipelineId: z.string().uuid("pipelineId must be a valid UUID").optional(),
+  investorId: z.string().guid("investorId must be a valid UUID"),
+  pipelineId: z.string().guid("pipelineId must be a valid UUID").optional(),
   type: interactionTypeEnum,
   interactionDate: coercedDate("interactionDate"),
   subject: optionalText(200, "Subject"),
@@ -38,7 +38,7 @@ export const updateInteractionLogSchema = z
   .object({
     pipelineId: z
       .union([
-        z.string().uuid("pipelineId must be a valid UUID"),
+        z.string().guid("pipelineId must be a valid UUID"),
         z.null(),
       ])
       .transform((value) => (value === "" || value === null ? null : value))
@@ -64,18 +64,18 @@ export const listInteractionLogQuerySchema = z.object({
 });
 
 export const logIdParamSchema = z.object({
-  startupId: z.string().uuid("startupId must be a valid UUID"),
-  logId: z.string().uuid("logId must be a valid UUID"),
+  startupId: z.string().guid("startupId must be a valid UUID"),
+  logId: z.string().guid("logId must be a valid UUID"),
 });
 
 export const investorLogParamSchema = z.object({
-  startupId: z.string().uuid("startupId must be a valid UUID"),
-  investorId: z.string().uuid("investorId must be a valid UUID"),
+  startupId: z.string().guid("startupId must be a valid UUID"),
+  investorId: z.string().guid("investorId must be a valid UUID"),
 });
 
 export const pipelineLogParamSchema = z.object({
-  startupId: z.string().uuid("startupId must be a valid UUID"),
-  pipelineId: z.string().uuid("pipelineId must be a valid UUID"),
+  startupId: z.string().guid("startupId must be a valid UUID"),
+  pipelineId: z.string().guid("pipelineId must be a valid UUID"),
 });
 
 export type CreateInteractionLogInput = z.infer<typeof createInteractionLogSchema>;

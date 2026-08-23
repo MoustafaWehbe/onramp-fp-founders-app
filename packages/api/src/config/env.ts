@@ -1,4 +1,5 @@
 import { getAiConfig } from "./ai";
+import { logger } from "../utils/logger";
 
 const REQUIRED: Record<string, string[]> = {
   always: [
@@ -14,7 +15,7 @@ const REQUIRED: Record<string, string[]> = {
     "GOOGLE_CLIENT_ID",
   ],
   // Only required once a deployment actually offers the Google integration —
-  // most self-hosted instances of this starter kit will never set these, and
+  // most self-hosted Raise instances will never set these, and
   // login-with-Google must keep working without them.
   googleIntegration: [
     "GOOGLE_CLIENT_SECRET",
@@ -131,7 +132,7 @@ export function validateEnv(): void {
   }
 
   if (problems.length > 0) {
-    console.error(`Invalid environment configuration:\n  ${problems.join("\n  ")}`);
+    logger.error({ problems }, "Invalid environment configuration");
     process.exit(1);
   }
 }

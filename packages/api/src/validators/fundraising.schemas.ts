@@ -4,15 +4,15 @@ import { COMMITMENT_STATUSES, ROUND_STATUSES } from "../config/crm";
 export { COMMITMENT_STATUSES, ROUND_STATUSES };
 
 const roundStatusEnum = z.enum(ROUND_STATUSES, {
-  errorMap: () => ({ message: "Invalid fundraising round status" }),
+  error: "Invalid fundraising round status",
 });
 const commitmentStatusEnum = z.enum(COMMITMENT_STATUSES, {
-  errorMap: () => ({ message: "Invalid commitment status" }),
+  error: "Invalid commitment status",
 });
 
 const money = (field: string) =>
   z
-    .number({ invalid_type_error: `${field} must be a number` })
+    .number({ error: `${field} must be a number` })
     .finite(`${field} must be a finite number`)
     .min(0, `${field} must be at least 0`);
 
@@ -29,7 +29,7 @@ export const createFundraisingRoundSchema = z.object({
   targetAmount: money("targetAmount"),
   minimumTicketSize: money("minimumTicketSize").optional(),
   equityOfferedPercentage: z
-    .number({ invalid_type_error: "equityOfferedPercentage must be a number" })
+    .number({ error: "equityOfferedPercentage must be a number" })
     .finite("equityOfferedPercentage must be a finite number")
     .min(0, "equityOfferedPercentage must be at least 0")
     .max(100, "equityOfferedPercentage must be at most 100")
@@ -50,7 +50,7 @@ export const updateFundraisingRoundSchema = z
     equityOfferedPercentage: z
       .union([
         z
-          .number({ invalid_type_error: "equityOfferedPercentage must be a number" })
+          .number({ error: "equityOfferedPercentage must be a number" })
           .finite("equityOfferedPercentage must be a finite number")
           .min(0, "equityOfferedPercentage must be at least 0")
           .max(100, "equityOfferedPercentage must be at most 100"),
@@ -65,9 +65,9 @@ export const updateFundraisingRoundSchema = z
   .refine((data) => Object.keys(data).length > 0, { message: "At least one field is required" });
 
 export const createCommitmentSchema = z.object({
-  investorId: z.string().uuid("investorId must be a valid UUID"),
-  pipelineId: z.string().uuid("pipelineId must be a valid UUID"),
-  roundId: z.string().uuid("roundId must be a valid UUID"),
+  investorId: z.string().guid("investorId must be a valid UUID"),
+  pipelineId: z.string().guid("pipelineId must be a valid UUID"),
+  roundId: z.string().guid("roundId must be a valid UUID"),
   amount: money("amount"),
   status: commitmentStatusEnum.optional(),
   expectedCloseDate: z.coerce.date().optional(),
@@ -82,13 +82,13 @@ export const updateCommitmentSchema = z
   .refine((data) => Object.keys(data).length > 0, { message: "At least one field is required" });
 
 export const fundraisingRoundIdParamSchema = z.object({
-  startupId: z.string().uuid("startupId must be a valid UUID"),
-  roundId: z.string().uuid("roundId must be a valid UUID"),
+  startupId: z.string().guid("startupId must be a valid UUID"),
+  roundId: z.string().guid("roundId must be a valid UUID"),
 });
 
 export const commitmentIdParamSchema = z.object({
-  startupId: z.string().uuid("startupId must be a valid UUID"),
-  commitmentId: z.string().uuid("commitmentId must be a valid UUID"),
+  startupId: z.string().guid("startupId must be a valid UUID"),
+  commitmentId: z.string().guid("commitmentId must be a valid UUID"),
 });
 
 export const listFundraisingRoundsQuerySchema = z.object({

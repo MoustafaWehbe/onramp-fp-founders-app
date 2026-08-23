@@ -1115,6 +1115,17 @@ describe("PipelineService.getFocus", () => {
     );
   });
 
+  it("can scope today's focus signals to deals owned by one member", async () => {
+    const OWNER_ID = "00000000-0000-0000-0000-000000000011";
+    (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.getFocus(STARTUP_ID, ROUND_ID, OWNER_ID);
+
+    expect(mockPrisma.pipeline.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ ownerId: OWNER_ID }),
+    }));
+  });
+
   it("flags a deal whose soonest open task is overdue", async () => {
     (mockPrisma.pipeline.findMany as jest.Mock).mockResolvedValue([deal("p1")]);
     (mockPrisma.task.findMany as jest.Mock).mockResolvedValue([

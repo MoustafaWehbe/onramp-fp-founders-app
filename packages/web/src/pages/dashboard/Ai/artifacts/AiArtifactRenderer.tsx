@@ -40,7 +40,7 @@ const forecast = z.object({
 });
 
 const investorBrief = z.object({
-  investorId: z.string().uuid(),
+  investorId: z.string().guid(),
   fullName: z.string().min(1).max(200),
   ventureFirm: z.string().max(200).nullable(),
   investorType: z.string().max(50).nullable(),
@@ -53,7 +53,7 @@ const investorBrief = z.object({
   lastInteractions: z.array(z.object({ type: z.string(), subject: z.string().nullable(), interactionDate: z.string().nullable() })).max(5),
 });
 const focusList = z.object({
-  roundId: z.string().uuid().nullable(),
+  roundId: z.string().guid().nullable(),
   deals: z.array(z.object({
     investorId: z.string(),
     investorName: z.string(),
@@ -74,14 +74,31 @@ const taskList = z.object({
     priority: z.string(),
     dueDate: z.string().nullable(),
     assigned: z.boolean(),
+    assigneeName: z.string().nullable(),
+    investor: z.object({ id: z.string(), fullName: z.string(), ventureFirm: z.string().nullable() }),
+    round: z.object({ id: z.string(), roundName: z.string(), status: z.string() }),
+    pipelineStage: z.string(),
   })).max(20),
+});
+const dailyBriefing = z.object({
+  generatedAt: z.string(),
+  assignedInvestorCount: z.number().int().nonnegative(),
+  focusDeals: z.array(z.object({
+    investorId: z.string(), investorName: z.string(), stage: z.string(),
+    reason: z.enum(["overdue", "today", "missing", "quiet", "priority"]),
+    daysQuiet: z.number().int(), nextTaskDueDate: z.string().nullable(),
+  })).max(15),
+  overdueTasks: z.array(z.object({ id: z.string(), title: z.string(), investorName: z.string(), priority: z.string(), dueDate: z.string().nullable() })).max(20),
+  dueTodayTasks: z.array(z.object({ id: z.string(), title: z.string(), investorName: z.string(), priority: z.string(), dueDate: z.string().nullable() })).max(20),
+  meetings: z.array(z.object({ id: z.string(), type: z.string(), subject: z.string().nullable(), interactionDate: z.string().nullable(), investorName: z.string() })).max(25),
+  roundHealth: z.object({ roundName: z.string(), currency: z.string(), percentToTarget: z.number(), bankableRaised: z.number(), remainingGap: z.number(), daysToClose: z.number().int().nullable() }).nullable(),
 });
 
 const actionProposal = z.object({
-  actionId: z.string().uuid(),
+  actionId: z.string().guid(),
   actionType: z.enum(["create_task", "log_interaction", "schedule_meeting", "send_investor_email", "update_deal_stage", "update_task_status"]),
   status: z.enum(["proposed", "approved", "executed", "rejected", "failed", "expired"]),
-  payload: z.record(z.unknown()),
+  payload: z.record(z.string(), z.unknown()),
   expiresAt: z.string(),
 });
 
@@ -284,6 +301,78 @@ export function AiArtifactRenderer({ startupId, artifact, onAskFollowup }: { sta
     );
   }
 
+  if (artifact.type === "daily_briefing.v1") {
+    const parsed = dailyBriefing.safeParse(artifact.data);
+    if (!parsed.success) return <UnsupportedArtifact />;
+    const data = parsed.data;
+    const dueCount = data.overdueTasks.length + data.dueTodayTasks.length;
+    return (
+      <ArtifactShell icon={CalendarClock} title="Today's briefing">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {[
+            ["My investors", data.assignedInvestorCount],
+            ["Need attention", data.focusDeals.length],
+            ["Tasks due", dueCount],
+            ["Meetings", data.meetings.length],
+          ].map(([label, value]) => (
+            <div key={String(label)} className="rounded-lg bg-background/60 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+              <p className="mt-0.5 text-base font-semibold text-foreground">{value}</p>
+            </div>
+          ))}
+        </div>
+
+        {data.focusDeals.length > 0 && (
+          <div className="mt-3">
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Priority investors</p>
+            <ul className="divide-y divide-border/50 rounded-lg border border-border/60 bg-background/35 px-3">
+              {data.focusDeals.slice(0, 6).map((deal) => (
+                <li key={deal.investorId} className="flex items-center justify-between gap-3 py-2 text-xs">
+                  <span className="truncate font-medium text-foreground">{deal.investorName}</span>
+                  <span className="shrink-0 text-muted-foreground">{FOCUS_REASON_LABELS[deal.reason]} · {deal.stage.replace(/_/g, " ")}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {dueCount > 0 && (
+          <div className="mt-3">
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Due work</p>
+            <ul className="space-y-1.5">
+              {[...data.overdueTasks, ...data.dueTodayTasks].slice(0, 6).map((task) => (
+                <li key={task.id} className="flex items-center justify-between gap-3 text-xs">
+                  <span className="truncate text-foreground">{task.title} <span className="text-muted-foreground">· {task.investorName}</span></span>
+                  <span className={cn("shrink-0 capitalize text-muted-foreground", data.overdueTasks.some((item) => item.id === task.id) && "text-destructive")}>{task.priority}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {data.meetings.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {data.meetings.slice(0, 5).map((meeting) => (
+              <span key={meeting.id} className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/40 px-2.5 py-1 text-[11px] text-muted-foreground">
+                <Calendar className="h-3 w-3" /> {meeting.interactionDate ? new Date(meeting.interactionDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Today"} · {meeting.investorName}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {data.roundHealth && (
+          <div className="mt-3 rounded-lg border border-border/60 bg-background/35 px-3 py-2.5">
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="font-medium text-foreground">{data.roundHealth.roundName}</span>
+              <span className="text-muted-foreground">{data.roundHealth.percentToTarget}% funded</span>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.max(0, data.roundHealth.percentToTarget))}%` }} /></div>
+          </div>
+        )}
+      </ArtifactShell>
+    );
+  }
+
   if (artifact.type === "task_list.v1") {
     const parsed = taskList.safeParse(artifact.data);
     if (!parsed.success) return <UnsupportedArtifact />;
@@ -296,7 +385,12 @@ export function AiArtifactRenderer({ startupId, artifact, onAskFollowup }: { sta
               <li key={task.id} className="flex items-center justify-between gap-2 py-2 first:pt-0 last:pb-0">
                 <div className="min-w-0">
                   <p className={cn("truncate text-sm font-medium", task.status === "completed" ? "text-muted-foreground line-through" : "text-foreground")}>{task.title}</p>
+                  <p className="truncate text-xs font-medium text-foreground/75">
+                    {task.investor.fullName}{task.investor.ventureFirm ? ` · ${task.investor.ventureFirm}` : ""}
+                  </p>
                   <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <span>{task.round.roundName}</span>
+                    <span>· {task.pipelineStage.replace(/_/g, " ")}</span>
                     <span className="capitalize">{task.priority}</span>
                     {task.dueDate && (
                       <span className={cn("inline-flex items-center gap-0.5", overdue && "text-destructive")}>
@@ -305,6 +399,7 @@ export function AiArtifactRenderer({ startupId, artifact, onAskFollowup }: { sta
                       </span>
                     )}
                     {!task.assigned && <span>· Unassigned</span>}
+                    {task.assigneeName && <span>· {task.assigneeName}</span>}
                   </p>
                 </div>
               </li>
@@ -438,7 +533,7 @@ function ActionProposalCard({ startupId, proposal }: { startupId: string; propos
 
 function ArtifactShell({ icon: Icon, title, action, children }: { icon: LucideIcon; title: string; action?: ReactNode; children: ReactNode }) {
   return (
-    <section className="mt-2 max-w-full rounded-xl border border-border/60 bg-card/60 p-4 text-left shadow-sm">
+    <section className="mt-2 max-w-full rounded-xl border border-border/60 bg-card/60 p-4 text-left shadow-xs">
       <div className="flex items-center gap-2">
         <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
           <Icon className="h-3.5 w-3.5" />

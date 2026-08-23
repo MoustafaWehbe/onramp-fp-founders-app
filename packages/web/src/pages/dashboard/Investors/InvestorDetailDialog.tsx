@@ -369,7 +369,7 @@ export function InvestorDetailDialog({
               <div className="space-y-5 px-5 py-6 sm:px-7">
               {activeTab === "overview" && <>
 
-              <section className="relative overflow-hidden rounded-2xl border border-primary/25 bg-primary/[0.055] p-4" aria-label="Recommended next action">
+              <section className="relative overflow-hidden rounded-2xl border border-primary/25 bg-primary/5.5 p-4" aria-label="Recommended next action">
                 <div className="absolute -right-8 -top-10 h-28 w-28 rounded-full bg-primary/10 blur-2xl" />
                 <div className="relative flex flex-wrap items-center gap-3"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary"><Sparkles className="h-5 w-5" /></div><div className="min-w-48 flex-1"><p className="font-mono text-[10px] uppercase tracking-widest text-primary">Recommended next action</p><h3 className="mt-1 text-sm font-semibold">{pipelineId ? "Keep the next commitment clear" : "Start the relationship"}</h3><p className="mt-0.5 text-xs text-muted-foreground">{pipelineId ? "Review assigned work or log the latest investor conversation." : "Log your first outreach, then add this contact to the active pipeline when qualified."}</p></div>{canCreate && <Button size="sm" disabled={!canSchedule} title={scheduleDisabledReason} onClick={() => setScheduleOpen(true)}>{pipelineId ? "Schedule call" : "Schedule outreach"}<ArrowRight className="h-3.5 w-3.5" /></Button>}</div>
               </section>

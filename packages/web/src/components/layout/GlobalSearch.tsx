@@ -281,7 +281,7 @@ export function GlobalSearch() {
           aria-controls={listId}
           aria-autocomplete="list"
           aria-expanded={open && query.length > 0}
-          className="h-9 w-full rounded-md border border-border bg-surface pl-9 pr-16 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+          className="h-9 w-full rounded-md border border-border bg-surface pl-9 pr-16 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-hidden focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
           autoComplete="off"
         />
         <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground lg:inline-block">
@@ -328,7 +328,7 @@ export function GlobalSearch() {
                   aria-label="Search investors and documents"
                   aria-controls={listId}
                   aria-autocomplete="list"
-                  className="h-10 w-full rounded-lg border border-border/70 bg-surface pl-9 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none focus:ring-1 focus:ring-ring"
+                  className="h-10 w-full rounded-lg border border-border/70 bg-surface pl-9 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-hidden focus:ring-1 focus:ring-ring"
                   autoComplete="off"
                 />
                 <button

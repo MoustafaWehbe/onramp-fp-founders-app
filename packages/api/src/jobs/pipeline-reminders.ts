@@ -1,6 +1,6 @@
 import { prisma } from "../db/prisma";
 import { OPEN_ROUND_STATUSES } from "../config/crm";
-import { notificationService } from "../services/notification.service";
+import { DEAL_REMINDER_COOLDOWN_DAYS, NOTIFICATION_TYPES, notificationService } from "../services/notification.service";
 
 /** A lead that has not been spoken to in this long is the round's biggest risk. */
 const STALE_LEAD_AFTER_DAYS = 7;
@@ -121,6 +121,15 @@ export async function notifyStaleLeadsAndIdleDeals(): Promise<void> {
 
   const now = Date.now();
 
+  // Decide which deals need which reminder without touching the DB again;
+  // the per-deal cooldown check happens once, below, as a single batched
+  // query instead of the findFirst notifyLeadStale/notifyDealNoNextStep would
+  // otherwise each run per deal.
+  type PendingReminder =
+    | { type: typeof NOTIFICATION_TYPES.LEAD_STALE; deal: (typeof deals)[number]; userId: string; daysQuiet: number }
+    | { type: typeof NOTIFICATION_TYPES.DEAL_NO_NEXT_STEP; deal: (typeof deals)[number]; userId: string };
+  const pending: PendingReminder[] = [];
+
   for (const deal of deals) {
     const userId = recipientFor(deal, fallbackByStartup);
     if (!userId) continue;
@@ -130,28 +139,53 @@ export async function notifyStaleLeadsAndIdleDeals(): Promise<void> {
     const since = lastTouch.get(deal.startupInvestorId) ?? deal.createdAt.getTime();
     const daysQuiet = Math.max(0, Math.floor((now - since) / DAY_MS));
     const daysOnBoard = Math.max(0, Math.floor((now - deal.createdAt.getTime()) / DAY_MS));
-    const investorName = deal.startupInvestor.fullName;
 
     // A quiet lead is the more urgent fact about the same deal, so it wins;
     // the missing next step is reported for everything else.
     if (deal.isLead && daysQuiet >= STALE_LEAD_AFTER_DAYS) {
-      await notificationService.notifyLeadStale({
-        userId,
-        startupId: deal.startupId,
-        pipelineId: deal.id,
-        investorName,
-        daysQuiet,
-      });
-      continue;
-    }
-
-    if (!hasOpenTask.has(deal.id) && daysOnBoard >= NO_NEXT_STEP_GRACE_DAYS) {
-      await notificationService.notifyDealNoNextStep({
-        userId,
-        startupId: deal.startupId,
-        pipelineId: deal.id,
-        investorName,
-      });
+      pending.push({ type: NOTIFICATION_TYPES.LEAD_STALE, deal, userId, daysQuiet });
+    } else if (!hasOpenTask.has(deal.id) && daysOnBoard >= NO_NEXT_STEP_GRACE_DAYS) {
+      pending.push({ type: NOTIFICATION_TYPES.DEAL_NO_NEXT_STEP, deal, userId });
     }
   }
+  if (pending.length === 0) return;
+
+  const cooldownStart = new Date(now - DEAL_REMINDER_COOLDOWN_DAYS * DAY_MS);
+  const recentlyNotified = await prisma.notification.findMany({
+    where: {
+      type: { in: [NOTIFICATION_TYPES.LEAD_STALE, NOTIFICATION_TYPES.DEAL_NO_NEXT_STEP] },
+      entityType: "pipeline",
+      entityId: { in: pending.map((reminder) => reminder.deal.id) },
+      createdAt: { gte: cooldownStart },
+    },
+    select: { type: true, entityId: true },
+  });
+  const suppressed = new Set(recentlyNotified.map((n) => `${n.type}:${n.entityId}`));
+
+  // Independent per deal, so these fire together rather than one at a time
+  // notifyLeadStale/notifyDealNoNextStep still hold their own per-deal
+  // advisory-lock dedup check underneath (see notification.service.ts), which
+  // is what actually protects against a race with this same cron running
+  // concurrently elsewhere; the filter above only skips the now-pointless
+  // extra round trip for deals this batch already knows are on cooldown.
+  await Promise.all(
+    pending
+      .filter((reminder) => !suppressed.has(`${reminder.type}:${reminder.deal.id}`))
+      .map((reminder) =>
+        reminder.type === NOTIFICATION_TYPES.LEAD_STALE
+          ? notificationService.notifyLeadStale({
+              userId: reminder.userId,
+              startupId: reminder.deal.startupId,
+              pipelineId: reminder.deal.id,
+              investorName: reminder.deal.startupInvestor.fullName,
+              daysQuiet: reminder.daysQuiet,
+            })
+          : notificationService.notifyDealNoNextStep({
+              userId: reminder.userId,
+              startupId: reminder.deal.startupId,
+              pipelineId: reminder.deal.id,
+              investorName: reminder.deal.startupInvestor.fullName,
+            }),
+      ),
+  );
 }

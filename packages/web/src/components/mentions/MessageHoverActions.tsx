@@ -24,7 +24,7 @@ export function MessageHoverActions({ onReact, onOpenThread, onDelete }: Message
   return (
     <div
       className={cn(
-        "absolute -top-3.5 right-2 z-[1] flex items-center gap-0.5 rounded-md border border-border/70 bg-popover p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
+        "absolute -top-3.5 right-2 z-1 flex items-center gap-0.5 rounded-md border border-border/70 bg-popover p-0.5 opacity-0 shadow-xs transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
         pickerOpen && "opacity-100",
       )}
     >

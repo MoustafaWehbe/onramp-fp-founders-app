@@ -8,6 +8,7 @@ import { Button } from "../../../components/ui/button";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { EmptyState } from "../../../components/shared/EmptyState";
 import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
+import { GoogleNotConnectedNotice } from "../../../components/shared/GoogleNotConnectedNotice";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { useActiveStartupId } from "../../../hooks/useWorkspace";
 import { useGoogleConnectionStatus } from "../../../hooks/useGoogleConnection";
@@ -28,6 +29,7 @@ import { listFundraisingRounds } from "../../../lib/fundraising-api";
 import { STAGES, type PipelineStageId } from "../../../lib/mock-data";
 import { createPipelineEntry } from "../../../lib/pipeline-api";
 import { invalidateDealData, invalidateInteractionData, qk } from "../../../lib/query-keys";
+import { useAppStore } from "../../../lib/app-store";
 import { cn } from "../../../lib/utils";
 import { ComposeEmailDialog, type ComposeFormValues } from "./ComposeEmailDialog";
 import { ImportInvestorsDialog } from "./ImportInvestorsDialog";
@@ -110,6 +112,7 @@ export function Investors() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const googleStatus = useGoogleConnectionStatus();
+  const preferredRoundId = useAppStore((state) => state.activeRoundIds[startupId]);
 
   const canCreate = can("pipeline", "create");
   const canDelete = can("pipeline", "delete");
@@ -168,13 +171,29 @@ export function Investors() {
     setPage(1);
   }, [tab, debouncedSearch, filters.stage, filters.investorType]);
 
+  // Match the directory to the round selected on Pipeline/Fundraising. A
+  // contact can have a closed deal in one round and an active deal in another;
+  // the stage badge and filters must refer to the same round.
+  const roundsQuery = useQuery({
+    queryKey: qk.rounds(startupId),
+    queryFn: () => listFundraisingRounds(startupId),
+  });
+  const activeRound = useMemo(() => {
+    const rounds = roundsQuery.data?.data ?? [];
+    return rounds.find((round) => round.id === preferredRoundId) ??
+      rounds.find((round) => round.status === "active") ??
+      rounds[0] ??
+      null;
+  }, [preferredRoundId, roundsQuery.data]);
+
   const investorsQuery = useQuery({
-    queryKey: qk.investors(startupId, { tab, search: debouncedSearch, ...filters, page }),
+    queryKey: qk.investors(startupId, { tab, search: debouncedSearch, ...filters, roundId: activeRound?.id ?? null, page }),
     queryFn: () =>
       listInvestors(startupId, {
         page,
         limit: PAGE_SIZE,
         engagement: tab,
+        ...(activeRound ? { roundId: activeRound.id } : {}),
         ...(debouncedSearch ? { search: debouncedSearch } : {}),
         ...(filters.investorType ? { investorType: filters.investorType } : {}),
         // Stage only exists for contacts on the board, so it never applies to
@@ -192,7 +211,6 @@ export function Investors() {
   // A contact's expectedAmount belongs to whichever round its pipeline entry
   // is in this directory can span several rounds, each with its own
   // currency, so amounts are never assumed to be USD.
-  const roundsQuery = useQuery({ queryKey: qk.rounds(startupId), queryFn: () => listFundraisingRounds(startupId) });
   const currencyByRoundId = useMemo(
     () => new Map((roundsQuery.data?.data ?? []).map((round) => [round.id, round.currency])),
     [roundsQuery.data],
@@ -390,7 +408,7 @@ export function Investors() {
                 className={cn(
                   "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors",
                   active
-                    ? "bg-card font-medium text-foreground shadow-sm"
+                    ? "bg-card font-medium text-foreground shadow-xs"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -408,7 +426,17 @@ export function Investors() {
           })}
         </div>
         <p className="mt-2 text-sm text-muted-foreground">{activeTab.blurb}</p>
+        {activeRound && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Pipeline status shown for <span className="font-medium text-foreground">{activeRound.roundName}</span>
+            {" "}the selected fundraising round.
+          </p>
+        )}
       </div>
+
+      {googleStatus.data?.configured && !googleStatus.data.connected && (
+        <GoogleNotConnectedNotice action="send emails and schedule meetings" />
+      )}
 
       {investorsQuery.isError && (
         <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-6 text-sm text-destructive">

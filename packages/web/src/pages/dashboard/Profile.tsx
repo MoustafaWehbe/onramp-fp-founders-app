@@ -120,8 +120,8 @@ export function Profile() {
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title="Profile" description="Manage how you appear across your workspace." />
 
-      <section className="relative overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
-        <div className="pointer-events-none absolute inset-0 overflow-hidden bg-gradient-to-r from-primary/[0.09] via-primary/[0.04] to-transparent">
+      <section className="relative overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden bg-linear-to-r from-primary/9 via-primary/4 to-transparent">
           <div className="absolute -right-10 -top-24 h-56 w-56 rounded-full bg-primary/10 blur-3xl" />
           <div className="absolute -bottom-20 left-1/3 h-40 w-40 rounded-full bg-primary/[0.07] blur-3xl" />
         </div>
@@ -201,14 +201,14 @@ export function Profile() {
         </Card>
 
         <div className="space-y-4">
-          <Card className="border-border/70 bg-gradient-to-b from-card to-primary/[0.04]">
+          <Card className="border-border/70 bg-linear-to-b from-card to-primary/4">
             <CardContent className="p-5">
               <ShieldCheck className="h-6 w-6 text-primary" />
               <h3 className="mt-4 font-display font-semibold">Account identity</h3>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">Your name and photo are visible to teammates in chat, assignments, and activity.</p>
             </CardContent>
           </Card>
-          <div className="flex items-start gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4 text-sm">
+          <div className="flex items-start gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/6 p-4 text-sm">
             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
             <div><p className="font-medium">Email verified</p><p className="mt-1 text-xs text-muted-foreground">Your account is ready for team collaboration.</p></div>
           </div>

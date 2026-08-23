@@ -191,7 +191,7 @@ function CompanyProfileCard() {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent
                     align="start"
-                    className="max-h-72 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto"
+                    className="max-h-72 w-(--radix-dropdown-menu-trigger-width) overflow-y-auto"
                   >
                     {INDUSTRIES.map((option) => (
                       <DropdownMenuItem
@@ -241,7 +241,7 @@ function CompanyProfileCard() {
                     <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
+                <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width)">
                   {FUNDING_STAGES.map((stage) => (
                     <DropdownMenuItem key={stage.id} onSelect={() => setFundingStage(stage.id)}>
                       {stage.label}

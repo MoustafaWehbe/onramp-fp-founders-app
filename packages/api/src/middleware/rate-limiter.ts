@@ -1,9 +1,20 @@
-import rateLimit, { type Store } from "express-rate-limit";
+import rateLimit, { ipKeyGenerator, type Store } from "express-rate-limit";
+import type { Request } from "express";
 import { RedisStore } from "rate-limit-redis";
 import { getRedis } from "../db/redis";
 import { getAiConfig } from "../config/ai";
 
 const WINDOW_MS = 15 * 60 * 1_000; // 15 minutes
+
+/**
+ * A raw req.ip would let an IPv6 client bypass its limit just by requesting
+ * from another address in the same /56 (issued to it as a single block by
+ * most ISPs), so IPv6 addresses need normalizing to their subnet before use
+ * as a key; ipKeyGenerator does that (and passes IPv4 through unchanged).
+ */
+function ipOrUnknown(req: Request): string {
+  return req.ip ? ipKeyGenerator(req.ip) : "unknown";
+}
 
 /**
  * Counters live in Redis so they survive a restart and are shared across
@@ -71,13 +82,16 @@ export const credentialRateLimiter = rateLimit({
   },
 });
 
+const MAILBOX_FLOOD_WINDOW_MS = 60 * 60 * 1_000; // 1 hour
+const MAILBOX_FLOOD_MAX = 30;
+
 export const emailSendRateLimiter = rateLimit({
-  windowMs: 60 * 60 * 1_000, // 1 hour
-  max: 30,
+  windowMs: MAILBOX_FLOOD_WINDOW_MS,
+  max: MAILBOX_FLOOD_MAX,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   store: makeStore("email-send"),
-  keyGenerator: (req) => req.user?.userId ?? req.ip ?? "unknown",
+  keyGenerator: (req) => req.user?.userId ?? ipOrUnknown(req),
   message: {
     error: "Too many emails sent please wait before sending more.",
   },
@@ -89,16 +103,33 @@ export const emailSendRateLimiter = rateLimit({
  * keying, its own budget.
  */
 export const scheduleMeetingRateLimiter = rateLimit({
-  windowMs: 60 * 60 * 1_000, // 1 hour
-  max: 30,
+  windowMs: MAILBOX_FLOOD_WINDOW_MS,
+  max: MAILBOX_FLOOD_MAX,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   store: makeStore("schedule-meeting"),
-  keyGenerator: (req) => req.user?.userId ?? req.ip ?? "unknown",
+  keyGenerator: (req) => req.user?.userId ?? ipOrUnknown(req),
   message: {
     error: "Too many meetings scheduled please wait before scheduling more.",
   },
 });
+
+/**
+ * Same Redis-backed counters as emailSendRateLimiter / scheduleMeetingRateLimiter
+ * (identical key prefix, so hits are additive with the manual endpoint's own),
+ * consumed directly rather than as Express middleware. approveAction has no
+ * req/res to run a limiter against, and which of these two budgets applies
+ * depends on the proposal's actionType only known once the row is loaded
+ * inside the service, not from the route alone. Without this, approving an
+ * AI-drafted send/schedule was a way around the manual endpoint's own cap.
+ */
+export async function consumeMailboxFloodLimit(prefix: "email-send" | "schedule-meeting", userId: string): Promise<boolean> {
+  const redis = getRedis();
+  const key = `rl:${prefix}:${userId}`;
+  const count = await redis.incr(key);
+  if (count === 1) await redis.pexpire(key, MAILBOX_FLOOD_WINDOW_MS);
+  return count <= MAILBOX_FLOOD_MAX;
+}
 
 /**
  * Guards `/access` and `/verify`. These were unrated before an invitation
@@ -112,7 +143,7 @@ export const reviewerAccessRateLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   store: makeStore("reviewer-access"),
-  keyGenerator: (req) => req.ip ?? "unknown",
+  keyGenerator: (req) => ipOrUnknown(req),
   message: {
     error: "Too many attempts, please wait before retrying.",
   },
@@ -131,7 +162,7 @@ export const reviewerEventRateLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   store: makeStore("reviewer-event"),
-  keyGenerator: (req) => req.reviewer?.sessionId ?? req.ip ?? "unknown",
+  keyGenerator: (req) => req.reviewer?.sessionId ?? ipOrUnknown(req),
   message: {
     error: "Too many events reported, please wait before retrying.",
   },
@@ -148,7 +179,7 @@ export const reviewerTelemetryRateLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   store: makeStore("reviewer-telemetry"),
-  keyGenerator: (req) => req.reviewer?.sessionId ?? req.ip ?? "unknown",
+  keyGenerator: (req) => req.reviewer?.sessionId ?? ipOrUnknown(req),
   message: {
     error: "Too many telemetry updates, please wait before retrying.",
   },
@@ -165,7 +196,7 @@ export const aiMessageRateLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   store: makeStore("ai-message"),
-  keyGenerator: (req) => req.user?.userId ?? req.ip ?? "unknown",
+  keyGenerator: (req) => req.user?.userId ?? ipOrUnknown(req),
   message: {
     code: "AI_MESSAGE_RATE_LIMITED",
     error: "AI message limit reached. Please wait a moment before trying again.",

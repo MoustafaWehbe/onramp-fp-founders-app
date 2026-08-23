@@ -216,7 +216,7 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
               className={cn(
                 "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors",
                 active
-                  ? "bg-card font-medium text-foreground shadow-sm"
+                  ? "bg-card font-medium text-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
@@ -320,7 +320,7 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
                     >
                       {PRIORITY_LABELS[task.priority]}
                     </span>
-                    <span className="inline-flex max-w-[10rem] items-center gap-1.5 rounded-md border border-border/60 bg-surface/70 px-1.5 py-0.5">
+                    <span className="inline-flex max-w-40 items-center gap-1.5 rounded-md border border-border/60 bg-surface/70 px-1.5 py-0.5">
                       {assignee ? (
                         <>
                           <Avatar className="h-4 w-4">

@@ -13,7 +13,7 @@ export function useStreamedReveal(fullText: string, isStreaming: boolean): strin
   const [revealed, setRevealed] = useState(() => (isStreaming ? 0 : fullText.length));
   const revealedRef = useRef(revealed);
   const startedRef = useRef(isStreaming);
-  const rafRef = useRef<number>();
+  const rafRef = useRef<number | undefined>(undefined);
   const lastTsRef = useRef<number | null>(null);
 
   useEffect(() => {

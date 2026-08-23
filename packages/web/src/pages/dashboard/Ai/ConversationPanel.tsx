@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ArrowDown, ArrowUp, FileSearch, Loader2, Sparkles, UserRound } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -17,6 +17,7 @@ import { qk } from "../../../lib/query-keys";
 import { cn, formatDate } from "../../../lib/utils";
 import { AnalysisCard } from "./AnalysisCard";
 import { AiArtifactRenderer } from "./artifacts/AiArtifactRenderer";
+import { splitArtifactBackedContent } from "./artifact-content";
 
 const TOOL_ACTIVITY_LABELS: Record<string, string> = {
   get_startup_profile: "your startup profile",
@@ -24,6 +25,7 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
   forecast_round_close: "round forecast",
   get_pipeline_summary: "pipeline summary",
   get_focus_deals: "today's focus deals",
+  get_daily_briefing: "today's complete briefing",
   get_investor_context: "investor context",
   get_reviewer_engagement: "reviewer engagement",
   search_investors: "investors",
@@ -210,7 +212,9 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
           // twice would duplicate words, but taking the longest known snapshot
           // self-corrects regardless of delivery order.
           const incoming = String(event.payload.content ?? message.content + String(event.payload.text ?? ""));
-          const content = incoming.length >= message.content.length ? incoming : message.content;
+          const content = event.payload.replace === true
+            ? incoming
+            : incoming.length >= message.content.length ? incoming : message.content;
           return { ...message, status: "streaming", content };
         }
         if (event.type === "message.snapshot") {
@@ -340,7 +344,7 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
 
   return (
     <main className="flex min-h-0 min-w-0 flex-col">
-      <div className="flex shrink-0 items-center gap-2.5 border-b border-border/60 bg-card/40 px-6 py-3.5 backdrop-blur-sm">
+      <div className="flex shrink-0 items-center gap-2.5 border-b border-border/60 bg-card/40 px-6 py-3.5 backdrop-blur-xs">
         <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
           <Sparkles className="h-3.5 w-3.5" />
         </span>
@@ -429,7 +433,7 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
               </DropdownMenu>
             </div>
           )}
-          <div className={cn("flex items-end gap-2 rounded-2xl border border-border/70 bg-surface/60 px-3 py-2 shadow-sm transition-colors focus-within:border-primary/40", (!canCreate || Boolean(activeAssistant)) && "opacity-70")}>
+          <div className={cn("flex items-end gap-2 rounded-2xl border border-border/70 bg-surface/60 px-3 py-2 shadow-xs transition-colors focus-within:border-primary/40", (!canCreate || Boolean(activeAssistant)) && "opacity-70")}>
             <Textarea
               ref={textareaRef}
               value={draft}
@@ -489,6 +493,24 @@ function ToolActivityRow({ calls }: { calls: AiToolCallActivity[] }) {
   );
 }
 
+function ThinkingIndicator() {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 py-1 text-sm text-muted-foreground"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <span className="font-medium text-foreground motion-safe:animate-pulse">Thinking</span>
+      <span className="flex items-center gap-0.5" aria-hidden="true">
+        <span className="h-1 w-1 rounded-full bg-primary/70 motion-safe:animate-bounce [animation-delay:-0.2s]" />
+        <span className="h-1 w-1 rounded-full bg-primary/55 motion-safe:animate-bounce [animation-delay:-0.1s]" />
+        <span className="h-1 w-1 rounded-full bg-primary/40 motion-safe:animate-bounce" />
+      </span>
+    </span>
+  );
+}
+
 function CitationList({ citations }: { citations: AiCitation[] }) {
   return (
     <details className="group mt-2 rounded-lg border border-border/60 bg-background/40 text-xs">
@@ -541,7 +563,11 @@ function Welcome({ canCreate, onSelectPrompt }: { canCreate: boolean; onSelectPr
   );
 }
 
-function MessageBubble({ startupId, message, onAskFollowup }: { startupId: string; message: AiChatMessage; onAskFollowup: (prompt: string) => void }) {
+// Memoized so an in-flight message.delta event — which only replaces that one
+// message's object reference in the react-query cache — re-renders (and
+// re-parses markdown for) just the bubble that actually changed, instead of
+// every bubble in the conversation on every delta.
+const MessageBubble = memo(function MessageBubble({ startupId, message, onAskFollowup }: { startupId: string; message: AiChatMessage; onAskFollowup: (prompt: string) => void }) {
   const assistant = message.role === "assistant";
   // The source_answer artifact duplicates this same text plus a source list in a
   // bordered card — rendering it instead of the plain bubble made every grounded
@@ -553,6 +579,7 @@ function MessageBubble({ startupId, message, onAskFollowup }: { startupId: strin
   // started, so the generic thinking spinner would be redundant alongside it.
   const thinking = assistant && !message.content && !message.toolCalls?.some((call) => call.status === "started");
   const revealedContent = useStreamedReveal(message.content, message.status === "pending" || message.status === "streaming");
+  const artifactContent = displayArtifacts.length > 0 ? splitArtifactBackedContent(message.content, displayArtifacts) : null;
 
   return (
     <article className={cn("group flex gap-3", assistant ? "flex-row" : "flex-row-reverse")}>
@@ -565,17 +592,21 @@ function MessageBubble({ startupId, message, onAskFollowup }: { startupId: strin
         {assistant && message.toolCalls && message.toolCalls.length > 0 && <ToolActivityRow calls={message.toolCalls} />}
         <div className={cn(!assistant && "max-w-[85%] rounded-2xl rounded-tr-sm bg-primary/15 px-4 py-2.5 text-base leading-relaxed text-foreground")}>
           {thinking ? (
-            <span className="inline-flex items-center gap-2 text-base text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Thinking…
-            </span>
+            <ThinkingIndicator />
           ) : assistant ? (
-            <Markdown>{revealedContent}</Markdown>
+            <Markdown>{artifactContent?.intro ?? revealedContent}</Markdown>
           ) : (
             <span className="whitespace-pre-wrap">{message.content}</span>
           )}
         </div>
 
         {assistant && displayArtifacts.map((artifact) => <AiArtifactRenderer key={artifact.id} startupId={startupId} artifact={artifact} onAskFollowup={onAskFollowup} />)}
+
+        {assistant && artifactContent?.followup && (
+          <div className="mt-3 text-foreground/90">
+            <Markdown>{artifactContent.followup}</Markdown>
+          </div>
+        )}
 
         <div className={cn("mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground", assistant ? "" : "flex-row-reverse")}>
           <span className="opacity-0 transition-opacity group-hover:opacity-100">{formatDate(message.createdAt)}</span>
@@ -590,4 +621,4 @@ function MessageBubble({ startupId, message, onAskFollowup }: { startupId: strin
       </div>
     </article>
   );
-}
+});

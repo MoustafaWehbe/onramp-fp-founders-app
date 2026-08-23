@@ -32,7 +32,7 @@ export function EntityUnfurl({ mention }: { mention: ResolvedMention }) {
             {stage.label}
           </Badge>
           {mention.isLead && (
-            <Badge variant="outline" className="gap-1 border-warning/35 bg-warning/[0.1] font-medium text-warning">
+            <Badge variant="outline" className="gap-1 border-warning/35 bg-warning/10 font-medium text-warning">
               <Crown className="h-3 w-3" /> Lead
             </Badge>
           )}
