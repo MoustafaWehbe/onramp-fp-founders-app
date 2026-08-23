@@ -219,6 +219,45 @@ describe("Fundraising round totals", () => {
 });
 
 describe("Fundraising round intelligence", () => {
+  it("shows a final outcome instead of a stale forecast for a closed round", async () => {
+    listFundraisingRounds.mockResolvedValue({
+      data: [round({ status: "closed", targetAmount: 200_000, targetCloseDate: "2025-01-01T00:00:00.000Z" })],
+      meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    });
+    listCommitments.mockResolvedValue({
+      data: [commitment("a", 200_000, "wired")],
+      meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    });
+    getRoundMetrics.mockResolvedValue(
+      metrics({
+        targetAmount: 200_000,
+        bankableRaised: 200_000,
+        percentToTarget: 100,
+        remainingGap: 0,
+        weightedPipeline: 0,
+        daysToClose: -340,
+      }),
+    );
+
+    renderPage();
+
+    const outcome = within(await screen.findByRole("region", { name: "Round intelligence" }));
+    expect(await outcome.findByText("Round outcome")).toBeInTheDocument();
+    expect(outcome.getByText("Final secured")).toBeInTheDocument();
+    expect(outcome.getByText("$200,000")).toBeInTheDocument();
+    expect(outcome.getByText("100% of $200,000 target")).toBeInTheDocument();
+    expect(outcome.getByText("Closed")).toBeInTheDocument();
+    expect(outcome.queryByText("Forecast")).not.toBeInTheDocument();
+    expect(outcome.queryByText("Weighted pipeline")).not.toBeInTheDocument();
+    expect(outcome.queryByText("Days to close")).not.toBeInTheDocument();
+    expect(outcome.queryByText("At risk")).not.toBeInTheDocument();
+    expect(screen.getByText("Round state")).toBeInTheDocument();
+    expect(screen.getByText("Complete")).toBeInTheDocument();
+    expect(screen.getByText("Target reached")).toBeInTheDocument();
+    expect(screen.queryByText(/340d overdue/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Add commitment/i })).not.toBeInTheDocument();
+  });
+
   it("shows the weighted pipeline and days to close from the metrics endpoint", async () => {
     getRoundMetrics.mockResolvedValue(
       metrics({ weightedPipeline: 340_000, daysToClose: 12 }),

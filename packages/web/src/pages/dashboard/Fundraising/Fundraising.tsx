@@ -17,8 +17,8 @@ import { useAppStore } from "../../../lib/app-store";
 import {
   COMMITMENT_STATUSES, COMMITMENT_STATUS_HINTS, COMMITMENT_STATUS_LABELS, ROUND_STATUSES, ROUND_STATUS_LABELS,
   createCommitment, createFundraisingRound, getRoundMetrics, listCommitments, listFundraisingRounds,
-  updateCommitment, updateFundraisingRound, type AtRiskCommitment, type Commitment, type CommitmentInput,
-  type CommitmentStatus, type FundraisingRound, type RoundInput, type RoundStatus,
+  updateCommitment, updateFundraisingRound, type Commitment, type CommitmentInput,
+  type CommitmentStatus, type FundraisingRound, type RoundInput, type RoundMetrics, type RoundStatus,
 } from "../../../lib/fundraising-api";
 import { Select } from "../../../components/ui/select";
 import { listPipelineEntries, type PipelineEntry } from "../../../lib/pipeline-api";
@@ -159,7 +159,10 @@ export function Fundraising() {
         const isSelected = round.id === selectedRound?.id;
         const raised = isSelected ? totals.bankable : 0;
         const countdown = closeCountdown(round.firstCloseDate ?? round.targetCloseDate);
-        return <button key={round.id} type="button" onClick={() => setActiveRoundId(startupId, round.id)} className={cn("card-elevated relative overflow-hidden p-5 text-left transition-colors hover:border-primary/40", isSelected && "border-primary/60 bg-primary/[0.035] ring-1 ring-primary/20")}><div className="mb-4 flex items-center justify-between gap-3"><div><div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Round</div><div className="font-display text-lg font-semibold tracking-tight">{round.roundName}</div></div><Badge className={cn("border-0 capitalize", roundTone(round.status))}>{round.status}</Badge></div><div className="mb-1 flex items-end justify-between gap-3"><div className="font-display text-2xl font-semibold tabular-nums">{isSelected ? money(raised, round.currency) : money(round.targetAmount, round.currency)}</div><div className="text-xs text-muted-foreground">{isSelected ? `of ${money(round.targetAmount, round.currency)}` : "target"}</div></div>{isSelected ? <SegmentedProgress wiredPercent={totals.wiredPercent} hardPercent={totals.hardPercent} /> : <Progress value={0} className="h-2" />}<div className="mt-4 grid grid-cols-3 gap-3 border-t border-border pt-4 text-xs"><Stat label="Min ticket" value={money(round.minimumTicketSize, round.currency)} /><Stat label="Equity" value={round.equityOfferedPercentage === null ? "—" : `${round.equityOfferedPercentage}%`} /><Stat label={round.firstCloseDate ? "First close" : "Target close"} value={countdown ? countdown.text : "—"} /></div></button>;
+        const isArchived = round.status === "closed" || round.status === "cancelled";
+        const closeLabel = isArchived ? "Round state" : round.firstCloseDate ? "First close" : "Target close";
+        const closeValue = isArchived ? (round.status === "closed" ? "Complete" : "Archived") : countdown?.text ?? "—";
+        return <button key={round.id} type="button" onClick={() => setActiveRoundId(startupId, round.id)} className={cn("card-elevated relative overflow-hidden p-5 text-left transition-colors hover:border-primary/40", isSelected && "border-primary/60 bg-primary/[0.035] ring-1 ring-primary/20")}><div className="mb-4 flex items-center justify-between gap-3"><div><div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Round</div><div className="font-display text-lg font-semibold tracking-tight">{round.roundName}</div></div><Badge className={cn("border-0 capitalize", roundTone(round.status))}>{round.status}</Badge></div><div className="mb-1 flex items-end justify-between gap-3"><div className="font-display text-2xl font-semibold tabular-nums">{isSelected ? money(raised, round.currency) : money(round.targetAmount, round.currency)}</div><div className="text-xs text-muted-foreground">{isSelected ? `of ${money(round.targetAmount, round.currency)}` : "target"}</div></div>{isSelected ? <SegmentedProgress wiredPercent={totals.wiredPercent} hardPercent={totals.hardPercent} /> : <Progress value={0} className="h-2" />}<div className="mt-4 grid grid-cols-3 gap-3 border-t border-border pt-4 text-xs"><Stat label="Min ticket" value={money(round.minimumTicketSize, round.currency)} /><Stat label="Equity" value={round.equityOfferedPercentage === null ? "—" : `${round.equityOfferedPercentage}%`} /><Stat label={closeLabel} value={closeValue} /></div></button>;
       })}</div>
       {selectedRound && (
         <section className="space-y-5">
@@ -173,13 +176,23 @@ export function Fundraising() {
               </div>
               <div className="flex gap-2">
                 {canUpdate && <Button size="sm" variant="outline" onClick={() => setRoundDialog(selectedRound)}><Pencil className="h-3.5 w-3.5" /> Edit</Button>}
-                {canCreate && <Button size="sm" onClick={() => setCommitmentDialog("new")} disabled={pipelineQuery.isLoading || (pipelineQuery.data?.data.length ?? 0) === 0}><Plus className="h-4 w-4" /> Add commitment</Button>}
+                {canCreate && (selectedRound.status === "active" || selectedRound.status === "draft") && <Button size="sm" onClick={() => setCommitmentDialog("new")} disabled={pipelineQuery.isLoading || (pipelineQuery.data?.data.length ?? 0) === 0}><Plus className="h-4 w-4" /> Add commitment</Button>}
               </div>
             </div>
             <div className="relative mt-7">
               <div className="mb-2 flex items-end justify-between gap-4">
                 <span className="font-display text-2xl font-semibold tabular-nums">{money(totals.bankable, selectedRound.currency)}</span>
-                <span className="text-sm text-muted-foreground">{money(totals.remaining, selectedRound.currency)} to go</span>
+                <span className="text-sm text-muted-foreground">
+                  {selectedRound.status === "closed"
+                    ? totals.oversubscribed
+                      ? `${money(totals.bankable - (selectedRound.targetAmount ?? 0), selectedRound.currency)} above target`
+                      : totals.remaining === 0
+                        ? "Target reached"
+                        : `${money(totals.remaining, selectedRound.currency)} below target`
+                    : selectedRound.status === "cancelled"
+                      ? "Final recorded amount"
+                      : `${money(totals.remaining, selectedRound.currency)} to go`}
+                </span>
               </div>
               <SegmentedProgress wiredPercent={totals.wiredPercent} hardPercent={totals.hardPercent} />
               <div className="mt-2 flex gap-5 text-xs text-muted-foreground">
@@ -204,6 +217,7 @@ export function Fundraising() {
           <RoundIntelligence
             metricsQuery={metricsQuery}
             currency={selectedRound.currency}
+            status={selectedRound.status}
             onOpenCommitment={(commitmentId) => {
               const match = commitments.find((c) => c.id === commitmentId);
               if (match) setCommitmentDialog(match);
@@ -299,7 +313,7 @@ function overdueLabel(daysOverdue: number): string {
 
 type RoundIntelligenceProps = {
   metricsQuery: {
-    data: { weightedPipeline: number; daysToClose: number | null; atRiskCommitments: AtRiskCommitment[] } | undefined;
+    data: RoundMetrics | undefined;
     isPending: boolean;
     isError: boolean;
     isFetching: boolean;
@@ -307,6 +321,7 @@ type RoundIntelligenceProps = {
     refetch: () => unknown;
   };
   currency: string;
+  status: RoundStatus;
   onOpenCommitment: (commitmentId: string) => void;
 };
 
@@ -318,7 +333,7 @@ type RoundIntelligenceProps = {
  * not take down the round totals or the commitments table, which come from
  * a different request.
  */
-function RoundIntelligence({ metricsQuery, currency, onOpenCommitment }: RoundIntelligenceProps) {
+function RoundIntelligence({ metricsQuery, currency, status, onOpenCommitment }: RoundIntelligenceProps) {
   if (metricsQuery.isPending) {
     return <LoadingCard label="Crunching round metrics…" />;
   }
@@ -334,6 +349,39 @@ function RoundIntelligence({ metricsQuery, currency, onOpenCommitment }: RoundIn
 
   const metrics = metricsQuery.data;
   if (!metrics) return null;
+
+  // Once a round is closed or cancelled, pipeline probability, countdowns,
+  // and at-risk follow-ups stop being actionable. Preserve the final result
+  // without presenting stale dates as a negative active forecast.
+  if (status === "closed" || status === "cancelled") {
+    const isClosed = status === "closed";
+    return (
+      <section aria-label="Round intelligence" className="space-y-3">
+        <div className="flex items-center gap-2">
+          <h3 className="font-display text-sm font-semibold text-muted-foreground">
+            {isClosed ? "Round outcome" : "Round archived"}
+          </h3>
+          {metricsQuery.isFetching && (
+            <span className="text-[11px] text-muted-foreground">Updating…</span>
+          )}
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Metric
+            title={isClosed ? "Final secured" : "Secured before cancellation"}
+            value={money(metrics.bankableRaised, currency)}
+            detail={`${metrics.percentToTarget}% of ${money(metrics.targetAmount, currency)} target`}
+          />
+          <Metric
+            title="Round status"
+            value={ROUND_STATUS_LABELS[status]}
+            detail={isClosed ? "Forecasting and at-risk tracking are archived" : "No further fundraising activity is expected"}
+            muted
+          />
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section aria-label="Round intelligence" className="space-y-3">

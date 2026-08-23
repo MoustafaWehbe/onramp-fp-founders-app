@@ -259,6 +259,28 @@ describe("FundraisingService.getRoundMetrics", () => {
     expect(metrics.daysToClose).toBeNull();
   });
 
+  it("archives forward-looking metrics once a round is closed", async () => {
+    const pastClose = new Date(Date.now() - 340 * 24 * 60 * 60 * 1000);
+    const overdueCommitment = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
+    mockPrisma.fundraisingRound.findUnique.mockResolvedValue(
+      roundRow({ status: "closed", targetCloseDate: pastClose }) as never,
+    );
+    mockPrisma.commitment.findMany.mockResolvedValue([
+      { id: "c1", amount: new Prisma.Decimal(200_000), status: "wired", expectedCloseDate: null, startupInvestor: { fullName: "Ada" } },
+      { id: "c2", amount: new Prisma.Decimal(50_000), status: "soft_circled", expectedCloseDate: overdueCommitment, startupInvestor: { fullName: "Grace" } },
+    ] as never);
+
+    const metrics = await service.getRoundMetrics(STARTUP_ID, ROUND_ID);
+
+    expect(metrics).toMatchObject({
+      bankableRaised: 200_000,
+      weightedPipeline: 0,
+      daysToClose: null,
+      atRiskCommitments: [],
+    });
+    expect(mockPrisma.pipeline.findMany).not.toHaveBeenCalled();
+  });
+
   it("flags a commitment whose expected close date has passed without it being wired", async () => {
     const overdue = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
     mockPrisma.fundraisingRound.findUnique.mockResolvedValue(roundRow() as never);
