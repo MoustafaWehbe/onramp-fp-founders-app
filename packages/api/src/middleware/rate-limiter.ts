@@ -1,8 +1,9 @@
-import rateLimit, { ipKeyGenerator, type Store } from "express-rate-limit";
+import rateLimit, { ipKeyGenerator, type Options, type Store } from "express-rate-limit";
 import type { Request } from "express";
 import { RedisStore } from "rate-limit-redis";
 import { getRedis } from "../db/redis";
 import { getAiConfig } from "../config/ai";
+import { recordReviewerRateLimit } from "../observability/reviewer-metrics";
 
 const WINDOW_MS = 15 * 60 * 1_000; // 15 minutes
 
@@ -33,6 +34,13 @@ function makeStore(prefix: string): Store | undefined {
     sendCommand: (command: string, ...args: string[]) =>
       redis.call(command, ...args) as Promise<never>,
   });
+}
+
+function reviewerLimitHandler(scope: string): Options["handler"] {
+  return (_req, res, _next, options) => {
+    recordReviewerRateLimit(scope);
+    res.status(options.statusCode).send(options.message);
+  };
 }
 
 // Broad ceiling for the whole API. An authenticated SPA session legitimately
@@ -147,6 +155,7 @@ export const reviewerAccessRateLimiter = rateLimit({
   message: {
     error: "Too many attempts, please wait before retrying.",
   },
+  handler: reviewerLimitHandler("access"),
 });
 
 /**
@@ -166,6 +175,7 @@ export const reviewerEventRateLimiter = rateLimit({
   message: {
     error: "Too many events reported, please wait before retrying.",
   },
+  handler: reviewerLimitHandler("event"),
 });
 
 /**
@@ -183,6 +193,53 @@ export const reviewerTelemetryRateLimiter = rateLimit({
   message: {
     error: "Too many telemetry updates, please wait before retrying.",
   },
+  handler: reviewerLimitHandler("telemetry"),
+});
+
+/**
+ * Bounds authenticated secure-viewer reads. Rendering/watermarking page bytes
+ * is substantially more expensive than an ordinary JSON request, so it gets
+ * a separate per-session budget in addition to the broad global API ceiling.
+ */
+export const reviewerContentRateLimiter = rateLimit({
+  windowMs: 5 * 60 * 1_000,
+  max: 120,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  store: makeStore("reviewer-content"),
+  keyGenerator: (req) => req.reviewer?.sessionId ?? ipOrUnknown(req),
+  message: {
+    error: "Too many document requests, please wait before continuing.",
+  },
+  handler: reviewerLimitHandler("content"),
+});
+
+/** Watermarked downloads are CPU-heavy and should never be scriptable at scale. */
+export const reviewerDownloadRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1_000,
+  max: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  store: makeStore("reviewer-download"),
+  keyGenerator: (req) => req.reviewer?.sessionId ?? ipOrUnknown(req),
+  message: {
+    error: "Too many download attempts, please wait before retrying.",
+  },
+  handler: reviewerLimitHandler("download"),
+});
+
+/** Prevents a valid reviewer session from flooding the founder's feedback inbox. */
+export const reviewerCommentRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1_000,
+  max: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  store: makeStore("reviewer-comment"),
+  keyGenerator: (req) => req.reviewer?.sessionId ?? ipOrUnknown(req),
+  message: {
+    error: "Too many comments submitted, please wait before retrying.",
+  },
+  handler: reviewerLimitHandler("comment"),
 });
 
 /**

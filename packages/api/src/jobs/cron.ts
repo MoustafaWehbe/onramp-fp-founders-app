@@ -8,6 +8,8 @@ import { isGoogleIntegrationEnabled } from "../config/env";
 import { getAiConfig } from "../config/ai";
 import { logger } from "../utils/logger";
 import type { ScheduledTask } from "node-cron";
+import { enforceReviewerRetention } from "./reviewer-retention";
+import { recordReviewerRetentionRun } from "../observability/reviewer-metrics";
 
 /**
  * startCronJobs() runs once per API process, and the API is horizontally
@@ -64,6 +66,28 @@ export function startCronJobs(): ScheduledTask[] {
       });
     });
   }
+
+  // Reviewer access creates short-lived credentials and privacy-sensitive
+  // network/device signals. Keep durable founder-facing comments and aggregate
+  // visit results, but enforce the narrower retention windows every day.
+  cron.schedule("45 3 * * *", async () => {
+    await withCronLock("reviewer-data-retention", ONE_DAY_MS, async () => {
+      try {
+        const result = await enforceReviewerRetention();
+        recordReviewerRetentionRun("success", result);
+        logger.info(
+          { event: "reviewer_retention_completed", ...result },
+          "[cron] Enforced reviewer data retention",
+        );
+      } catch (err) {
+        recordReviewerRetentionRun("error");
+        logger.error(
+          { err, event: "reviewer_retention_failed" },
+          "[cron] Failed to enforce reviewer data retention",
+        );
+      }
+    });
+  });
 
   // Once a day is enough notifyOverdueAndDueTodayTasks skips tasks it has
   // already notified about, so a missed or re-run tick never duplicates a

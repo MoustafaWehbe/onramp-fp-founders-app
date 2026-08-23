@@ -49,12 +49,12 @@ export type ReviewerPageManifest = {
 
 export async function requestReviewerAccess(token: string, password?: string) {
   const { data } = await reviewerPortalClient.post<{
-    data: { emailHint: string; expiresInSeconds: number };
+    data: { challengeId: string; emailHint: string; expiresInSeconds: number };
   }>("/access", { token, password });
   return data.data;
 }
 
-export async function verifyReviewerAccess(token: string, otp: string) {
+export async function verifyReviewerAccess(token: string, challengeId: string, otp: string) {
   const { data } = await reviewerPortalClient.post<{
     data: {
       session: {
@@ -66,7 +66,7 @@ export async function verifyReviewerAccess(token: string, otp: string) {
         startupId: string;
       };
     };
-  }>("/verify", { token, otp });
+  }>("/verify", { token, challengeId, otp });
   return data.data;
 }
 
@@ -134,6 +134,7 @@ export async function listReviewerComments(documentId?: string) {
 
 export async function createReviewerComment(body: {
   documentId?: string;
+  documentVersionId?: string;
   commentText: string;
 }) {
   const { data } = await reviewerPortalClient.post("/comments", body);

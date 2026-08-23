@@ -6,6 +6,7 @@ import { hashPassword } from "../utils/auth";
 import { isOfficeConvertible } from "./office-convert.service";
 import { emailQueue } from "../jobs/queue";
 import { getAppUrl } from "../config/env";
+import { renderReviewerNda } from "../config/reviewer-nda";
 import { recordAuditEvent } from "./audit-writer";
 import { reviewerInviteEmail } from "../emails/templates/reviewer-invite";
 import type {
@@ -76,6 +77,12 @@ export class ReviewerInvitationService {
         hasPassword: Boolean(row.passwordHash),
         allowedEmailDomains: row.allowedEmailDomains,
         personalMessage: row.personalMessage,
+        deliveryStatus: row.deliveryStatus,
+        deliveryAttempts: row.deliveryAttempts,
+        deliveryLastAttemptAt: row.deliveryLastAttemptAt,
+        deliverySentAt: row.deliverySentAt,
+        deliveryFailedAt: row.deliveryFailedAt,
+        deliveryError: row.deliveryError,
         expiresAt: row.expiresAt,
         completedAt: row.completedAt,
         revokedAt: row.revokedAt,
@@ -168,6 +175,12 @@ export class ReviewerInvitationService {
       if (!contact) throw createError("Investor contact not found", 404, "INVESTOR_NOT_FOUND");
     }
 
+    const startup = await prisma.startup.findUnique({
+      where: { id: startupId },
+      select: { name: true },
+    });
+    if (!startup) throw createError("Startup not found", 404, "STARTUP_NOT_FOUND");
+
     const rawToken = randomBytes(32).toString("base64url");
     const expiresAt = new Date(Date.now() + input.expiresInDays * 24 * 60 * 60 * 1000);
     const passwordHash = input.password ? await hashPassword(input.password) : undefined;
@@ -185,10 +198,14 @@ export class ReviewerInvitationService {
         allowPrint: input.allowPrint ?? false,
         screenshotGuard: input.screenshotGuard ?? true,
         requireNda: input.requireNda ?? false,
-        ndaText: input.requireNda ? input.ndaText : undefined,
+        ndaText: input.requireNda ? renderReviewerNda(startup.name) : undefined,
         passwordHash,
         allowedEmailDomains: input.allowedEmailDomains ?? [],
         personalMessage: input.personalMessage,
+        deliveryStatus: "queued",
+        deliveryGeneration: 1,
+        deliveryAttempts: 1,
+        deliveryLastAttemptAt: new Date(),
         expiresAt,
         createdBy: userId,
         documents: {
@@ -204,21 +221,37 @@ export class ReviewerInvitationService {
     });
 
     const accessUrl = `${getAppUrl()}/review/${rawToken}`;
+    let deliveryStatus = "queued";
     try {
-      const startup = await prisma.startup.findUnique({
-        where: { id: startupId },
-        select: { name: true },
-      });
       const { subject, html } = reviewerInviteEmail(
-        startup?.name ?? "A startup on FP Founders",
+        startup.name,
         input.reviewerName ?? null,
         accessUrl,
         expiresAt,
         input.personalMessage ?? null,
       );
-      await emailQueue.add("send-reviewer-invite", { to: emailNormalized, subject, html });
-    } catch {
-      // Invitation row still exists; founder can resend later.
+      await emailQueue.add(
+        "send-reviewer-invite",
+        {
+          to: emailNormalized,
+          subject,
+          html,
+          reviewerInvitationId: invitation.id,
+          deliveryGeneration: 1,
+        },
+        { jobId: `reviewer-invite-${invitation.id}-1` },
+      );
+    } catch (error) {
+      deliveryStatus = "failed";
+      const message = error instanceof Error ? error.message : "Could not queue invitation email";
+      await prisma.reviewerInvitation.update({
+        where: { id: invitation.id },
+        data: {
+          deliveryStatus,
+          deliveryFailedAt: new Date(),
+          deliveryError: message.slice(0, 1000),
+        },
+      });
     }
 
     await recordAuditEvent({
@@ -230,6 +263,7 @@ export class ReviewerInvitationService {
       changes: {
         email: emailNormalized,
         documentCount: invitation.documents.length,
+        deliveryStatus,
         expiresAt: expiresAt.toISOString(),
       },
     });
@@ -241,11 +275,105 @@ export class ReviewerInvitationService {
         status: invitation.status,
         expiresAt: invitation.expiresAt,
         documentCount: invitation.documents.length,
+        deliveryStatus,
       },
       // Returned once — never stored. Needed so founders can copy the link if email fails.
       accessToken: rawToken,
       accessUrl,
     };
+  }
+
+  async resendInvitation(startupId: string, invitationId: string, userId: string) {
+    const existing = await prisma.reviewerInvitation.findUnique({
+      where: { startupId_id: { startupId, id: invitationId } },
+      include: { startup: { select: { name: true } } },
+    });
+    if (!existing) throw createError("Invitation not found", 404, "INVITATION_NOT_FOUND");
+    if (existing.status === "revoked" || existing.revokedAt) {
+      throw createError("A revoked invitation cannot be resent", 409, "INVITATION_REVOKED");
+    }
+
+    const rawToken = randomBytes(32).toString("base64url");
+    const now = new Date();
+    const expiresAt = existing.expiresAt > now
+      ? existing.expiresAt
+      : new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+
+    const rotated = await prisma.$transaction(async (tx) => {
+      const invitation = await tx.reviewerInvitation.update({
+        where: { id: invitationId },
+        data: {
+          tokenHash: hashToken(rawToken),
+          status: "pending",
+          completedAt: null,
+          expiresAt,
+          deliveryStatus: "queued",
+          deliveryGeneration: { increment: 1 },
+          deliveryAttempts: { increment: 1 },
+          deliveryLastAttemptAt: now,
+          deliverySentAt: null,
+          deliveryFailedAt: null,
+          deliveryError: null,
+          deliveryMessageId: null,
+          lastActivityAt: now,
+        },
+        select: { deliveryGeneration: true },
+      });
+      await tx.reviewerSession.updateMany({
+        where: { invitationId, revokedAt: null },
+        data: { revokedAt: now },
+      });
+      return invitation;
+    });
+
+    const accessUrl = `${getAppUrl()}/review/${rawToken}`;
+    let deliveryStatus = "queued";
+    try {
+      const { subject, html } = reviewerInviteEmail(
+        existing.startup.name,
+        existing.reviewerName,
+        accessUrl,
+        expiresAt,
+        existing.personalMessage,
+      );
+      await emailQueue.add(
+        "send-reviewer-invite",
+        {
+          to: existing.emailNormalized,
+          subject,
+          html,
+          reviewerInvitationId: invitationId,
+          deliveryGeneration: rotated.deliveryGeneration,
+        },
+        { jobId: `reviewer-invite-${invitationId}-${rotated.deliveryGeneration}` },
+      );
+    } catch (error) {
+      deliveryStatus = "failed";
+      const message = error instanceof Error ? error.message : "Could not queue invitation email";
+      await prisma.reviewerInvitation.updateMany({
+        where: { id: invitationId, deliveryGeneration: rotated.deliveryGeneration },
+        data: {
+          deliveryStatus,
+          deliveryFailedAt: new Date(),
+          deliveryError: message.slice(0, 1000),
+        },
+      });
+    }
+
+    await recordAuditEvent({
+      startupId,
+      userId,
+      action: "update",
+      entityType: "reviewer_invitation",
+      entityId: invitationId,
+      changes: {
+        action: "resend_and_rotate",
+        deliveryGeneration: rotated.deliveryGeneration,
+        expiresAt: expiresAt.toISOString(),
+      },
+    });
+
+    return { accessUrl, expiresAt, deliveryStatus };
   }
 
   /**

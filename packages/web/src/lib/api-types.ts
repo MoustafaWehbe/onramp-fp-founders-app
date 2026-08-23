@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Prometheus-compatible operational metrics */
+        get: operations["getMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/register/initiate": {
         parameters: {
             query?: never;
@@ -1039,7 +1056,7 @@ export interface paths {
         put?: never;
         /**
          * Create a channel
-         * @description Every active member of the startup is added at creation time there is no invite-to-channel UI yet, so Phase 1 channels are workspace-wide.
+         * @description Creates a channel for the selected active workspace members. The creator is included automatically even when omitted from memberIds.
          */
         post: operations["createConversation"];
         delete?: never;
@@ -1182,7 +1199,7 @@ export interface paths {
         head?: never;
         /**
          * Archive or unarchive a channel
-         * @description Channels are workspace-wide, so this is a moderation action gated by chat:manage, not something every member can do to a room they share. DMs cannot be archived (400 CANNOT_ARCHIVE_DM) there is no shared room to moderate, only two people's own conversation.
+         * @description This is a moderation action gated by chat:manage, not something every member can do to a room they share. DMs cannot be archived (400 CANNOT_ARCHIVE_DM) there is no shared room to moderate, only two people's own conversation.
          */
         patch: operations["setConversationArchived"];
         trace?: never;
@@ -1544,6 +1561,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/startups/{startupId}/documents/{documentId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive a document while retaining its versions and history */
+        post: operations["archiveDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/documents/{documentId}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore an archived document to the active data room */
+        post: operations["restoreDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/startups/{startupId}/documents/{documentId}/versions/upload-sessions": {
         parameters: {
             query?: never;
@@ -1578,6 +1629,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/startups/{startupId}/documents/{documentId}/versions/{versionId}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry the failed extraction and/or rendering pipeline */
+        post: operations["retryDocumentVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/documents/{documentId}/versions/{versionId}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Make a fully processed historical version current */
+        post: operations["promoteDocumentVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/startups/{startupId}/documents/{documentId}/file-access": {
         parameters: {
             query?: never;
@@ -1589,6 +1674,23 @@ export interface paths {
         put?: never;
         /** Get short-lived signed file URL */
         post: operations["getDocumentFileAccess"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/documents/{documentId}/versions/{versionId}/pages/{pageNumber}/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Get short-lived founder access to one rendered page */
+        post: operations["getDocumentPageAccess"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1643,6 +1745,91 @@ export interface paths {
         get: operations["getReviewerInvitationAnalytics"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/reviewer-invitations/{invitationId}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Chronological reviewer delivery, access, engagement, comment, and security activity */
+        get: operations["listReviewerInvitationActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/reviewer-invitations/{invitationId}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate the access token, revoke existing sessions, and resend the invitation */
+        post: operations["resendReviewerInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/reviewer-invitations/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List reviewer comments for the founder workspace */
+        get: operations["listFounderReviewerComments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/reviewer-invitations/comments/{commentId}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a reviewer comment as read */
+        post: operations["markFounderReviewerCommentRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/reviewer-invitations/comments/{commentId}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve a reviewer comment */
+        post: operations["resolveFounderReviewerComment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2259,6 +2446,8 @@ export interface components {
             fundingStage?: components["schemas"]["FundingStage"];
             /** Format: uuid */
             createdBy?: string;
+            /** Format: date-time */
+            archivedAt?: string | null;
             /** Format: date-time */
             createdAt?: string;
             /** Format: date-time */
@@ -2970,6 +3159,11 @@ export interface components {
         CreateConversationBody: {
             name: string;
             topic?: string;
+            /**
+             * @description Active StartupMember ids selected for the channel. The creator is always included.
+             * @default []
+             */
+            memberIds: string[];
         };
         StartDirectMessageBody: {
             /**
@@ -3404,6 +3598,15 @@ export interface components {
             /** @enum {string} */
             processingStatus?: "pending_upload" | "processing" | "ready" | "failed";
             processingError?: string | null;
+            /** @enum {string} */
+            renderStatus?: "pending" | "rendering" | "ready" | "unsupported" | "failed";
+            renderError?: string | null;
+            pageCount?: number | null;
+            /**
+             * @description Authoritative capability state for sharing this version in the secure reviewer portal.
+             * @enum {string}
+             */
+            reviewerShareStatus?: "processing" | "ready" | "unsupported" | "failed";
             /** @description Description of what changed in this version */
             summary?: string | null;
             /** Format: uuid */
@@ -3449,6 +3652,16 @@ export interface components {
             hasPassword?: boolean;
             allowedEmailDomains?: string[];
             personalMessage?: string | null;
+            /** @enum {string} */
+            deliveryStatus?: "unknown" | "queued" | "sent" | "failed";
+            deliveryAttempts?: number;
+            /** Format: date-time */
+            deliveryLastAttemptAt?: string | null;
+            /** Format: date-time */
+            deliverySentAt?: string | null;
+            /** Format: date-time */
+            deliveryFailedAt?: string | null;
+            deliveryError?: string | null;
             /** Format: date-time */
             expiresAt?: string;
             /** Format: date-time */
@@ -3474,10 +3687,11 @@ export interface components {
             allowPrint: boolean;
             /** @default true */
             screenshotGuard: boolean;
-            /** @default false */
+            /**
+             * @description Require acceptance of the predefined Raise confidentiality agreement before documents open.
+             * @default false
+             */
             requireNda: boolean;
-            /** @description Required when requireNda is true. */
-            ndaText?: string;
             /** @description Optional second factor checked before an OTP is sent. */
             password?: string;
             /** @description Reject creating the invitation unless the email's domain is in this list. */
@@ -3528,14 +3742,42 @@ export interface components {
             /** Format: uuid */
             documentId?: string | null;
             /** Format: uuid */
+            documentVersionId?: string | null;
+            /** Format: uuid */
             chunkId?: string | null;
             commentText?: string;
             /** Format: date-time */
             createdAt?: string;
+            /** Format: date-time */
+            readAt?: string | null;
+            /** Format: date-time */
+            resolvedAt?: string | null;
+            /** Format: uuid */
+            resolvedBy?: string | null;
+        };
+        ReviewerActivity: {
+            id: string;
+            /** @enum {string} */
+            type: "invitation_created" | "invitation_sent" | "access_verified" | "visit_started" | "page_viewed" | "comment_added" | "security_event" | "review_completed" | "invitation_revoked";
+            /** Format: date-time */
+            occurredAt: string;
+            document: {
+                /** Format: uuid */
+                id?: string;
+                title?: string;
+                /** Format: uuid */
+                versionId?: string;
+            } | null;
+            pageNumber: number | null;
+            details: {
+                [key: string]: unknown;
+            };
         };
         CreateReviewerCommentBody: {
             /** Format: uuid */
             documentId?: string | null;
+            /** Format: uuid */
+            documentVersionId?: string | null;
             /** Format: uuid */
             chunkId?: string | null;
             commentText: string;
@@ -3746,6 +3988,40 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ReadinessResponse"];
                 };
+            };
+        };
+    };
+    getMetrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Metrics snapshot; labels never contain reviewer or startup identifiers */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Missing or invalid metrics bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Metrics are disabled */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -7111,7 +7387,10 @@ export interface operations {
     };
     listConversations: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Include archived channels the caller belongs to. */
+                includeArchived?: boolean;
+            };
             header?: never;
             path: {
                 startupId: string;
@@ -8606,6 +8885,8 @@ export interface operations {
                 limit?: components["parameters"]["LimitParam"];
                 search?: string;
                 documentType?: components["schemas"]["DocumentType"];
+                /** @description Active documents are returned by default; archived documents remain recoverable. */
+                lifecycle?: "active" | "archived" | "all";
             };
             header?: never;
             path: {
@@ -8736,6 +9017,48 @@ export interface operations {
             };
         };
     };
+    archiveDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                documentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archived; idempotent when already archived */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    restoreDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                documentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Restored; idempotent when already active */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     createDocumentVersionUploadSession: {
         parameters: {
             query?: never;
@@ -8783,6 +9106,64 @@ export interface operations {
             };
         };
     };
+    retryDocumentVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                documentId: string;
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Retry queued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version is not failed or the document is archived */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    promoteDocumentVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                documentId: string;
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Version is current */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version is not fully processed or the document is archived */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getDocumentFileAccess: {
         parameters: {
             query?: {
@@ -8801,6 +9182,43 @@ export interface operations {
         responses: {
             /** @description Signed access */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getDocumentPageAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                documentId: string;
+                versionId: string;
+                pageNumber: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed rendered-page access and exact document context */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Document, version, or page not found in this startup */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version rendering is not ready */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8887,6 +9305,126 @@ export interface operations {
         responses: {
             /** @description Analytics */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listReviewerInvitationActivity: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Opaque cursor returned by the previous page. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                startupId: string;
+                invitationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Most recent activity, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ReviewerActivity"][];
+                        pagination: {
+                            hasMore: boolean;
+                            nextCursor: string | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    resendReviewerInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                invitationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invitation rotated and queued for delivery */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listFounderReviewerComments: {
+        parameters: {
+            query?: {
+                status?: "all" | "unread" | "open" | "resolved";
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reviewer comments and unread/open counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    markFounderReviewerCommentRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                commentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Marked read */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    resolveFounderReviewerComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                commentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resolved */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8997,7 +9535,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            /**
+                             * Format: uuid
+                             * @description Bind this value to the OTP verification request.
+                             */
+                            challengeId: string;
+                            emailHint: string;
+                            expiresInSeconds: number;
+                        };
+                    };
+                };
             };
             /** @description Password required or incorrect */
             401: {
@@ -9021,6 +9571,8 @@ export interface operations {
             content: {
                 "application/json": {
                     token: string;
+                    /** Format: uuid */
+                    challengeId: string;
                     otp: string;
                 };
             };
@@ -9038,22 +9590,13 @@ export interface operations {
                     };
                 };
             };
-            /** @description Code incorrect, expired, or token invalid */
+            /** @description Code incorrect, expired, token invalid, or request validation failed */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
@@ -9145,6 +9688,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Secure content request budget exceeded for this reviewer session. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     reviewerPortalPageImage: {
@@ -9193,6 +9743,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Secure content request budget exceeded for this reviewer session. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     reviewerPortalDownload: {
@@ -9236,11 +9793,20 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Download-attempt budget exceeded for this reviewer session. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     reviewerPortalListComments: {
         parameters: {
-            query?: never;
+            query?: {
+                documentId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9267,6 +9833,13 @@ export interface operations {
         responses: {
             /** @description Created */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Comment-submission budget exceeded for this reviewer session. */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -45,6 +45,9 @@ services:
     environment:
       # Overrides the host-oriented values from packages/api/.env — inside
       # the compose network, postgres/redis are reachable by service name.
+      # The host env is development, but this image prunes development-only
+      # packages such as pino-pretty and must use production logging.
+      NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-raise}
       REDIS_URL: redis://redis:6379
     depends_on:

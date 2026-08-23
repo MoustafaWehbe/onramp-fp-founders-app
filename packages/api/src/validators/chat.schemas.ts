@@ -15,6 +15,19 @@ export const createConversationSchema = z.object({
     .union([z.string().trim().max(200, "Topic must be at most 200 characters"), z.null()])
     .transform((value) => (value === null || value === "" ? null : value))
     .optional(),
+  memberIds: z
+    .array(z.string().guid("memberIds must contain valid UUIDs"))
+    .max(100, "A channel can include at most 100 selected teammates")
+    .default([]),
+});
+
+export const listConversationsQuerySchema = z.object({
+  includeArchived: z
+    .preprocess(
+      (value) => (value === "true" ? true : value === "false" ? false : value),
+      z.boolean(),
+    )
+    .default(false),
 });
 
 export const conversationIdParamSchema = z.object({
@@ -124,6 +137,7 @@ export const mentionsBacklinkQuerySchema = z.object({
 });
 
 export type CreateConversationInput = z.infer<typeof createConversationSchema>;
+export type ListConversationsQuery = z.infer<typeof listConversationsQuerySchema>;
 export type SendMessageInput = z.infer<typeof sendMessageSchema>;
 export type ListMessagesQuery = z.infer<typeof listMessagesQuerySchema>;
 export type MentionableQuery = z.infer<typeof mentionableQuerySchema>;

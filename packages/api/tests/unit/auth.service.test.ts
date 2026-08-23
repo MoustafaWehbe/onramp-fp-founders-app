@@ -1,6 +1,7 @@
 import {
   hashToken,
   hashOTP,
+  verifyOTP,
   generateRefreshToken,
   generateOTP,
   generateAccessToken,
@@ -74,6 +75,17 @@ describe("generateOTP", () => {
     const otps = Array.from({ length: 10 }, () => generateOTP().raw);
     const unique = new Set(otps);
     expect(unique.size).toBeGreaterThan(1);
+  });
+});
+
+describe("verifyOTP", () => {
+  it("accepts the OTP matching the stored digest", () => {
+    expect(verifyOTP("123456", hashOTP("123456"))).toBe(true);
+  });
+
+  it("rejects an incorrect OTP or malformed digest without throwing", () => {
+    expect(verifyOTP("654321", hashOTP("123456"))).toBe(false);
+    expect(verifyOTP("123456", "invalid")).toBe(false);
   });
 });
 

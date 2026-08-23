@@ -16,6 +16,13 @@ export function hashOTP(otp: string): string {
     .digest("hex");
 }
 
+/** Compare OTP digests without leaking a matching-prefix timing signal. */
+export function verifyOTP(otp: string, expectedHash: string): boolean {
+  const actual = Buffer.from(hashOTP(otp), "hex");
+  const expected = Buffer.from(expectedHash, "hex");
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+}
+
 // Tokens
 
 export function generateRefreshToken(): { raw: string; hash: string } {

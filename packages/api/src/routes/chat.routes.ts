@@ -18,6 +18,7 @@ import {
   notifyLevelSchema,
   startDirectMessageSchema,
   archiveConversationSchema,
+  listConversationsQuerySchema,
 } from "../validators/chat.schemas";
 import { chatController } from "../controllers/chat.controller";
 
@@ -57,6 +58,7 @@ router.get(
   validate(startupIdParamSchema, "params"),
   requireMember,
   requirePermission("chat", "read"),
+  validate(listConversationsQuerySchema, "query"),
   chatController.listConversations,
 );
 
@@ -117,9 +119,8 @@ router.patch(
 );
 
 // PATCH /api/v1/startups/:startupId/chat/conversations/:conversationId/archived chat:manage
-// Channels are workspace-wide, so archiving one is a moderation call on a
-// shared room gated the same as removing someone else's message, not by
-// mere membership. Rejects DMs inside the service (400 CANNOT_ARCHIVE_DM).
+// Archiving is a moderation action on a shared room, gated by chat:manage
+// rather than mere membership. Rejects DMs inside the service.
 router.patch(
   "/conversations/:conversationId/archived",
   authenticate,

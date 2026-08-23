@@ -1245,3 +1245,60 @@ describe("Pipeline board", () => {
     });
   });
 });
+
+describe("pipeline foundation states", () => {
+  it("shows a recoverable error when fundraising rounds cannot load", async () => {
+    listFundraisingRounds.mockRejectedValue(new Error("round service unavailable"));
+    renderPipeline();
+
+    expect(await screen.findByText("Failed to load fundraising rounds.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("guides an owner to create a round instead of opening an invalid deal form", async () => {
+    listFundraisingRounds.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 100, total: 0, totalPages: 0 },
+    });
+    renderPipeline();
+
+    expect(await screen.findByText("Create a fundraising round first")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add to pipeline" })).not.toBeInTheDocument();
+  });
+
+  it("offers a useful first-deal action instead of an empty kanban", async () => {
+    listPipelineEntries.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 100, total: 0, totalPages: 0 },
+    });
+    renderPipeline();
+
+    expect(await screen.findByText("Build your investor pipeline")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add first investor" })).toBeInTheDocument();
+    expect(screen.queryByText("Drop an investor here")).not.toBeInTheDocument();
+  });
+
+  it("does not call a failed attention query an all-clear", async () => {
+    getPipelineFocus.mockRejectedValue(new Error("focus unavailable"));
+    const user = userEvent.setup();
+    renderPipeline();
+    await screen.findByText("Ada Lovelace");
+
+    await user.click(screen.getByRole("tab", { name: /Focus/ }));
+
+    expect(await screen.findByText("Failed to load the attention queue.")).toBeInTheDocument();
+    expect(screen.queryByText("Nothing needs chasing")).not.toBeInTheDocument();
+  });
+
+  it("does not call a failed task query an empty queue", async () => {
+    listTasks.mockRejectedValue(new Error("tasks unavailable"));
+    const user = userEvent.setup();
+    renderPipeline();
+    await screen.findByText("Ada Lovelace");
+
+    await user.click(screen.getByRole("tab", { name: /Tasks/ }));
+
+    expect(await screen.findByText("Failed to load round tasks.")).toBeInTheDocument();
+    expect(screen.queryByText("Nothing assigned to you")).not.toBeInTheDocument();
+  });
+});

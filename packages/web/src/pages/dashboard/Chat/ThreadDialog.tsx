@@ -11,10 +11,15 @@ import { ConfirmDialog } from "../../../components/shared/ConfirmDialog";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { apiErrorMessage } from "../../../lib/api-error";
 import { qk } from "../../../lib/query-keys";
-import { deleteMessage, listReplies, toggleReaction, type Message } from "../../../lib/chat-api";
+import { deleteMessage, listReplies, sendMessage, toggleReaction, type Message } from "../../../lib/chat-api";
 import { useResolvedMentions } from "../../../hooks/useResolvedMentions";
 import { MessageItem } from "../../../components/mentions/MessageItem";
 import { Composer } from "./Composer";
+import {
+  replaceOptimisticMessage,
+  retryInputForMessage,
+  setOptimisticDeliveryState,
+} from "../../../lib/chat-message-cache";
 
 type ThreadDialogProps = {
   startupId: string;
@@ -65,6 +70,23 @@ export function ThreadDialog({
       void queryClient.invalidateQueries({ queryKey: qk.replies(startupId, messageId) });
     },
     onError: (err) => toast.error(apiErrorMessage(err, "Could not delete that message")),
+  });
+
+  const retrySendMutation = useMutation({
+    mutationFn: async (message: Message) => {
+      const input = retryInputForMessage(message);
+      if (!input) throw new Error("This reply can no longer be retried");
+      return sendMessage(startupId, conversationId, input);
+    },
+    onMutate: (message) => setOptimisticDeliveryState(queryClient, startupId, message, "sending"),
+    onSuccess: (delivered, message) => {
+      replaceOptimisticMessage(queryClient, startupId, message, delivered);
+      void queryClient.invalidateQueries({ queryKey: qk.replies(startupId, messageId) });
+    },
+    onError: (err, message) => {
+      setOptimisticDeliveryState(queryClient, startupId, message, "failed");
+      toast.error(apiErrorMessage(err, "Reply still could not be sent"));
+    },
   });
 
   function canDelete(message: Message): boolean {
@@ -124,13 +146,18 @@ export function ThreadDialog({
                   resolved={resolved}
                   onReact={canSend ? (emoji) => reactMutation.mutate({ id: reply.id, emoji }) : undefined}
                   onDelete={canDelete(reply) ? () => setDeleteTarget(reply) : undefined}
+                  onRetry={
+                    reply.deliveryState === "failed"
+                      ? () => retrySendMutation.mutate(reply)
+                      : undefined
+                  }
                 />
               ))}
             </>
           ) : null}
         </div>
 
-        {canSend && messageId && (
+        {canSend && messageId && threadQuery.isSuccess && (
           <Composer
             startupId={startupId}
             conversationId={conversationId}

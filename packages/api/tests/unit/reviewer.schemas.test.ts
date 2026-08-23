@@ -1,6 +1,7 @@
 import {
   createReviewerInvitationSchema,
   listReviewerInvitationsQuerySchema,
+  reviewerActivityQuerySchema,
 } from "../../src/validators/reviewer.schemas";
 import {
   reviewerAccessSchema,
@@ -21,22 +22,16 @@ describe("createReviewerInvitationSchema", () => {
     ).toBe(true);
   });
 
-  it("requires ndaText when requireNda is set", () => {
-    expect(
-      createReviewerInvitationSchema.safeParse({
-        email: "a@b.com",
-        documentVersionIds: [UUID],
-        requireNda: true,
-      }).success,
-    ).toBe(false);
-    expect(
-      createReviewerInvitationSchema.safeParse({
-        email: "a@b.com",
-        documentVersionIds: [UUID],
-        requireNda: true,
-        ndaText: "Standard mutual NDA terms…",
-      }).success,
-    ).toBe(true);
+  it("uses the predefined NDA and strips attempted custom text", () => {
+    const result = createReviewerInvitationSchema.safeParse({
+      email: "a@b.com",
+      documentVersionIds: [UUID],
+      requireNda: true,
+      ndaText: "Use my custom terms instead",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).not.toHaveProperty("ndaText");
   });
 
   it("validates domain format in allowedEmailDomains", () => {
@@ -85,6 +80,18 @@ describe("listReviewerInvitationsQuerySchema", () => {
   });
 });
 
+describe("reviewerActivityQuerySchema", () => {
+  it("defaults to 25 items and caps the timeline at 100", () => {
+    expect(reviewerActivityQuerySchema.parse({}).limit).toBe(25);
+    expect(reviewerActivityQuerySchema.safeParse({ limit: 101 }).success).toBe(false);
+  });
+
+  it("accepts only bounded URL-safe cursors", () => {
+    expect(reviewerActivityQuerySchema.safeParse({ cursor: "abc_DEF-123" }).success).toBe(true);
+    expect(reviewerActivityQuerySchema.safeParse({ cursor: "not a cursor" }).success).toBe(false);
+  });
+});
+
 describe("reviewer portal schemas", () => {
   it("accepts access token", () => {
     expect(
@@ -99,16 +106,36 @@ describe("reviewer portal schemas", () => {
   });
 
   it("requires 6-digit otp", () => {
+    const challengeId = "00000000-0000-0000-0000-000000000099";
     expect(
-      reviewerVerifySchema.safeParse({ token: "a".repeat(32), otp: "12345" }).success,
+      reviewerVerifySchema.safeParse({ token: "a".repeat(32), challengeId, otp: "12345" }).success,
     ).toBe(false);
     expect(
-      reviewerVerifySchema.safeParse({ token: "a".repeat(32), otp: "123456" }).success,
+      reviewerVerifySchema.safeParse({ token: "a".repeat(32), challengeId, otp: "123456" }).success,
     ).toBe(true);
+    expect(
+      reviewerVerifySchema.safeParse({ token: "a".repeat(32), otp: "123456" }).success,
+    ).toBe(false);
   });
 
   it("requires comment text", () => {
     expect(reviewerCommentSchema.safeParse({ commentText: "" }).success).toBe(false);
     expect(reviewerCommentSchema.safeParse({ commentText: "Looks strong" }).success).toBe(true);
+  });
+
+  it("requires documentId when a comment pins an exact version", () => {
+    expect(
+      reviewerCommentSchema.safeParse({
+        documentVersionId: UUID,
+        commentText: "Version-specific feedback",
+      }).success,
+    ).toBe(false);
+    expect(
+      reviewerCommentSchema.safeParse({
+        documentId: UUID,
+        documentVersionId: UUID,
+        commentText: "Version-specific feedback",
+      }).success,
+    ).toBe(true);
   });
 });

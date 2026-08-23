@@ -3,7 +3,10 @@ jest.mock("../../src/db/prisma", () => ({
     reviewerInvitation: {
       findUnique: jest.fn(),
       create: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
     },
+    reviewerSession: { updateMany: jest.fn() },
     reviewerInvitationDocument: {
       findMany: jest.fn(),
     },
@@ -23,6 +26,7 @@ jest.mock("../../src/db/prisma", () => ({
     startup: {
       findUnique: jest.fn(),
     },
+    $transaction: jest.fn(),
   },
 }));
 
@@ -35,7 +39,9 @@ jest.mock("../../src/services/audit-writer", () => ({
 }));
 
 import { prisma } from "../../src/db/prisma";
+import { renderReviewerNda } from "../../src/config/reviewer-nda";
 import { reviewerInvitationService } from "../../src/services/reviewer-invitation.service";
+import { emailQueue } from "../../src/jobs/queue";
 
 const mockPrisma = prisma as jest.Mocked<typeof prisma>;
 
@@ -59,7 +65,10 @@ function baseInvitation(overrides: Record<string, unknown> = {}) {
   };
 }
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn) => fn(mockPrisma));
+});
 
 describe("ReviewerInvitationService.createInvitation", () => {
   it("rejects the invitation before touching document versions when the email's domain isn't allowlisted", async () => {
@@ -129,10 +138,19 @@ describe("ReviewerInvitationService.createInvitation", () => {
       email: "investor@acme.com",
       documentVersionIds: [VERSION_A],
       expiresInDays: 14,
+      requireNda: true,
+      ndaText: "Attempted custom terms",
     } as never);
 
     expect(result.invitation.email).toBe("investor@acme.com");
-    expect(mockPrisma.reviewerInvitation.create).toHaveBeenCalled();
+    expect(mockPrisma.reviewerInvitation.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          requireNda: true,
+          ndaText: renderReviewerNda("Acme"),
+        }),
+      }),
+    );
   });
 
   it("rejects a convertible DOCX that is still rendering", async () => {
@@ -152,6 +170,61 @@ describe("ReviewerInvitationService.createInvitation", () => {
         expiresInDays: 14,
       } as never),
     ).rejects.toMatchObject({ code: "RENDER_PENDING" });
+  });
+});
+
+describe("ReviewerInvitationService.resendInvitation", () => {
+  it("rotates the token, revokes existing sessions, and queues only the new generation", async () => {
+    mockPrisma.reviewerInvitation.findUnique.mockResolvedValue({
+      ...baseInvitation({ status: "in_review" }),
+      startup: { name: "Acme" },
+      personalMessage: "Looking forward to your feedback",
+      deliveryGeneration: 2,
+    } as never);
+    mockPrisma.reviewerInvitation.update.mockResolvedValue({ deliveryGeneration: 3 } as never);
+    mockPrisma.reviewerSession.updateMany.mockResolvedValue({ count: 1 } as never);
+
+    const result = await reviewerInvitationService.resendInvitation(
+      STARTUP_ID,
+      INVITE_ID,
+      "user-1",
+    );
+
+    expect(mockPrisma.reviewerInvitation.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: INVITE_ID },
+        data: expect.objectContaining({
+          tokenHash: expect.any(String),
+          status: "pending",
+          deliveryGeneration: { increment: 1 },
+          deliveryAttempts: { increment: 1 },
+        }),
+      }),
+    );
+    expect(mockPrisma.reviewerSession.updateMany).toHaveBeenCalledWith({
+      where: { invitationId: INVITE_ID, revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    });
+    expect(emailQueue.add).toHaveBeenCalledWith(
+      "send-reviewer-invite",
+      expect.objectContaining({
+        reviewerInvitationId: INVITE_ID,
+        deliveryGeneration: 3,
+      }),
+      { jobId: `reviewer-invite-${INVITE_ID}-3` },
+    );
+    expect(result.accessUrl).toContain("/review/");
+  });
+
+  it("never revives a revoked invitation", async () => {
+    mockPrisma.reviewerInvitation.findUnique.mockResolvedValue(
+      baseInvitation({ status: "revoked", revokedAt: new Date() }) as never,
+    );
+
+    await expect(
+      reviewerInvitationService.resendInvitation(STARTUP_ID, INVITE_ID, "user-1"),
+    ).rejects.toMatchObject({ code: "INVITATION_REVOKED" });
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 });
 

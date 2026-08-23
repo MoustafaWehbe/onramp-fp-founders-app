@@ -2,6 +2,7 @@ import {
   createUploadSessionSchema,
   createVersionUploadSchema,
   documentIdParamSchema,
+  documentPageParamSchema,
   listDocumentsQuerySchema,
   updateDocumentSchema,
   versionParamSchema,
@@ -18,6 +19,7 @@ describe("listDocumentsQuerySchema", () => {
     if (result.success) {
       expect(result.data.page).toBe(1);
       expect(result.data.limit).toBe(20);
+      expect(result.data.lifecycle).toBe("active");
     }
   });
 
@@ -31,6 +33,12 @@ describe("listDocumentsQuerySchema", () => {
 
   it("rejects invalid documentType", () => {
     expect(listDocumentsQuerySchema.safeParse({ documentType: "pptx" }).success).toBe(false);
+  });
+
+  it("accepts archived and all lifecycle views", () => {
+    expect(listDocumentsQuerySchema.safeParse({ lifecycle: "archived" }).success).toBe(true);
+    expect(listDocumentsQuerySchema.safeParse({ lifecycle: "all" }).success).toBe(true);
+    expect(listDocumentsQuerySchema.safeParse({ lifecycle: "deleted" }).success).toBe(false);
   });
 });
 
@@ -101,5 +109,24 @@ describe("document params", () => {
         versionId: VER_ID,
       }).success,
     ).toBe(true);
+  });
+
+  it("coerces a bounded page number", () => {
+    const result = documentPageParamSchema.safeParse({
+      startupId: UUID,
+      documentId: DOC_ID,
+      versionId: VER_ID,
+      pageNumber: "8",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.pageNumber).toBe(8);
+    expect(
+      documentPageParamSchema.safeParse({
+        startupId: UUID,
+        documentId: DOC_ID,
+        versionId: VER_ID,
+        pageNumber: "0",
+      }).success,
+    ).toBe(false);
   });
 });

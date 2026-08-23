@@ -7,6 +7,7 @@ import { aiAnalysisService } from "../services/ai-analysis.service";
 import type { AiStreamEnvelope } from "../services/ai-stream-broker.service";
 import type { CreateAiAnalysisInput, CreateAiMessageInput, CreateAiSessionInput, ListAiAnalysesQuery, ListAiMessagesQuery, ListAiSessionsQuery, UpdateAiSessionInput } from "../validators/ai.schemas";
 import type { NextFunction, Request, Response } from "express";
+import { SseWriter } from "../utils/sse-writer";
 
 const ACCESS_GRANTS = ["startup:read", "documents:read", "financial:read", "pipeline:read", "pipeline:create", "pipeline:update", "ai_reports:read", "ai_reports:create"] as const;
 
@@ -57,32 +58,37 @@ export const aiController = {
       const lastSequence = rawLastEventId && /^\d+$/.test(rawLastEventId) ? Number(rawLastEventId) : 0;
       const sessionId = req.params.sessionId as string;
       const messageId = req.params.messageId as string;
-      const { message, replay } = await aiConversationService.openStream(req.params.startupId as string, req.user!.userId, sessionId, messageId, await accessFor(req), lastSequence);
+      const { message } = await aiConversationService.openStream(req.params.startupId as string, req.user!.userId, sessionId, messageId, await accessFor(req), lastSequence);
       res.status(200).set({ "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
       res.flushHeaders();
-      const send = (event: AiStreamEnvelope) => {
-        res.write(`id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
-      };
-      send({ version: 1, sessionId, messageId, sequence: 0, timestamp: new Date().toISOString(), type: "stream.ready", payload: {} });
-      if (replay.length) replay.forEach(send);
-      else send({ version: 1, sessionId, messageId, sequence: 0, timestamp: new Date().toISOString(), type: "message.snapshot", payload: { status: message.status, content: message.content, errorMessage: message.errorMessage } });
-
-      const terminalSnapshot = ["completed", "failed", "cancelled"].includes(message.status);
-      if (terminalSnapshot || replay.some((event) => event.type === "stream.closed")) {
-        res.end();
-        return;
-      }
-
-      const heartbeat = setInterval(() => res.write(": ping\n\n"), 15_000);
-      let unsubscribe = () => {};
+      let lastSentSequence = lastSequence;
+      let live = false;
       let closed = false;
+      let heartbeat: ReturnType<typeof setInterval> | undefined;
+      const queued: AiStreamEnvelope[] = [];
+      let unsubscribe = () => {};
+      let writer: SseWriter;
       const close = () => {
         if (closed) return;
         closed = true;
-        clearInterval(heartbeat);
+        if (heartbeat) clearInterval(heartbeat);
         unsubscribe();
+        writer.close();
+      };
+      writer = new SseWriter(res, { onOverflow: () => { close(); res.end(); } });
+      const send = (event: AiStreamEnvelope) => {
+        if (closed || event.sequence <= lastSentSequence) return;
+        lastSentSequence = event.sequence;
+        writer.send(
+          `id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
+          event.type === "message.delta" ? "message.delta" : undefined,
+        );
       };
       unsubscribe = aiConversationService.subscribe(messageId, (event) => {
+        if (!live) {
+          queued.push(event);
+          return;
+        }
         send(event);
         if (event.type === "stream.closed") {
           close();
@@ -91,6 +97,32 @@ export const aiController = {
       });
       req.on("close", close);
       res.on("error", close);
+
+      // Subscribe first, then replay. Events arriving during the Redis/replay
+      // handoff are buffered above and de-duplicated by sequence when flushed,
+      // closing the classic replay-then-subscribe loss window.
+      await aiConversationService.readyForRemoteStreamEvents();
+      if (closed) return;
+      const replay = await aiConversationService.replayStream(messageId, lastSequence);
+      writer.send(`event: stream.ready\ndata: ${JSON.stringify({ version: 1, sessionId, messageId, sequence: 0, timestamp: new Date().toISOString(), type: "stream.ready", payload: {} })}\n\n`);
+      if (replay.length) replay.forEach(send);
+      else {
+        writer.send(`event: message.snapshot\ndata: ${JSON.stringify({ version: 1, sessionId, messageId, sequence: 0, timestamp: new Date().toISOString(), type: "message.snapshot", payload: { status: message.status, content: message.content, errorMessage: message.errorMessage } })}\n\n`);
+      }
+      live = true;
+      queued.sort((a, b) => a.sequence - b.sequence).forEach(send);
+
+      const streamFinished = replay.some((event) => event.type === "stream.closed") || queued.some((event) => event.type === "stream.closed");
+      const generationActive = await aiConversationService.isGenerationActive(messageId);
+      if (closed) return;
+      const terminalWithoutPostProcessing = ["failed", "cancelled"].includes(message.status) || (message.status === "completed" && !generationActive);
+      if (streamFinished || terminalWithoutPostProcessing) {
+        close();
+        res.end();
+        return;
+      }
+
+      heartbeat = setInterval(() => writer.send(": ping\n\n", "heartbeat"), 15_000);
     })().catch(next);
   },
   cancelMessage: asyncHandler(async (req, res) => {

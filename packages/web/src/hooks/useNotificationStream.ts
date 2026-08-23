@@ -62,6 +62,11 @@ export function useNotificationStream() {
       void queryClient.invalidateQueries({ queryKey: MY_INVITES_KEY });
     };
 
+    // Redis pub/sub is intentionally a live signal rather than durable event
+    // storage. Reconcile from PostgreSQL whenever the connection (re)opens so
+    // an event published during a disconnect or subscribe race is still shown.
+    source.addEventListener("ready", refresh);
+
     source.addEventListener("notification.created", (event) => {
       refresh();
 

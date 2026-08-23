@@ -255,7 +255,22 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
         </ul>
       )}
 
-      {!tasksQuery.isPending && tasks.length === 0 && (
+      {tasksQuery.isError && (
+        <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-6 text-sm text-destructive">
+          <p>{apiErrorMessage(tasksQuery.error, "Failed to load round tasks.")}</p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="mt-3"
+            onClick={() => void tasksQuery.refetch()}
+          >
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {!tasksQuery.isPending && !tasksQuery.isError && tasks.length === 0 && (
         <div className="rounded-xl border border-dashed border-border/70">
           <EmptyState
             icon={CheckCircle2}
@@ -266,7 +281,7 @@ export function TaskQueue({ startupId, roundId, entriesById, onOpenDeal }: TaskQ
         </div>
       )}
 
-      {tasks.length > 0 && (
+      {!tasksQuery.isError && tasks.length > 0 && (
         <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/70 bg-card">
           {tasks.map((task) => {
             const deal = entriesById.get(task.pipelineId);

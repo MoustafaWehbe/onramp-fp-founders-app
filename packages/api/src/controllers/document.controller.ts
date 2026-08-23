@@ -73,6 +73,44 @@ export const documentController = {
     res.json({ data: document });
   }),
 
+  archiveDocument: asyncHandler(async (req, res) => {
+    const result = await documentService.archiveDocument(
+      req.params.startupId as string,
+      req.params.documentId as string,
+      req.user!.userId,
+    );
+    res.json({ data: result });
+  }),
+
+  restoreDocument: asyncHandler(async (req, res) => {
+    const result = await documentService.restoreDocument(
+      req.params.startupId as string,
+      req.params.documentId as string,
+      req.user!.userId,
+    );
+    res.json({ data: result });
+  }),
+
+  retryVersion: asyncHandler(async (req, res) => {
+    const version = await documentService.retryVersion(
+      req.params.startupId as string,
+      req.params.documentId as string,
+      req.params.versionId as string,
+      req.user!.userId,
+    );
+    res.json({ data: version });
+  }),
+
+  promoteVersion: asyncHandler(async (req, res) => {
+    const version = await documentService.promoteVersion(
+      req.params.startupId as string,
+      req.params.documentId as string,
+      req.params.versionId as string,
+      req.user!.userId,
+    );
+    res.json({ data: version });
+  }),
+
   deleteDocument: asyncHandler(async (req, res) => {
     await documentService.deleteDocument(
       req.params.startupId as string,
@@ -90,6 +128,17 @@ export const documentController = {
       req.user!.userId,
       versionId,
       disposition,
+    );
+    res.json({ data: access });
+  }),
+
+  getPageAccess: asyncHandler(async (req, res) => {
+    const access = await documentService.getPageAccess(
+      req.params.startupId as string,
+      req.params.documentId as string,
+      req.params.versionId as string,
+      Number(req.params.pageNumber),
+      req.user!.userId,
     );
     res.json({ data: access });
   }),

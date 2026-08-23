@@ -12,8 +12,7 @@ export function entityHref(mention: ResolvedMention): string | null {
     case "round":
       return `/fundraising?round=${mention.id}`;
     case "document":
-      // No per-document deep link exists yet the vault list is the honest destination.
-      return "/documents";
+      return `/documents?document=${mention.id}`;
     case "member":
       return null;
   }

@@ -30,29 +30,30 @@ model User {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  lastActiveStartup      Startup?                @relation("LastActiveStartup", fields: [lastActiveStartupId], references: [id])
-  createdStartups        Startup[]               @relation("CreatedStartups")
-  memberships            StartupMember[]         @relation("MemberUser")
-  sentInvites            StartupMember[]         @relation("InvitedBy")
-  refreshTokens          RefreshToken[]
-  passwordResets         PasswordReset[]
-  reviewerInvitations    ReviewerInvitation[]
-  interactionLogs        InteractionLog[]
-  createdDocuments       Document[]
-  uploadedVersions       DocumentVersion[]
-  aiChatSessions         AiChatSession[]
-  requestedAiAnalyses    AiAnalysis[]            @relation("AiAnalysisRequester")
-  aiRuns                 AiRun[]
-  auditLogs              AuditLog[]
-  notifications          Notification[]
-  pipelineStageEvents    PipelineStageEvent[]
-  tasks                  Task[]
-  authoredInvestorNotes  StartupInvestor[]       @relation("InvestorNotesAuthor")
-  editedInvestorNotes    StartupInvestor[]       @relation("InvestorNotesEditor")
-  commitmentStatusEvents CommitmentStatusEvent[]
-  googleConnection       GoogleConnection?
-  conversationsCreated   Conversation[]
-  aiAgentActions         AiAgentAction[]
+  lastActiveStartup        Startup?                @relation("LastActiveStartup", fields: [lastActiveStartupId], references: [id])
+  createdStartups          Startup[]               @relation("CreatedStartups")
+  memberships              StartupMember[]         @relation("MemberUser")
+  sentInvites              StartupMember[]         @relation("InvitedBy")
+  refreshTokens            RefreshToken[]
+  passwordResets           PasswordReset[]
+  reviewerInvitations      ReviewerInvitation[]
+  interactionLogs          InteractionLog[]
+  createdDocuments         Document[]
+  uploadedVersions         DocumentVersion[]
+  aiChatSessions           AiChatSession[]
+  requestedAiAnalyses      AiAnalysis[]            @relation("AiAnalysisRequester")
+  aiRuns                   AiRun[]
+  auditLogs                AuditLog[]
+  notifications            Notification[]
+  pipelineStageEvents      PipelineStageEvent[]
+  tasks                    Task[]
+  authoredInvestorNotes    StartupInvestor[]       @relation("InvestorNotesAuthor")
+  editedInvestorNotes      StartupInvestor[]       @relation("InvestorNotesEditor")
+  commitmentStatusEvents   CommitmentStatusEvent[]
+  googleConnection         GoogleConnection?
+  conversationsCreated     Conversation[]
+  aiAgentActions           AiAgentAction[]
+  resolvedReviewerComments ReviewerComment[]       @relation("ReviewerCommentResolver")
 
   @@map("users")
 }
@@ -90,12 +91,12 @@ model GoogleConnection {
 }
 
 model Startup {
-  id           String   @id @default(uuid())
-  name         String
-  description  String?
-  industry     String?
-  website      String?
-  fundingStage String?  @map("funding_stage")
+  id               String    @id @default(uuid())
+  name             String
+  description      String?
+  industry         String?
+  website          String?
+  fundingStage     String?   @map("funding_stage")
   // Structured comparables so the copilot can judge investor/pitch fit without
   // re-deriving them from free-text description every time.
   oneLiner         String?   @map("one_liner")
@@ -108,9 +109,9 @@ model Startup {
   headquarters     String?
   foundedAt        DateTime? @map("founded_at")
   teamSummary      String?   @map("team_summary")
-  createdBy    String   @map("created_by")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdBy        String    @map("created_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   creator                User                    @relation("CreatedStartups", fields: [createdBy], references: [id])
   lastActiveUsers        User[]                  @relation("LastActiveStartup")
@@ -268,32 +269,41 @@ model RolePermission {
 // ─── REVIEWER SYSTEM ──────────────────────────────────────────────────────────
 
 model ReviewerInvitation {
-  id                  String    @id @default(uuid())
-  startupId           String    @map("startup_id")
-  startupInvestorId   String?   @map("startup_investor_id")
-  reviewerName        String?   @map("reviewer_name")
-  emailNormalized     String    @map("email_normalized")
-  tokenHash           String    @unique @map("token_hash")
+  id                    String    @id @default(uuid())
+  startupId             String    @map("startup_id")
+  startupInvestorId     String?   @map("startup_investor_id")
+  reviewerName          String?   @map("reviewer_name")
+  emailNormalized       String    @map("email_normalized")
+  tokenHash             String    @unique @map("token_hash")
   /// pending | opened | in_review | completed | revoked
-  status              String    @default("pending")
-  allowDownload       Boolean   @default(false) @map("allow_download")
-  watermarkEnabled    Boolean   @default(true) @map("watermark_enabled")
-  notifyOnOpen        Boolean   @default(true) @map("notify_on_open")
-  allowPrint          Boolean   @default(false) @map("allow_print")
-  screenshotGuard     Boolean   @default(true) @map("screenshot_guard")
-  requireNda          Boolean   @default(false) @map("require_nda")
-  ndaText             String?   @map("nda_text")
-  ndaAcceptedAt       DateTime? @map("nda_accepted_at")
-  passwordHash        String?   @map("password_hash")
-  allowedEmailDomains String[]  @default([]) @map("allowed_email_domains")
-  personalMessage     String?   @map("personal_message")
-  expiresAt           DateTime  @map("expires_at")
-  completedAt         DateTime? @map("completed_at")
-  revokedAt           DateTime? @map("revoked_at")
-  lastActivityAt      DateTime? @map("last_activity_at")
-  createdBy           String    @map("created_by")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
+  status                String    @default("pending")
+  allowDownload         Boolean   @default(false) @map("allow_download")
+  watermarkEnabled      Boolean   @default(true) @map("watermark_enabled")
+  notifyOnOpen          Boolean   @default(true) @map("notify_on_open")
+  allowPrint            Boolean   @default(false) @map("allow_print")
+  screenshotGuard       Boolean   @default(true) @map("screenshot_guard")
+  requireNda            Boolean   @default(false) @map("require_nda")
+  ndaText               String?   @map("nda_text")
+  ndaAcceptedAt         DateTime? @map("nda_accepted_at")
+  passwordHash          String?   @map("password_hash")
+  allowedEmailDomains   String[]  @default([]) @map("allowed_email_domains")
+  personalMessage       String?   @map("personal_message")
+  /// unknown | queued | sent | failed
+  deliveryStatus        String    @default("unknown") @map("delivery_status")
+  deliveryGeneration    Int       @default(0) @map("delivery_generation")
+  deliveryAttempts      Int       @default(0) @map("delivery_attempts")
+  deliveryLastAttemptAt DateTime? @map("delivery_last_attempt_at")
+  deliverySentAt        DateTime? @map("delivery_sent_at")
+  deliveryFailedAt      DateTime? @map("delivery_failed_at")
+  deliveryError         String?   @map("delivery_error")
+  deliveryMessageId     String?   @map("delivery_message_id")
+  expiresAt             DateTime  @map("expires_at")
+  completedAt           DateTime? @map("completed_at")
+  revokedAt             DateTime? @map("revoked_at")
+  lastActivityAt        DateTime? @map("last_activity_at")
+  createdBy             String    @map("created_by")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
 
   startup         Startup                      @relation(fields: [startupId], references: [id], onDelete: Cascade)
   startupInvestor StartupInvestor?             @relation(fields: [startupInvestorId], references: [id])
@@ -302,6 +312,7 @@ model ReviewerInvitation {
   sessions        ReviewerSession[]
   events          ReviewerEvent[]
   visits          ReviewerVisit[]
+  comments        ReviewerComment[]
 
   @@unique([startupId, id])
   @@index([startupId, status])
@@ -346,23 +357,35 @@ model ReviewerSession {
   comments   ReviewerComment[]
 
   @@index([invitationId])
+  @@index([invitationId, verifiedAt])
   @@map("reviewer_sessions")
 }
 
 model ReviewerComment {
-  id          String   @id @default(uuid())
-  sessionId   String   @map("session_id")
-  startupId   String   @map("startup_id")
-  documentId  String?  @map("document_id")
-  chunkId     String?  @map("chunk_id")
-  commentText String   @map("comment_text")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id                String    @id @default(uuid())
+  sessionId         String    @map("session_id")
+  invitationId      String    @map("invitation_id")
+  startupId         String    @map("startup_id")
+  documentId        String?   @map("document_id")
+  documentVersionId String?   @map("document_version_id")
+  chunkId           String?   @map("chunk_id")
+  commentText       String    @map("comment_text")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  readAt            DateTime? @map("read_at")
+  resolvedAt        DateTime? @map("resolved_at")
+  resolvedBy        String?   @map("resolved_by")
 
-  session  ReviewerSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  startup  Startup         @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  document Document?       @relation(fields: [documentId], references: [id])
-  chunk    DocumentChunk?  @relation(fields: [chunkId], references: [id])
+  session         ReviewerSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  invitation      ReviewerInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  startup         Startup            @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  document        Document?          @relation(fields: [documentId], references: [id])
+  documentVersion DocumentVersion?   @relation(fields: [documentVersionId], references: [id])
+  chunk           DocumentChunk?     @relation(fields: [chunkId], references: [id])
+  resolver        User?              @relation("ReviewerCommentResolver", fields: [resolvedBy], references: [id], onDelete: SetNull)
 
+  @@index([startupId, resolvedAt, createdAt])
+  @@index([invitationId, createdAt])
+  @@index([documentVersionId, createdAt])
   @@map("reviewer_comments")
 }
 
@@ -426,6 +449,7 @@ model ReviewerPageView {
   visit ReviewerVisit @relation(fields: [visitId], references: [id], onDelete: Cascade)
 
   @@unique([visitId, documentVersionId, pageNumber])
+  @@index([visitId, firstViewedAt])
   @@index([documentVersionId, pageNumber])
   @@map("reviewer_page_views")
 }
@@ -445,12 +469,12 @@ model StartupInvestor {
   // The stable "who is this investor" profile — separate from `notes`, which is a
   // running human scratchpad that churns and is often stale. Collapsing the two
   // would make the model quote a two-month-old scratch note as if it were a fact.
-  description         String?   @map("description")
-  checkSizeMin        Decimal?  @map("check_size_min")
-  checkSizeMax        Decimal?  @map("check_size_max")
-  geographyFocus      String?   @map("geography_focus")
-  portfolioHighlights String?   @map("portfolio_highlights")
-  warmIntroPath       String?   @map("warm_intro_path")
+  description               String?   @map("description")
+  checkSizeMin              Decimal?  @map("check_size_min")
+  checkSizeMax              Decimal?  @map("check_size_max")
+  geographyFocus            String?   @map("geography_focus")
+  portfolioHighlights       String?   @map("portfolio_highlights")
+  warmIntroPath             String?   @map("warm_intro_path")
   notes                     String?
   notesCreatedAt            DateTime? @map("notes_created_at")
   notesCreatedBy            String?   @map("notes_created_by")
@@ -657,13 +681,14 @@ model CommitmentStatusEvent {
 // ─── DOCUMENT VAULT ───────────────────────────────────────────────────────────
 
 model Document {
-  id           String   @id @default(uuid())
-  startupId    String   @map("startup_id")
+  id           String    @id @default(uuid())
+  startupId    String    @map("startup_id")
   title        String
-  documentType String   @map("document_type")
-  createdBy    String   @map("created_by")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  documentType String    @map("document_type")
+  createdBy    String    @map("created_by")
+  archivedAt   DateTime? @map("archived_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   startup                Startup                      @relation(fields: [startupId], references: [id], onDelete: Cascade)
   creator                User                         @relation(fields: [createdBy], references: [id])
@@ -675,6 +700,7 @@ model Document {
   messageAttachments     MessageAttachment[]
 
   @@unique([startupId, id])
+  @@index([startupId, archivedAt, updatedAt])
   @@map("documents")
 }
 
@@ -708,6 +734,7 @@ model DocumentVersion {
   aiAnalyses                  AiAnalysis[]
   aiChatSessionDocuments      AiChatSessionDocument[]
   reviewerInvitationDocuments ReviewerInvitationDocument[]
+  reviewerComments            ReviewerComment[]
 
   @@unique([documentId, versionNumber])
   @@unique([documentId, id])
@@ -851,15 +878,15 @@ model AiChatSession {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  startup   Startup                 @relation(fields: [startupId], references: [id], onDelete: Cascade)
-  user      User                    @relation(fields: [userId], references: [id])
-  round     FundraisingRound?       @relation(fields: [roundId, startupId], references: [id, startupId], onDelete: Restrict)
-  persona   InvestorPersona?        @relation("AiSessionPersona", fields: [personaId], references: [id], onDelete: SetNull)
-  messages  AiChatMessage[]
-  documents AiChatSessionDocument[]
-  analyses  AiAnalysis[]
-  artifacts AiArtifact[]
-  runs      AiRun[]
+  startup      Startup                 @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  user         User                    @relation(fields: [userId], references: [id])
+  round        FundraisingRound?       @relation(fields: [roundId, startupId], references: [id, startupId], onDelete: Restrict)
+  persona      InvestorPersona?        @relation("AiSessionPersona", fields: [personaId], references: [id], onDelete: SetNull)
+  messages     AiChatMessage[]
+  documents    AiChatSessionDocument[]
+  analyses     AiAnalysis[]
+  artifacts    AiArtifact[]
+  runs         AiRun[]
   agentActions AiAgentAction[]
 
   @@unique([startupId, id])
@@ -868,32 +895,32 @@ model AiChatSession {
 }
 
 model AiChatMessage {
-  id                  String    @id @default(uuid())
-  sessionId           String    @map("session_id")
-  clientRequestId     String?   @map("client_request_id")
-  responseToMessageId String?   @unique @map("response_to_message_id")
-  role                String
-  content             String
-  status              String    @default("completed")
-  model               String?
-  structuredContent   Json?     @map("structured_content")
-  errorCode           String?   @map("error_code")
-  errorMessage        String?   @map("error_message")
-  inputTokens         Int?      @map("input_tokens")
-  outputTokens        Int?      @map("output_tokens")
-  timeToFirstTokenMs  Int?      @map("time_to_first_token_ms")
-  retrievalResultCount Int?     @map("retrieval_result_count")
-  retrievalMinScore   Float?    @map("retrieval_min_score")
-  retrievalMaxScore   Float?    @map("retrieval_max_score")
-  latencyMs           Int?      @map("latency_ms")
-  completedAt         DateTime? @map("completed_at")
-  createdAt           DateTime  @default(now()) @map("created_at")
+  id                   String    @id @default(uuid())
+  sessionId            String    @map("session_id")
+  clientRequestId      String?   @map("client_request_id")
+  responseToMessageId  String?   @unique @map("response_to_message_id")
+  role                 String
+  content              String
+  status               String    @default("completed")
+  model                String?
+  structuredContent    Json?     @map("structured_content")
+  errorCode            String?   @map("error_code")
+  errorMessage         String?   @map("error_message")
+  inputTokens          Int?      @map("input_tokens")
+  outputTokens         Int?      @map("output_tokens")
+  timeToFirstTokenMs   Int?      @map("time_to_first_token_ms")
+  retrievalResultCount Int?      @map("retrieval_result_count")
+  retrievalMinScore    Float?    @map("retrieval_min_score")
+  retrievalMaxScore    Float?    @map("retrieval_max_score")
+  latencyMs            Int?      @map("latency_ms")
+  completedAt          DateTime? @map("completed_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
 
-  session   AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  citations AiCitation[]
-  toolCalls AiToolCall[]
-  artifacts AiArtifact[]
-  runs      AiRun[]
+  session      AiChatSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  citations    AiCitation[]
+  toolCalls    AiToolCall[]
+  artifacts    AiArtifact[]
+  runs         AiRun[]
   agentActions AiAgentAction[]
 
   @@unique([sessionId, clientRequestId])

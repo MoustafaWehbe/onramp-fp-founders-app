@@ -36,9 +36,8 @@ tags:
     description: Actionable next steps on a pipeline deal
   - name: Chat
     description: >-
-      Team chat channels within a startup. Phase 1: named channels only,
-      every active member added on creation see the schema comment above
-      the Conversation model in schema.prisma.
+      Team chat channels and direct messages within a startup. Channel creators
+      choose the initial members and are always included themselves.
   - name: Fundraising Rounds
     description: Fundraising round management
   - name: Commitments
@@ -56,7 +55,7 @@ tags:
   - name: AI Copilot
     description: Private, startup-scoped AI copilot sessions
   - name: Operations
-    description: Process liveness and dependency readiness probes
+    description: Process health and authenticated operational metrics
 
 # ─── Reusable components ───────────────────────────────────────────────────────
 components:
@@ -75,6 +74,12 @@ components:
         HttpOnly session cookie set after a reviewer completes token + OTP
         verification via POST /reviewer-portal/verify. Required for all
         subsequent Reviewer Portal calls.
+
+    metricsTokenAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: Dedicated 32+ character token configured with METRICS_TOKEN
 
   parameters:
     PageParam:
@@ -392,6 +397,10 @@ components:
         createdBy:
           type: string
           format: uuid
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -1604,6 +1613,14 @@ components:
         topic:
           type: string
           maxLength: 200
+        memberIds:
+          type: array
+          maxItems: 100
+          default: []
+          description: Active StartupMember ids selected for the channel. The creator is always included.
+          items:
+            type: string
+            format: uuid
 
     StartDirectMessageBody:
       type: object
@@ -2368,6 +2385,19 @@ components:
         processingError:
           type: string
           nullable: true
+        renderStatus:
+          type: string
+          enum: [pending, rendering, ready, unsupported, failed]
+        renderError:
+          type: string
+          nullable: true
+        pageCount:
+          type: integer
+          nullable: true
+        reviewerShareStatus:
+          type: string
+          enum: [processing, ready, unsupported, failed]
+          description: Authoritative capability state for sharing this version in the secure reviewer portal.
         summary:
           type: string
           nullable: true
@@ -2462,6 +2492,26 @@ components:
         personalMessage:
           type: string
           nullable: true
+        deliveryStatus:
+          type: string
+          enum: [unknown, queued, sent, failed]
+        deliveryAttempts:
+          type: integer
+        deliveryLastAttemptAt:
+          type: string
+          format: date-time
+          nullable: true
+        deliverySentAt:
+          type: string
+          format: date-time
+          nullable: true
+        deliveryFailedAt:
+          type: string
+          format: date-time
+          nullable: true
+        deliveryError:
+          type: string
+          nullable: true
         expiresAt:
           type: string
           format: date-time
@@ -2509,9 +2559,7 @@ components:
         requireNda:
           type: boolean
           default: false
-        ndaText:
-          type: string
-          description: Required when requireNda is true.
+          description: Require acceptance of the predefined Raise confidentiality agreement before documents open.
         password:
           type: string
           minLength: 6
@@ -2608,6 +2656,10 @@ components:
           type: string
           format: uuid
           nullable: true
+        documentVersionId:
+          type: string
+          format: uuid
+          nullable: true
         chunkId:
           type: string
           format: uuid
@@ -2617,12 +2669,58 @@ components:
         createdAt:
           type: string
           format: date-time
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+        resolvedAt:
+          type: string
+          format: date-time
+          nullable: true
+        resolvedBy:
+          type: string
+          format: uuid
+          nullable: true
+
+    ReviewerActivity:
+      type: object
+      required: [id, type, occurredAt, document, pageNumber, details]
+      properties:
+        id: { type: string }
+        type:
+          type: string
+          enum:
+            - invitation_created
+            - invitation_sent
+            - access_verified
+            - visit_started
+            - page_viewed
+            - comment_added
+            - security_event
+            - review_completed
+            - invitation_revoked
+        occurredAt: { type: string, format: date-time }
+        document:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string, format: uuid }
+            title: { type: string }
+            versionId: { type: string, format: uuid }
+        pageNumber: { type: integer, nullable: true }
+        details:
+          type: object
+          additionalProperties: true
 
     CreateReviewerCommentBody:
       type: object
       required: [commentText]
       properties:
         documentId:
+          type: string
+          format: uuid
+          nullable: true
+        documentVersionId:
           type: string
           format: uuid
           nullable: true
@@ -2810,6 +2908,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReadinessResponse"
+
+  /metrics:
+    get:
+      tags: [Operations]
+      summary: Export Prometheus-compatible operational metrics
+      operationId: getMetrics
+      security:
+        - metricsTokenAuth: []
+      servers:
+        - url: http://localhost:3000
+          description: Local development
+        - url: /
+          description: Same-origin
+      responses:
+        "200":
+          description: Metrics snapshot; labels never contain reviewer or startup identifiers
+          content:
+            text/plain:
+              schema:
+                type: string
+        "401":
+          description: Missing or invalid metrics bearer token
+        "404":
+          description: Metrics are disabled
 
   # ════════════════════════════════════════════════════════════════
   #  AUTH
@@ -5864,8 +5986,8 @@ paths:
       tags: [Chat]
       summary: Create a channel
       description: >
-        Every active member of the startup is added at creation time there
-        is no invite-to-channel UI yet, so Phase 1 channels are workspace-wide.
+        Creates a channel for the selected active workspace members. The creator
+        is included automatically even when omitted from memberIds.
       operationId: createConversation
       security:
         - cookieAuth: []
@@ -5916,6 +6038,14 @@ paths:
       operationId: listConversations
       security:
         - cookieAuth: []
+      parameters:
+        - name: includeArchived
+          in: query
+          required: false
+          description: Include archived channels the caller belongs to.
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
           description: List of channels
@@ -6324,8 +6454,8 @@ paths:
       tags: [Chat]
       summary: Archive or unarchive a channel
       description: >-
-        Channels are workspace-wide, so this is a moderation action gated by
-        chat:manage, not something every member can do to a room they share.
+        This is a moderation action gated by chat:manage, not something every
+        member can do to a room they share.
         DMs cannot be archived (400 CANNOT_ARCHIVE_DM) there is no shared
         room to moderate, only two people's own conversation.
       operationId: setConversationArchived
@@ -7300,6 +7430,13 @@ paths:
           in: query
           schema:
             $ref: "#/components/schemas/DocumentType"
+        - name: lifecycle
+          in: query
+          description: Active documents are returned by default; archived documents remain recoverable.
+          schema:
+            type: string
+            enum: [active, archived, all]
+            default: active
       responses:
         "200":
           description: List of documents
@@ -7400,6 +7537,46 @@ paths:
         "200":
           description: Analytics
 
+  /startups/{startupId}/documents/{documentId}/archive:
+    post:
+      tags: [Documents]
+      summary: Archive a document while retaining its versions and history
+      operationId: archiveDocument
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Archived; idempotent when already archived
+
+  /startups/{startupId}/documents/{documentId}/restore:
+    post:
+      tags: [Documents]
+      summary: Restore an archived document to the active data room
+      operationId: restoreDocument
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Restored; idempotent when already active
+
   /startups/{startupId}/documents/{documentId}/versions/upload-sessions:
     post:
       tags: [Document Versions]
@@ -7460,6 +7637,58 @@ paths:
         "200":
           description: Confirmed
 
+  /startups/{startupId}/documents/{documentId}/versions/{versionId}/retry:
+    post:
+      tags: [Document Versions]
+      summary: Retry the failed extraction and/or rendering pipeline
+      operationId: retryDocumentVersion
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: versionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Retry queued
+        "409":
+          description: Version is not failed or the document is archived
+
+  /startups/{startupId}/documents/{documentId}/versions/{versionId}/promote:
+    post:
+      tags: [Document Versions]
+      summary: Make a fully processed historical version current
+      operationId: promoteDocumentVersion
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: versionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Version is current
+        "409":
+          description: Version is not fully processed or the document is archived
+
   /startups/{startupId}/documents/{documentId}/file-access:
     post:
       tags: [Documents]
@@ -7495,6 +7724,38 @@ paths:
       responses:
         "200":
           description: Signed access
+
+  /startups/{startupId}/documents/{documentId}/versions/{versionId}/pages/{pageNumber}/access:
+    post:
+      tags: [Document Versions]
+      summary: Get short-lived founder access to one rendered page
+      operationId: getDocumentPageAccess
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: versionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: pageNumber
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1, maximum: 500 }
+      responses:
+        "200":
+          description: Signed rendered-page access and exact document context
+        "404":
+          description: Document, version, or page not found in this startup
+        "409":
+          description: Version rendering is not ready
 
   /startups/{startupId}/reviewer-invitations:
     parameters:
@@ -7576,6 +7837,131 @@ paths:
       responses:
         "200":
           description: Analytics
+
+  /startups/{startupId}/reviewer-invitations/{invitationId}/activity:
+    get:
+      tags: [Reviewer Invitations]
+      summary: Chronological reviewer delivery, access, engagement, comment, and security activity
+      operationId: listReviewerInvitationActivity
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: invitationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+        - name: cursor
+          in: query
+          description: Opaque cursor returned by the previous page.
+          schema: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: Most recent activity, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/ReviewerActivity" }
+                  pagination:
+                    type: object
+                    required: [hasMore, nextCursor]
+                    properties:
+                      hasMore: { type: boolean }
+                      nextCursor: { type: string, nullable: true }
+
+  /startups/{startupId}/reviewer-invitations/{invitationId}/resend:
+    post:
+      tags: [Reviewer Invitations]
+      summary: Rotate the access token, revoke existing sessions, and resend the invitation
+      operationId: resendReviewerInvitation
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: invitationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Invitation rotated and queued for delivery
+
+  /startups/{startupId}/reviewer-invitations/comments:
+    get:
+      tags: [Reviewer Comments]
+      summary: List reviewer comments for the founder workspace
+      operationId: listFounderReviewerComments
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { type: string, enum: [all, unread, open, resolved], default: open }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Reviewer comments and unread/open counts
+
+  /startups/{startupId}/reviewer-invitations/comments/{commentId}/read:
+    post:
+      tags: [Reviewer Comments]
+      summary: Mark a reviewer comment as read
+      operationId: markFounderReviewerCommentRead
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: commentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Marked read }
+
+  /startups/{startupId}/reviewer-invitations/comments/{commentId}/resolve:
+    post:
+      tags: [Reviewer Comments]
+      summary: Resolve a reviewer comment
+      operationId: resolveFounderReviewerComment
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: commentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Resolved }
 
   /startups/{startupId}/audit-logs:
     get:
@@ -7714,6 +8100,22 @@ paths:
       responses:
         "200":
           description: OTP sent
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [challengeId, emailHint, expiresInSeconds]
+                    properties:
+                      challengeId:
+                        type: string
+                        format: uuid
+                        description: Bind this value to the OTP verification request.
+                      emailHint: { type: string }
+                      expiresInSeconds: { type: integer }
         "401":
           description: Password required or incorrect
           content:
@@ -7732,12 +8134,16 @@ paths:
           application/json:
             schema:
               type: object
-              required: [token, otp]
+              required: [token, challengeId, otp]
               properties:
                 token:
                   type: string
+                challengeId:
+                  type: string
+                  format: uuid
                 otp:
                   type: string
+                  pattern: '^\d{6}$'
       responses:
         "200":
           description: Verified reviewer session established
@@ -7745,7 +8151,7 @@ paths:
             Set-Cookie:
               schema:
                 type: string
-                example: reviewerSessionToken=...; HttpOnly; Path=/api/reviewer-portal
+                example: reviewerSessionToken=...; HttpOnly; Path=/api/v1/reviewer-portal
           content:
             application/json:
               schema:
@@ -7754,17 +8160,11 @@ paths:
                   data:
                     $ref: "#/components/schemas/ReviewerPortalSession"
         "400":
-          description: Code incorrect, expired, or token invalid
+          description: Code incorrect, expired, token invalid, or request validation failed
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
 
   /reviewer-portal/workspace:
     get:
@@ -7844,6 +8244,8 @@ paths:
             Version is not viewable RENDER_PENDING, RENDER_FAILED, or
             RENDER_UNSUPPORTED and other 409, NDA_REQUIRED when the
             invitation requires NDA acceptance that hasn't happened yet.
+        "429":
+          description: Secure content request budget exceeded for this reviewer session.
 
   /reviewer-portal/pages/{versionId}/{pageNumber}:
     get:
@@ -7894,6 +8296,8 @@ paths:
           description: Page token invalid or expired
         "404":
           description: Page not found or version not shared
+        "429":
+          description: Secure content request budget exceeded for this reviewer session.
         "409":
           description: NDA_REQUIRED — invitation requires NDA acceptance that hasn't happened yet.
 
@@ -7929,6 +8333,8 @@ paths:
           description: Downloads are disabled for this invitation
         "404":
           description: Version is not shared with this invitation
+        "429":
+          description: Download-attempt budget exceeded for this reviewer session.
         "409":
           description: NDA_REQUIRED — invitation requires NDA acceptance that hasn't happened yet.
 
@@ -7939,6 +8345,10 @@ paths:
       operationId: reviewerPortalListComments
       security:
         - reviewerSessionAuth: []
+      parameters:
+        - name: documentId
+          in: query
+          schema: { type: string, format: uuid }
       responses:
         "200":
           description: Comments
@@ -7951,6 +8361,8 @@ paths:
       responses:
         "201":
           description: Created
+        "429":
+          description: Comment-submission budget exceeded for this reviewer session.
 
   /reviewer-portal/events:
     post:

@@ -14,6 +14,8 @@ export function ReviewerAccess() {
   const [step, setStep] = useState<"request" | "password" | "verify">("request");
   const [password, setPassword] = useState("");
   const [emailHint, setEmailHint] = useState("");
+  const [challengeId, setChallengeId] = useState("");
+  const [codeExpiresInSeconds, setCodeExpiresInSeconds] = useState(0);
   const [otp, setOtp] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -22,6 +24,8 @@ export function ReviewerAccess() {
     try {
       const result = await requestReviewerAccess(token, withPassword);
       setEmailHint(result.emailHint);
+      setChallengeId(result.challengeId);
+      setCodeExpiresInSeconds(result.expiresInSeconds);
       setStep("verify");
       toast.success("Verification code sent");
     } catch (error) {
@@ -41,7 +45,7 @@ export function ReviewerAccess() {
   const verify = async () => {
     setBusy(true);
     try {
-      await verifyReviewerAccess(token, otp.trim());
+      await verifyReviewerAccess(token, challengeId, otp.trim());
       navigate("/review/workspace", { replace: true });
     } catch (error) {
       toast.error(apiErrorMessage(error, "Invalid verification code"));
@@ -76,7 +80,13 @@ export function ReviewerAccess() {
             </Button>
           </div>
         ) : step === "password" ? (
-          <div className="space-y-4">
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void requestCode(password);
+            }}
+          >
             <p className="text-sm text-muted-foreground">
               This document requires a password to continue.
             </p>
@@ -85,6 +95,8 @@ export function ReviewerAccess() {
               <Input
                 id="access-password"
                 type="password"
+                autoComplete="current-password"
+                autoFocus
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="mt-1.5"
@@ -92,40 +104,51 @@ export function ReviewerAccess() {
             </div>
             <Button
               className="w-full"
+              type="submit"
               disabled={busy || !password}
-              onClick={() => void requestCode(password)}
             >
               {busy ? "Verifying…" : "Continue"}
             </Button>
-          </div>
+          </form>
         ) : (
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void verify();
+            }}
+          >
+            <p id="otp-help" className="text-sm text-muted-foreground">
               Enter the 6-digit code sent to <span className="font-medium text-foreground">{emailHint}</span>.
+              {codeExpiresInSeconds > 0 && ` The code expires in ${Math.ceil(codeExpiresInSeconds / 60)} minutes.`}
             </p>
             <div>
               <Label htmlFor="otp">Verification code</Label>
               <Input
                 id="otp"
                 inputMode="numeric"
+                autoComplete="one-time-code"
+                autoFocus
+                aria-describedby="otp-help"
                 maxLength={6}
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
                 className="mt-1.5 tracking-[0.3em]"
               />
             </div>
-            <Button className="w-full" disabled={busy || otp.length !== 6} onClick={() => void verify()}>
+            <Button type="submit" className="w-full" disabled={busy || !challengeId || otp.length !== 6}>
               {busy ? "Verifying…" : "Continue"}
             </Button>
             <Button
               variant="ghost"
+              type="button"
               className="w-full"
               disabled={busy}
               onClick={() => void requestCode(password || undefined)}
             >
               Resend code
             </Button>
-          </div>
+          </form>
         )}
       </div>
     </div>

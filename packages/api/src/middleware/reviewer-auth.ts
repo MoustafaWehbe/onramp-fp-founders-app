@@ -77,10 +77,16 @@ export async function requireReviewerSession(req: Request, _res: Response, next:
       reviewerName: invitation.reviewerName,
     };
 
-    await prisma.reviewerSession.update({
-      where: { id: session.id },
-      data: { accessedAt: new Date() },
-    });
+    // Page navigation can call this middleware many times in a minute. Keep
+    // accessedAt useful as a heartbeat without turning every rendered page
+    // read into a PostgreSQL write.
+    const accessWriteIntervalMs = 60_000;
+    if (!session.accessedAt || session.accessedAt.getTime() < Date.now() - accessWriteIntervalMs) {
+      await prisma.reviewerSession.update({
+        where: { id: session.id },
+        data: { accessedAt: new Date() },
+      });
+    }
 
     next();
   } catch (error) {

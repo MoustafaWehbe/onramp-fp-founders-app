@@ -7,20 +7,24 @@ import {
   Ban,
   BarChart3,
   Clock,
-  Copy,
   Download,
   Droplets,
   FileText,
   KeyRound,
+  MailCheck,
+  MailWarning,
+  MessageSquare,
   Plus,
   Printer,
   ScanEye,
   ScrollText,
   Shield,
+  RotateCw,
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "../../components/shared/EmptyState";
+import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
 import { StatTile } from "../../components/shared/StatTile";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { Badge } from "../../components/ui/badge";
@@ -28,9 +32,9 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { MultiSelect } from "../../components/ui/multi-select";
+import { Select } from "../../components/ui/select";
 import { Skeleton } from "../../components/ui/skeleton";
 import { SwitchIndicator } from "../../components/ui/switch";
-import { Textarea } from "../../components/ui/textarea";
 import { cn } from "../../lib/utils";
 import {
   Dialog,
@@ -44,13 +48,17 @@ import { usePermissions } from "../../hooks/usePermissions";
 import { useActiveStartupId } from "../../hooks/useWorkspace";
 import { apiErrorMessage } from "../../lib/api-error";
 import { listDocuments } from "../../lib/document-api";
+import { REVIEWER_EXPIRY_OPTIONS } from "../../lib/form-options";
 import {
   createReviewerInvitation,
+  listFounderReviewerComments,
   listReviewerInvitations,
+  resendReviewerInvitation,
   reviewerStatusClass,
   revokeReviewerInvitation,
 } from "../../lib/reviewer-api";
 import { ReviewerAnalyticsSheet } from "./ReviewerAnalyticsSheet";
+import { ReviewerCommentsSheet } from "./ReviewerCommentsSheet";
 
 function expiresLabel(iso: string, status: string) {
   if (status === "revoked") return "Revoked";
@@ -67,6 +75,7 @@ export function Reviewers() {
   const { can } = usePermissions();
   const queryClient = useQueryClient();
   const canShare = can("documents", "share");
+  const canResolveComments = can("documents", "update");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -76,10 +85,15 @@ export function Reviewers() {
   const [allowPrint, setAllowPrint] = useState(false);
   const [screenshotGuard, setScreenshotGuard] = useState(true);
   const [requireNda, setRequireNda] = useState(false);
-  const [ndaText, setNdaText] = useState("");
+  const [expiresInDays, setExpiresInDays] = useState("14");
   const [password, setPassword] = useState("");
   const [allowedDomains, setAllowedDomains] = useState("");
   const [analyticsInvitationId, setAnalyticsInvitationId] = useState<string | null>(null);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [resendTarget, setResendTarget] = useState<{
+    id: string;
+    label: string;
+  } | null>(null);
 
   const resetInviteForm = () => {
     setEmail("");
@@ -90,7 +104,7 @@ export function Reviewers() {
     setAllowPrint(false);
     setScreenshotGuard(true);
     setRequireNda(false);
-    setNdaText("");
+    setExpiresInDays("14");
     setPassword("");
     setAllowedDomains("");
   };
@@ -98,6 +112,10 @@ export function Reviewers() {
   const invitesQuery = useQuery({
     queryKey: ["reviewer-invitations", startupId],
     queryFn: () => listReviewerInvitations(startupId, { page: 1, limit: 100 }),
+    refetchInterval: (query) =>
+      query.state.data?.data.some((invitation) => invitation.deliveryStatus === "queued")
+        ? 3000
+        : false,
   });
 
   const docsQuery = useQuery({
@@ -106,10 +124,15 @@ export function Reviewers() {
     enabled: inviteOpen,
   });
 
+  const commentSummaryQuery = useQuery({
+    queryKey: ["reviewer-comments-founder", startupId, "unread-summary"],
+    queryFn: () => listFounderReviewerComments(startupId, { page: 1, limit: 1, status: "unread" }),
+  });
+
   const readyVersions = useMemo(
     () =>
       (docsQuery.data?.data ?? [])
-        .filter((doc) => doc.currentVersion?.processingStatus === "ready")
+        .filter((doc) => doc.currentVersion?.reviewerShareStatus === "ready")
         .map((doc) => ({
           documentId: doc.id,
           title: doc.title,
@@ -135,13 +158,12 @@ export function Reviewers() {
         email,
         reviewerName: name || undefined,
         documentVersionIds: selectedVersionIds,
-        expiresInDays: 14,
+        expiresInDays: Number(expiresInDays),
         allowDownload,
         watermarkEnabled,
         allowPrint,
         screenshotGuard,
         requireNda,
-        ndaText: requireNda ? ndaText.trim() : undefined,
         password: password.trim() || undefined,
         allowedEmailDomains: allowedDomains
           .split(",")
@@ -155,7 +177,13 @@ export function Reviewers() {
       void queryClient.invalidateQueries({ queryKey: ["reviewer-invitations", startupId] });
       try {
         await navigator.clipboard.writeText(result.accessUrl);
-        toast.success("Invitation created — access link copied");
+        if (result.invitation.deliveryStatus === "failed") {
+          toast.warning("Invitation created, but email delivery could not be queued", {
+            description: "The new access link was copied so you can share it manually.",
+          });
+        } else {
+          toast.success("Invitation created — access link copied");
+        }
       } catch {
         toast.success("Invitation created", { description: result.accessUrl });
       }
@@ -177,15 +205,46 @@ export function Reviewers() {
     onError: (error) => toast.error(apiErrorMessage(error, "Could not revoke invitation")),
   });
 
+  const resendMutation = useMutation({
+    mutationFn: (invitationId: string) => resendReviewerInvitation(startupId, invitationId),
+    onSuccess: async (result) => {
+      setResendTarget(null);
+      void queryClient.invalidateQueries({ queryKey: ["reviewer-invitations", startupId] });
+      try {
+        await navigator.clipboard.writeText(result.accessUrl);
+        if (result.deliveryStatus === "failed") {
+          toast.warning("Link rotated, but email delivery could not be queued", {
+            description: "The new access link was copied so you can share it manually.",
+          });
+        } else {
+          toast.success("Invitation resent — new access link copied");
+        }
+      } catch {
+        toast.success("Invitation resent", { description: result.accessUrl });
+      }
+    },
+    onError: (error) => toast.error(apiErrorMessage(error, "Could not resend invitation")),
+  });
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Reviewers"
         description="Time-limited, verified access for investors and advisors to review your data room."
         actions={
-          <Button size="sm" disabled={!canShare} onClick={() => setInviteOpen(true)}>
-            <Plus className="mr-1.5 h-4 w-4" /> Invite reviewer
-          </Button>
+          <>
+            <Button size="sm" variant="outline" onClick={() => setCommentsOpen(true)}>
+              <MessageSquare className="h-4 w-4" /> Comments
+              {(commentSummaryQuery.data?.meta.unreadCount ?? 0) > 0 && (
+                <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">
+                  {commentSummaryQuery.data!.meta.unreadCount}
+                </span>
+              )}
+            </Button>
+            <Button size="sm" disabled={!canShare} onClick={() => setInviteOpen(true)}>
+              <Plus className="mr-1.5 h-4 w-4" /> Invite reviewer
+            </Button>
+          </>
         }
       />
 
@@ -229,6 +288,7 @@ export function Reviewers() {
                 <tr>
                   <th className="px-4 py-3 font-medium">Reviewer</th>
                   <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Delivery</th>
                   <th className="px-4 py-3 font-medium">Documents</th>
                   <th className="px-4 py-3 font-medium">Expires</th>
                   <th className="px-4 py-3 font-medium">Actions</th>
@@ -240,6 +300,26 @@ export function Reviewers() {
                     <td className="px-4 py-3">
                       <div className="font-medium">{row.reviewerName || row.email}</div>
                       <div className="text-xs text-muted-foreground">{row.email}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge
+                        variant="outline"
+                        title={row.deliveryError || undefined}
+                        className={cn(
+                          "gap-1 border-0 capitalize",
+                          row.deliveryStatus === "sent" && "bg-success/15 text-success",
+                          row.deliveryStatus === "queued" && "bg-warning/15 text-warning",
+                          row.deliveryStatus === "failed" && "bg-destructive/15 text-destructive",
+                          row.deliveryStatus === "unknown" && "bg-muted text-muted-foreground",
+                        )}
+                      >
+                        {row.deliveryStatus === "failed" ? (
+                          <MailWarning className="h-3 w-3" />
+                        ) : (
+                          <MailCheck className="h-3 w-3" />
+                        )}
+                        {row.deliveryStatus}
+                      </Badge>
                     </td>
                     <td className="px-4 py-3">
                       <Badge className={`${reviewerStatusClass(row.status)} border-0 capitalize`}>
@@ -264,13 +344,12 @@ export function Reviewers() {
                           size="sm"
                           variant="ghost"
                           className="h-7 text-xs"
+                          disabled={!canShare || row.status === "revoked" || resendMutation.isPending}
                           onClick={() =>
-                            toast.message("Access link was shown only at invite time", {
-                              description: "Create a new invitation or use resend once portal emailing is fully wired.",
-                            })
+                            setResendTarget({ id: row.id, label: row.reviewerName || row.email })
                           }
                         >
-                          <Copy className="mr-1 h-3 w-3" /> Link
+                          <RotateCw className="mr-1 h-3 w-3" /> Resend
                         </Button>
                         <Button
                           size="sm"
@@ -393,15 +472,15 @@ export function Reviewers() {
                     onCheckedChange={setRequireNda}
                   />
                   {requireNda && (
-                    <div className="border-t border-border/60 bg-background/40 p-3">
-                      <Textarea
-                        autoFocus
-                        placeholder="Paste the NDA text reviewers must accept…"
-                        value={ndaText}
-                        onChange={(e) => setNdaText(e.target.value)}
-                        rows={4}
-                        className="resize-none"
-                      />
+                    <div className="border-t border-border/60 bg-background/40 px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium">Raise standard confidentiality agreement</p>
+                        <Badge variant="outline" className="text-[10px]">Predefined · v1</Badge>
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        Every reviewer receives the same terms, personalized with your workspace name and saved with the invitation.
+                        Have counsel review the template for your jurisdiction before using it.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -410,7 +489,19 @@ export function Reviewers() {
 
             <section className="space-y-3">
               <SectionLabel icon={KeyRound}>Access gate</SectionLabel>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="reviewer-expiry">Access duration</Label>
+                  <Select
+                    id="reviewer-expiry"
+                    value={expiresInDays}
+                    onValueChange={setExpiresInDays}
+                    options={[...REVIEWER_EXPIRY_OPTIONS]}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Access expires automatically after this period.
+                  </p>
+                </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="reviewer-password">
                     Password <span className="font-normal text-muted-foreground">optional</span>
@@ -459,12 +550,11 @@ export function Reviewers() {
               disabled={
                 !email.trim() ||
                 selectedVersionIds.length === 0 ||
-                (requireNda && !ndaText.trim()) ||
                 inviteMutation.isPending
               }
               onClick={() => inviteMutation.mutate()}
             >
-              {inviteMutation.isPending ? "Sending…" : "Create invitation"}
+              {inviteMutation.isPending ? "Creating…" : "Create invitation"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -474,6 +564,28 @@ export function Reviewers() {
         startupId={startupId}
         invitationId={analyticsInvitationId}
         onOpenChange={(next) => !next && setAnalyticsInvitationId(null)}
+      />
+      <ReviewerCommentsSheet
+        startupId={startupId}
+        open={commentsOpen}
+        canResolve={canResolveComments}
+        onOpenChange={setCommentsOpen}
+      />
+      <ConfirmDialog
+        open={resendTarget !== null}
+        onOpenChange={(next) => !next && setResendTarget(null)}
+        title="Resend and rotate access link?"
+        description={
+          <>
+            This creates a new link for {resendTarget?.label}, invalidates the previous link, and
+            signs out any existing reviewer sessions.
+          </>
+        }
+        confirmLabel="Resend invitation"
+        pendingLabel="Resending…"
+        variant="default"
+        isPending={resendMutation.isPending}
+        onConfirm={() => resendTarget && resendMutation.mutate(resendTarget.id)}
       />
     </div>
   );

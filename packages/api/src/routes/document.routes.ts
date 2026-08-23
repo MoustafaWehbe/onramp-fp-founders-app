@@ -7,6 +7,7 @@ import {
   createUploadSessionSchema,
   createVersionUploadSchema,
   documentIdParamSchema,
+  documentPageParamSchema,
   fileAccessQuerySchema,
   listDocumentsQuerySchema,
   updateDocumentSchema,
@@ -64,6 +65,24 @@ router.patch(
   documentController.updateDocument,
 );
 
+router.post(
+  "/:documentId/archive",
+  authenticate,
+  validate(documentIdParamSchema, "params"),
+  requireMember,
+  requirePermission("documents", "delete"),
+  documentController.archiveDocument,
+);
+
+router.post(
+  "/:documentId/restore",
+  authenticate,
+  validate(documentIdParamSchema, "params"),
+  requireMember,
+  requirePermission("documents", "delete"),
+  documentController.restoreDocument,
+);
+
 router.delete(
   "/:documentId",
   authenticate,
@@ -91,6 +110,33 @@ router.post(
   // Same permission as creating a version upload session — confirming is part of update.
   requirePermission("documents", "update"),
   documentController.confirmVersion,
+);
+
+router.post(
+  "/:documentId/versions/:versionId/retry",
+  authenticate,
+  validate(versionParamSchema, "params"),
+  requireMember,
+  requirePermission("documents", "update"),
+  documentController.retryVersion,
+);
+
+router.post(
+  "/:documentId/versions/:versionId/promote",
+  authenticate,
+  validate(versionParamSchema, "params"),
+  requireMember,
+  requirePermission("documents", "update"),
+  documentController.promoteVersion,
+);
+
+router.post(
+  "/:documentId/versions/:versionId/pages/:pageNumber/access",
+  authenticate,
+  validate(documentPageParamSchema, "params"),
+  requireMember,
+  requirePermission("documents", "read"),
+  documentController.getPageAccess,
 );
 
 router.post(

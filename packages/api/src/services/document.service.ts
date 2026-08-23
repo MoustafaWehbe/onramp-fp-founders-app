@@ -5,6 +5,7 @@ import { createError } from "../utils/errors";
 import { documentProcessingQueue, documentRasterizeQueue } from "../jobs/queue";
 import { storageService } from "./storage.service";
 import { recordAuditEvent } from "./audit-writer";
+import { isOfficeConvertible } from "./office-convert.service";
 import type {
   CreateUploadSessionInput,
   CreateVersionUploadInput,
@@ -47,6 +48,9 @@ function serializeVersion(version: {
   originalFilename: string;
   processingStatus: string;
   processingError: string | null;
+  renderStatus: string;
+  renderError: string | null;
+  pageCount: number | null;
   summary: string | null;
   uploadedBy: string;
   createdAt: Date;
@@ -57,6 +61,18 @@ function serializeVersion(version: {
   // trivially the caller, so nothing bothers to join it there.
   uploader?: { firstName: string; lastName: string } | null;
 }) {
+  const reviewerShareStatus = (() => {
+    if (version.processingStatus === "failed" || version.renderStatus === "failed") return "failed";
+    if (
+      version.mimeType !== "application/pdf" &&
+      !isOfficeConvertible(version.mimeType)
+    ) {
+      return "unsupported";
+    }
+    if (version.processingStatus === "ready" && version.renderStatus === "ready") return "ready";
+    return "processing";
+  })();
+
   return {
     id: version.id,
     documentId: version.documentId,
@@ -67,6 +83,10 @@ function serializeVersion(version: {
     originalFilename: version.originalFilename,
     processingStatus: version.processingStatus,
     processingError: version.processingError,
+    renderStatus: version.renderStatus,
+    renderError: version.renderError,
+    pageCount: version.pageCount,
+    reviewerShareStatus,
     summary: version.summary,
     uploadedBy: version.uploadedBy,
     uploaderName: version.uploader ? `${version.uploader.firstName} ${version.uploader.lastName}` : null,
@@ -84,6 +104,7 @@ function serializeDocument(
     title: string;
     documentType: string;
     createdBy: string;
+    archivedAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
   },
@@ -99,12 +120,17 @@ function serializeDocument(
 
 export class DocumentService {
   async listDocuments(startupId: string, query: ListDocumentsQuery) {
-    const { page, limit, search, documentType } = query;
+    const { page, limit, search, documentType, lifecycle } = query;
     const needle = search?.trim();
     const matchingTypes = needle ? documentTypesMatchingSearch(needle) : [];
 
     const where: Prisma.DocumentWhereInput = {
       startupId,
+      ...(lifecycle === "active"
+        ? { archivedAt: null }
+        : lifecycle === "archived"
+          ? { archivedAt: { not: null } }
+          : {}),
       ...(documentType ? { documentType } : {}),
       ...(needle
         ? {
@@ -417,6 +443,13 @@ export class DocumentService {
       include: { versions: { orderBy: { versionNumber: "desc" }, take: 1 } },
     });
     if (!doc) throw createError("Document not found", 404, "DOCUMENT_NOT_FOUND");
+    if (doc.archivedAt) {
+      throw createError(
+        "Restore this document before uploading a new version",
+        409,
+        "DOCUMENT_ARCHIVED",
+      );
+    }
 
     const versionId = randomUUID();
     const nextNumber = (doc.versions[0]?.versionNumber ?? 0) + 1;
@@ -490,20 +523,16 @@ export class DocumentService {
       throw createError("Uploaded object is empty or missing", 400, "OBJECT_NOT_FOUND");
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
-      await tx.documentVersion.updateMany({
-        where: { documentId, isCurrent: true },
-        data: { isCurrent: false },
-      });
-      return tx.documentVersion.update({
-        where: { id: versionId },
-        data: {
-          isCurrent: true,
-          fileSize: meta.size,
-          processingStatus: "processing",
-          processingError: null,
-        },
-      });
+    // Do not displace the last healthy current version yet. The processing and
+    // rasterization workers independently promote the newest usable version
+    // once both pipelines have reached a successful terminal state.
+    const updated = await prisma.documentVersion.update({
+      where: { id: versionId },
+      data: {
+        fileSize: meta.size,
+        processingStatus: "processing",
+        processingError: null,
+      },
     });
 
     await documentProcessingQueue.add("process-version", {
@@ -536,6 +565,167 @@ export class DocumentService {
       include: { versions: { where: { isCurrent: true }, take: 1 } },
     });
     return serializeDocument(doc, doc.versions[0] ? serializeVersion(doc.versions[0]) : null);
+  }
+
+  async archiveDocument(startupId: string, documentId: string, userId: string) {
+    const existing = await prisma.document.findUnique({
+      where: { startupId_id: { startupId, id: documentId } },
+      select: { id: true, title: true, archivedAt: true },
+    });
+    if (!existing) throw createError("Document not found", 404, "DOCUMENT_NOT_FOUND");
+    if (existing.archivedAt) return { id: existing.id, archivedAt: existing.archivedAt };
+
+    const archivedAt = new Date();
+    await prisma.document.update({ where: { id: documentId }, data: { archivedAt } });
+    await recordAuditEvent({
+      startupId,
+      userId,
+      action: "archive",
+      entityType: "document",
+      entityId: documentId,
+      changes: { title: existing.title, archivedAt },
+    });
+    return { id: documentId, archivedAt };
+  }
+
+  async restoreDocument(startupId: string, documentId: string, userId: string) {
+    const existing = await prisma.document.findUnique({
+      where: { startupId_id: { startupId, id: documentId } },
+      select: { id: true, title: true, archivedAt: true },
+    });
+    if (!existing) throw createError("Document not found", 404, "DOCUMENT_NOT_FOUND");
+    if (!existing.archivedAt) return { id: existing.id, archivedAt: null };
+
+    await prisma.document.update({ where: { id: documentId }, data: { archivedAt: null } });
+    await recordAuditEvent({
+      startupId,
+      userId,
+      action: "restore",
+      entityType: "document",
+      entityId: documentId,
+      changes: { title: existing.title },
+    });
+    return { id: documentId, archivedAt: null };
+  }
+
+  async retryVersion(
+    startupId: string,
+    documentId: string,
+    versionId: string,
+    userId: string,
+  ) {
+    const doc = await prisma.document.findUnique({
+      where: { startupId_id: { startupId, id: documentId } },
+      select: { id: true, archivedAt: true },
+    });
+    if (!doc) throw createError("Document not found", 404, "DOCUMENT_NOT_FOUND");
+    if (doc.archivedAt) {
+      throw createError("Restore this document before retrying", 409, "DOCUMENT_ARCHIVED");
+    }
+
+    const version = await prisma.documentVersion.findFirst({ where: { id: versionId, documentId } });
+    if (!version) throw createError("Document version not found", 404, "VERSION_NOT_FOUND");
+    const retryProcessing = version.processingStatus === "failed";
+    const retryRender = version.renderStatus === "failed";
+    if (!retryProcessing && !retryRender) {
+      throw createError(
+        "Only failed document processing can be retried",
+        409,
+        "VERSION_NOT_FAILED",
+      );
+    }
+
+    const updated = await prisma.documentVersion.update({
+      where: { id: versionId },
+      data: {
+        ...(retryProcessing ? { processingStatus: "processing", processingError: null } : {}),
+        ...(retryRender ? { renderStatus: "rendering", renderError: null } : {}),
+      },
+    });
+
+    try {
+      if (retryProcessing) {
+        await documentProcessingQueue.add("process-version", { startupId, documentId, versionId });
+      }
+      if (retryRender) {
+        await documentRasterizeQueue.add("rasterize-version", { startupId, documentId, versionId });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not enqueue retry";
+      await prisma.documentVersion.update({
+        where: { id: versionId },
+        data: {
+          ...(retryProcessing
+            ? { processingStatus: "failed", processingError: message.slice(0, 1000) }
+            : {}),
+          ...(retryRender
+            ? { renderStatus: "failed", renderError: message.slice(0, 1000) }
+            : {}),
+        },
+      });
+      throw error;
+    }
+
+    await recordAuditEvent({
+      startupId,
+      userId,
+      action: "retry_processing",
+      entityType: "document_version",
+      entityId: versionId,
+      changes: { documentId, retryProcessing, retryRender },
+    });
+    return serializeVersion(updated);
+  }
+
+  async promoteVersion(
+    startupId: string,
+    documentId: string,
+    versionId: string,
+    userId: string,
+  ) {
+    const doc = await prisma.document.findUnique({
+      where: { startupId_id: { startupId, id: documentId } },
+      select: { id: true, archivedAt: true },
+    });
+    if (!doc) throw createError("Document not found", 404, "DOCUMENT_NOT_FOUND");
+    if (doc.archivedAt) {
+      throw createError(
+        "Restore this document before changing its current version",
+        409,
+        "DOCUMENT_ARCHIVED",
+      );
+    }
+
+    const version = await prisma.documentVersion.findFirst({ where: { id: versionId, documentId } });
+    if (!version) throw createError("Document version not found", 404, "VERSION_NOT_FOUND");
+    if (
+      version.processingStatus !== "ready" ||
+      !["ready", "unsupported"].includes(version.renderStatus)
+    ) {
+      throw createError(
+        "Only a fully processed version can be made current",
+        409,
+        "VERSION_NOT_READY",
+      );
+    }
+    if (!version.isCurrent) {
+      await prisma.$transaction(async (tx) => {
+        await tx.documentVersion.updateMany({
+          where: { documentId, isCurrent: true, id: { not: versionId } },
+          data: { isCurrent: false },
+        });
+        await tx.documentVersion.update({ where: { id: versionId }, data: { isCurrent: true } });
+      });
+      await recordAuditEvent({
+        startupId,
+        userId,
+        action: "promote",
+        entityType: "document_version",
+        entityId: versionId,
+        changes: { documentId, versionNumber: version.versionNumber },
+      });
+    }
+    return serializeVersion({ ...version, isCurrent: true });
   }
 
   async deleteDocument(startupId: string, documentId: string, userId?: string) {
@@ -622,6 +812,57 @@ export class DocumentService {
       mimeType: version.mimeType,
       originalFilename: version.originalFilename,
       versionId: version.id,
+    };
+  }
+
+  async getPageAccess(
+    startupId: string,
+    documentId: string,
+    versionId: string,
+    pageNumber: number,
+    userId: string,
+  ) {
+    const doc = await prisma.document.findUnique({
+      where: { startupId_id: { startupId, id: documentId } },
+      select: { id: true, title: true },
+    });
+    if (!doc) throw createError("Document not found", 404, "DOCUMENT_NOT_FOUND");
+    const version = await prisma.documentVersion.findFirst({
+      where: { id: versionId, documentId },
+      select: { id: true, versionNumber: true, renderStatus: true },
+    });
+    if (!version) throw createError("Document version not found", 404, "VERSION_NOT_FOUND");
+    if (version.renderStatus !== "ready") {
+      throw createError("Document pages are not ready", 409, "RENDER_NOT_READY");
+    }
+    const page = await prisma.documentPage.findUnique({
+      where: { documentVersionId_pageNumber: { documentVersionId: versionId, pageNumber } },
+    });
+    if (!page) throw createError("Document page not found", 404, "PAGE_NOT_FOUND");
+
+    const url = await storageService.createSignedReadUrl(
+      page.storageKey,
+      page.storageProvider,
+      300,
+      { mimeType: "image/webp", originalFilename: `${doc.title}-page-${pageNumber}.webp` },
+    );
+    await recordAuditEvent({
+      startupId,
+      userId,
+      action: "view",
+      entityType: "document_page",
+      entityId: page.id,
+      changes: { documentId, versionId, versionNumber: version.versionNumber, pageNumber },
+    });
+    return {
+      url,
+      expiresInSeconds: 300,
+      document: { id: doc.id, title: doc.title },
+      versionId,
+      versionNumber: version.versionNumber,
+      pageNumber,
+      width: page.width,
+      height: page.height,
     };
   }
 }

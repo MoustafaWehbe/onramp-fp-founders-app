@@ -4,6 +4,7 @@ import { notificationService } from "../services/notification.service";
 import { notificationBus } from "../events/notification-bus";
 import type { RealtimeEvent } from "../events/realtime-bus";
 import type { ListNotificationsQuery, MarkAllReadInput } from "../validators/notification.schemas";
+import { SseWriter } from "../utils/sse-writer";
 
 /** Browsers reconnect an EventSource on their own; this paces the retries. */
 const RETRY_MS = 5_000;
@@ -32,6 +33,28 @@ export const notificationController = {
    */
   stream: (req: Request, res: Response): void => {
     const userId = req.user!.userId;
+    let closed = false;
+    let unsubscribe = () => {};
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+    let writer: SseWriter;
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      if (heartbeat) clearInterval(heartbeat);
+      unsubscribe();
+      writer.close();
+    };
+    writer = new SseWriter(res, { onOverflow: () => { close(); res.end(); } });
+    const send = (event: RealtimeEvent) => {
+      writer.send(
+        `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
+        event.type === "notifications.changed" ? "notifications.changed" : undefined,
+      );
+    };
+    // Register before announcing readiness so locally-published events cannot
+    // fall into a connect-time gap. Redis subscription is asynchronous, so the
+    // client's ready-triggered refetch below remains the durable reconciliation.
+    unsubscribe = notificationBus.subscribe(userId, send);
 
     res.status(200).set({
       "Content-Type": "text/event-stream; charset=utf-8",
@@ -43,21 +66,11 @@ export const notificationController = {
     });
     res.flushHeaders();
 
-    res.write(`retry: ${RETRY_MS}\n\n`);
+    writer.send(`retry: ${RETRY_MS}\n\n`);
     // An immediate frame proves the pipe is open before anything happens.
-    res.write(`event: ready\ndata: {}\n\n`);
+    writer.send(`event: ready\ndata: {}\n\n`);
 
-    const send = (event: RealtimeEvent) => {
-      res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
-    };
-
-    const unsubscribe = notificationBus.subscribe(userId, send);
-    const heartbeat = setInterval(() => res.write(": ping\n\n"), HEARTBEAT_MS);
-
-    const close = () => {
-      clearInterval(heartbeat);
-      unsubscribe();
-    };
+    heartbeat = setInterval(() => writer.send(": ping\n\n", "heartbeat"), HEARTBEAT_MS);
 
     req.on("close", close);
     res.on("error", close);

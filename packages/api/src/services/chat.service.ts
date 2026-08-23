@@ -14,6 +14,7 @@ import {
 } from "../utils/mentions";
 import type {
   CreateConversationInput,
+  ListConversationsQuery,
   SendMessageInput,
   ListMessagesQuery,
   MentionableQuery,
@@ -225,22 +226,25 @@ export type MentionableItem = {
 };
 
 export class ChatService {
-  /**
-   * Phase 1 channels are workspace-wide: every active member is added at
-   * creation time, since there is no invite-to-channel UI yet. Selective
-   * membership (private channels, DMs) is additive later see the schema
-   * comment above the Conversation model.
-   */
+  /** The creator chooses the initial channel membership and is always included. */
   async createConversation(
     startupId: string,
     input: CreateConversationInput,
     actorUserId: string,
     actorMemberId: string,
   ) {
+    const requestedMemberIds = [...new Set([actorMemberId, ...(input.memberIds ?? [])])];
     const activeMembers = await prisma.startupMember.findMany({
-      where: { startupId, status: "active" },
+      where: { startupId, status: "active", id: { in: requestedMemberIds } },
       select: { id: true },
     });
+    if (activeMembers.length !== requestedMemberIds.length) {
+      throw createError(
+        "One or more selected teammates are not active members of this workspace",
+        400,
+        "INVALID_CHANNEL_MEMBERS",
+      );
+    }
 
     try {
       const conversation = await prisma.conversation.create({
@@ -320,9 +324,17 @@ export class ChatService {
   }
 
   /** Channels and DMs the caller belongs to, most recently active first. */
-  async listConversations(startupId: string, memberId: string) {
+  async listConversations(
+    startupId: string,
+    memberId: string,
+    query: ListConversationsQuery = { includeArchived: false },
+  ) {
     const rows = await prisma.conversation.findMany({
-      where: { startupId, archivedAt: null, members: { some: { memberId } } },
+      where: {
+        startupId,
+        ...(!query.includeArchived && { archivedAt: null }),
+        members: { some: { memberId } },
+      },
       select: CONVERSATION_SELECT,
       orderBy: [{ lastMessageAt: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }],
     });
@@ -349,10 +361,10 @@ export class ChatService {
     startupId: string,
     conversationId: string,
     memberId: string,
-  ): Promise<{ conversationName: string; conversationType: string }> {
+  ): Promise<{ conversationName: string; conversationType: string; archivedAt: Date | null }> {
     const membership = await prisma.conversationMember.findUnique({
       where: { conversationId_memberId: { conversationId, memberId } },
-      select: { id: true, conversation: { select: { startupId: true, name: true, type: true } } },
+      select: { id: true, conversation: { select: { startupId: true, name: true, type: true, archivedAt: true } } },
     });
     if (!membership || membership.conversation.startupId !== startupId) {
       throw createError("Conversation not found", 404, "CONVERSATION_NOT_FOUND");
@@ -362,6 +374,7 @@ export class ChatService {
     return {
       conversationName: membership.conversation.name ?? "",
       conversationType: membership.conversation.type,
+      archivedAt: membership.conversation.archivedAt,
     };
   }
 
@@ -566,7 +579,7 @@ export class ChatService {
     roleId: string,
     input: SendMessageInput,
   ) {
-    const { conversationName, conversationType } = await this.verifyMembership(startupId, conversationId, memberId);
+    const { conversationName, conversationType, archivedAt } = await this.verifyMembership(startupId, conversationId, memberId);
 
     // Retried POST with the same nonce resolves to the original row instead
     // of creating a duplicate the unique constraint is the source of truth,
@@ -576,6 +589,9 @@ export class ChatService {
       select: MESSAGE_SELECT,
     });
     if (existing) return { data: serializeMessage(existing, memberId) };
+    if (archivedAt) {
+      throw createError("Archived channels are read only", 409, "CONVERSATION_ARCHIVED");
+    }
 
     // Threads are flat: replying to a reply re-parents onto the same
     // top-level message rather than nesting, matching Slack's model and
@@ -1093,9 +1109,8 @@ export class ChatService {
         startupId,
         targetType,
         ...mentionTargetWhere(targetType, targetId),
-        // Scoped to conversations the caller actually belongs to a no-op
-        // today since Phase 1 channels are workspace-wide, but load-bearing
-        // once private channels exist.
+        // Selected channel membership is the visibility boundary: backlinks
+        // must never reveal a message from a channel the caller did not join.
         conversation: { members: { some: { memberId } } },
       },
       select: {
@@ -1125,7 +1140,10 @@ export class ChatService {
       select: { id: true, conversationId: true },
     });
     if (!message) throw createError("Message not found", 404, "MESSAGE_NOT_FOUND");
-    await this.verifyMembership(startupId, message.conversationId, memberId);
+    const conversation = await this.verifyMembership(startupId, message.conversationId, memberId);
+    if (conversation.archivedAt) {
+      throw createError("Archived channels are read only", 409, "CONVERSATION_ARCHIVED");
+    }
 
     const existing = await prisma.messageReaction.findUnique({
       where: { messageId_memberId_emoji: { messageId, memberId, emoji } },
@@ -1251,13 +1269,7 @@ export class ChatService {
     return { data: { notifyLevel: level } };
   }
 
-  /**
-   * Channels are workspace-wide (every active member is added at creation —
-   * see createConversation), so archiving one is a moderation call on a
-   * shared room, not something every member can do to it hence gated by
-   * chat:manage at the route rather than mere membership. DMs can't be
-   * archived: there is no shared room to moderate, only two people's own.
-   */
+  /** Archiving a shared channel is a chat:manage moderation action. DMs cannot be archived. */
   async setConversationArchived(
     startupId: string,
     conversationId: string,

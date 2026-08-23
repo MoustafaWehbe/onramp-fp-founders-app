@@ -4,12 +4,13 @@ import { UAParser } from "ua-parser-js";
 import { prisma } from "../db/prisma";
 import { createError } from "../utils/errors";
 import { logger } from "../utils/logger";
-import { generateOTP, hashOTP, hashToken, hashForwardSignal, verifyPassword } from "../utils/auth";
+import { generateOTP, hashToken, hashForwardSignal, verifyOTP, verifyPassword } from "../utils/auth";
 import { createPageToken, verifyPageToken, PAGE_TOKEN_TTL_SECONDS } from "../utils/page-token";
 import { emailQueue } from "../jobs/queue";
 import { storageService } from "./storage.service";
 import { watermarkService, shortLinkId } from "./watermark.service";
 import { pdfWatermarkService } from "./pdf-watermark.service";
+import { isOfficeConvertible, officeConvertService } from "./office-convert.service";
 import { notificationService } from "./notification.service";
 import { reviewerOtpEmail } from "../emails/templates/reviewer-otp";
 import type {
@@ -137,7 +138,7 @@ export class ReviewerPortalService {
     return {
       invitationId: invitation.id,
       emailHint: emailHint(invitation.emailNormalized),
-      sessionPendingId: session.id,
+      challengeId: session.id,
       expiresInSeconds: Math.floor(OTP_TTL_MS / 1000),
     };
   }
@@ -152,11 +153,11 @@ export class ReviewerPortalService {
 
     const pending = await prisma.reviewerSession.findFirst({
       where: {
+        id: input.challengeId,
         invitationId: invitation.id,
         verifiedAt: null,
         revokedAt: null,
       },
-      orderBy: { createdAt: "desc" },
     });
 
     if (!pending?.verificationCodeHash || !pending.verificationExpiresAt) {
@@ -165,7 +166,7 @@ export class ReviewerPortalService {
     if (pending.verificationExpiresAt.getTime() < Date.now()) {
       throw createError("Verification code expired", 400, "OTP_EXPIRED");
     }
-    if (hashOTP(input.otp) !== pending.verificationCodeHash) {
+    if (!verifyOTP(input.otp, pending.verificationCodeHash)) {
       throw createError("Invalid verification code", 400, "OTP_INVALID");
     }
 
@@ -485,7 +486,20 @@ export class ReviewerPortalService {
     }
 
     let body = await storageService.readObject(version.storageKey, version.storageProvider);
+    let mimeType = version.mimeType;
+    let originalFilename = version.originalFilename;
     if (input.watermarkEnabled) {
+      if (isOfficeConvertible(version.mimeType)) {
+        body = await officeConvertService.convertToPdf(body, version.mimeType);
+        mimeType = "application/pdf";
+        originalFilename = version.originalFilename.replace(/\.[^.]+$/, "") + ".pdf";
+      } else if (version.mimeType !== "application/pdf") {
+        throw createError(
+          "A watermarked download is not available for this file type",
+          409,
+          "WATERMARK_DOWNLOAD_UNSUPPORTED",
+        );
+      }
       const date = new Date().toISOString().slice(0, 10);
       const text = `${input.email} · ${shortLinkId(input.invitationId)} · ${date}`;
       body = await pdfWatermarkService.watermarkPdf(body, text);
@@ -507,8 +521,8 @@ export class ReviewerPortalService {
 
     return {
       body,
-      mimeType: version.mimeType,
-      originalFilename: version.originalFilename,
+      mimeType,
+      originalFilename,
     };
   }
 
@@ -530,19 +544,51 @@ export class ReviewerPortalService {
     invitationId: string,
     input: ReviewerCommentInput,
   ) {
+    if (input.chunkId && !input.documentId) {
+      throw createError(
+        "A document is required when commenting on a document section",
+        400,
+        "INVALID_COMMENT_TARGET",
+      );
+    }
+    let documentTitle: string | null = null;
+    let pinnedVersionId: string | null = null;
     if (input.documentId) {
       const pinned = await prisma.reviewerInvitationDocument.findFirst({
-        where: { invitationId, documentId: input.documentId },
-        select: { id: true },
+        where: {
+          invitationId,
+          documentId: input.documentId,
+          ...(input.documentVersionId ? { documentVersionId: input.documentVersionId } : {}),
+          ...(input.chunkId
+            ? { documentVersion: { chunks: { some: { id: input.chunkId } } } }
+            : {}),
+        },
+        select: {
+          id: true,
+          documentVersionId: true,
+          document: { select: { title: true } },
+        },
       });
-      if (!pinned) throw createError("Document is not shared with this invitation", 404, "NOT_SHARED");
+      if (!pinned) {
+        throw createError(
+          input.chunkId
+            ? "Document section is not shared with this invitation"
+            : "Document is not shared with this invitation",
+          404,
+          "NOT_SHARED",
+        );
+      }
+      documentTitle = pinned.document.title;
+      pinnedVersionId = pinned.documentVersionId;
     }
 
     const comment = await prisma.reviewerComment.create({
       data: {
         sessionId,
+        invitationId,
         startupId,
         documentId: input.documentId,
+        documentVersionId: input.documentVersionId ?? pinnedVersionId,
         chunkId: input.chunkId,
         commentText: input.commentText,
       },
@@ -552,6 +598,21 @@ export class ReviewerPortalService {
       where: { id: invitationId },
       data: { lastActivityAt: new Date() },
     });
+
+    const invitation = await prisma.reviewerInvitation.findUnique({
+      where: { id: invitationId },
+      select: { createdBy: true, reviewerName: true, emailNormalized: true },
+    });
+    if (invitation) {
+      void notificationService.notifyReviewerComment({
+        userId: invitation.createdBy,
+        startupId,
+        invitationId,
+        reviewerLabel: invitation.reviewerName || invitation.emailNormalized,
+        documentTitle,
+        excerpt: input.commentText.slice(0, 180),
+      });
+    }
 
     return comment;
   }

@@ -9,6 +9,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { hashPassword } from "../src/utils/auth";
 import { PERMISSIONS, ROLE_TEMPLATES } from "../src/config/permissions";
 import { PIPELINE_STAGES } from "../src/config/crm";
+import { renderReviewerNda } from "../src/config/reviewer-nda";
 import type {
   CommitmentStatus,
   InvestorType,
@@ -323,6 +324,21 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     // is meant to pick exactly this up.
     deals: [
       {
+        round: "pre_seed",
+        stage: "committed",
+        sourcedDaysAgo: 395,
+        stageChangedDaysAgo: 346,
+        expectedAmount: 75_000,
+        probabilityPercentage: 100,
+        commitment: {
+          amount: 75_000,
+          history: [
+            { status: "soft_circled", daysAgo: 355 },
+            { status: "wired", daysAgo: 344 },
+          ],
+        },
+      },
+      {
         round: "seed",
         stage: "sourced",
         sourcedDaysAgo: 5,
@@ -405,13 +421,21 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
     deals: [
       {
         round: "seed",
-        stage: "contacted",
+        stage: "committed",
         sourcedDaysAgo: 19,
-        stageChangedDaysAgo: 11,
-        expectedAmount: 400_000,
-        probabilityPercentage: 20,
-        priority: "medium",
+        stageChangedDaysAgo: 2,
+        expectedAmount: 250_000,
+        probabilityPercentage: 100,
+        priority: "high",
         ownerKey: "rana",
+        commitment: {
+          amount: 250_000,
+          history: [
+            { status: "soft_circled", daysAgo: 9 },
+            { status: "hard_circled", daysAgo: 5 },
+            { status: "wired", daysAgo: 2 },
+          ],
+        },
       },
     ],
   },
@@ -508,24 +532,13 @@ const NORTHBEAM_CONTACTS: ContactSeed[] = [
           ],
         },
       },
-      {
-        round: "seed",
-        stage: "meeting_scheduled",
-        sourcedDaysAgo: 38,
-        stageChangedDaysAgo: 6,
-        expectedAmount: 500_000,
-        probabilityPercentage: 55,
-        priority: "medium",
-        investorFitScore: 76,
-        ownerKey: "muhamad",
-      },
     ],
     logs: [
       {
         type: "meeting",
-        subject: "Follow-on conversation",
-        description: "Pro-rata discussion. Positive, wants the round to be led first.",
-        daysAgo: 7,
+        subject: "YC batch close",
+        description: "Completed the pre-seed investment and archived the closing documents.",
+        daysAgo: 344,
         authorKey: "muhamad",
       },
     ],
@@ -684,10 +697,10 @@ const NORTHBEAM_TASKS: TaskSeed[] = [
   {
     contactKey: "sarah",
     round: "seed",
-    title: "Send customer reference list",
-    description: "Three references, one per segment, with intro emails already sent.",
+    title: "Introduce Sarah to customer references",
+    description: "Send the two approved customer introductions Sequoia needs to finish commercial diligence.",
     priority: "high",
-    dueInDays: -3,
+    dueInDays: 0,
     assigneeKey: "muhamad",
     creatorKey: "muhamad",
   },
@@ -695,7 +708,7 @@ const NORTHBEAM_TASKS: TaskSeed[] = [
     contactKey: "owen",
     round: "seed",
     title: "Chase Lodestar on signature",
-    description: "Expected close has already slipped confirm whether it is still live.",
+    description: "The $600k soft circle is overdue. Confirm the signer, timing, and whether the allocation is still live.",
     priority: "high",
     dueInDays: -1,
     assigneeKey: "muhamad",
@@ -704,90 +717,69 @@ const NORTHBEAM_TASKS: TaskSeed[] = [
   {
     contactKey: "james",
     round: "seed",
-    title: "Confirm partner meeting slot",
+    title: "Prepare Accel partner meeting brief",
+    description: "Package the cohort-retention answer, meeting goals, and likely partner objections before today's call.",
     priority: "high",
     dueInDays: 0,
-    assigneeKey: "muhamad",
-    creatorKey: "muhamad",
-  },
-  {
-    contactKey: "grace",
-    round: "seed",
-    title: "Answer Vertex diligence questionnaire",
-    priority: "medium",
-    dueInDays: 0,
-    assigneeKey: "raymond",
-    creatorKey: "muhamad",
-  },
-  {
-    contactKey: "lena",
-    round: "seed",
-    title: "Review term sheet with counsel",
-    description: "Focus on the option pool and pro-rata language.",
-    priority: "high",
-    dueInDays: 2,
     assigneeKey: "muhamad",
     creatorKey: "muhamad",
   },
   {
     contactKey: "marcus",
     round: "seed",
-    title: "Schedule founding team intro",
+    title: "Schedule Index founding-team intro",
+    description: "Offer two times with all three founders and include the updated NRR slide.",
     priority: "medium",
-    dueInDays: 4,
+    dueInDays: 2,
     assigneeKey: "muhamad",
     creatorKey: "raymond",
   },
   {
-    contactKey: "dmitri",
+    contactKey: "peter",
     round: "seed",
-    title: "Grant data room access",
+    title: "Send Creandum the metrics appendix",
+    description: "Share the segment-level retention and expansion tables discussed on the screening call.",
+    priority: "medium",
+    dueInDays: 3,
+    assigneeKey: "raymond",
+    creatorKey: "raymond",
+  },
+  {
+    contactKey: "clara",
+    round: "seed",
+    title: "File Kima wire confirmation",
+    description: "Attach the $250k receipt and countersigned closing documents to the seed round.",
+    priority: "medium",
+    dueInDays: -2,
+    assigneeKey: "rana",
+    creatorKey: "muhamad",
+    completedDaysAgo: 1,
+  },
+  {
+    contactKey: "elena",
+    round: "seed",
+    title: "Find a warm path to Balderton",
+    description: "Check customer and founder networks before sending a second cold message.",
     priority: "medium",
     dueInDays: 6,
     assigneeKey: "rana",
     creatorKey: "muhamad",
   },
   {
-    contactKey: "peter",
+    contactKey: "hiroshi",
     round: "seed",
-    title: "Send Creandum the metrics appendix",
+    title: "Send Global Brain the APAC expansion note",
+    description: "Explain the US-first plan and how the product can support Japanese enterprise teams later.",
     priority: "low",
-    dueInDays: 9,
-    assigneeKey: "raymond",
-    creatorKey: "raymond",
-  },
-  {
-    // Unassigned and undated the loosest task shape the queue has to render.
-    contactKey: "clara",
-    round: "seed",
-    title: "Decide whether to keep Kima warm",
-    priority: "low",
-    creatorKey: "muhamad",
-  },
-  {
-    contactKey: "priya",
-    round: "seed",
-    title: "Send SAFE for signature",
-    priority: "medium",
-    dueInDays: -30,
-    assigneeKey: "muhamad",
-    creatorKey: "muhamad",
-    completedDaysAgo: 28,
-  },
-  {
-    contactKey: "daniel",
-    round: "seed",
-    title: "Confirm wire instructions",
-    priority: "high",
-    dueInDays: -20,
+    dueInDays: 8,
     assigneeKey: "raymond",
     creatorKey: "muhamad",
-    completedDaysAgo: 17,
   },
   {
     contactKey: "sarah",
     round: "seed",
     title: "Prepare data room index",
+    description: "Organize financial, legal, product, and customer folders for Sequoia's diligence kickoff.",
     priority: "medium",
     dueInDays: -12,
     assigneeKey: "muhamad",
@@ -797,11 +789,6 @@ const NORTHBEAM_TASKS: TaskSeed[] = [
 ];
 
 // ─── Drift Labs a second workspace, non-USD, where the owner is a guest ─────
-
-// Keep only tasks whose contact remains in the compact default fixture.
-const NORTHBEAM_SEED_TASKS = NORTHBEAM_TASKS.filter((task) =>
-  NORTHBEAM_CONTACTS.some((contact) => contact.key === task.contactKey),
-);
 
 const DRIFT_MEMBERS: MemberSeed[] = [
   { userKey: "karim", role: "owner" },
@@ -934,6 +921,16 @@ const DRIFT_TASKS: TaskSeed[] = [
     creatorKey: "karim",
   },
   {
+    contactKey: "stefan",
+    round: "seed_eur",
+    title: "Confirm Cherry Ventures wire date",
+    description: "Verify closing documents and the expected date for the €400k hard circle.",
+    priority: "high",
+    dueInDays: 0,
+    assigneeKey: "karim",
+    creatorKey: "karim",
+  },
+  {
     contactKey: "mireille",
     round: "seed_eur",
     title: "Book the follow-up call",
@@ -1049,6 +1046,25 @@ async function seedWorkspace(
   usersByKey: Map<string, { id: string; firstName: string; lastName: string }>,
   permByKey: Record<string, { id: string }>,
 ) {
+  // A presentation workspace should never open on a fundraising round whose
+  // headline "Raised" amount is zero. Only hard-circled and wired money is
+  // bankable in the product, so require at least one such commitment per round.
+  for (const round of spec.rounds) {
+    const bankableTotal = spec.contacts
+      .flatMap((contact) => contact.deals ?? [])
+      .filter((deal) => deal.round === round.key && deal.commitment)
+      .reduce((total, deal) => {
+        const currentStatus = deal.commitment!.history.at(-1)?.status;
+        return currentStatus === "hard_circled" || currentStatus === "wired"
+          ? total + deal.commitment!.amount
+          : total;
+      }, 0);
+
+    if (bankableTotal <= 0) {
+      throw new Error(`Presentation round "${round.key}" in ${spec.name} needs a bankable commitment`);
+    }
+  }
+
   const startup = await prisma.startup.create({
     data: {
       id: spec.id,
@@ -1348,8 +1364,8 @@ async function seedChat(
   const lopna = membersByKey.get("lopna")!;
   const muhamadUserId = usersByKey.get("muhamad")!.id;
 
-  const aisha = contactsByKey.get("aisha")!;
-  const aishaSeedDeal = dealsByKey.get("aisha:seed")!;
+  const clara = contactsByKey.get("clara")!;
+  const claraSeedDeal = dealsByKey.get("clara:seed")!;
   const james = dealsByKey.get("james:seed")!;
   const seedRound = roundsByKey.get("seed")!;
   const lodestarTask = tasksByKey.get("Chase Lodestar on signature")!;
@@ -1442,7 +1458,7 @@ async function seedChat(
   const g3 = await send(
     general.id,
     rana.id,
-    `Quick one ${mentionToken("member", muhamad.id, "Muhamad Houda")} did the term sheet redline go out to Aisha's team yet?`,
+    `Quick one ${mentionToken("member", muhamad.id, "Muhamad Houda")} did Kima's wire confirmation get filed?`,
     minutes(-200),
   );
   await mention(general.id, g3.id, "member", muhamad.id);
@@ -1463,32 +1479,32 @@ async function seedChat(
   const g6 = await send(
     general.id,
     muhamad.id,
-    `we must focus on it ${mentionToken("investor", aisha.id, aisha.fullName)}`,
+    `Great first-close signal from ${mentionToken("investor", clara.id, clara.fullName)} the $250k wire is in.`,
     minutes(-196),
   );
-  await mention(general.id, g6.id, "investor", aisha.id);
+  await mention(general.id, g6.id, "investor", clara.id);
 
-  const g7 = await send(general.id, raymond.id, "On it moving the Lodestar signature check to today.", minutes(-150));
+  const g7 = await send(general.id, raymond.id, "On it moving the overdue Lodestar signature check to the top of today's list.", minutes(-150));
   await react(g7.id, muhamad.id, "👍");
 
   const g8 = await send(
     general.id,
     rana.id,
-    `Also, this one's stalled ${mentionToken("deal", aishaSeedDeal.id, aisha.fullName)} meeting is booked but there's no prep doc yet.`,
+    `I attached the closing receipt to ${mentionToken("deal", claraSeedDeal.id, clara.fullName)} so the wired allocation is documented.`,
     minutes(-100),
   );
-  await mention(general.id, g8.id, "deal", aishaSeedDeal.id);
+  await mention(general.id, g8.id, "deal", claraSeedDeal.id);
 
   const g9 = await send(
     general.id,
     muhamad.id,
-    `Reminder the ${mentionToken("round", seedRound.id, "Seed")} round closes in about a month, let's keep the pace up.`,
+    `The ${mentionToken("round", seedRound.id, "Seed")} first close is complete; Sarah's diligence and Lodestar are the next priorities.`,
     minutes(-60),
   );
   await mention(general.id, g9.id, "round", seedRound.id);
   await react(g9.id, raymond.id, "🚀");
 
-  const g10 = await send(general.id, muhamad.id, "Anyone free to jump on a call with Lodestar this week to push the signature?", minutes(-30));
+  const g10 = await send(general.id, muhamad.id, "Anyone free to join the Lodestar call this week and unblock the $600k soft circle?", minutes(-30));
   await send(general.id, raymond.id, "I can do Thursday afternoon.", minutes(-28), g10.id);
   const g10b = await send(general.id, rana.id, "I'll join too.", minutes(-25), g10.id);
   await prisma.message.update({ where: { id: g10.id }, data: { replyCount: 2 } });
@@ -1684,7 +1700,7 @@ async function main() {
       targetMarket: "Series A-C B2B SaaS companies with 10-100 person sales teams and a CRM already in place.",
       businessModel: "Per-seat SaaS subscription, billed annually, with usage-based add-ons for call intelligence minutes.",
       tractionSummary:
-        "$38k MRR across 14 paying customers, 22% MoM growth over the last two quarters, 96% logo retention.",
+        "$100k MRR across 42 paying customers, 12% MoM growth this quarter, 96% logo retention, and 118% NRR.",
       competitiveEdge:
         "Purpose-built deal scoring model trained on our design partners' historical win/loss data, versus generic activity-count heuristics from incumbents.",
       headquarters: "New York, NY",
@@ -1697,12 +1713,12 @@ async function main() {
         {
           key: "pre_seed",
           roundName: "Pre-Seed",
-          targetAmount: 750_000,
+          targetAmount: 200_000,
           minimumTicketSize: 25_000,
-          equityOfferedPercentage: 8,
+          equityOfferedPercentage: 7,
           currency: "USD",
           status: "closed",
-          firstCloseInDays: -380,
+          firstCloseInDays: -344,
           targetCloseInDays: -340,
         },
         {
@@ -1713,12 +1729,14 @@ async function main() {
           equityOfferedPercentage: 15,
           currency: "USD",
           status: "active",
-          firstCloseInDays: -30,
+          // Kima's $250k wire completed the first close two days ago. The
+          // remaining story is lead diligence plus one at-risk soft circle.
+          firstCloseInDays: -2,
           targetCloseInDays: 75,
         },
       ],
       contacts: NORTHBEAM_CONTACTS,
-      tasks: NORTHBEAM_SEED_TASKS,
+      tasks: NORTHBEAM_TASKS,
     },
     usersByKey,
     permByKey,
@@ -1804,31 +1822,32 @@ async function main() {
   const sarahDeal = northbeam.dealsByKey.get("sarah:seed")!;
   const owenDeal = northbeam.dealsByKey.get("owen:seed")!;
   const nadiaDeal = northbeam.dealsByKey.get("nadia:seed")!;
+  const peterDeal = northbeam.dealsByKey.get("peter:seed")!;
   const sarahContact = northbeam.contactsByKey.get("sarah")!;
 
   const NOTIFICATIONS = [
     {
       type: "task_overdue",
       title: "Task overdue",
-      body: "“Send customer reference list” was due 3 days ago.",
+      body: "“Chase Lodestar on signature” was due yesterday.",
       entityType: "pipeline",
-      entityId: sarahDeal.id,
+      entityId: owenDeal.id,
       readAt: null,
       createdAt: hours(-30),
     },
     {
       type: "task_due_today",
       title: "Task due today",
-      body: "“Confirm partner meeting slot” is due today.",
+      body: "“Introduce Sarah to customer references” is due today.",
       entityType: "pipeline",
-      entityId: northbeam.dealsByKey.get("james:seed")!.id,
+      entityId: sarahDeal.id,
       readAt: null,
       createdAt: hours(-8),
     },
     {
       type: "task_assigned",
       title: "New task assigned to you",
-      body: "Raymond assigned you “Schedule founding team intro”.",
+      body: "Raymond assigned you “Schedule Index founding-team intro”.",
       entityType: "pipeline",
       entityId: northbeam.dealsByKey.get("marcus:seed")!.id,
       readAt: null,
@@ -1837,9 +1856,9 @@ async function main() {
     {
       type: "lead_stale",
       title: "Lead has gone quiet",
-      body: "No activity logged with Sarah Chen in over a week.",
+      body: "Peter Lindqvist has had no new activity since his screening call two weeks ago.",
       entityType: "pipeline",
-      entityId: sarahDeal.id,
+      entityId: peterDeal.id,
       readAt: null,
       createdAt: hours(-52),
     },
@@ -1873,7 +1892,7 @@ async function main() {
     {
       type: "chat_mention",
       title: "Rana Nemer mentioned you in #general",
-      body: "Quick one @Muhamad Houda did the term sheet redline go out to Aisha's team yet?",
+      body: "Quick one @Muhamad Houda did Kima's wire confirmation get filed?",
       entityType: "conversation",
       entityId: chat.general.id,
       readAt: null,
@@ -1983,9 +2002,9 @@ Raising a $4M seed to expand GTM and deepen product coverage.
 
 | Holder | Ownership |
 | --- | --- |
-| Founders | 62% |
+| Founders | 73% |
 | Employees (option pool) | 15% |
-| Pre-Seed investors | 18% |
+| Pre-Seed investors | 7% |
 | Advisors | 5% |
 
 Notes: figures are illustrative seed data for local demos.
@@ -2180,7 +2199,6 @@ Notes: figures are illustrative seed data for local demos.
     allowPrint?: boolean;
     screenshotGuard?: boolean;
     requireNda?: boolean;
-    ndaText?: string;
     ndaAcceptedAt?: Date;
     passwordHash?: string;
     allowedEmailDomains?: string[];
@@ -2201,7 +2219,7 @@ Notes: figures are illustrative seed data for local demos.
         allowPrint: input.allowPrint ?? false,
         screenshotGuard: input.screenshotGuard ?? true,
         requireNda: input.requireNda ?? false,
-        ndaText: input.ndaText,
+        ndaText: input.requireNda ? renderReviewerNda(northbeam.startup.name) : undefined,
         ndaAcceptedAt: input.ndaAcceptedAt,
         passwordHash: input.passwordHash,
         allowedEmailDomains: input.allowedEmailDomains ?? [],
@@ -2450,9 +2468,6 @@ Notes: figures are illustrative seed data for local demos.
     allowPrint: true,
     screenshotGuard: true,
     requireNda: true,
-    ndaText:
-      "This mutual non-disclosure agreement covers all materials shared through this data room. " +
-      "By continuing, you agree not to disclose the contents to any third party without Northbeam's written consent.",
     ndaAcceptedAt: elenaNdaAcceptedAt,
     documents: [{ documentId: deckDoc.documentId, versionId: deckDoc.versionId }],
   });
@@ -2527,7 +2542,7 @@ Notes: figures are illustrative seed data for local demos.
   console.info("                 rana is Google-only (no password)");
   console.info(`  Workspaces:    Northbeam (owner) · Drift Labs (collaborator)`);
   console.info(`  Permissions:   ${PERMISSIONS.length} entries × 3 roles × 2 workspaces`);
-  console.info(`  Rounds:        Seed $4M active · Pre-Seed $750k closed · Drift €2M active`);
+  console.info(`  Rounds:        Seed $4M active · Pre-Seed $200k closed · Drift €2M active`);
   console.info(`  Contacts:      ${totalContacts}`);
   console.info(
     `  Deals:         ${northbeam.counts.dealCount + drift.counts.dealCount} across every stage, with full stage history`,

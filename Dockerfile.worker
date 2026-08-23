@@ -19,9 +19,25 @@ COPY packages/api/package.json packages/api/package.json
 COPY packages/web/package.json packages/web/package.json
 COPY packages/api/prisma packages/api/prisma
 
-# Install all dependencies (including devDependencies required for build)
+# Install all dependencies (including devDependencies required for build).
+# Registry connections can reset during this relatively large workspace
+# install. npm retries individual fetches, and this outer retry preserves the
+# BuildKit download cache when an entire install still aborts mid-flight.
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --include=dev
+    npm config set fetch-retries 5 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm config set fetch-timeout 600000 && \
+    attempt=1; \
+    until npm ci --include=dev --prefer-offline --no-audit --no-fund; do \
+      if [ "$attempt" -ge 3 ]; then \
+        echo "npm ci failed after $attempt attempts"; \
+        exit 1; \
+      fi; \
+      echo "npm ci attempt $attempt failed; retrying from the BuildKit cache..."; \
+      attempt=$((attempt + 1)); \
+      sleep 15; \
+    done
 
 # ==========================================
 # Build Stage: Compile Application Code
@@ -31,8 +47,11 @@ WORKDIR /app
 COPY . .
 RUN npm run build -w @raise/api
 
-# Prune devDependencies to keep runtime node_modules lightweight
-RUN npm prune --omit=dev --workspace=@raise/api
+# Prune devDependencies to keep runtime node_modules lightweight. Pruning can
+# re-run the API postinstall, but Prisma generation already happened during
+# install and loading prisma.config.ts here would incorrectly require the
+# runtime-only DATABASE_URL during an image build.
+RUN npm prune --omit=dev --workspace=@raise/api --ignore-scripts
 
 # ==========================================
 # Runtime Stage: Isolated Worker Runner

@@ -459,6 +459,7 @@ export class FundraisingService {
    */
   async getRoundMetrics(startupId: string, roundId: string) {
     const round = await this.getRound(startupId, roundId);
+    const isOpenRound = round.status === "active" || round.status === "draft";
 
     const [commitments, liveDeals] = await Promise.all([
       prisma.commitment.findMany({
@@ -475,10 +476,12 @@ export class FundraisingService {
       // already has an exact commitment amount, so folding its probability
       // weight back in here would count the same money twice, and a passed
       // deal contributes nothing.
-      prisma.pipeline.findMany({
-        where: { startupId, roundId, stage: { notIn: ["committed", "passed"] } },
-        select: { expectedAmount: true, probabilityPercentage: true },
-      }),
+      isOpenRound
+        ? prisma.pipeline.findMany({
+            where: { startupId, roundId, stage: { notIn: ["committed", "passed"] } },
+            select: { expectedAmount: true, probabilityPercentage: true },
+          })
+        : Promise.resolve([]),
     ]);
 
     const sumBy = (predicate: (c: (typeof commitments)[number]) => boolean) =>
@@ -497,7 +500,7 @@ export class FundraisingService {
     }, 0);
 
     const closeTarget = round.targetCloseDate ?? round.firstCloseDate;
-    const daysToClose = closeTarget
+    const daysToClose = isOpenRound && closeTarget
       ? Math.ceil((closeTarget.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
       : null;
 
@@ -508,6 +511,7 @@ export class FundraisingService {
     const atRiskCommitments = commitments
       .filter(
         (c) =>
+          isOpenRound &&
           c.status !== "wired" &&
           c.status !== "withdrawn" &&
           c.expectedCloseDate !== null &&

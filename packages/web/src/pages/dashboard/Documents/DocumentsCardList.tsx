@@ -19,7 +19,7 @@ type DocumentsCardListProps = {
   focusedDocumentId?: string | null;
   onToggleOne: (id: string) => void;
   canUpdate: boolean;
-  canDelete: boolean;
+  canArchive: boolean;
   uploadingVersionId: string | null;
   onPreview: (doc: VaultDocument) => void;
   onDownload: (doc: VaultDocument) => void;
@@ -27,7 +27,8 @@ type DocumentsCardListProps = {
   onEdit: (doc: VaultDocument) => void;
   onViewVersions: (doc: VaultDocument) => void;
   onViewAnalytics: (doc: VaultDocument) => void;
-  onDelete: (doc: VaultDocument) => void;
+  onArchive: (doc: VaultDocument) => void;
+  onRestore: (doc: VaultDocument) => void;
 };
 
 export function DocumentsCardList({
@@ -36,7 +37,7 @@ export function DocumentsCardList({
   focusedDocumentId = null,
   onToggleOne,
   canUpdate,
-  canDelete,
+  canArchive,
   uploadingVersionId,
   onPreview,
   onDownload,
@@ -44,7 +45,8 @@ export function DocumentsCardList({
   onEdit,
   onViewVersions,
   onViewAnalytics,
-  onDelete,
+  onArchive,
+  onRestore,
 }: DocumentsCardListProps) {
   const selectionActive = selectedIds !== null;
 
@@ -96,7 +98,7 @@ export function DocumentsCardList({
                   document={doc}
                   canOpen={canOpen}
                   canUpdate={canUpdate}
-                  canDelete={canDelete}
+                  canArchive={canArchive}
                   uploadingVersion={uploadingVersionId === doc.id}
                   onPreview={onPreview}
                   onDownload={onDownload}
@@ -104,7 +106,8 @@ export function DocumentsCardList({
                   onEdit={onEdit}
                   onViewVersions={onViewVersions}
                   onViewAnalytics={onViewAnalytics}
-                  onDelete={onDelete}
+                  onArchive={onArchive}
+                  onRestore={onRestore}
                   includeQuickActions={false}
                 />
               </div>
@@ -153,7 +156,7 @@ export function DocumentsCardList({
               >
                 <Download className="mr-1.5 h-3.5 w-3.5" /> Download
               </Button>
-              {canUpdate && (
+              {canUpdate && !doc.archivedAt && (
                 <Button
                   size="sm"
                   variant="outline"

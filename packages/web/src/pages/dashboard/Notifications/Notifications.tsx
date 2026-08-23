@@ -13,6 +13,7 @@ const iconMap: Record<string, ComponentType<{ className?: string }>> = {
   team_invite: UserPlus,
   ai: Sparkles,
   reviewer: Shield,
+  reviewer_comment: MessageSquare,
   commitment: Wallet,
   task: Clock,
   team: Users,

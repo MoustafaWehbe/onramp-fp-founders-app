@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ArrowLeft, Bell, BellOff, Hash, MessageSquare, User } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Archive, ArchiveRestore, ArrowLeft, Bell, BellOff, Hash, MessageSquare, User } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "../../../components/ui/avatar";
 import { Button } from "../../../components/ui/button";
@@ -18,10 +18,16 @@ import {
   markConversationRead,
   setConversationArchived,
   setNotifyLevel,
+  sendMessage,
   toggleReaction,
   type Conversation,
   type Message,
 } from "../../../lib/chat-api";
+import {
+  replaceOptimisticMessage,
+  retryInputForMessage,
+  setOptimisticDeliveryState,
+} from "../../../lib/chat-message-cache";
 import { useResolvedMentions } from "../../../hooks/useResolvedMentions";
 import { useTypingUsers } from "../../../hooks/useTypingUsers";
 import { MessageItem } from "../../../components/mentions/MessageItem";
@@ -43,6 +49,7 @@ function conversationDisplayName(conversation: Conversation): string {
 
 /** Consecutive messages from the same sender, close enough together to read as one run, collapse under a single avatar/name same 5-minute window Slack uses. */
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
+const MESSAGE_PAGE_SIZE = 50;
 
 function isGrouped(previous: Message | undefined, message: Message): boolean {
   if (!previous || !message.senderId || previous.senderId !== message.senderId) return false;
@@ -63,13 +70,31 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
   const currentMemberId = activeStartup?.member.id ?? null;
   const canModerate = can("chat", "manage");
 
-  const messagesQuery = useQuery({
+  const messagesQuery = useInfiniteQuery({
     queryKey: qk.messages(startupId, conversation.id),
-    queryFn: () => listMessages(startupId, conversation.id),
+    queryFn: ({ pageParam }) =>
+      listMessages(startupId, conversation.id, {
+        limit: MESSAGE_PAGE_SIZE,
+        ...(pageParam ? { before: pageParam } : {}),
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (oldestLoadedPage) =>
+      oldestLoadedPage.length === MESSAGE_PAGE_SIZE ? oldestLoadedPage[0]?.seq : undefined,
   });
 
-  const messages = messagesQuery.data ?? [];
+  const messages = useMemo(() => {
+    const seen = new Set<string>();
+    return [...(messagesQuery.data?.pages ?? [])]
+      .reverse()
+      .flat()
+      .filter((message) => {
+        if (seen.has(message.id)) return false;
+        seen.add(message.id);
+        return true;
+      });
+  }, [messagesQuery.data]);
   const resolved = useResolvedMentions(startupId, messages);
+  const newestMessageSeq = messages.at(-1)?.seq ?? null;
 
   /** Scrolling to a sentinel at the very end is more reliable than computing scrollHeight by hand it can't drift out of sync with layout the way a manual scrollTo can. */
   function scrollToBottom(behavior: ScrollBehavior = "auto") {
@@ -80,7 +105,18 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
   // the newest message is what a founder opened the thread to see.
   useEffect(() => {
     scrollToBottom();
-  }, [messages.length, conversation.id]);
+  }, [newestMessageSeq, conversation.id]);
+
+  async function loadOlderMessages() {
+    const viewport = scrollRef.current;
+    const previousHeight = viewport?.scrollHeight ?? 0;
+    const previousTop = viewport?.scrollTop ?? 0;
+    await messagesQuery.fetchNextPage();
+    requestAnimationFrame(() => {
+      if (!viewport) return;
+      viewport.scrollTop = previousTop + viewport.scrollHeight - previousHeight;
+    });
+  }
 
   // Opening a room (or a new message landing while it's open) counts as
   // having seen it clears the unread badge without the founder doing
@@ -101,6 +137,24 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
     onError: (err) => toast.error(apiErrorMessage(err, "Could not react to that message")),
   });
 
+  const retrySendMutation = useMutation({
+    mutationFn: async (message: Message) => {
+      const input = retryInputForMessage(message);
+      if (!input) throw new Error("This message can no longer be retried");
+      return sendMessage(startupId, conversation.id, input);
+    },
+    onMutate: (message) => setOptimisticDeliveryState(queryClient, startupId, message, "sending"),
+    onSuccess: (delivered, message) => {
+      replaceOptimisticMessage(queryClient, startupId, message, delivered);
+      void queryClient.invalidateQueries({ queryKey: qk.messages(startupId, conversation.id) });
+      void queryClient.invalidateQueries({ queryKey: qk.conversations(startupId) });
+    },
+    onError: (err, message) => {
+      setOptimisticDeliveryState(queryClient, startupId, message, "failed");
+      toast.error(apiErrorMessage(err, "Message still could not be sent"));
+    },
+  });
+
   const muteMutation = useMutation({
     mutationFn: () => setNotifyLevel(startupId, conversation.id, conversation.notifyLevel === "none" ? "all" : "none"),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: qk.conversations(startupId) }),
@@ -117,17 +171,17 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
   });
 
   const archiveMutation = useMutation({
-    mutationFn: () => setConversationArchived(startupId, conversation.id, true),
+    mutationFn: () => setConversationArchived(startupId, conversation.id, !conversation.archivedAt),
     onSuccess: () => {
       setArchiveConfirmOpen(false);
-      toast.success(`#${conversation.name} archived`);
+      toast.success(`#${conversation.name} ${conversation.archivedAt ? "restored" : "archived"}`);
       void queryClient.invalidateQueries({ queryKey: qk.conversations(startupId) });
     },
     onError: (err) => toast.error(apiErrorMessage(err, "Could not archive that channel")),
   });
 
   const muted = conversation.notifyLevel === "none";
-  const canArchive = canModerate && conversation.type === "channel";
+  const canChangeArchive = canModerate && conversation.type === "channel";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -149,8 +203,8 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
             <Hash className="h-3.5 w-3.5" />
           </div>
         ) : (
-          <Avatar className="h-7 w-7 shrink-0">
-            <AvatarImage src={conversation.counterpart?.avatarUrl ?? undefined} alt="" />
+          <Avatar className="h-9 w-9 shrink-0">
+            <AvatarImage src={conversation.counterpart?.avatarUrl ?? undefined} alt="" className="object-cover" />
             <AvatarFallback className="text-[11px] font-medium">
               {conversation.counterpart ? getInitials(displayName) : <User className="h-3.5 w-3.5" />}
             </AvatarFallback>
@@ -160,6 +214,9 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
           <div className="truncate text-sm font-semibold">{displayName}</div>
           {conversation.topic && (
             <div className="truncate text-xs text-muted-foreground">{conversation.topic}</div>
+          )}
+          {conversation.archivedAt && !conversation.topic && (
+            <div className="text-xs text-muted-foreground">Archived · read only</div>
           )}
         </div>
         <Button
@@ -173,16 +230,16 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
         >
           {muted ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
         </Button>
-        {canArchive && (
+        {canChangeArchive && (
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-            aria-label="Archive this channel"
+            className="h-7 w-7 shrink-0 text-muted-foreground"
+            aria-label={conversation.archivedAt ? "Restore this channel" : "Archive this channel"}
             onClick={() => setArchiveConfirmOpen(true)}
           >
-            <Archive className="h-4 w-4" />
+            {conversation.archivedAt ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
           </Button>
         )}
       </div>
@@ -202,7 +259,16 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
           </div>
         ) : messagesQuery.isError ? (
           <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-6 text-sm text-destructive">
-            {apiErrorMessage(messagesQuery.error, "Failed to load messages.")}
+            <p>{apiErrorMessage(messagesQuery.error, "Failed to load messages.")}</p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mt-3"
+              onClick={() => void messagesQuery.refetch()}
+            >
+              Retry
+            </Button>
           </div>
         ) : messages.length === 0 ? (
           <EmptyState
@@ -217,6 +283,19 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
           />
         ) : (
           <div>
+            {messagesQuery.hasNextPage && (
+              <div className="mb-4 flex justify-center">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={messagesQuery.isFetchingNextPage}
+                  onClick={() => void loadOlderMessages()}
+                >
+                  {messagesQuery.isFetchingNextPage ? "Loading…" : "Load older messages"}
+                </Button>
+              </div>
+            )}
             {messages.map((message, index) => (
               <MessageItem
                 key={message.id}
@@ -224,8 +303,13 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
                 grouped={isGrouped(messages[index - 1], message)}
                 resolved={resolved}
                 onReact={canSend ? (emoji) => reactMutation.mutate({ messageId: message.id, emoji }) : undefined}
-                onOpenThread={canSend ? () => setThreadMessageId(message.id) : undefined}
+                onOpenThread={message.replyCount > 0 || canSend ? () => setThreadMessageId(message.id) : undefined}
                 onDelete={message.senderId === currentMemberId ? () => setDeleteTarget(message) : undefined}
+                onRetry={
+                  message.deliveryState === "failed"
+                    ? () => retrySendMutation.mutate(message)
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -241,7 +325,7 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
         </div>
       )}
 
-      {canSend ? (
+      {canSend && messagesQuery.isSuccess ? (
         <Composer
           startupId={startupId}
           conversationId={conversation.id}
@@ -249,11 +333,15 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
           placeholder={conversation.type === "dm" ? `Message ${displayName}` : undefined}
           onSent={() => scrollToBottom("smooth")}
         />
-      ) : (
+      ) : !messagesQuery.isPending ? (
         <div className="border-t border-border/60 px-4 py-3 text-center text-xs text-muted-foreground">
-          You don't have permission to post in this channel.
+          {messagesQuery.isError
+            ? "Messages must load before you can post here."
+            : conversation.archivedAt
+            ? "This channel is archived and read only."
+            : "You don't have permission to post in this channel."}
         </div>
-      )}
+      ) : null}
 
       <ThreadDialog
         startupId={startupId}
@@ -279,10 +367,12 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
       <ConfirmDialog
         open={archiveConfirmOpen}
         onOpenChange={setArchiveConfirmOpen}
-        title={`Archive #${conversation.name}?`}
-        description="Members will no longer see this channel in their channel list. This can be undone later."
-        confirmLabel="Archive channel"
-        pendingLabel="Archiving…"
+        title={`${conversation.archivedAt ? "Restore" : "Archive"} #${conversation.name}?`}
+        description={conversation.archivedAt
+          ? "The channel will return to the active channel list for its members."
+          : "The channel will move to the archived section and become read only. This can be undone later."}
+        confirmLabel={conversation.archivedAt ? "Restore channel" : "Archive channel"}
+        pendingLabel={conversation.archivedAt ? "Restoring…" : "Archiving…"}
         variant="default"
         isPending={archiveMutation.isPending}
         onConfirm={() => archiveMutation.mutate()}

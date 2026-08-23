@@ -12,6 +12,7 @@ import type {
   NotifyLevelInput,
   StartDirectMessageInput,
   ArchiveConversationInput,
+  ListConversationsQuery,
 } from "../validators/chat.schemas";
 
 export const chatController = {
@@ -40,6 +41,7 @@ export const chatController = {
     const result = await chatService.listConversations(
       req.params.startupId as string,
       req.member!.id,
+      req.query as unknown as ListConversationsQuery,
     );
     res.json(result);
   }),

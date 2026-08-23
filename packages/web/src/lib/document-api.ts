@@ -18,6 +18,10 @@ export type DocumentVersion = {
   originalFilename: string;
   processingStatus: "pending_upload" | "processing" | "ready" | "failed" | string;
   processingError: string | null;
+  renderStatus: "pending" | "rendering" | "ready" | "unsupported" | "failed" | string;
+  renderError: string | null;
+  pageCount: number | null;
+  reviewerShareStatus: "processing" | "ready" | "unsupported" | "failed";
   summary: string | null;
   uploadedBy: string;
   // Joined only on getDocument's version history; null from the
@@ -33,6 +37,7 @@ export type VaultDocument = {
   title: string;
   documentType: DocumentType | string;
   createdBy: string;
+  archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
   currentVersion: DocumentVersion | null;
@@ -67,7 +72,13 @@ export async function updateDocument(
 
 export async function listDocuments(
   startupId: string,
-  params?: { page?: number; limit?: number; search?: string; documentType?: string },
+  params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    documentType?: string;
+    lifecycle?: "active" | "archived" | "all";
+  },
 ) {
   const { data } = await apiClient.get<{ data: VaultDocument[]; meta: PaginationMeta }>(
     `/startups/${startupId}/documents`,
@@ -178,6 +189,65 @@ export async function getDocumentAnalytics(startupId: string, documentId: string
 
 export async function deleteDocument(startupId: string, documentId: string) {
   await apiClient.delete(`/startups/${startupId}/documents/${documentId}`);
+}
+
+export async function getDocumentPageAccess(
+  startupId: string,
+  documentId: string,
+  versionId: string,
+  pageNumber: number,
+) {
+  const { data } = await apiClient.post<{
+    data: {
+      url: string;
+      expiresInSeconds: number;
+      document: { id: string; title: string };
+      versionId: string;
+      versionNumber: number;
+      pageNumber: number;
+      width: number;
+      height: number;
+    };
+  }>(
+    `/startups/${startupId}/documents/${documentId}/versions/${versionId}/pages/${pageNumber}/access`,
+  );
+  return data.data;
+}
+
+export async function archiveDocument(startupId: string, documentId: string) {
+  const { data } = await apiClient.post<{ data: { id: string; archivedAt: string | null } }>(
+    `/startups/${startupId}/documents/${documentId}/archive`,
+  );
+  return data.data;
+}
+
+export async function restoreDocument(startupId: string, documentId: string) {
+  const { data } = await apiClient.post<{ data: { id: string; archivedAt: string | null } }>(
+    `/startups/${startupId}/documents/${documentId}/restore`,
+  );
+  return data.data;
+}
+
+export async function retryDocumentVersion(
+  startupId: string,
+  documentId: string,
+  versionId: string,
+) {
+  const { data } = await apiClient.post<{ data: DocumentVersion }>(
+    `/startups/${startupId}/documents/${documentId}/versions/${versionId}/retry`,
+  );
+  return data.data;
+}
+
+export async function promoteDocumentVersion(
+  startupId: string,
+  documentId: string,
+  versionId: string,
+) {
+  const { data } = await apiClient.post<{ data: DocumentVersion }>(
+    `/startups/${startupId}/documents/${documentId}/versions/${versionId}/promote`,
+  );
+  return data.data;
 }
 
 /** Upload bytes to the signed/local URL returned by createDocumentUploadSession. */

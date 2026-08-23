@@ -226,6 +226,20 @@ describe("AI conversation agent loop", () => {
   // exercise only the tool-calling loop without needing to mock AiRetrievalService.
   const loopAccess = { canReadDocuments: false, canReadFinancial: true, tools: ["get_focus_deals" as const] };
 
+  it("redirects a clearly unrelated request without calling the model or tools", async () => {
+    (prisma.aiChatMessage.findMany as jest.Mock).mockResolvedValue([{ role: "user", content: "I'm hungry, suggest some food." }]);
+    const provider = new FakeAiProvider();
+    const service = new AiConversationService(provider);
+
+    await (service as any).runGeneration(session, "assistant-message", "user-1", loopAccess);
+
+    expect(provider.requests).toHaveLength(0);
+    expect(aiToolsService.execute).not.toHaveBeenCalled();
+    expect(prisma.aiChatMessage.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "completed", content: expect.stringContaining("fundraising") }),
+    }));
+  });
+
   it("chains a tool call before answering: the model requests it, the server executes it, and the answer arrives on the next round", async () => {
     (aiToolsService.execute as jest.Mock).mockResolvedValue({ data: [{ investorId: "inv-1" }] });
     const provider = new FakeAiProvider();

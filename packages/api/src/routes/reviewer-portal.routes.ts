@@ -3,12 +3,16 @@ import { validate } from "../utils/validate";
 import { requireReviewerSession } from "../middleware/reviewer-auth";
 import {
   reviewerAccessRateLimiter,
+  reviewerCommentRateLimiter,
+  reviewerContentRateLimiter,
+  reviewerDownloadRateLimiter,
   reviewerEventRateLimiter,
   reviewerTelemetryRateLimiter,
 } from "../middleware/rate-limiter";
 import {
   reviewerAccessSchema,
   reviewerCommentSchema,
+  reviewerCommentsQuerySchema,
   reviewerEventSchema,
   reviewerPageParamSchema,
   reviewerPageQuerySchema,
@@ -17,8 +21,11 @@ import {
   reviewerVersionIdParamSchema,
 } from "../validators/reviewer-portal.schemas";
 import { reviewerPortalController } from "../controllers/reviewer-portal.controller";
+import { reviewerMetricsMiddleware } from "../observability/reviewer-metrics";
 
 const router = Router();
+
+router.use(reviewerMetricsMiddleware);
 
 router.post(
   "/access",
@@ -43,6 +50,7 @@ router.post("/nda/accept", requireReviewerSession, reviewerPortalController.acce
 router.get(
   "/documents/:versionId/manifest",
   requireReviewerSession,
+  reviewerContentRateLimiter,
   validate(reviewerVersionIdParamSchema, "params"),
   reviewerPortalController.getPageManifest,
 );
@@ -50,6 +58,7 @@ router.get(
 router.get(
   "/pages/:versionId/:pageNumber",
   requireReviewerSession,
+  reviewerContentRateLimiter,
   validate(reviewerPageParamSchema, "params"),
   validate(reviewerPageQuerySchema, "query"),
   reviewerPortalController.getPageImage,
@@ -58,15 +67,22 @@ router.get(
 router.get(
   "/documents/:versionId/download",
   requireReviewerSession,
+  reviewerDownloadRateLimiter,
   validate(reviewerVersionIdParamSchema, "params"),
   reviewerPortalController.getDownload,
 );
 
-router.get("/comments", requireReviewerSession, reviewerPortalController.listComments);
+router.get(
+  "/comments",
+  requireReviewerSession,
+  validate(reviewerCommentsQuerySchema, "query"),
+  reviewerPortalController.listComments,
+);
 
 router.post(
   "/comments",
   requireReviewerSession,
+  reviewerCommentRateLimiter,
   validate(reviewerCommentSchema),
   reviewerPortalController.createComment,
 );

@@ -40,8 +40,22 @@ export const STATUS_FILTER_OPTIONS: SelectOption[] = [
   { value: "failed", label: "Failed" },
 ];
 
+export const LIFECYCLE_FILTER_OPTIONS: SelectOption[] = [
+  { value: "active", label: "Active documents" },
+  { value: "archived", label: "Archived documents" },
+];
+
 export function statusOf(version: DocumentVersion | null | undefined): ProcessingStatus {
-  return version?.processingStatus ?? "pending_upload";
+  if (!version || version.processingStatus === "pending_upload") return "pending_upload";
+  if (version.processingStatus === "failed" || version.renderStatus === "failed") return "failed";
+  if (
+    version.processingStatus !== "ready" ||
+    version.renderStatus === "pending" ||
+    version.renderStatus === "rendering"
+  ) {
+    return "processing";
+  }
+  return "ready";
 }
 
 export function formatFileSize(bytes: number | null | undefined): string {
