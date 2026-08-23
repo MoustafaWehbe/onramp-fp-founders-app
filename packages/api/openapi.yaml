@@ -2482,6 +2482,26 @@ components:
         personalMessage:
           type: string
           nullable: true
+        deliveryStatus:
+          type: string
+          enum: [unknown, queued, sent, failed]
+        deliveryAttempts:
+          type: integer
+        deliveryLastAttemptAt:
+          type: string
+          format: date-time
+          nullable: true
+        deliverySentAt:
+          type: string
+          format: date-time
+          nullable: true
+        deliveryFailedAt:
+          type: string
+          format: date-time
+          nullable: true
+        deliveryError:
+          type: string
+          nullable: true
         expiresAt:
           type: string
           format: date-time
@@ -2635,6 +2655,18 @@ components:
         createdAt:
           type: string
           format: date-time
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+        resolvedAt:
+          type: string
+          format: date-time
+          nullable: true
+        resolvedBy:
+          type: string
+          format: uuid
+          nullable: true
 
     CreateReviewerCommentBody:
       type: object
@@ -7602,6 +7634,89 @@ paths:
       responses:
         "200":
           description: Analytics
+
+  /startups/{startupId}/reviewer-invitations/{invitationId}/resend:
+    post:
+      tags: [Reviewer Invitations]
+      summary: Rotate the access token, revoke existing sessions, and resend the invitation
+      operationId: resendReviewerInvitation
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: invitationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Invitation rotated and queued for delivery
+
+  /startups/{startupId}/reviewer-invitations/comments:
+    get:
+      tags: [Reviewer Comments]
+      summary: List reviewer comments for the founder workspace
+      operationId: listFounderReviewerComments
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { type: string, enum: [all, unread, open, resolved], default: open }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Reviewer comments and unread/open counts
+
+  /startups/{startupId}/reviewer-invitations/comments/{commentId}/read:
+    post:
+      tags: [Reviewer Comments]
+      summary: Mark a reviewer comment as read
+      operationId: markFounderReviewerCommentRead
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: commentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Marked read }
+
+  /startups/{startupId}/reviewer-invitations/comments/{commentId}/resolve:
+    post:
+      tags: [Reviewer Comments]
+      summary: Resolve a reviewer comment
+      operationId: resolveFounderReviewerComment
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: startupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: commentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Resolved }
 
   /startups/{startupId}/audit-logs:
     get:

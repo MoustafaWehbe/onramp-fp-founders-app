@@ -27,6 +27,8 @@ export interface EmailJobData {
   to: string;
   subject: string;
   html: string;
+  reviewerInvitationId?: string;
+  deliveryGeneration?: number;
 }
 
 export interface EmailJobResult {

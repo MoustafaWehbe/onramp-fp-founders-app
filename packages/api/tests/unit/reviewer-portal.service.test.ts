@@ -77,6 +77,7 @@ jest.mock("../../src/services/office-convert.service", () => ({
 jest.mock("../../src/services/notification.service", () => ({
   notificationService: {
     notifyReviewerOpened: jest.fn(),
+    notifyReviewerComment: jest.fn(),
     notifyForwardSuspected: jest.fn(),
   },
 }));
@@ -542,7 +543,10 @@ describe("ReviewerPortalService.getPageImage", () => {
 
 describe("ReviewerPortalService.createComment", () => {
   it("accepts a section comment only when the chunk belongs to the pinned document version", async () => {
-    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue({ id: "pin-1" } as never);
+    mockPrisma.reviewerInvitationDocument.findFirst.mockResolvedValue({
+      id: "pin-1",
+      document: { title: "Series A deck" },
+    } as never);
     mockPrisma.reviewerComment.create.mockResolvedValue({ id: "comment-1" } as never);
     mockPrisma.reviewerInvitation.update.mockResolvedValue({} as never);
 
@@ -560,7 +564,7 @@ describe("ReviewerPortalService.createComment", () => {
           chunks: { some: { id: "00000000-0000-0000-0000-000000000041" } },
         },
       },
-      select: { id: true },
+      select: { id: true, document: { select: { title: true } } },
     });
     expect(mockPrisma.reviewerComment.create).toHaveBeenCalled();
   });

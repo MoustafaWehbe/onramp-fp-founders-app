@@ -1649,6 +1649,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/startups/{startupId}/reviewer-invitations/{invitationId}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate the access token, revoke existing sessions, and resend the invitation */
+        post: operations["resendReviewerInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/reviewer-invitations/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List reviewer comments for the founder workspace */
+        get: operations["listFounderReviewerComments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/reviewer-invitations/comments/{commentId}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a reviewer comment as read */
+        post: operations["markFounderReviewerCommentRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/startups/{startupId}/reviewer-invitations/comments/{commentId}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve a reviewer comment */
+        post: operations["resolveFounderReviewerComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/startups/{startupId}/audit-logs": {
         parameters: {
             query?: never;
@@ -3463,6 +3531,16 @@ export interface components {
             hasPassword?: boolean;
             allowedEmailDomains?: string[];
             personalMessage?: string | null;
+            /** @enum {string} */
+            deliveryStatus?: "unknown" | "queued" | "sent" | "failed";
+            deliveryAttempts?: number;
+            /** Format: date-time */
+            deliveryLastAttemptAt?: string | null;
+            /** Format: date-time */
+            deliverySentAt?: string | null;
+            /** Format: date-time */
+            deliveryFailedAt?: string | null;
+            deliveryError?: string | null;
             /** Format: date-time */
             expiresAt?: string;
             /** Format: date-time */
@@ -3547,6 +3625,12 @@ export interface components {
             commentText?: string;
             /** Format: date-time */
             createdAt?: string;
+            /** Format: date-time */
+            readAt?: string | null;
+            /** Format: date-time */
+            resolvedAt?: string | null;
+            /** Format: uuid */
+            resolvedBy?: string | null;
         };
         CreateReviewerCommentBody: {
             /** Format: uuid */
@@ -8905,6 +8989,93 @@ export interface operations {
         responses: {
             /** @description Analytics */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    resendReviewerInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                invitationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invitation rotated and queued for delivery */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listFounderReviewerComments: {
+        parameters: {
+            query?: {
+                status?: "all" | "unread" | "open" | "resolved";
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                startupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reviewer comments and unread/open counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    markFounderReviewerCommentRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                commentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Marked read */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    resolveFounderReviewerComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                startupId: string;
+                commentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resolved */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };

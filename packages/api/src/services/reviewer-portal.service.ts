@@ -551,6 +551,7 @@ export class ReviewerPortalService {
         "INVALID_COMMENT_TARGET",
       );
     }
+    let documentTitle: string | null = null;
     if (input.documentId) {
       const pinned = await prisma.reviewerInvitationDocument.findFirst({
         where: {
@@ -560,7 +561,7 @@ export class ReviewerPortalService {
             ? { documentVersion: { chunks: { some: { id: input.chunkId } } } }
             : {}),
         },
-        select: { id: true },
+        select: { id: true, document: { select: { title: true } } },
       });
       if (!pinned) {
         throw createError(
@@ -571,11 +572,13 @@ export class ReviewerPortalService {
           "NOT_SHARED",
         );
       }
+      documentTitle = pinned.document.title;
     }
 
     const comment = await prisma.reviewerComment.create({
       data: {
         sessionId,
+        invitationId,
         startupId,
         documentId: input.documentId,
         chunkId: input.chunkId,
@@ -587,6 +590,21 @@ export class ReviewerPortalService {
       where: { id: invitationId },
       data: { lastActivityAt: new Date() },
     });
+
+    const invitation = await prisma.reviewerInvitation.findUnique({
+      where: { id: invitationId },
+      select: { createdBy: true, reviewerName: true, emailNormalized: true },
+    });
+    if (invitation) {
+      void notificationService.notifyReviewerComment({
+        userId: invitation.createdBy,
+        startupId,
+        invitationId,
+        reviewerLabel: invitation.reviewerName || invitation.emailNormalized,
+        documentTitle,
+        excerpt: input.commentText.slice(0, 180),
+      });
+    }
 
     return comment;
   }

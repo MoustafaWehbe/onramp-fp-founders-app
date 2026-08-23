@@ -21,6 +21,12 @@ export type ReviewerInvitation = {
   hasPassword: boolean;
   allowedEmailDomains: string[];
   personalMessage: string | null;
+  deliveryStatus: "unknown" | "queued" | "sent" | "failed" | string;
+  deliveryAttempts: number;
+  deliveryLastAttemptAt: string | null;
+  deliverySentAt: string | null;
+  deliveryFailedAt: string | null;
+  deliveryError: string | null;
   expiresAt: string;
   completedAt: string | null;
   revokedAt: string | null;
@@ -61,7 +67,14 @@ export async function createReviewerInvitation(
 ) {
   const { data } = await apiClient.post<{
     data: {
-      invitation: { id: string; email: string; status: string; expiresAt: string; documentCount: number };
+      invitation: {
+        id: string;
+        email: string;
+        status: string;
+        expiresAt: string;
+        documentCount: number;
+        deliveryStatus: string;
+      };
       accessToken: string;
       accessUrl: string;
     };
@@ -71,6 +84,57 @@ export async function createReviewerInvitation(
 
 export async function revokeReviewerInvitation(startupId: string, invitationId: string) {
   await apiClient.post(`/startups/${startupId}/reviewer-invitations/${invitationId}/revoke`);
+}
+
+export async function resendReviewerInvitation(startupId: string, invitationId: string) {
+  const { data } = await apiClient.post<{
+    data: { accessUrl: string; expiresAt: string; deliveryStatus: string };
+  }>(`/startups/${startupId}/reviewer-invitations/${invitationId}/resend`);
+  return data.data;
+}
+
+export type FounderReviewerComment = {
+  id: string;
+  invitationId: string;
+  reviewerName: string | null;
+  reviewerEmail: string;
+  document: { id: string; title: string } | null;
+  section: { id: string; label: string | null; pageNumber: number | null } | null;
+  commentText: string;
+  createdAt: string;
+  readAt: string | null;
+  resolvedAt: string | null;
+  resolvedBy: { id: string; name: string } | null;
+};
+
+export async function listFounderReviewerComments(
+  startupId: string,
+  params: { page?: number; limit?: number; status?: "all" | "unread" | "open" | "resolved" },
+) {
+  const { data } = await apiClient.get<{
+    data: FounderReviewerComment[];
+    meta: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+      unreadCount: number;
+      openCount: number;
+    };
+  }>(`/startups/${startupId}/reviewer-invitations/comments`, { params });
+  return data;
+}
+
+export async function markFounderReviewerCommentRead(startupId: string, commentId: string) {
+  await apiClient.post(
+    `/startups/${startupId}/reviewer-invitations/comments/${commentId}/read`,
+  );
+}
+
+export async function resolveFounderReviewerComment(startupId: string, commentId: string) {
+  await apiClient.post(
+    `/startups/${startupId}/reviewer-invitations/comments/${commentId}/resolve`,
+  );
 }
 
 export type ReviewerInvitationAnalytics = {

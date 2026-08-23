@@ -20,6 +20,7 @@ export const NOTIFICATION_TYPES = {
   DIRECT_MESSAGE: "direct_message",
   REVIEWER_OPENED: "reviewer_opened",
   FORWARD_SUSPECTED: "forward_suspected",
+  REVIEWER_COMMENT: "reviewer_comment",
 } as const;
 
 /** How long a forward-suspected alert suppresses the next one for the same
@@ -478,6 +479,38 @@ export class NotificationService {
       });
     } catch (err) {
       logger.error({ err }, "[notifyReviewerOpened] failed");
+    }
+  }
+
+  async notifyReviewerComment(input: {
+    userId: string;
+    startupId: string;
+    invitationId: string;
+    reviewerLabel: string;
+    documentTitle: string | null;
+    excerpt: string;
+  }): Promise<void> {
+    try {
+      const created = await prisma.notification.create({
+        data: {
+          userId: input.userId,
+          startupId: input.startupId,
+          type: NOTIFICATION_TYPES.REVIEWER_COMMENT,
+          title: input.documentTitle
+            ? `${input.reviewerLabel} commented on ${input.documentTitle}`
+            : `${input.reviewerLabel} left a reviewer comment`,
+          body: input.excerpt,
+          entityType: "reviewer_invitation",
+          entityId: input.invitationId,
+        },
+        select: { id: true, type: true, title: true, body: true },
+      });
+      notificationBus.publish(input.userId, {
+        type: "notification.created",
+        notification: created,
+      });
+    } catch (err) {
+      logger.error({ err }, "[notifyReviewerComment] failed");
     }
   }
 
