@@ -43,10 +43,20 @@ export function InvestorsCardList({
           <li
             key={investor.id}
             aria-selected={selectionActive ? selected : undefined}
-            onClick={selectionActive ? () => onToggleOne(investor.id) : undefined}
+            aria-label={`${selectionActive ? "Select" : "View"} ${investor.name}`}
+            tabIndex={0}
+            onClick={() =>
+              selectionActive ? onToggleOne(investor.id) : onViewHistory(investor)
+            }
+            onKeyDown={(event) => {
+              if (event.target !== event.currentTarget) return;
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              if (selectionActive) onToggleOne(investor.id);
+              else onViewHistory(investor);
+            }}
             className={cn(
-              "flex items-start gap-3 p-4",
-              selectionActive && "cursor-pointer",
+              "group flex cursor-pointer items-start gap-3 p-4 transition-colors hover:bg-primary/[0.045] focus-visible:bg-primary/[0.045] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
               selected && "bg-primary/6",
             )}
           >
@@ -64,7 +74,7 @@ export function InvestorsCardList({
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-medium text-foreground">
+                  <div className="truncate text-sm font-medium text-foreground transition-colors group-hover:text-primary">
                     {investor.name}
                   </div>
                   <div className="truncate text-xs text-muted-foreground">{investor.firm}</div>
