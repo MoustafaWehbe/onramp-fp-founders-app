@@ -1,8 +1,9 @@
-import rateLimit, { ipKeyGenerator, type Store } from "express-rate-limit";
+import rateLimit, { ipKeyGenerator, type Options, type Store } from "express-rate-limit";
 import type { Request } from "express";
 import { RedisStore } from "rate-limit-redis";
 import { getRedis } from "../db/redis";
 import { getAiConfig } from "../config/ai";
+import { recordReviewerRateLimit } from "../observability/reviewer-metrics";
 
 const WINDOW_MS = 15 * 60 * 1_000; // 15 minutes
 
@@ -33,6 +34,13 @@ function makeStore(prefix: string): Store | undefined {
     sendCommand: (command: string, ...args: string[]) =>
       redis.call(command, ...args) as Promise<never>,
   });
+}
+
+function reviewerLimitHandler(scope: string): Options["handler"] {
+  return (_req, res, _next, options) => {
+    recordReviewerRateLimit(scope);
+    res.status(options.statusCode).send(options.message);
+  };
 }
 
 // Broad ceiling for the whole API. An authenticated SPA session legitimately
@@ -147,6 +155,7 @@ export const reviewerAccessRateLimiter = rateLimit({
   message: {
     error: "Too many attempts, please wait before retrying.",
   },
+  handler: reviewerLimitHandler("access"),
 });
 
 /**
@@ -166,6 +175,7 @@ export const reviewerEventRateLimiter = rateLimit({
   message: {
     error: "Too many events reported, please wait before retrying.",
   },
+  handler: reviewerLimitHandler("event"),
 });
 
 /**
@@ -183,6 +193,7 @@ export const reviewerTelemetryRateLimiter = rateLimit({
   message: {
     error: "Too many telemetry updates, please wait before retrying.",
   },
+  handler: reviewerLimitHandler("telemetry"),
 });
 
 /**
@@ -200,6 +211,7 @@ export const reviewerContentRateLimiter = rateLimit({
   message: {
     error: "Too many document requests, please wait before continuing.",
   },
+  handler: reviewerLimitHandler("content"),
 });
 
 /** Watermarked downloads are CPU-heavy and should never be scriptable at scale. */
@@ -213,6 +225,7 @@ export const reviewerDownloadRateLimiter = rateLimit({
   message: {
     error: "Too many download attempts, please wait before retrying.",
   },
+  handler: reviewerLimitHandler("download"),
 });
 
 /** Prevents a valid reviewer session from flooding the founder's feedback inbox. */
@@ -226,6 +239,7 @@ export const reviewerCommentRateLimiter = rateLimit({
   message: {
     error: "Too many comments submitted, please wait before retrying.",
   },
+  handler: reviewerLimitHandler("comment"),
 });
 
 /**

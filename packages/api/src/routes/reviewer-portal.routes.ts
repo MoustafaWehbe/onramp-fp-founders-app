@@ -21,8 +21,11 @@ import {
   reviewerVersionIdParamSchema,
 } from "../validators/reviewer-portal.schemas";
 import { reviewerPortalController } from "../controllers/reviewer-portal.controller";
+import { reviewerMetricsMiddleware } from "../observability/reviewer-metrics";
 
 const router = Router();
+
+router.use(reviewerMetricsMiddleware);
 
 router.post(
   "/access",

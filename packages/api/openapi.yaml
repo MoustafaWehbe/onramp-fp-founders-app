@@ -55,7 +55,7 @@ tags:
   - name: AI Copilot
     description: Private, startup-scoped AI copilot sessions
   - name: Operations
-    description: Process liveness and dependency readiness probes
+    description: Process health and authenticated operational metrics
 
 # ─── Reusable components ───────────────────────────────────────────────────────
 components:
@@ -74,6 +74,12 @@ components:
         HttpOnly session cookie set after a reviewer completes token + OTP
         verification via POST /reviewer-portal/verify. Required for all
         subsequent Reviewer Portal calls.
+
+    metricsTokenAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: Dedicated 32+ character token configured with METRICS_TOKEN
 
   parameters:
     PageParam:
@@ -2902,6 +2908,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReadinessResponse"
+
+  /metrics:
+    get:
+      tags: [Operations]
+      summary: Export Prometheus-compatible operational metrics
+      operationId: getMetrics
+      security:
+        - metricsTokenAuth: []
+      servers:
+        - url: http://localhost:3000
+          description: Local development
+        - url: /
+          description: Same-origin
+      responses:
+        "200":
+          description: Metrics snapshot; labels never contain reviewer or startup identifiers
+          content:
+            text/plain:
+              schema:
+                type: string
+        "401":
+          description: Missing or invalid metrics bearer token
+        "404":
+          description: Metrics are disabled
 
   # ════════════════════════════════════════════════════════════════
   #  AUTH

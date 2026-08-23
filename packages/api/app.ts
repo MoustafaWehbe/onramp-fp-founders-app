@@ -17,6 +17,7 @@ import { userController } from "./src/controllers/user.controller";
 import { authenticate } from "./src/middleware/auth";
 import { prisma } from "./src/db/prisma";
 import { getRedis } from "./src/db/redis";
+import { metricsHandler } from "./src/observability/reviewer-metrics";
 
 const app = express();
 const READINESS_TIMEOUT_MS = 2_000;
@@ -105,6 +106,10 @@ app.get("/api/openapi.yaml", (_req, res) =>
   res.sendFile(path.join(__dirname, "openapi.yaml")),
 );
 app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
+
+// Disabled by default and protected with a dedicated bearer token when enabled.
+// Kept outside /api/v1 so infrastructure can scrape it without application auth.
+app.get("/metrics", metricsHandler);
 
 // Health check
 app.get("/health", (_req, res) => {

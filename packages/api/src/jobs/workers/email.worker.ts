@@ -3,6 +3,7 @@ import { resend } from "../../config/email";
 import type { EmailJobData, EmailJobResult } from "../../types";
 import { JOB_NAMES } from "../job-names";
 import { prisma } from "../../db/prisma";
+import { logger } from "../../utils/logger";
 
 export const emailJob = {
   name: JOB_NAMES.email,
@@ -17,6 +18,10 @@ export const emailJob = {
         select: { deliveryGeneration: true },
       });
       if (!current || current.deliveryGeneration !== deliveryGeneration) {
+        logger.info(
+          { event: "reviewer_email_skipped", jobName: job.name, reviewerInvitationId },
+          "Skipped stale reviewer email delivery",
+        );
         return { messageId: "skipped-stale-reviewer-invitation" };
       }
     }
@@ -42,6 +47,10 @@ export const emailJob = {
             deliveryMessageId: data!.id,
           },
         });
+        logger.info(
+          { event: "reviewer_email_sent", jobName: job.name, reviewerInvitationId },
+          "Reviewer email delivered",
+        );
       }
 
       return { messageId: data!.id };
@@ -56,6 +65,10 @@ export const emailJob = {
             deliveryError: message.slice(0, 1000),
           },
         });
+        logger.error(
+          { err: error, event: "reviewer_email_failed", jobName: job.name, reviewerInvitationId },
+          "Reviewer email delivery failed",
+        );
       }
       throw error;
     }

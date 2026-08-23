@@ -1,4 +1,5 @@
 import { getAiConfig } from "./ai";
+import { getReviewerOperationsConfig } from "./reviewer-operations";
 import { logger } from "../utils/logger";
 
 const REQUIRED: Record<string, string[]> = {
@@ -127,6 +128,12 @@ export function validateEnv(): void {
     // Keep feature-flagged AI configuration invalid at boot rather than
     // discovering it only after a user starts a request.
     getAiConfig();
+  } catch (err) {
+    problems.push((err as Error).message);
+  }
+
+  try {
+    getReviewerOperationsConfig();
   } catch (err) {
     problems.push((err as Error).message);
   }
