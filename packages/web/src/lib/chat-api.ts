@@ -81,6 +81,8 @@ export type ReplyThread = {
 export type CreateConversationInput = {
   name: string;
   topic?: string | null;
+  /** Active StartupMember ids selected by the creator; the creator is included server-side. */
+  memberIds: string[];
 };
 
 export type SendMessageInput = {
@@ -93,9 +95,10 @@ export type SendMessageInput = {
   documentIds?: string[];
 };
 
-export async function listConversations(startupId: string) {
+export async function listConversations(startupId: string, options: { includeArchived?: boolean } = {}) {
   const { data } = await apiClient.get<{ data: Conversation[] }>(
     `/startups/${startupId}/chat/conversations`,
+    { params: options.includeArchived ? { includeArchived: true } : undefined },
   );
   return data.data;
 }

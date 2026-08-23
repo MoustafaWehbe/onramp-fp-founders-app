@@ -50,14 +50,14 @@ export function MessageItem({ message, resolved, grouped, meta, onReact, onOpenT
       )}
     >
       {grouped ? (
-        <div className="grid h-8 w-8 shrink-0 place-items-center">
+        <div className="grid h-10 w-10 shrink-0 place-items-center">
           <span className="hidden font-mono text-[10px] tabular-nums text-muted-foreground group-hover:inline">
             {formatTime(message.createdAt)}
           </span>
         </div>
       ) : (
-        <Avatar className="h-8 w-8 shrink-0">
-          <AvatarImage src={message.sender?.avatarUrl ?? undefined} alt="" />
+        <Avatar className="h-10 w-10 shrink-0">
+          <AvatarImage src={message.sender?.avatarUrl ?? undefined} alt="" className="object-cover" />
           <AvatarFallback className="text-xs font-medium">
             {getInitials(senderName(message.sender))}
           </AvatarFallback>

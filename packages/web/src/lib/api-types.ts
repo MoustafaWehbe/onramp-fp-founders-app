@@ -1039,7 +1039,7 @@ export interface paths {
         put?: never;
         /**
          * Create a channel
-         * @description Every active member of the startup is added at creation time there is no invite-to-channel UI yet, so Phase 1 channels are workspace-wide.
+         * @description Creates a channel for the selected active workspace members. The creator is included automatically even when omitted from memberIds.
          */
         post: operations["createConversation"];
         delete?: never;
@@ -1182,7 +1182,7 @@ export interface paths {
         head?: never;
         /**
          * Archive or unarchive a channel
-         * @description Channels are workspace-wide, so this is a moderation action gated by chat:manage, not something every member can do to a room they share. DMs cannot be archived (400 CANNOT_ARCHIVE_DM) there is no shared room to moderate, only two people's own conversation.
+         * @description This is a moderation action gated by chat:manage, not something every member can do to a room they share. DMs cannot be archived (400 CANNOT_ARCHIVE_DM) there is no shared room to moderate, only two people's own conversation.
          */
         patch: operations["setConversationArchived"];
         trace?: never;
@@ -2970,6 +2970,11 @@ export interface components {
         CreateConversationBody: {
             name: string;
             topic?: string;
+            /**
+             * @description Active StartupMember ids selected for the channel. The creator is always included.
+             * @default []
+             */
+            memberIds: string[];
         };
         StartDirectMessageBody: {
             /**
@@ -7112,7 +7117,10 @@ export interface operations {
     };
     listConversations: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Include archived channels the caller belongs to. */
+                includeArchived?: boolean;
+            };
             header?: never;
             path: {
                 startupId: string;

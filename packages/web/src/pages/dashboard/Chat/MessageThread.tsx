@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ArrowLeft, Bell, BellOff, Hash, MessageSquare, User } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowLeft, Bell, BellOff, Hash, MessageSquare, User } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "../../../components/ui/avatar";
 import { Button } from "../../../components/ui/button";
@@ -117,17 +117,17 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
   });
 
   const archiveMutation = useMutation({
-    mutationFn: () => setConversationArchived(startupId, conversation.id, true),
+    mutationFn: () => setConversationArchived(startupId, conversation.id, !conversation.archivedAt),
     onSuccess: () => {
       setArchiveConfirmOpen(false);
-      toast.success(`#${conversation.name} archived`);
+      toast.success(`#${conversation.name} ${conversation.archivedAt ? "restored" : "archived"}`);
       void queryClient.invalidateQueries({ queryKey: qk.conversations(startupId) });
     },
     onError: (err) => toast.error(apiErrorMessage(err, "Could not archive that channel")),
   });
 
   const muted = conversation.notifyLevel === "none";
-  const canArchive = canModerate && conversation.type === "channel";
+  const canChangeArchive = canModerate && conversation.type === "channel";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -149,8 +149,8 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
             <Hash className="h-3.5 w-3.5" />
           </div>
         ) : (
-          <Avatar className="h-7 w-7 shrink-0">
-            <AvatarImage src={conversation.counterpart?.avatarUrl ?? undefined} alt="" />
+          <Avatar className="h-9 w-9 shrink-0">
+            <AvatarImage src={conversation.counterpart?.avatarUrl ?? undefined} alt="" className="object-cover" />
             <AvatarFallback className="text-[11px] font-medium">
               {conversation.counterpart ? getInitials(displayName) : <User className="h-3.5 w-3.5" />}
             </AvatarFallback>
@@ -160,6 +160,9 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
           <div className="truncate text-sm font-semibold">{displayName}</div>
           {conversation.topic && (
             <div className="truncate text-xs text-muted-foreground">{conversation.topic}</div>
+          )}
+          {conversation.archivedAt && !conversation.topic && (
+            <div className="text-xs text-muted-foreground">Archived · read only</div>
           )}
         </div>
         <Button
@@ -173,16 +176,16 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
         >
           {muted ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
         </Button>
-        {canArchive && (
+        {canChangeArchive && (
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-            aria-label="Archive this channel"
+            className="h-7 w-7 shrink-0 text-muted-foreground"
+            aria-label={conversation.archivedAt ? "Restore this channel" : "Archive this channel"}
             onClick={() => setArchiveConfirmOpen(true)}
           >
-            <Archive className="h-4 w-4" />
+            {conversation.archivedAt ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
           </Button>
         )}
       </div>
@@ -224,7 +227,7 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
                 grouped={isGrouped(messages[index - 1], message)}
                 resolved={resolved}
                 onReact={canSend ? (emoji) => reactMutation.mutate({ messageId: message.id, emoji }) : undefined}
-                onOpenThread={canSend ? () => setThreadMessageId(message.id) : undefined}
+                onOpenThread={message.replyCount > 0 || canSend ? () => setThreadMessageId(message.id) : undefined}
                 onDelete={message.senderId === currentMemberId ? () => setDeleteTarget(message) : undefined}
               />
             ))}
@@ -251,7 +254,9 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
         />
       ) : (
         <div className="border-t border-border/60 px-4 py-3 text-center text-xs text-muted-foreground">
-          You don't have permission to post in this channel.
+          {conversation.archivedAt
+            ? "This channel is archived and read only."
+            : "You don't have permission to post in this channel."}
         </div>
       )}
 
@@ -279,10 +284,12 @@ export function MessageThread({ startupId, conversation, canSend, onBack }: Mess
       <ConfirmDialog
         open={archiveConfirmOpen}
         onOpenChange={setArchiveConfirmOpen}
-        title={`Archive #${conversation.name}?`}
-        description="Members will no longer see this channel in their channel list. This can be undone later."
-        confirmLabel="Archive channel"
-        pendingLabel="Archiving…"
+        title={`${conversation.archivedAt ? "Restore" : "Archive"} #${conversation.name}?`}
+        description={conversation.archivedAt
+          ? "The channel will return to the active channel list for its members."
+          : "The channel will move to the archived section and become read only. This can be undone later."}
+        confirmLabel={conversation.archivedAt ? "Restore channel" : "Archive channel"}
+        pendingLabel={conversation.archivedAt ? "Restoring…" : "Archiving…"}
         variant="default"
         isPending={archiveMutation.isPending}
         onConfirm={() => archiveMutation.mutate()}

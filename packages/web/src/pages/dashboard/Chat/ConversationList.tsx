@@ -1,4 +1,4 @@
-import { BellOff, Hash, Plus, User } from "lucide-react";
+import { Archive, BellOff, Hash, Plus, User } from "lucide-react";
 import { cn, getInitials } from "../../../lib/utils";
 import type { Conversation } from "../../../lib/chat-api";
 import { Avatar, AvatarFallback, AvatarImage } from "../../../components/ui/avatar";
@@ -47,20 +47,21 @@ function ConversationRow({ conversation, active, onSelect }: ConversationRowProp
           active
             ? "bg-sidebar-accent font-medium text-primary"
             : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground",
+          conversation.archivedAt && "opacity-75",
         )}
       >
         {conversation.type === "channel" ? (
           <div
             className={cn(
-              "grid h-6 w-6 shrink-0 place-items-center rounded-md",
+              "grid h-8 w-8 shrink-0 place-items-center rounded-md",
               active ? "bg-primary/15 text-primary" : "bg-surface text-muted-foreground",
             )}
           >
             <Hash className="h-3.5 w-3.5" />
           </div>
         ) : (
-          <Avatar className="h-6 w-6 shrink-0">
-            <AvatarImage src={conversation.counterpart?.avatarUrl ?? undefined} alt="" />
+          <Avatar className="h-8 w-8 shrink-0">
+            <AvatarImage src={conversation.counterpart?.avatarUrl ?? undefined} alt="" className="object-cover" />
             <AvatarFallback className="text-[10px] font-medium">
               {conversation.counterpart ? getInitials(label) : <User className="h-3 w-3" />}
             </AvatarFallback>
@@ -108,8 +109,9 @@ export function ConversationList({
   onCreateDm,
   className,
 }: ConversationListProps) {
-  const channels = conversations.filter((c) => c.type === "channel");
-  const dms = conversations.filter((c) => c.type === "dm");
+  const channels = conversations.filter((c) => c.type === "channel" && !c.archivedAt);
+  const dms = conversations.filter((c) => c.type === "dm" && !c.archivedAt);
+  const archived = conversations.filter((c) => c.archivedAt);
 
   return (
     <div className={cn("flex flex-col", className)}>
@@ -201,6 +203,30 @@ export function ConversationList({
                   />
                 ))}
               </ul>
+            )}
+
+            {archived.length > 0 && (
+              <>
+                <div className="flex items-center gap-2 border-t border-border/60 px-4 py-3">
+                  <Archive className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="font-mono text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+                    Archived
+                  </span>
+                  <span className="ml-auto rounded-full bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                    {archived.length}
+                  </span>
+                </div>
+                <ul className="space-y-0.5 px-2 pb-2">
+                  {archived.map((conversation) => (
+                    <ConversationRow
+                      key={conversation.id}
+                      conversation={conversation}
+                      active={conversation.id === selectedId}
+                      onSelect={() => onSelect(conversation.id)}
+                    />
+                  ))}
+                </ul>
+              </>
             )}
           </>
         )}

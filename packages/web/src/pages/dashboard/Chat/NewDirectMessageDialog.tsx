@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../../components/ui/dialog";
 import { Input } from "../../../components/ui/input";
-import { Avatar, AvatarFallback } from "../../../components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "../../../components/ui/avatar";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { EmptyState } from "../../../components/shared/EmptyState";
 import { getInitials } from "../../../lib/utils";
@@ -82,7 +82,8 @@ export function NewDirectMessageDialog({
                 onClick={() => onSelect(member.id)}
                 className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-sidebar-accent"
               >
-                <Avatar className="h-7 w-7 shrink-0">
+                <Avatar className="h-9 w-9 shrink-0">
+                  <AvatarImage src={member.user!.avatarUrl ?? undefined} alt="" className="object-cover" />
                   <AvatarFallback className="text-[11px] font-medium">
                     {getInitials(`${member.user!.firstName} ${member.user!.lastName}`)}
                   </AvatarFallback>

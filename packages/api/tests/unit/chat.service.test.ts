@@ -133,7 +133,7 @@ beforeEach(() => {
 });
 
 describe("ChatService.createConversation", () => {
-  it("adds every active startup member on creation", async () => {
+  it("adds only the creator and selected active teammates", async () => {
     (mockPrisma.startupMember.findMany as jest.Mock).mockResolvedValue([
       { id: MEMBER_ID },
       { id: OTHER_MEMBER_ID },
@@ -142,13 +142,13 @@ describe("ChatService.createConversation", () => {
 
     const result = await service.createConversation(
       STARTUP_ID,
-      { name: "general" } as never,
+      { name: "general", memberIds: [OTHER_MEMBER_ID] } as never,
       USER_ID,
       MEMBER_ID,
     );
 
     expect(mockPrisma.startupMember.findMany).toHaveBeenCalledWith({
-      where: { startupId: STARTUP_ID, status: "active" },
+      where: { startupId: STARTUP_ID, status: "active", id: { in: [MEMBER_ID, OTHER_MEMBER_ID] } },
       select: { id: true },
     });
     expect(mockPrisma.conversation.create).toHaveBeenCalledWith(
@@ -168,7 +168,7 @@ describe("ChatService.createConversation", () => {
   });
 
   it("translates a duplicate channel name into CONVERSATION_NAME_TAKEN", async () => {
-    (mockPrisma.startupMember.findMany as jest.Mock).mockResolvedValue([]);
+    (mockPrisma.startupMember.findMany as jest.Mock).mockResolvedValue([{ id: MEMBER_ID }]);
     (mockPrisma.conversation.create as jest.Mock).mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
         code: "P2002",
@@ -179,6 +179,20 @@ describe("ChatService.createConversation", () => {
     await expect(
       service.createConversation(STARTUP_ID, { name: "general" } as never, USER_ID, MEMBER_ID),
     ).rejects.toMatchObject({ statusCode: 409, code: "CONVERSATION_NAME_TAKEN" });
+  });
+
+  it("rejects selected members who are not active in this workspace", async () => {
+    (mockPrisma.startupMember.findMany as jest.Mock).mockResolvedValue([{ id: MEMBER_ID }]);
+
+    await expect(
+      service.createConversation(
+        STARTUP_ID,
+        { name: "private", memberIds: [OTHER_MEMBER_ID] } as never,
+        USER_ID,
+        MEMBER_ID,
+      ),
+    ).rejects.toMatchObject({ statusCode: 400, code: "INVALID_CHANNEL_MEMBERS" });
+    expect(mockPrisma.conversation.create).not.toHaveBeenCalled();
   });
 });
 
@@ -279,6 +293,18 @@ describe("ChatService.listConversations", () => {
     );
     expect(result.data).toHaveLength(1);
     expect(result.data[0].unreadCount).toBe(3);
+  });
+
+  it("includes archived member channels only when requested", async () => {
+    (mockPrisma.conversation.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.listConversations(STARTUP_ID, MEMBER_ID, { includeArchived: true });
+
+    expect(mockPrisma.conversation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { startupId: STARTUP_ID, members: { some: { memberId: MEMBER_ID } } },
+      }),
+    );
   });
 });
 
@@ -428,6 +454,27 @@ describe("ChatService.sendMessage", () => {
       conversation: { startupId: STARTUP_ID, name: "general", type: "channel" },
     });
     (mockPrisma.conversationMember.findMany as jest.Mock).mockResolvedValue([]);
+  });
+
+  it("rejects a new message when the channel is archived", async () => {
+    (mockPrisma.conversationMember.findUnique as jest.Mock).mockResolvedValue({
+      id: "membership-1",
+      conversation: {
+        startupId: STARTUP_ID,
+        name: "general",
+        type: "channel",
+        archivedAt: new Date("2026-01-02"),
+      },
+    });
+    (mockPrisma.message.findUnique as jest.Mock).mockResolvedValue(null);
+
+    await expect(
+      service.sendMessage(STARTUP_ID, CONVERSATION_ID, MEMBER_ID, ROLE_ID, {
+        body: "should not send",
+        clientNonce: "nonce-archived",
+      } as never),
+    ).rejects.toMatchObject({ statusCode: 409, code: "CONVERSATION_ARCHIVED" });
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("creates a message, bumps lastMessageAt, advances the sender's own read pointer, and publishes to other members only", async () => {

@@ -36,13 +36,12 @@ export function Chat() {
 
   const conversationsQuery = useQuery({
     queryKey: qk.conversations(startupId),
-    queryFn: () => listConversations(startupId),
+    queryFn: () => listConversations(startupId, { includeArchived: true }),
   });
 
   const conversations = useMemo(() => conversationsQuery.data ?? [], [conversationsQuery.data]);
 
-  // Land on the most recently active channel by default, and follow along if
-  // the one that was selected gets archived out from under the list. Wait
+  // Land on the most recently active non-archived channel by default. Wait
   // for the list to actually load first otherwise this would clobber a
   // `?c=` deep link with `null` before the real conversations ever arrive.
   useEffect(() => {
@@ -52,7 +51,7 @@ export function Chat() {
       return;
     }
     if (!selectedId || !conversations.some((c) => c.id === selectedId)) {
-      setSelectedId(conversations[0].id);
+      setSelectedId(conversations.find((conversation) => !conversation.archivedAt)?.id ?? conversations[0].id);
     }
   }, [conversations, selectedId, conversationsQuery.isLoading]);
 
@@ -102,7 +101,7 @@ export function Chat() {
           <MessageThread
             startupId={startupId}
             conversation={selected}
-            canSend={canCreate}
+            canSend={canCreate && !selected.archivedAt}
             onBack={() => setSelectedId(null)}
           />
         ) : (
@@ -116,6 +115,7 @@ export function Chat() {
       </div>
 
       <NewChannelDialog
+        startupId={startupId}
         open={createOpen}
         onOpenChange={setCreateOpen}
         isSubmitting={createMutation.isPending}
