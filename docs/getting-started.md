@@ -53,7 +53,7 @@ docker compose up -d
 | Service | Host port | Purpose |
 |---|---:|---|
 | `postgres` (`pgvector/pgvector:pg16`) | 5433 | Primary persistence and vector search |
-| `redis` (`redis:7-alpine`) | 6379 | Queues, rate limits, cron locks, realtime pub/sub |
+| `redis` (`redis:7-alpine`) | 6379 | Queues (including scheduled tasks), rate limits, realtime pub/sub |
 | `worker` (built from `Dockerfile.worker`) | — | BullMQ jobs, including LibreOffice conversion |
 
 The `worker` service reads `packages/api/.env` and overrides the host-oriented

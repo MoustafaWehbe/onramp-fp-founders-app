@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ArrowDownRight, Clock, Users } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { getStage } from "../../../lib/mock-data";
+import { getStage } from "../../../lib/pipeline-stages";
 import type { PipelineAnalytics } from "../../../lib/pipeline-api";
 import { cn, formatCompactMoney } from "../../../lib/utils";
 import { formatDuration } from "./deal-signals";

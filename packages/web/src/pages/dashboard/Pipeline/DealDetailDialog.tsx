@@ -36,7 +36,7 @@ import {
 import { sendInvestorEmail } from "../../../lib/gmail-api";
 import { scheduleMeeting } from "../../../lib/calendar-api";
 import { INVESTOR_TYPE_LABELS, type InvestorType } from "../../../lib/investor-api";
-import { DEFAULT_PROBABILITY_BY_STAGE, STAGES, type PipelineStageId } from "../../../lib/mock-data";
+import { DEFAULT_PROBABILITY_BY_STAGE, STAGES, type PipelineStageId } from "../../../lib/pipeline-stages";
 import { fetchAllPages } from "../../../lib/pagination";
 import {
   listPipelineStageEvents,

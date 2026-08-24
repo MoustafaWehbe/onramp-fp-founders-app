@@ -1,5 +1,5 @@
 import { apiClient } from "./api-client";
-import type { PipelineStageId } from "./mock-data";
+import type { PipelineStageId } from "./pipeline-stages";
 
 export const INVESTOR_TYPES = ["vc", "angel", "family_office", "accelerator", "other"] as const;
 export type InvestorType = (typeof INVESTOR_TYPES)[number];

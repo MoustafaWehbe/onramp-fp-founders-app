@@ -38,10 +38,44 @@ export class AiProviderError extends Error {
 
 function requestSignal(inputSignal: AbortSignal | undefined, timeoutMs: number) {
   const controller = new AbortController();
+  // An already-aborted inputSignal never fires a fresh 'abort' listener (the
+  // event only fires at the moment abort() is called) — without this check,
+  // a cancel that landed during a retry's backoff sleep below would go
+  // undetected on the very next attempt.
+  if (inputSignal?.aborted) controller.abort(inputSignal.reason ?? "cancelled");
   const timeout = setTimeout(() => controller.abort("timeout"), timeoutMs);
   const abort = () => controller.abort(inputSignal?.reason ?? "cancelled");
   inputSignal?.addEventListener("abort", abort, { once: true });
   return { signal: controller.signal, cleanup: () => { clearTimeout(timeout); inputSignal?.removeEventListener("abort", abort); } };
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const cleanup = () => { clearTimeout(timeout); signal?.removeEventListener("abort", onAbort); };
+    const timeout = setTimeout(() => { cleanup(); resolve(); }, ms);
+    const onAbort = () => { cleanup(); resolve(); };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/** The provider's own Retry-After (seconds, or an HTTP date) when present, capped at 30s so a stale or hostile value can't stall a retry indefinitely. */
+function retryAfterMs(error: unknown): number | null {
+  const headers = typeof error === "object" && error !== null ? (error as { headers?: { get?(name: string): string | null } }).headers : undefined;
+  const raw = typeof headers?.get === "function" ? headers.get("retry-after") : null;
+  if (!raw) return null;
+  const seconds = Number(raw);
+  const ms = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(raw) - Date.now();
+  return Number.isFinite(ms) && ms > 0 ? Math.min(ms, 30_000) : null;
+}
+
+/** Full-jitter exponential backoff (250ms base, doubling, capped at 4s) — retrying a 429 immediately, as this loop did before, is the one thing that reliably makes a rate limit worse. */
+function backoffDelayMs(attempt: number): number {
+  return Math.random() * Math.min(4_000, 250 * 2 ** attempt);
+}
+
+async function delayBeforeRetry(attempt: number, error: unknown, signal?: AbortSignal): Promise<void> {
+  await sleep(retryAfterMs(error) ?? backoffDelayMs(attempt), signal);
 }
 
 type ProviderUsageContainer = {
@@ -123,6 +157,7 @@ export class OpenAiProvider implements AiProvider {
       } catch (error) {
         const normalized = error instanceof AiProviderError ? error : normalizeError(error, timed.signal);
         if (!normalized.retryable || deliveredOutput || attempt === this.config.maxRetries) throw normalized;
+        await delayBeforeRetry(attempt, error, request.signal);
       } finally { timed.cleanup(); }
     }
   }
@@ -190,6 +225,7 @@ export class OpenAiProvider implements AiProvider {
       catch (error) {
         const normalized = error instanceof AiProviderError ? error : normalizeError(error, timed.signal);
         if (!normalized.retryable || attempt === this.config.maxRetries) throw normalized;
+        await delayBeforeRetry(attempt, error, inputSignal);
       } finally { timed.cleanup(); }
     }
     throw new AiProviderError("AI provider request failed", "AI_PROVIDER_ERROR");

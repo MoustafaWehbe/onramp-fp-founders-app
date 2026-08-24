@@ -12,7 +12,7 @@ vi.mock("react-router-dom", async (importOriginal) => ({
 }));
 import type { InteractionLog } from "../../lib/interaction-log-api";
 import type { PipelineEntry, PipelineFocusEntry } from "../../lib/pipeline-api";
-import type { PipelineStageId } from "../../lib/mock-data";
+import type { PipelineStageId } from "../../lib/pipeline-stages";
 import { formatCompactMoney } from "../../lib/utils";
 
 const listPipelineEntries = vi.fn();

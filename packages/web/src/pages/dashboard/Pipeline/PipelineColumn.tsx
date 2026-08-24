@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import type { PipelineStage, PipelineStageId } from "../../../lib/mock-data";
+import type { PipelineStage, PipelineStageId } from "../../../lib/pipeline-stages";
 import type { FocusReason, PipelineEntry } from "../../../lib/pipeline-api";
 import { cn, formatCompactMoney } from "../../../lib/utils";
 import { columnDropId } from "./board-columns";

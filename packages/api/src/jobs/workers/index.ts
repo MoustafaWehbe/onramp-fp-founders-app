@@ -9,6 +9,8 @@ import { documentRasterizeJob } from "./document-rasterize.worker";
 import { calendarSyncJob } from "./calendar-sync.worker";
 import { gmailLogRetryJob } from "./gmail-log-retry.worker";
 import { aiAnalysisJob } from "./ai-analysis.worker";
+import { scheduledTasksJob, registerScheduledTasks } from "./scheduled-tasks.worker";
+import { closeQueues } from "../queue";
 import { prisma } from "../../db/prisma";
 import { closeRedis } from "../../db/redis";
 import { logger } from "../../utils/logger";
@@ -27,6 +29,7 @@ const JOBS: WorkerDef[] = [
   calendarSyncJob,
   gmailLogRetryJob,
   aiAnalysisJob,
+  scheduledTasksJob,
 ];
 
 export function startWorkers(): Worker[] {
@@ -50,6 +53,11 @@ export function startWorkers(): Worker[] {
 // Entry point only runs when executed directly
 if (require.main === module) {
   const workers = startWorkers();
+  // Registers each schedule once, from here — the worker process, not every
+  // API replica. See registerScheduledTasks's own doc comment for why.
+  void registerScheduledTasks().catch((err) => {
+    logger.error({ err }, "Failed to register scheduled tasks");
+  });
   let shuttingDown = false;
 
   async function shutdown(signal: string): Promise<void> {
@@ -57,7 +65,11 @@ if (require.main === module) {
     shuttingDown = true;
     logger.info({ signal }, "Received shutdown signal, shutting down...");
     const results = await Promise.allSettled(workers.map((worker) => worker.close()));
-    await Promise.allSettled([closeRedis(), prisma.$disconnect()]);
+    // The scheduled-tasks processor above (calendarSyncEnqueue) enqueues into
+    // calendarSyncQueue, and registerScheduledTasks enqueues into
+    // scheduledTasksQueue itself so this process holds producer-side Queue
+    // connections too, not just the consumer-side Worker ones closed above.
+    await Promise.allSettled([closeQueues(), closeRedis(), prisma.$disconnect()]);
     const failed = results.some((result) => result.status === "rejected");
     if (failed) logger.error({ results }, "One or more workers failed to close cleanly");
     process.exitCode = failed ? 1 : 0;

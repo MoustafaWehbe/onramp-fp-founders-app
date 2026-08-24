@@ -190,11 +190,3 @@ backend check is a security bug.
    needs a startup.
 6. Handle loading, empty, error, retry, permission, and mobile states.
 7. Add a Testing Library test under `src/test/` for the user-visible behavior.
-
-## Known issue
-
-`lib/mock-data.ts` still exports the production pipeline stage display
-configuration (`STAGES`, `getStage`, `DEFAULT_PROBABILITY_BY_STAGE`, and the
-`PipelineStageId` type) alongside development fixtures, and roughly twenty
-production modules import from it. Do not add new fixture dependencies there;
-when working in that area, split the stable configuration into its own module.

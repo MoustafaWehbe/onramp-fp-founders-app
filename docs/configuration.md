@@ -62,7 +62,7 @@ single attacker locks everyone out. Too high and a client forges
 | `DATABASE_URL` | — | **Required.** PostgreSQL connection string. Compose publishes the database on host port **5433**. |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `postgres` / `postgres` / `raise` | Read by `docker-compose.yml` when creating the container, not by the API. |
 | `POSTGRES_HOST` / `POSTGRES_PORT` | `localhost` / `5433` | Convenience values; `DATABASE_URL` is what the API uses. |
-| `REDIS_URL` | — | **Required.** Queues, rate limits, cron locks, realtime pub/sub, local upload tokens. |
+| `REDIS_URL` | — | **Required.** Queues (including scheduled tasks), rate limits, realtime pub/sub, local upload tokens. |
 | `REALTIME_BUS` | unset (Redis) | Set to `memory` to force the single-process in-process bus without Redis pub/sub. Automatic under `NODE_ENV=test`. |
 
 > A PostgreSQL volume created earlier keeps its original database name and
@@ -128,7 +128,7 @@ Everything below is read through `getAiConfig()` and validated at boot.
 | `AI_REQUEST_TIMEOUT_MS` | `30000` | Per provider request. |
 | `AI_MAX_OUTPUT_TOKENS` | `2000` | Chat responses. |
 | `AI_ANALYSIS_MAX_OUTPUT_TOKENS` | `8000` | Analyses need far more room; 2000 truncated mid-JSON on real decks. |
-| `AI_MAX_TOOL_ROUNDS` | `4` | Tool-call rounds per message before the model must answer. |
+| `AI_MAX_TOOL_ROUNDS` | `8` | Tool-call rounds per message before the model must answer. |
 | `AI_RETRIEVAL_RESULT_COUNT` | `8` | Chunks retrieved per query. |
 | `AI_RETRIEVAL_TOKEN_BUDGET` | `4500` | Token ceiling for retrieved context. |
 | `AI_MIN_RETRIEVAL_SCORE` | `0.2` | Similarity floor, 0–1. Below it, a chunk is not grounding. |

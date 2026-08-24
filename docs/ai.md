@@ -156,9 +156,12 @@ These gates mirror the manual endpoint's own requirement rather than a lighter
 one. Creating a proposal is not a lesser act than performing the write; it is
 the same act with a human in the loop.
 
-`AI_MAX_TOOL_ROUNDS` (default 4) bounds tool-call rounds per message. Each tool
+`AI_MAX_TOOL_ROUNDS` (default 8) bounds tool-call rounds per message. Each tool
 call has its own timeout — generous relative to a lookup, short enough that a
-wedged tool cannot hold a stream open.
+wedged tool cannot hold a stream open. Exhausting the budget doesn't discard
+what was already gathered: one further round runs with tool use disabled, so
+the model must answer from the results already in context instead of the
+turn ending in a canned apology.
 
 ## Propose-only actions
 

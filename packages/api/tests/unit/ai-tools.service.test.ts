@@ -8,6 +8,7 @@ import { chatService } from "../../src/services/chat.service";
 import { aiActionsService } from "../../src/services/ai-actions.service";
 import { gmailSendService } from "../../src/services/gmail-send.service";
 import { calendarEventService } from "../../src/services/calendar-event.service";
+import { fundraisingService } from "../../src/services/fundraising.service";
 
 jest.mock("../../src/db/prisma", () => ({
   prisma: {
@@ -29,6 +30,7 @@ jest.mock("../../src/services/chat.service", () => ({ chatService: { listConvers
 jest.mock("../../src/services/ai-actions.service", () => ({ aiActionsService: { proposeAction: jest.fn() } }));
 jest.mock("../../src/services/gmail-send.service", () => ({ gmailSendService: { sendInvestorEmail: jest.fn() } }));
 jest.mock("../../src/services/calendar-event.service", () => ({ calendarEventService: { scheduleMeeting: jest.fn() } }));
+jest.mock("../../src/services/fundraising.service", () => ({ fundraisingService: { getRound: jest.fn(), listRounds: jest.fn(), getRoundMetrics: jest.fn() } }));
 
 describe("AI structured tools", () => {
   beforeEach(() => jest.clearAllMocks());
@@ -162,6 +164,49 @@ describe("AI structured tools", () => {
     expect(pipelineService.getFocus).toHaveBeenCalledWith("startup-a", "00000000-0000-0000-0000-000000000007", "member-7");
     expect(taskService.listTasks).toHaveBeenCalledWith("startup-a", expect.objectContaining({ assigneeId: "member-7", status: "open" }));
     expect(result).toMatchObject({ assignedInvestors: { total: 0 }, tasks: { totalOpen: 0 }, meetings: [], roundHealth: null });
+  });
+
+  it("bounds what reaches the model: capped investor query, and overdue/dueToday/focusDeals trimmed to the artifact's own limits", async () => {
+    (prisma.startupMember.findUnique as jest.Mock).mockResolvedValue({ id: "member-7", status: "active" });
+    (investorService.listInvestors as jest.Mock).mockResolvedValue({ data: [], meta: { total: 0 } });
+    (pipelineService.getFocus as jest.Mock).mockResolvedValue({ data: Array.from({ length: 30 }, (_, i) => ({ investorId: `inv-${i}`, investor: { fullName: `Investor ${i}` }, stage: "sourced", reason: "priority", daysQuiet: 0, nextTaskDueDate: null })) });
+    const overdueDueDate = new Date(Date.now() - 86_400_000);
+    (taskService.listTasks as jest.Mock).mockResolvedValue({
+      data: Array.from({ length: 30 }, (_, i) => ({ id: `task-${i}`, title: `Task ${i}`, status: "open", priority: "medium", dueDate: overdueDueDate, assigneeId: null, assignee: null, investor: { id: "inv-1", fullName: "Ana" }, round: { id: "round-1", roundName: "Seed", status: "active" }, pipelineStage: "sourced" })),
+      meta: { total: 30 },
+    });
+    (prisma.interactionLog.findMany as jest.Mock).mockResolvedValue([]);
+
+    const result = await new AiToolsService().execute(
+      "startup-a", "get_daily_briefing", { roundId: null }, ["get_daily_briefing"],
+      { userId: "user-1", canReadFinancial: false },
+    ) as { assignedInvestors: { data: unknown[] }; focusDeals: { data: unknown[] }; tasks: { overdue: unknown[]; dueToday: unknown[] } };
+
+    expect(investorService.listInvestors).toHaveBeenCalledWith("startup-a", expect.objectContaining({ limit: 20 }));
+    expect(result.focusDeals.data).toHaveLength(15);
+    expect(result.tasks.overdue).toHaveLength(20);
+    expect(result.tasks.dueToday).toHaveLength(0);
+  });
+
+  it("resolves round health alongside the other daily-briefing lookups, not after them, when the caller has financial:read", async () => {
+    (prisma.startupMember.findUnique as jest.Mock).mockResolvedValue({ id: "member-7", status: "active" });
+    (investorService.listInvestors as jest.Mock).mockResolvedValue({ data: [], meta: { total: 0 } });
+    (pipelineService.getFocus as jest.Mock).mockResolvedValue({ data: [] });
+    (taskService.listTasks as jest.Mock).mockResolvedValue({ data: [], meta: { total: 0 } });
+    (prisma.interactionLog.findMany as jest.Mock).mockResolvedValue([]);
+    (fundraisingService.getRound as jest.Mock).mockResolvedValue({ id: "round-1", roundName: "Seed", currency: "USD" });
+    (fundraisingService.getRoundMetrics as jest.Mock).mockResolvedValue({ percentToTarget: 40 });
+
+    const result = await new AiToolsService().execute(
+      "startup-a",
+      "get_daily_briefing",
+      { roundId: "00000000-0000-0000-0000-000000000007" },
+      ["get_daily_briefing"],
+      { userId: "user-1", canReadFinancial: true },
+    ) as { roundHealth: { round: { id: string }; metrics: { percentToTarget: number } } | null };
+
+    expect(fundraisingService.getRound).toHaveBeenCalledWith("startup-a", "00000000-0000-0000-0000-000000000007");
+    expect(result.roundHealth).toMatchObject({ round: { id: "round-1" }, metrics: { percentToTarget: 40 } });
   });
 
   it("groups deals by stage via get_pipeline_by_stage", async () => {

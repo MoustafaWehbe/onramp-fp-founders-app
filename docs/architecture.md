@@ -41,20 +41,21 @@ flowchart LR
 | Component | Entry point | Responsibility |
 |---|---|---|
 | Web app | `packages/web/src/main.tsx` | Founder workspace UI and reviewer portal UI |
-| API | `packages/api/server.ts` → `app.ts` | REST, auth, SSE, cron scheduling, health probes |
-| Worker | `packages/api/src/jobs/workers/index.ts` | Durable asynchronous processing |
+| API | `packages/api/server.ts` → `app.ts` | REST, auth, SSE, health probes |
+| Worker | `packages/api/src/jobs/workers/index.ts` | Durable asynchronous processing, scheduled maintenance tasks |
 | PostgreSQL | `packages/api/prisma/schema.prisma` | Transactional data, audit trail, document chunks and vectors |
-| Redis | `packages/api/src/db/redis.ts` | BullMQ, distributed rate limits, cron locks, realtime pub/sub, local upload tokens |
+| Redis | `packages/api/src/db/redis.ts` | BullMQ (including recurring schedules), distributed rate limits, realtime pub/sub, local upload tokens |
 
 **The API and worker are separate processes.** The API enqueues jobs but runs
 no BullMQ processors; the worker runs processors but serves no HTTP. Both are
 built from the same `@raise/api` package, so they share services, the Prisma
 client, and configuration.
 
-**Cron runs inside the API process.** `startCronJobs()` is called once per API
-replica, and every replica's `node-cron` fires every schedule. A Redis `SET NX`
-lock keyed to the schedule's own interval bucket ensures only one replica
-executes each logical tick. See [background-jobs.md](background-jobs.md).
+**Recurring maintenance runs as BullMQ repeatable jobs, registered once by the
+worker.** There is no cron running inside the API — the schedule itself lives
+in Redis via BullMQ's Job Scheduler API, so exactly one job instance is
+produced per due tick regardless of API or worker replica count, and only one
+worker instance ever claims it. See [background-jobs.md](background-jobs.md).
 
 ## Monorepo boundaries
 
@@ -62,7 +63,8 @@ Two npm workspaces, coordinated by Turborepo:
 
 ```text
 packages/
-  api/    Express API, Prisma access, cron, BullMQ workers, OpenAPI contract
+  api/    Express API, Prisma access, BullMQ workers (including scheduled
+          maintenance), OpenAPI contract
   web/    React + Vite frontend (founder workspace and reviewer portal)
 ```
 
@@ -110,7 +112,7 @@ sequenceDiagram
     participant Tab as Browser tab
     participant A as API replica A
     participant R as Redis pub/sub
-    participant B as API replica B (or worker/cron)
+    participant B as API replica B (or worker)
     Tab->>A: GET /notifications/stream (SSE)
     B->>R: publish user event
     R-->>A: event
@@ -135,8 +137,7 @@ resume mid-generation. See [ai.md](ai.md).
 
 ```mermaid
 flowchart LR
-    API -->|enqueue| Q[(BullMQ on Redis)]
-    Cron -->|enqueue| Q
+    API -->|enqueue| Q[(BullMQ on Redis, incl. repeatable schedules)]
     Q --> W[Worker process]
     W --> PG[(PostgreSQL)]
     W --> S[Object storage]
@@ -147,7 +148,10 @@ flowchart LR
 
 Queues default to three attempts with exponential backoff. **Every job must be
 idempotent**: retries, restarts, and multiple consumers are normal operating
-conditions, not edge cases.
+conditions, not edge cases. Scheduled maintenance (retention sweeps, daily
+reminders, and the like) rides the same queues as a repeatable job — the
+worker registers each schedule once at boot; see
+[background-jobs.md](background-jobs.md).
 
 ## Data and storage
 
@@ -231,8 +235,9 @@ flowchart TB
 
 Rules that matter:
 
-- API replicas **must** share one PostgreSQL and one Redis. Rate limits, cron
-  locks, realtime fan-out, and AI run ownership all depend on it.
+- API replicas **must** share one PostgreSQL and one Redis. Rate limits,
+  BullMQ (including scheduled tasks), realtime fan-out, and AI run ownership
+  all depend on it.
 - Migrations run as a release step **before** the new API serves traffic.
 - The worker scales independently by queue depth.
 - `TRUST_PROXY` must match the real proxy hop count. Too low and everyone
@@ -241,15 +246,5 @@ Rules that matter:
 
 ## Known architectural debt
 
-- **`packages/web/src/lib/mock-data.ts`** exports both development fixtures and
-  the production pipeline stage display configuration (`STAGES`, `getStage`,
-  `DEFAULT_PROBABILITY_BY_STAGE`, `PipelineStageId`). Roughly twenty production
-  modules import from it. That configuration should move to its own module so
-  fixtures and shipped config have separate ownership.
-- **OpenAPI documents endpoints that do not exist**: `/roles`,
-  `/roles/{roleId}`, `/roles/{roleId}/permissions`, `/permissions`, and
-  `/users/me/password`. Role management is implemented under
-  `/startups/{startupId}/roles`. The stale paths flow into the generated
-  frontend types; remove them from the YAML or implement them.
 - **No end-to-end browser suite.** Flows that cross web → API → PostgreSQL →
   Redis → SSE are covered only by unit tests on each side.

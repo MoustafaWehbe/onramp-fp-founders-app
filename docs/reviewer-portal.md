@@ -132,8 +132,10 @@ suppressed for a cooldown window.
 ## Privacy retention
 
 Reviewer access creates short-lived credentials and privacy-sensitive network
-and device signals. A daily job at **03:45** (`reviewer-retention.ts`, behind
-the shared Redis cron lock) prunes them in one transaction.
+and device signals. A daily scheduled task at **03:45**
+(`reviewer-data-retention`, dispatching into `reviewer-retention.ts`'s
+`enforceReviewerRetention()`) prunes them in one transaction. See
+[background-jobs.md](background-jobs.md#scheduled-tasks).
 
 | Data | Default window | Action | Variable |
 |---|---:|---|---|

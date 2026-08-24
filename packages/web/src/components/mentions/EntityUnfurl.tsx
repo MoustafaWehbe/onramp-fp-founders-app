@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { ChevronRight, Crown, FileText, ListChecks, Users, Briefcase, Wallet } from "lucide-react";
 import { Badge } from "../ui/badge";
-import { getStage } from "../../lib/mock-data";
+import { getStage } from "../../lib/pipeline-stages";
 import { formatCompactMoney, formatDate, cn } from "../../lib/utils";
 import { ROUND_STATUS_LABELS, type RoundStatus } from "../../lib/fundraising-api";
 import { INVESTOR_TYPE_LABELS, type InvestorType } from "../../lib/investor-api";

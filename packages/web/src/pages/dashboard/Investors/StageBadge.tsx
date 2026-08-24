@@ -1,5 +1,5 @@
 import { Badge } from "../../../components/ui/badge";
-import { getStage, type PipelineStageId } from "../../../lib/mock-data";
+import { getStage, type PipelineStageId } from "../../../lib/pipeline-stages";
 import { cn } from "../../../lib/utils";
 
 export function StageBadge({ stageId }: { stageId: PipelineStageId | null }) {

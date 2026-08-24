@@ -1,4 +1,4 @@
-import type { PipelineStageId } from "../../../lib/mock-data";
+import type { PipelineStageId } from "../../../lib/pipeline-stages";
 import type { InvestorListItem, InvestorType } from "../../../lib/investor-api";
 
 export type InvestorRow = {

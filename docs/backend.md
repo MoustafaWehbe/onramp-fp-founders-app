@@ -9,7 +9,7 @@ rules this guide assumes.
 
 ```text
 packages/api/
-├── server.ts              Process bootstrap: env validation, listen, cron, graceful shutdown
+├── server.ts              Process bootstrap: env validation, listen, graceful shutdown
 ├── app.ts                 Express wiring: security, parsers, rate limits, routes, probes
 ├── openapi.yaml           REST contract of record
 ├── prisma.config.ts       Prisma CLI configuration (reads DATABASE_URL)
@@ -23,7 +23,7 @@ packages/api/
     ├── db/                Prisma client and Redis singleton
     ├── emails/            Email templates
     ├── events/            Realtime bus (Redis pub/sub) for notifications and chat
-    ├── jobs/              Queues, cron schedules, and BullMQ workers
+    ├── jobs/              Queues, scheduled tasks, and BullMQ workers
     ├── middleware/        auth, rbac, rate-limiter, reviewer-auth, ai-enabled
     ├── observability/     Prometheus-compatible reviewer metrics
     ├── routes/            HTTP contract + middleware composition
@@ -41,9 +41,12 @@ packages/api/
 2. `validateEnv()` — exit before anything else can half-start.
 3. Import `app.ts` (importing earlier would read unvalidated configuration).
 4. `prisma.$connect()`, then `app.listen(PORT)`.
-5. `startCronJobs()`.
-6. Register `SIGTERM`/`SIGINT` handlers that stop cron tasks, close the HTTP
-   server (10s grace, then force), close queues, then Redis and Prisma.
+5. Register `SIGTERM`/`SIGINT` handlers that close the HTTP server (10s grace,
+   then force), close queues, then Redis and Prisma.
+
+Scheduled tasks are not part of the API's bootstrap — the worker process
+registers them once at its own boot. See
+[background-jobs.md](background-jobs.md#scheduled-tasks).
 
 `app.ts` middleware order also matters:
 
@@ -226,7 +229,7 @@ and chat events, so the app holds one live connection per user rather than two.
 
 - Transport to the browser: SSE, via `notificationController.stream` and
   `utils/sse-writer.ts`.
-- Transport between processes: Redis pub/sub, so cron, workers, and every API
+- Transport between processes: Redis pub/sub, so the worker and every API
   replica reach whichever process holds the user's open stream.
 - `REALTIME_BUS=memory` and `NODE_ENV=test` select the in-process
   implementation so unit tests need no Redis.

@@ -60,7 +60,9 @@ failure.
 
 - [ ] The job is idempotent, and a comment says how
 - [ ] Concurrency chosen for what the job is bound by
-- [ ] A schedule is wrapped in `withCronLock` with a matching interval
+- [ ] A schedule is registered via `upsertJobScheduler` in
+      `registerScheduledTasks()`, and any config gate is re-checked inside the
+      task body too (see [background-jobs.md](background-jobs.md#scheduled-tasks))
 - [ ] [background-jobs.md](background-jobs.md) updated
 
 ### Configuration change
@@ -95,7 +97,10 @@ failure.
 - Build query keys through `qk`, never inline.
 - Use generated types from `lib/api-types.ts`; never hand-edit that file.
 - Follow shadcn/ui conventions in `components/ui`; use `cn()` for class merging.
-- Do not add new dependencies on `lib/mock-data.ts`.
+- `lib/mock-data.ts` is development fixtures only — never import it from
+  production code. Pipeline stage display config (`STAGES`, `getStage`,
+  `DEFAULT_PROBABILITY_BY_STAGE`, `PipelineStageId`) lives in
+  `lib/pipeline-stages.ts` instead.
 
 ## Pull requests
 

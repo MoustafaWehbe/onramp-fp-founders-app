@@ -38,7 +38,7 @@ import {
   DEFAULT_PROBABILITY_BY_STAGE,
   STAGES,
   type PipelineStageId,
-} from "../../../lib/mock-data";
+} from "../../../lib/pipeline-stages";
 import {
   createPipelineEntry,
   deletePipelineEntry,

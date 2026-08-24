@@ -15,7 +15,7 @@ import { useGoogleConnectionStatus } from "../../../hooks/useGoogleConnection";
 import { apiErrorCode, apiErrorMessage } from "../../../lib/api-error";
 import { runWithConcurrency } from "../../../lib/concurrency";
 import { sendInvestorEmail } from "../../../lib/gmail-api";
-import { DEFAULT_PROBABILITY_BY_STAGE } from "../../../lib/mock-data";
+import { DEFAULT_PROBABILITY_BY_STAGE } from "../../../lib/pipeline-stages";
 import {
   createInvestor,
   deleteInvestor,
@@ -26,7 +26,7 @@ import {
   type InvestorInput,
 } from "../../../lib/investor-api";
 import { listFundraisingRounds } from "../../../lib/fundraising-api";
-import { STAGES, type PipelineStageId } from "../../../lib/mock-data";
+import { STAGES, type PipelineStageId } from "../../../lib/pipeline-stages";
 import { createPipelineEntry } from "../../../lib/pipeline-api";
 import { invalidateDealData, invalidateInteractionData, qk } from "../../../lib/query-keys";
 import { useAppStore } from "../../../lib/app-store";

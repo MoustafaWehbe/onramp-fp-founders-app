@@ -21,7 +21,7 @@ import {
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import { listInvestors } from "../../../lib/investor-api";
-import { STAGES, type PipelineStageId } from "../../../lib/mock-data";
+import { STAGES, type PipelineStageId } from "../../../lib/pipeline-stages";
 import { fetchAllPages } from "../../../lib/pagination";
 import { qk } from "../../../lib/query-keys";
 import { cn } from "../../../lib/utils";

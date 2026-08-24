@@ -340,17 +340,3 @@ per-user, not per-startup.
 | POST | `/google/disconnect` | session | Revoke and delete stored tokens |
 | PATCH | `/google/calendar-sync` | session | Enable/disable calendar sync |
 | POST | `/google/calendar-sync/trigger` | session | Enqueue a sync now |
-
-## Known contract drift
-
-`openapi.yaml` currently documents five paths that **are not implemented**, and
-they flow into the generated frontend types:
-
-| Documented path | Reality |
-|---|---|
-| `GET /roles`, `PATCH/DELETE /roles/{roleId}` | Implemented as `/startups/{startupId}/roles` |
-| `PUT /roles/{roleId}/permissions` | Not implemented |
-| `GET /permissions` | Not implemented |
-| `PUT /users/me/password` | Not implemented |
-
-Remove them from the YAML or implement them — do not build against them.
