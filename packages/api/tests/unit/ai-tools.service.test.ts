@@ -327,5 +327,56 @@ describe("AI structured tools", () => {
         { taskId: "00000000-0000-0000-0000-000000000004", status: "completed" },
       );
     });
+
+    describe("investorId resolution", () => {
+      it("passes an already-valid UUID straight through without a lookup", async () => {
+        (aiActionsService.proposeAction as jest.Mock).mockResolvedValue({ id: "action-1", actionType: "send_investor_email", status: "proposed", expiresAt: new Date() });
+        await new AiToolsService().execute("startup-a", "propose_investor_email", {
+          investorId: "00000000-0000-0000-0000-000000000001", pipelineId: null, subject: "Hi", body: "Hello",
+        }, ["propose_investor_email"], CONTEXT);
+
+        expect(investorService.listInvestors).not.toHaveBeenCalled();
+        expect(aiActionsService.proposeAction).toHaveBeenCalledWith(
+          "startup-a", "session-1", "message-1", "user-1", "send_investor_email",
+          expect.objectContaining({ investorId: "00000000-0000-0000-0000-000000000001" }),
+        );
+      });
+
+      it("resolves a name to the one matching investor's id — the Sarah Chen case: 'Sarah Chen from Sequoia Capital' has no exact-substring match anywhere, but the name alone resolves", async () => {
+        (investorService.listInvestors as jest.Mock).mockResolvedValue({ data: [{ id: "inv-sarah", fullName: "Sarah Chen", ventureFirm: "Sequoia Capital" }] });
+        (aiActionsService.proposeAction as jest.Mock).mockResolvedValue({ id: "action-1", actionType: "send_investor_email", status: "proposed", expiresAt: new Date() });
+
+        await new AiToolsService().execute("startup-a", "propose_investor_email", {
+          investorId: "Sarah Chen", pipelineId: null, subject: "Hi", body: "Hello",
+        }, ["propose_investor_email"], CONTEXT);
+
+        expect(investorService.listInvestors).toHaveBeenCalledWith("startup-a", expect.objectContaining({ search: "Sarah Chen" }));
+        expect(aiActionsService.proposeAction).toHaveBeenCalledWith(
+          "startup-a", "session-1", "message-1", "user-1", "send_investor_email",
+          expect.objectContaining({ investorId: "inv-sarah" }),
+        );
+      });
+
+      it("fails with a self-correcting message, never a proposal, when the name matches nobody", async () => {
+        (investorService.listInvestors as jest.Mock).mockResolvedValue({ data: [] });
+        await expect(new AiToolsService().execute("startup-a", "propose_investor_email", {
+          investorId: "Nobody Real", pipelineId: null, subject: "Hi", body: "Hello",
+        }, ["propose_investor_email"], CONTEXT)).rejects.toThrow(/No investor matches "Nobody Real"/);
+        expect(aiActionsService.proposeAction).not.toHaveBeenCalled();
+      });
+
+      it("fails with the candidate list, never guessing, when the name matches more than one investor", async () => {
+        (investorService.listInvestors as jest.Mock).mockResolvedValue({
+          data: [
+            { id: "inv-1", fullName: "Sarah Chen", ventureFirm: "Sequoia Capital" },
+            { id: "inv-2", fullName: "Sarah Chen", ventureFirm: "Benchmark" },
+          ],
+        });
+        await expect(new AiToolsService().execute("startup-a", "propose_meeting", {
+          investorId: "Sarah Chen", pipelineId: null, type: "call", startDateTime: "2026-09-01T10:00:00.000Z", durationMinutes: 30, subject: null, description: null,
+        }, ["propose_meeting"], CONTEXT)).rejects.toThrow(/matches more than one investor/);
+        expect(aiActionsService.proposeAction).not.toHaveBeenCalled();
+      });
+    });
   });
 });

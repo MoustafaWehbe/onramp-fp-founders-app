@@ -1,8 +1,38 @@
 import { ZodError } from "zod";
 import { prisma } from "../../src/db/prisma";
-import { AiConversationService } from "../../src/services/ai-conversation.service";
+import { AiConversationService, buildRetrievalQuery } from "../../src/services/ai-conversation.service";
 import { FakeAiProvider } from "../../src/services/ai-provider.service";
 import { aiToolsService } from "../../src/services/ai-tools.service";
+
+describe("buildRetrievalQuery", () => {
+  it("folds the last few user turns into the query, so a bare follow-up still carries its subject", () => {
+    const history = [
+      { role: "user", content: "Tell me about Sarah Chen's deck" },
+      { role: "assistant", content: "Here's what I found..." },
+      { role: "user", content: "what about her check size?" },
+    ];
+    const query = buildRetrievalQuery(history);
+    expect(query).toContain("Sarah Chen");
+    expect(query).toContain("check size");
+  });
+
+  it("ignores assistant turns and caps at the last three user turns", () => {
+    const history = [
+      { role: "user", content: "first" },
+      { role: "assistant", content: "reply" },
+      { role: "user", content: "second" },
+      { role: "assistant", content: "reply" },
+      { role: "user", content: "third" },
+      { role: "assistant", content: "reply" },
+      { role: "user", content: "fourth" },
+    ];
+    expect(buildRetrievalQuery(history)).toEqual("second\nthird\nfourth");
+  });
+
+  it("returns an empty string for a history with no user turns", () => {
+    expect(buildRetrievalQuery([{ role: "assistant", content: "hello" }])).toEqual("");
+  });
+});
 
 jest.mock("../../src/db/prisma", () => ({
   prisma: {
@@ -240,6 +270,16 @@ describe("AI conversation agent loop", () => {
     }));
   });
 
+  it("keys the provider request on the session id, so repeat turns in the same conversation can hit OpenAI's prompt cache", async () => {
+    const provider = new FakeAiProvider();
+    provider.streamEventsByTurn = [[{ type: "delta", text: "Sure." }, { type: "completed", stopReason: "stop" }]];
+    const service = new AiConversationService(provider);
+
+    await (service as any).runGeneration(session, "assistant-message", "user-1", loopAccess);
+
+    expect((provider.requests[0].input as { promptCacheKey?: string }).promptCacheKey).toEqual("session-1");
+  });
+
   it("chains a tool call before answering: the model requests it, the server executes it, and the answer arrives on the next round", async () => {
     (aiToolsService.execute as jest.Mock).mockResolvedValue({ data: [{ investorId: "inv-1" }] });
     const provider = new FakeAiProvider();
@@ -316,12 +356,12 @@ describe("AI conversation agent loop", () => {
     (aiToolsService.execute as jest.Mock).mockResolvedValue({ data: [] });
     const provider = new FakeAiProvider();
     const toolCallOnlyRound = [{ type: "tool_call" as const, callId: "call-x", name: "get_focus_deals", arguments: "{}" }, { type: "completed" as const, stopReason: "tool_calls" as const }];
-    provider.streamEventsByTurn = [toolCallOnlyRound, toolCallOnlyRound, toolCallOnlyRound, toolCallOnlyRound];
+    provider.streamEventsByTurn = [toolCallOnlyRound, toolCallOnlyRound, toolCallOnlyRound, toolCallOnlyRound, toolCallOnlyRound, toolCallOnlyRound, toolCallOnlyRound, toolCallOnlyRound];
     const service = new AiConversationService(provider);
 
     await (service as any).runGeneration(session, "assistant-message", "user-1", loopAccess);
 
-    expect(provider.requests.filter((request) => request.operation === "streamConversation")).toHaveLength(4);
+    expect(provider.requests.filter((request) => request.operation === "streamConversation")).toHaveLength(8);
     expect(prisma.aiChatMessage.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ status: "completed", content: expect.stringContaining("couldn't finish") }),
     }));
@@ -407,7 +447,7 @@ describe("AI conversation agent loop", () => {
     expect(instructions).toContain("Never write a placeholder");
   });
 
-  it("tells the model to re-resolve an id fresh every turn and retry a failed propose_* call, rather than reuse a remembered id or give up", async () => {
+  it("tells the model pipelineId/taskId must be freshly resolved every turn, and that investorId can be a name resolved automatically", async () => {
     const provider = new FakeAiProvider();
     provider.streamEventsByTurn = [[{ type: "delta", text: "Sure." }, { type: "completed", stopReason: "stop" }]];
     const proposeAccess = { canReadDocuments: false, canReadFinancial: true, tools: ["propose_investor_email" as const, "search_investors" as const] };
@@ -417,7 +457,8 @@ describe("AI conversation agent loop", () => {
 
     const instructions = (provider.requests[0].input as { instructions: string }).instructions;
     expect(instructions).toContain("never one you remember discussing");
-    expect(instructions).toContain("immediately retry");
+    expect(instructions).toContain("retry that resolution once more");
+    expect(instructions).toContain("accepts either a real id or the investor's name");
   });
 
   it("skips the sender lookup entirely when no draft-worthy tool is available this turn", async () => {

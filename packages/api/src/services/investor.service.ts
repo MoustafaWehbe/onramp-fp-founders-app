@@ -75,6 +75,12 @@ function listPhrase(items: string[]): string {
 
 type ContactRow = { checkSizeMin: Prisma.Decimal | null; checkSizeMax: Prisma.Decimal | null } & Record<string, unknown>;
 
+// Filler words a caller (or an AI copilot echoing a natural-language request,
+// e.g. "Sarah Chen from Sequoia Capital") tends to glue onto a name search.
+// None of these ever appear in a real name, firm, sector, or description, so
+// stripping them before matching only removes noise.
+const SEARCH_STOPWORDS = new Set(["a", "an", "and", "at", "for", "from", "in", "of", "on", "the", "to", "with"]);
+
 // Decimal serializes to a JSON string, but the API contract documents these as
 // numbers convert at the boundary rather than leaking Prisma's type.
 function serializeContact<T extends ContactRow>(contact: T) {
@@ -128,24 +134,34 @@ export class InvestorService {
       ...(investorType && { investorType }),
       ...((stage || ownerId || pipelineOnly) && { pipeline: { some: pipelineWhere } }),
       ...(search && {
-        OR: [
-          // Matched token-by-token (every word in the search must appear
-          // somewhere in the name, in any order) rather than as one contiguous
-          // substring a name typed slightly wrong, e.g. "Sara Chen" instead of
-          // "Sarah Chen", is otherwise a contiguous-substring miss even though
-          // every word the caller typed is genuinely present in the name.
-          { AND: search.trim().split(/\s+/).filter(Boolean).map((token) => ({ fullName: { contains: token, mode: "insensitive" as const } })) },
-          { email: { contains: search, mode: "insensitive" as const } },
-          { ventureFirm: { contains: search, mode: "insensitive" as const } },
-          { sectorFocus: { contains: search, mode: "insensitive" as const } },
-          { description: { contains: search, mode: "insensitive" as const } },
-        ],
+        // Matched token-by-token (every non-filler word in the search must
+        // appear somewhere across name/email/firm/sector/description, in any
+        // field, in any order) rather than as one contiguous substring — a
+        // name typed slightly wrong ("Sara Chen" for "Sarah Chen") or a
+        // natural-language query that mixes the name with other words
+        // ("Sarah Chen from Sequoia Capital") is otherwise a miss even
+        // though every meaningful word the caller typed is genuinely present.
+        AND: search
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean)
+          .filter((token) => !SEARCH_STOPWORDS.has(token.toLowerCase()))
+          .map((token) => ({
+            OR: [
+              { fullName: { contains: token, mode: "insensitive" as const } },
+              { email: { contains: token, mode: "insensitive" as const } },
+              { ventureFirm: { contains: token, mode: "insensitive" as const } },
+              { sectorFocus: { contains: token, mode: "insensitive" as const } },
+              { description: { contains: token, mode: "insensitive" as const } },
+            ],
+          })),
       }),
     };
 
-    // Combined with AND rather than spread: both sides use `OR` (search vs.
-    // engaged) and `pipeline` (stage vs. prospect), so merging them as keys
-    // would silently drop one of the two filters.
+    // Combined with AND rather than spread: baseWhere may carry its own `AND`
+    // (search) or `pipeline` (stage/owner) key that collides with `engaged`'s
+    // `OR` or `prospect`'s `pipeline`, so merging them as plain keys would
+    // silently drop one of the two filters.
     const where: Prisma.StartupInvestorWhereInput = engagement
       ? { AND: [baseWhere, ENGAGEMENT_FILTERS[engagement]] }
       : baseWhere;

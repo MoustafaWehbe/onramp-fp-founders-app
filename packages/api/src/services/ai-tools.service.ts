@@ -33,6 +33,16 @@ function stripNulls<T extends Record<string, unknown>>(value: T): Partial<T> {
   return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== null)) as Partial<T>;
 }
 
+/**
+ * Raised when a propose_* tool's investorId couldn't be resolved from a
+ * caller-supplied name — no match, or more than one. Carries a message the
+ * model can act on directly (unlike a bare ZodError), the same way an
+ * invalid-arguments failure lets it self-correct within the same turn.
+ */
+export class AiToolResolutionError extends Error {}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const toolInputs = {
   get_startup_profile: z.object({}),
   get_round_health: z.object({ roundId: z.string().guid().nullish() }),
@@ -71,7 +81,10 @@ const toolInputs = {
     assigneeId: z.string().guid().nullish(),
   }),
   propose_interaction_log: z.object({
-    investorId: z.string().guid(),
+    // Either the investor's real id or their name accepted so the model can
+    // skip a forced round trip when it already has the name from context;
+    // resolved to a real id in execute() before this ever reaches proposeAction.
+    investorId: z.string().trim().min(1).max(200),
     pipelineId: z.string().guid().nullish(),
     type: z.enum(["call", "email", "meeting", "note", "other"]),
     interactionDate: z.string(),
@@ -79,7 +92,7 @@ const toolInputs = {
     description: z.string().max(2000).nullish(),
   }),
   propose_meeting: z.object({
-    investorId: z.string().guid(),
+    investorId: z.string().trim().min(1).max(200),
     pipelineId: z.string().guid().nullish(),
     type: z.enum(["call", "meeting"]),
     startDateTime: z.string(),
@@ -88,7 +101,7 @@ const toolInputs = {
     description: z.string().max(2000).nullish(),
   }),
   propose_investor_email: z.object({
-    investorId: z.string().guid(),
+    investorId: z.string().trim().min(1).max(200),
     pipelineId: z.string().guid().nullish(),
     subject: z.string().trim().min(1).max(200),
     body: z.string().trim().min(1).max(5000),
@@ -209,7 +222,7 @@ export const AI_TOOL_DEFINITIONS: Record<AiToolName, { description: string; para
     parameters: {
       type: "object",
       properties: {
-        investorId: { type: "string", description: "UUID of the investor." },
+        investorId: { type: "string", description: "The investor's id if a tool already returned one this conversation, otherwise their name — it is resolved to an id automatically." },
         pipelineId: { type: ["string", "null"], description: "UUID of the specific deal this is about, or null." },
         type: { type: "string", enum: ["call", "email", "meeting", "note", "other"] },
         interactionDate: { type: "string", description: "ISO 8601 datetime the interaction happened." },
@@ -225,7 +238,7 @@ export const AI_TOOL_DEFINITIONS: Record<AiToolName, { description: string; para
     parameters: {
       type: "object",
       properties: {
-        investorId: { type: "string", description: "UUID of the investor." },
+        investorId: { type: "string", description: "The investor's id if a tool already returned one this conversation, otherwise their name — it is resolved to an id automatically." },
         pipelineId: { type: ["string", "null"], description: "UUID of the specific deal this meeting is about, or null." },
         type: { type: "string", enum: ["call", "meeting"] },
         startDateTime: { type: "string", description: "ISO 8601 datetime the meeting starts." },
@@ -242,7 +255,7 @@ export const AI_TOOL_DEFINITIONS: Record<AiToolName, { description: string; para
     parameters: {
       type: "object",
       properties: {
-        investorId: { type: "string", description: "UUID of the investor." },
+        investorId: { type: "string", description: "The investor's id if a tool already returned one this conversation, otherwise their name — it is resolved to an id automatically." },
         pipelineId: { type: ["string", "null"], description: "UUID of the specific deal this email is about, or null." },
         subject: { type: "string" },
         body: { type: "string" },
@@ -285,7 +298,7 @@ export function toolSchemasFor(allowedTools: readonly AiToolName[]): AiToolDefin
 export class AiToolsService {
   async execute(startupId: string, tool: AiToolName, rawInput: unknown, allowedTools: readonly AiToolName[], context: { canReadFinancial?: boolean; userId?: string; sessionId?: string; messageId?: string; roundId?: string | null } = {}) {
     if (!allowedTools.includes(tool)) throw new Error("AI_TOOL_FORBIDDEN");
-    const parsedInput = toolInputs[tool].parse(rawInput) as Record<string, unknown>;
+    let parsedInput = toolInputs[tool].parse(rawInput) as Record<string, unknown>;
     const effectiveRoundId = (requestedRoundId: string | null | undefined) => requestedRoundId ?? context.roundId ?? undefined;
 
     if (tool === "get_startup_profile") {
@@ -480,6 +493,9 @@ export class AiToolsService {
     const actionType = PROPOSE_TOOL_ACTION_TYPES[tool];
     if (!actionType) throw new Error("AI_TOOL_FORBIDDEN");
     if (!context.userId || !context.sessionId || !context.messageId) throw new Error("AI_TOOL_FORBIDDEN");
+    if (typeof parsedInput.investorId === "string") {
+      parsedInput = { ...parsedInput, investorId: await this.resolveInvestorId(startupId, parsedInput.investorId) };
+    }
     const action = await aiActionsService.proposeAction(startupId, context.sessionId, context.messageId, context.userId, actionType, stripNulls(parsedInput));
     return {
       actionId: action.id,
@@ -488,6 +504,26 @@ export class AiToolsService {
       expiresAt: action.expiresAt,
       summary: "Drafted and awaiting the user's review in the card attached to this message. Do not say this was sent, created, scheduled, or logged — say it was drafted and is awaiting approval.",
     };
+  }
+
+  /**
+   * A propose_* tool's investorId is a real id whenever the model already
+   * resolved one (via search_investors or get_investor_context earlier this
+   * turn) — passed through untouched, no extra lookup. Otherwise it's read as
+   * a name so the model doesn't have to make a dedicated round trip just to
+   * turn a name it already has into an id.
+   */
+  private async resolveInvestorId(startupId: string, investorIdOrName: string): Promise<string> {
+    if (UUID_RE.test(investorIdOrName)) return investorIdOrName;
+    const matches = await investorService.listInvestors(startupId, { page: 1, limit: 5, search: investorIdOrName });
+    if (matches.data.length === 0) {
+      throw new AiToolResolutionError(`No investor matches "${investorIdOrName}". Call search_investors to find the right one, or ask the user for the correct name.`);
+    }
+    if (matches.data.length > 1) {
+      const names = matches.data.map((investor) => investor.ventureFirm ? `${investor.fullName} (${investor.ventureFirm})` : investor.fullName).join(", ");
+      throw new AiToolResolutionError(`"${investorIdOrName}" matches more than one investor: ${names}. Ask the user which one they mean, or call search_investors for exact ids.`);
+    }
+    return matches.data[0].id;
   }
 
   private async resolveMemberId(startupId: string, userId: string | undefined): Promise<string> {

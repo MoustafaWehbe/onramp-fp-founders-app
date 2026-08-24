@@ -14,8 +14,8 @@ export interface FunctionCallInputItem { type: "function_call"; callId: string; 
 export interface FunctionCallOutputInputItem { type: "function_call_output"; callId: string; output: string; }
 export type AiInputItem = ConversationMessage | FunctionCallInputItem | FunctionCallOutputInputItem;
 export interface AiToolDefinition { type: "function"; name: string; description: string; parameters: Record<string, unknown>; strict: true; }
-export interface StreamConversationRequest { instructions: string; input: AiInputItem[]; tools?: AiToolDefinition[]; signal?: AbortSignal; }
-export interface StructuredObjectRequest { instructions: string; input: string; schemaName: string; schema: Record<string, unknown>; signal?: AbortSignal; }
+export interface StreamConversationRequest { instructions: string; input: AiInputItem[]; tools?: AiToolDefinition[]; signal?: AbortSignal; promptCacheKey?: string; }
+export interface StructuredObjectRequest { instructions: string; input: string; schemaName: string; schema: Record<string, unknown>; signal?: AbortSignal; promptCacheKey?: string; }
 export interface StructuredObjectResult { providerRequestId?: string; value: unknown; usage?: AiUsage; }
 export interface AiProvider {
   streamConversation(request: StreamConversationRequest): AsyncIterable<AiStreamEvent>;
@@ -105,7 +105,7 @@ export class OpenAiProvider implements AiProvider {
     for (let attempt = 0; attempt <= this.config.maxRetries; attempt += 1) {
       const timed = requestSignal(request.signal, this.config.requestTimeoutMs);
       try {
-        const stream = await this.client.responses.create({ model: this.config.chatModel, instructions: request.instructions, input, tools: request.tools?.length ? request.tools : undefined, max_output_tokens: this.config.maxOutputTokens, store: false, stream: true }, { signal: timed.signal });
+        const stream = await this.client.responses.create({ model: this.config.chatModel, instructions: request.instructions, input, tools: request.tools?.length ? request.tools : undefined, max_output_tokens: this.config.maxOutputTokens, store: false, stream: true, prompt_cache_key: request.promptCacheKey }, { signal: timed.signal });
         if (!isAsyncIterable(stream)) throw new AiProviderError("AI provider returned a non-stream response", "AI_MALFORMED_RESPONSE");
         for await (const event of stream) {
           if (event.type === "response.output_text.delta" && typeof event.delta === "string") { deliveredOutput = true; yield { type: "delta", text: event.delta }; }
@@ -129,7 +129,7 @@ export class OpenAiProvider implements AiProvider {
 
   async generateStructuredObject(request: StructuredObjectRequest): Promise<StructuredObjectResult> {
     this.assertEnabled();
-    const response = await this.withRetries((signal) => this.client.responses.create({ model: this.config.analysisModel, instructions: request.instructions, input: request.input, max_output_tokens: this.config.analysisMaxOutputTokens, store: false, text: { format: { type: "json_schema", name: request.schemaName, strict: true, schema: request.schema } } }, { signal }), request.signal);
+    const response = await this.withRetries((signal) => this.client.responses.create({ model: this.config.analysisModel, instructions: request.instructions, input: request.input, max_output_tokens: this.config.analysisMaxOutputTokens, store: false, prompt_cache_key: request.promptCacheKey, text: { format: { type: "json_schema", name: request.schemaName, strict: true, schema: request.schema } } }, { signal }), request.signal);
     // A response cut off by the token budget is a distinct, actionable failure
     // (JSON.parse would otherwise reject it with an opaque "invalid JSON" that
     // looks identical to a genuine model malfunction) — surface it as its own

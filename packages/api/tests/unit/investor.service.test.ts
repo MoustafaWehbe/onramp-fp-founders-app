@@ -186,12 +186,16 @@ describe("InvestorService.listInvestors", () => {
     } as never);
 
     const { where } = (mockPrisma.startupInvestor.findMany as jest.Mock).mock.calls[0][0];
-    expect(where.AND[0].OR).toEqual([
-      { AND: [{ fullName: { contains: "accel", mode: "insensitive" } }] },
-      { email: { contains: "accel", mode: "insensitive" } },
-      { ventureFirm: { contains: "accel", mode: "insensitive" } },
-      { sectorFocus: { contains: "accel", mode: "insensitive" } },
-      { description: { contains: "accel", mode: "insensitive" } },
+    expect(where.AND[0].AND).toEqual([
+      {
+        OR: [
+          { fullName: { contains: "accel", mode: "insensitive" } },
+          { email: { contains: "accel", mode: "insensitive" } },
+          { ventureFirm: { contains: "accel", mode: "insensitive" } },
+          { sectorFocus: { contains: "accel", mode: "insensitive" } },
+          { description: { contains: "accel", mode: "insensitive" } },
+        ],
+      },
     ]);
     expect(where.AND[1].OR).toEqual([
       { pipeline: { some: {} } },
@@ -209,12 +213,25 @@ describe("InvestorService.listInvestors", () => {
     await service.listInvestors(STARTUP_ID, { ...DEFAULT_QUERY, search: "Sara Chen" } as never);
 
     const { where } = (mockPrisma.startupInvestor.findMany as jest.Mock).mock.calls[0][0];
-    expect(where.OR[0]).toEqual({
-      AND: [
-        { fullName: { contains: "Sara", mode: "insensitive" } },
-        { fullName: { contains: "Chen", mode: "insensitive" } },
-      ],
-    });
+    expect(where.AND).toEqual([
+      { OR: expect.arrayContaining([{ fullName: { contains: "Sara", mode: "insensitive" } }]) },
+      { OR: expect.arrayContaining([{ fullName: { contains: "Chen", mode: "insensitive" } }]) },
+    ]);
+  });
+
+  it("drops filler words and matches remaining tokens across any field, so a natural-language query still resolves", async () => {
+    // The AI copilot echoes the founder's own phrasing, e.g. "Sarah Chen from
+    // Sequoia Capital" — "from" appears in no field, and the old contiguous
+    // "OR" matching required the *entire* string inside one field, so this
+    // query returned zero results even though Sarah Chen was in the pipeline.
+    mockCounts(1, 0);
+    (mockPrisma.startupInvestor.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.listInvestors(STARTUP_ID, { ...DEFAULT_QUERY, search: "Sarah Chen from Sequoia Capital" } as never);
+
+    const { where } = (mockPrisma.startupInvestor.findMany as jest.Mock).mock.calls[0][0];
+    const tokens = where.AND.map((clause: { OR: Array<{ fullName?: { contains: string } }> }) => clause.OR[0].fullName!.contains);
+    expect(tokens).toEqual(["Sarah", "Chen", "Sequoia", "Capital"]);
   });
 
   it("keeps the stage filter when an engagement tab is selected", async () => {
@@ -241,8 +258,8 @@ describe("InvestorService.listInvestors", () => {
 
     const countCalls = (mockPrisma.startupInvestor.count as jest.Mock).mock.calls;
     for (const [{ where }] of countCalls) {
-      expect(where.AND[0].OR).toEqual(
-        expect.arrayContaining([{ AND: [{ fullName: { contains: "seed", mode: "insensitive" } }] }]),
+      expect(where.AND[0].AND).toEqual(
+        expect.arrayContaining([{ OR: expect.arrayContaining([{ fullName: { contains: "seed", mode: "insensitive" } }]) }]),
       );
     }
   });
@@ -422,12 +439,16 @@ describe("InvestorService.listInvestors", () => {
     await service.listInvestors(STARTUP_ID, { ...DEFAULT_QUERY, search: "accel" } as never);
 
     const { where } = (mockPrisma.startupInvestor.findMany as jest.Mock).mock.calls[0][0];
-    expect(where.OR).toEqual([
-      { AND: [{ fullName: { contains: "accel", mode: "insensitive" } }] },
-      { email: { contains: "accel", mode: "insensitive" } },
-      { ventureFirm: { contains: "accel", mode: "insensitive" } },
-      { sectorFocus: { contains: "accel", mode: "insensitive" } },
-      { description: { contains: "accel", mode: "insensitive" } },
+    expect(where.AND).toEqual([
+      {
+        OR: [
+          { fullName: { contains: "accel", mode: "insensitive" } },
+          { email: { contains: "accel", mode: "insensitive" } },
+          { ventureFirm: { contains: "accel", mode: "insensitive" } },
+          { sectorFocus: { contains: "accel", mode: "insensitive" } },
+          { description: { contains: "accel", mode: "insensitive" } },
+        ],
+      },
     ]);
   });
 
