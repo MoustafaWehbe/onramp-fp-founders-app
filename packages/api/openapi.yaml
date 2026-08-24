@@ -2729,7 +2729,7 @@ components:
       required: [id, type, status, data, createdAt]
       properties:
         id: { type: string, format: uuid }
-        type: { type: string, enum: [source_answer.v1, comparison.v1, email_draft.v1, meeting_brief.v1] }
+        type: { type: string, enum: [action_proposal.v1] }
         title: { type: string, nullable: true }
         status: { type: string, enum: [building, ready, failed] }
         data: { type: object, additionalProperties: true }

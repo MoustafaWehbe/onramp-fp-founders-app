@@ -396,16 +396,14 @@ export class AiToolsService {
           })),
         },
         // getFocus has no limit parameter of its own (unlike the other three
-        // lookups above), so its cap is applied here instead — matching the
-        // 15 the daily_briefing.v1 artifact already caps focusDeals at, the
-        // same bound this data effectively already had once rendered.
+        // lookups above), so its cap is applied here instead — keeps this
+        // tool's own token footprint bounded regardless of how many deals
+        // actually need attention.
         focusDeals: { data: focusDeals.data.slice(0, 15) },
         tasks: {
           totalOpen: tasks.meta.total,
-          // Capped to the same 20 the daily_briefing.v1 artifact already caps
-          // each list at (see overdueTasks/dueTodayTasks in
-          // ai-conversation.service.ts) — this tool's own output was the one
-          // place nothing bounded them before they reached the model.
+          // Bounded so an unusually large overdue/due-today list can't blow
+          // past this tool's own reasonable token footprint.
           overdue: overdue.slice(0, 20).map(conciseTask),
           dueToday: dueToday.slice(0, 20).map(conciseTask),
           upcoming: upcoming.slice(0, 10).map(conciseTask),

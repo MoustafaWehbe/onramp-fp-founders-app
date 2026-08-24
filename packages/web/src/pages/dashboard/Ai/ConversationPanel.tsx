@@ -17,7 +17,6 @@ import { qk } from "../../../lib/query-keys";
 import { cn, formatDate } from "../../../lib/utils";
 import { AnalysisCard } from "./AnalysisCard";
 import { AiArtifactRenderer } from "./artifacts/AiArtifactRenderer";
-import { splitArtifactBackedContent } from "./artifact-content";
 
 const TOOL_ACTIVITY_LABELS: Record<string, string> = {
   get_startup_profile: "your startup profile",
@@ -380,7 +379,6 @@ export function ConversationPanel({ startupId, session, canCreate, canReadDocume
                 <MessageBubble
                   key={entry.message.id}
                   startupId={startupId}
-                  onAskFollowup={setDraft}
                   message={entry.message}
                 />
               ) : (
@@ -567,19 +565,16 @@ function Welcome({ canCreate, onSelectPrompt }: { canCreate: boolean; onSelectPr
 // message's object reference in the react-query cache — re-renders (and
 // re-parses markdown for) just the bubble that actually changed, instead of
 // every bubble in the conversation on every delta.
-const MessageBubble = memo(function MessageBubble({ startupId, message, onAskFollowup }: { startupId: string; message: AiChatMessage; onAskFollowup: (prompt: string) => void }) {
+const MessageBubble = memo(function MessageBubble({ startupId, message }: { startupId: string; message: AiChatMessage }) {
   const assistant = message.role === "assistant";
-  // The source_answer artifact duplicates this same text plus a source list in a
-  // bordered card — rendering it instead of the plain bubble made every grounded
-  // answer visibly "reshape" the instant streaming finished. Sources are already
-  // shown via the lightweight citations list below, so that artifact type is
-  // never rendered here.
-  const displayArtifacts = assistant ? message.artifacts.filter((artifact) => artifact.type !== "source_answer.v1") : [];
+  // action_proposal.v1 (the Approve/Discard card for a drafted task, email,
+  // meeting, etc.) is the only artifact type the AI ever produces — everything
+  // else is the model's own natural-language answer, shown as-is below.
+  const displayArtifacts = assistant ? message.artifacts : [];
   // The tool-activity row already communicates "in progress" once a tool call has
   // started, so the generic thinking spinner would be redundant alongside it.
   const thinking = assistant && !message.content && !message.toolCalls?.some((call) => call.status === "started");
   const revealedContent = useStreamedReveal(message.content, message.status === "pending" || message.status === "streaming");
-  const artifactContent = displayArtifacts.length > 0 ? splitArtifactBackedContent(message.content, displayArtifacts) : null;
 
   return (
     <article className={cn("group flex gap-3", assistant ? "flex-row" : "flex-row-reverse")}>
@@ -594,19 +589,13 @@ const MessageBubble = memo(function MessageBubble({ startupId, message, onAskFol
           {thinking ? (
             <ThinkingIndicator />
           ) : assistant ? (
-            <Markdown>{artifactContent?.intro ?? revealedContent}</Markdown>
+            <Markdown>{revealedContent}</Markdown>
           ) : (
             <span className="whitespace-pre-wrap">{message.content}</span>
           )}
         </div>
 
-        {assistant && displayArtifacts.map((artifact) => <AiArtifactRenderer key={artifact.id} startupId={startupId} artifact={artifact} onAskFollowup={onAskFollowup} />)}
-
-        {assistant && artifactContent?.followup && (
-          <div className="mt-3 text-foreground/90">
-            <Markdown>{artifactContent.followup}</Markdown>
-          </div>
-        )}
+        {assistant && displayArtifacts.map((artifact) => <AiArtifactRenderer key={artifact.id} startupId={startupId} artifact={artifact} />)}
 
         <div className={cn("mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground", assistant ? "" : "flex-row-reverse")}>
           <span className="opacity-0 transition-opacity group-hover:opacity-100">{formatDate(message.createdAt)}</span>
