@@ -5,7 +5,7 @@ import { storageService } from "./storage.service";
 import { AUDIT_ACTIONS, recordAuditEvent } from "./audit-writer";
 import type { CreateStartupInput, UpdateStartupInput } from "../validators/startup.schemas";
 import type { CreateRoleInput, UpdateRoleInput } from "../validators/role.schemas";
-import { ROLE_DEFINITIONS, ROLE_TEMPLATES } from "../config/permissions";
+import { expandPermissionKeys, ROLE_DEFINITIONS, ROLE_TEMPLATES } from "../config/permissions";
 
 /** "resource:action" strings, computed from a role's live RolePermission rows. */
 function permissionKeys(rolePermissions: { permission: { resource: string; action: string } }[]): string[] {
@@ -248,9 +248,18 @@ export class StartupService {
     }));
   }
 
-  /** Validates that every requested key is a real "resource:action" pair, returning their ids. */
-  private async resolvePermissionIds(keys: string[]): Promise<string[]> {
-    const unique = [...new Set(keys)];
+  /**
+   * Validates that every requested key is a real "resource:action" pair,
+   * returning their ids alongside the effective key list.
+   *
+   * The requested keys are first closed over PERMISSION_DEPENDENCIES, so a
+   * role saved with "edit deals" but not "view deals" comes back with both.
+   * Doing it here rather than in the client means every caller — the role
+   * editor, a seed, a future API consumer — gets a role that actually works,
+   * and the audit entry records what was really granted.
+   */
+  private async resolvePermissionIds(keys: string[]): Promise<{ ids: string[]; keys: string[] }> {
+    const unique = expandPermissionKeys(keys);
     const rows = await prisma.permission.findMany({
       where: { OR: unique.map((k) => {
         const [resource, action] = k.split(":");
@@ -265,11 +274,11 @@ export class StartupService {
       throw createError(`Unknown permission(s): ${missing.join(", ")}`, 400, "UNKNOWN_PERMISSION");
     }
 
-    return unique.map((k) => byKey.get(k)!);
+    return { ids: unique.map((k) => byKey.get(k)!), keys: unique };
   }
 
   async createRole(startupId: string, input: CreateRoleInput, userId: string) {
-    const permissionIds = await this.resolvePermissionIds(input.permissions);
+    const { ids: permissionIds, keys: effectivePermissions } = await this.resolvePermissionIds(input.permissions);
 
     let role: { id: string; name: string; description: string | null; isSystemRole: boolean; permissions: string[]; memberCount: number };
     try {
@@ -287,7 +296,7 @@ export class StartupService {
           data: permissionIds.map((permissionId) => ({ roleId: created.id, permissionId })),
         });
 
-        return { id: created.id, name: created.name, description: created.description, isSystemRole: false, permissions: input.permissions, memberCount: 0 };
+        return { id: created.id, name: created.name, description: created.description, isSystemRole: false, permissions: effectivePermissions, memberCount: 0 };
       });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
@@ -317,7 +326,7 @@ export class StartupService {
       throw createError("The owner role's permissions can't be changed", 403, "OWNER_ROLE_LOCKED");
     }
 
-    const permissionIds = input.permissions ? await this.resolvePermissionIds(input.permissions) : null;
+    const permissionIds = input.permissions ? (await this.resolvePermissionIds(input.permissions)).ids : null;
 
     const updated = await prisma.$transaction(async (tx) => {
       if (input.description !== undefined) {

@@ -1143,6 +1143,41 @@ describe("Pipeline board", () => {
     expect(navigateMock).toHaveBeenCalledWith("/investors?tab=engaged&stage=contacted");
   });
 
+  it("builds the board for a role without the financial grant", async () => {
+    // A viewer has pipeline:read and no financial:read. The board is
+    // round-scoped, so it still needs to know which round it is on — the
+    // round list comes back with its amounts stripped rather than 403ing,
+    // which used to leave the whole page empty.
+    role = "viewer";
+    listFundraisingRounds.mockResolvedValue({
+      data: [
+        {
+          id: "round-1",
+          startupId: "startup-1",
+          roundName: "Seed",
+          targetAmount: null,
+          minimumTicketSize: null,
+          equityOfferedPercentage: null,
+          currency: "USD",
+          status: "active",
+          financialsRedacted: true,
+          createdAt: daysFromNow(-30),
+          updatedAt: daysFromNow(-30),
+        },
+      ],
+      meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    });
+    renderPipeline();
+
+    expect(await screen.findByRole("button", { name: "Open Ada Lovelace" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Active fundraising round")).toBeInTheDocument();
+    // Scoped to the round it picked, exactly as it would be with the grant.
+    expect(listPipelineEntries).toHaveBeenCalledWith(
+      "startup-1",
+      expect.objectContaining({ roundId: "round-1" }),
+    );
+  });
+
   it("gives a viewer a read-only board", async () => {
     role = "viewer";
     const user = userEvent.setup();

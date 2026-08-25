@@ -40,6 +40,117 @@ export const PERMISSIONS = [
   { resource: "chat", action: "manage", description: "Archive and restore team channels" },
 ] as const;
 
+export type PermissionKey = `${(typeof PERMISSIONS)[number]["resource"]}:${string}`;
+
+export const PERMISSION_KEYS: readonly string[] = PERMISSIONS.map((p) => `${p.resource}:${p.action}`);
+
+/**
+ * Human-facing metadata for each resource, in one place so the role editor,
+ * the "no access" screens, and the copilot's refusals all name a permission
+ * the same way the Team & Roles page labels it. `topics` is what the copilot
+ * says it cannot reach — phrased as subject matter a founder would recognize,
+ * not as a database table.
+ */
+export const RESOURCE_META = {
+  startup: {
+    label: "Startup profile",
+    topics: "the startup profile and company details",
+  },
+  team: {
+    label: "Team",
+    topics: "team members, roles, and invitations",
+  },
+  pipeline: {
+    label: "Investors & pipeline",
+    topics: "investors, deals, pipeline stages, tasks, and interaction history",
+  },
+  documents: {
+    label: "Documents",
+    topics: "documents, the data room, and reviewer engagement",
+  },
+  financial: {
+    label: "Rounds & commitments",
+    topics: "fundraising rounds, commitments, amounts raised, and round forecasts",
+  },
+  ai_reports: {
+    label: "AI analysis",
+    topics: "AI analyses and copilot chat",
+  },
+  chat: {
+    label: "Team chat",
+    topics: "team conversations and messages",
+  },
+} as const satisfies Record<(typeof PERMISSIONS)[number]["resource"], { label: string; topics: string }>;
+
+export type ResourceName = keyof typeof RESOURCE_META;
+
+/**
+ * Grants that are meaningless — and actively break screens — without another
+ * grant alongside them. Editing a deal you cannot list, or archiving a channel
+ * you cannot open, is not a narrower role: it is a role whose page renders
+ * empty while the API returns 403 on the reads behind it.
+ *
+ * These are closed over on every role write (see `expandPermissionKeys`), so a
+ * role can never be persisted in that broken shape regardless of which client
+ * sent it. The role editor mirrors the same map to keep the checkbox state
+ * honest before the request is even made.
+ */
+export const PERMISSION_DEPENDENCIES: Readonly<Record<string, readonly string[]>> = {
+  "startup:update": ["startup:read"],
+  "startup:delete": ["startup:read"],
+
+  "team:create": ["team:read"],
+  "team:update": ["team:read"],
+  "team:delete": ["team:read"],
+  "team:manage": ["team:read"],
+
+  "pipeline:create": ["pipeline:read"],
+  "pipeline:update": ["pipeline:read"],
+  "pipeline:delete": ["pipeline:read"],
+
+  "documents:create": ["documents:read"],
+  "documents:update": ["documents:read"],
+  "documents:delete": ["documents:read"],
+  "documents:share": ["documents:read"],
+
+  // Every write path here reads the round it is writing to, and the Rounds
+  // screen is a read screen with buttons on it.
+  "financial:create": ["financial:read"],
+  "financial:update": ["financial:read"],
+  "financial:delete": ["financial:read"],
+
+  "ai_reports:create": ["ai_reports:read"],
+
+  "chat:create": ["chat:read"],
+  "chat:manage": ["chat:read"],
+};
+
+/**
+ * The transitive closure of `PERMISSION_DEPENDENCIES` over the given keys,
+ * de-duplicated and returned in catalog order so audit-log diffs of a role's
+ * grants stay stable rather than reflecting whatever order a client sent.
+ * Unknown keys pass through untouched — validating them is
+ * `resolvePermissionIds`'s job, and swallowing them here would turn a typo
+ * into a silently narrower role.
+ */
+export function expandPermissionKeys(keys: Iterable<string>): string[] {
+  const resolved = new Set<string>();
+  const queue = [...keys];
+
+  while (queue.length > 0) {
+    const key = queue.pop()!;
+    if (resolved.has(key)) continue;
+    resolved.add(key);
+    for (const dependency of PERMISSION_DEPENDENCIES[key] ?? []) {
+      if (!resolved.has(dependency)) queue.push(dependency);
+    }
+  }
+
+  const ordered = PERMISSION_KEYS.filter((key) => resolved.has(key));
+  const unknown = [...resolved].filter((key) => !PERMISSION_KEYS.includes(key)).sort();
+  return [...ordered, ...unknown];
+}
+
 export const ROLE_TEMPLATES = {
   owner: PERMISSIONS.map((p) => `${p.resource}:${p.action}`),
   collaborator: [

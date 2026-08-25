@@ -183,7 +183,7 @@ share the `pipeline` permission family.
 
 | Method | Path | Requires | Purpose |
 |---|---|---|---|
-| GET | `/fundraising-rounds` | `financial:read` | List rounds |
+| GET | `/fundraising-rounds` | `financial:read` *or* `pipeline:read` | List rounds. With only `pipeline:read` every amount comes back `null` and the row is marked `financialsRedacted` — enough for the pipeline board to scope itself to a round, not enough to read the raise. |
 | POST | `/fundraising-rounds` | `financial:create` | Create a round |
 | GET | `/fundraising-rounds/:roundId` | `financial:read` | Round detail |
 | PATCH | `/fundraising-rounds/:roundId` | `financial:update` | Edit |

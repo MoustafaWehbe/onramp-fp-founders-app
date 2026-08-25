@@ -1,5 +1,4 @@
-import { getRolePermissions } from "../middleware/rbac";
-import { resolveAiCapabilities } from "../services/ai-capabilities.service";
+import { describeAiAccess, resolveAiCapabilities } from "../services/ai-capabilities.service";
 import { asyncHandler } from "../utils/errors";
 import { aiChatService } from "../services/ai-chat.service";
 import { aiConversationService } from "../services/ai-conversation.service";
@@ -9,35 +8,47 @@ import type { CreateAiAnalysisInput, CreateAiMessageInput, CreateAiSessionInput,
 import type { NextFunction, Request, Response } from "express";
 import { SseWriter } from "../utils/sse-writer";
 
-const ACCESS_GRANTS = ["startup:read", "documents:read", "financial:read", "pipeline:read", "pipeline:create", "pipeline:update", "ai_reports:read", "ai_reports:create"] as const;
-
 /**
- * One query for the caller's whole permission set instead of one findFirst
- * per grant checked here previously eight separate round trips for what's
- * really one "what can this role do" question.
+ * The caller's grants come straight off the request: requireMember resolved
+ * the role's whole permission set before any of these handlers ran, so this
+ * costs no query at all (it was eight separate findFirsts once, then one
+ * batched query, now none).
+ *
+ * `access` carries both halves of the policy: which tools the model may call,
+ * and which data areas it must tell the user they cannot reach. Without the
+ * second half a missing tool reads to the model as merely missing data, and
+ * it starts guessing or asking the founder to paste in what it cannot see.
  */
-async function accessFor(req: Request) {
-  const permissions = await getRolePermissions(req.member!.roleId);
-  const grants = ACCESS_GRANTS.filter((grant) => permissions.has(grant));
-  const capabilities = resolveAiCapabilities(grants);
-  return { canReadDocuments: grants.includes("documents:read"), canReadFinancial: grants.includes("financial:read"), tools: capabilities.tools };
+function accessFor(req: Request) {
+  const permissions = req.member!.permissions;
+  // The whole grant set, not a hand-maintained subset of it: an allowlist
+  // enumerated here has to be extended in lockstep with every new tool
+  // requirement, and one it missed (chat:read) silently withheld the team
+  // chat tools from roles that held it.
+  const capabilities = resolveAiCapabilities(permissions);
+  return {
+    canReadDocuments: permissions.has("documents:read"),
+    canReadFinancial: permissions.has("financial:read"),
+    tools: capabilities.tools,
+    accessSummary: describeAiAccess(permissions),
+  };
 }
 
 export const aiController = {
   listSessions: asyncHandler(async (req, res) => {
-    const sessions = await aiChatService.listSessions(req.params.startupId as string, req.user!.userId, req.query as unknown as ListAiSessionsQuery, await accessFor(req));
+    const sessions = await aiChatService.listSessions(req.params.startupId as string, req.user!.userId, req.query as unknown as ListAiSessionsQuery, accessFor(req));
     res.json({ data: sessions });
   }),
   getSession: asyncHandler(async (req, res) => {
-    const session = await aiChatService.getSession(req.params.startupId as string, req.user!.userId, req.params.sessionId as string, await accessFor(req));
+    const session = await aiChatService.getSession(req.params.startupId as string, req.user!.userId, req.params.sessionId as string, accessFor(req));
     res.json({ data: session });
   }),
   createSession: asyncHandler(async (req, res) => {
-    const session = await aiChatService.createSession(req.params.startupId as string, req.user!.userId, req.body as CreateAiSessionInput, await accessFor(req));
+    const session = await aiChatService.createSession(req.params.startupId as string, req.user!.userId, req.body as CreateAiSessionInput, accessFor(req));
     res.status(201).json({ data: session });
   }),
   updateSession: asyncHandler(async (req, res) => {
-    const session = await aiChatService.updateSession(req.params.startupId as string, req.user!.userId, req.params.sessionId as string, req.body as UpdateAiSessionInput, await accessFor(req));
+    const session = await aiChatService.updateSession(req.params.startupId as string, req.user!.userId, req.params.sessionId as string, req.body as UpdateAiSessionInput, accessFor(req));
     res.json({ data: session });
   }),
   deleteSession: asyncHandler(async (req, res) => {
@@ -45,11 +56,11 @@ export const aiController = {
     res.status(204).send();
   }),
   listMessages: asyncHandler(async (req, res) => {
-    const messages = await aiConversationService.listMessages(req.params.startupId as string, req.user!.userId, req.params.sessionId as string, req.query as unknown as ListAiMessagesQuery, await accessFor(req));
+    const messages = await aiConversationService.listMessages(req.params.startupId as string, req.user!.userId, req.params.sessionId as string, req.query as unknown as ListAiMessagesQuery, accessFor(req));
     res.json({ data: messages });
   }),
   submitMessage: asyncHandler(async (req, res) => {
-    const result = await aiConversationService.submitMessage(req.params.startupId as string, req.user!.userId, req.params.sessionId as string, req.body as CreateAiMessageInput, await accessFor(req));
+    const result = await aiConversationService.submitMessage(req.params.startupId as string, req.user!.userId, req.params.sessionId as string, req.body as CreateAiMessageInput, accessFor(req));
     res.status(202).json({ data: { ...result, streamUrl: `/api/v1/startups/${req.params.startupId}/ai/sessions/${req.params.sessionId}/messages/${result.assistantMessageId}/stream` } });
   }),
   streamMessage: (req: Request, res: Response, next: NextFunction): void => {
@@ -58,7 +69,7 @@ export const aiController = {
       const lastSequence = rawLastEventId && /^\d+$/.test(rawLastEventId) ? Number(rawLastEventId) : 0;
       const sessionId = req.params.sessionId as string;
       const messageId = req.params.messageId as string;
-      const { message } = await aiConversationService.openStream(req.params.startupId as string, req.user!.userId, sessionId, messageId, await accessFor(req), lastSequence);
+      const { message } = await aiConversationService.openStream(req.params.startupId as string, req.user!.userId, sessionId, messageId, accessFor(req), lastSequence);
       res.status(200).set({ "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
       res.flushHeaders();
       let lastSentSequence = lastSequence;

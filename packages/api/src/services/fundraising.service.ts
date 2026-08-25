@@ -81,6 +81,30 @@ function serializeCommitment(
   };
 }
 
+export type SerializedRound = ReturnType<typeof serializeRound>;
+
+/**
+ * A round stripped of every money and equity figure, keeping only what makes
+ * it usable as a *scope*: which round this is, what it is called, whether it
+ * is still open, and the currency its deal amounts are denominated in.
+ *
+ * The pipeline board is round-scoped — it cannot render a column, a total, or
+ * an "add deal" form without knowing which round it is looking at — but
+ * "which rounds exist" is not the same secret as "how much we are raising and
+ * how much is in". Someone with `pipeline:read` and no `financial:read` gets
+ * this shape; the Rounds screen and every commitment endpoint still require
+ * the financial grant for the numbers.
+ */
+export function redactRoundFinancials(round: SerializedRound): SerializedRound & { financialsRedacted: true } {
+  return {
+    ...round,
+    targetAmount: null,
+    minimumTicketSize: null,
+    equityOfferedPercentage: null,
+    financialsRedacted: true,
+  };
+}
+
 export class FundraisingService {
   async listRounds(startupId: string, query: ListFundraisingRoundsQuery) {
     const where = { startupId, ...(query.status && { status: query.status }) };

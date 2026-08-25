@@ -9,12 +9,23 @@ import { aiStreamBroker, type AiStreamEnvelope } from "./ai-stream-broker.servic
 import { aiArtifactService, aiCapabilityManifest } from "./ai-artifact.service";
 import { aiToolsService, toolSchemasFor, AiToolResolutionError } from "./ai-tools.service";
 import { aiRunRegistry } from "./ai-run-registry";
-import type { AiToolName } from "./ai-capabilities.service";
+import { aiAccessInstructions, type AiAccessSummary, type AiToolName } from "./ai-capabilities.service";
 import type { CreateAiMessageInput, ListAiMessagesQuery } from "../validators/ai.schemas";
 import { getAiConfig } from "../config/ai";
 import { AI_ROLE_SCOPE_RESPONSE, isClearlyOutsideFundraisingScope, isBareAcknowledgement } from "./ai-scope";
 
-export interface AiConversationAccess { canReadDocuments: boolean; canReadFinancial: boolean; tools?: AiToolName[]; }
+export interface AiConversationAccess {
+  canReadDocuments: boolean;
+  canReadFinancial: boolean;
+  tools?: AiToolName[];
+  /**
+   * Which data areas this caller's role can and cannot read. Optional so the
+   * evals and older call sites that construct an access object by hand keep
+   * compiling; when absent the copilot simply has no permission block to
+   * state, which is the pre-existing behaviour.
+   */
+  accessSummary?: AiAccessSummary;
+}
 
 /** How often to refresh the run's Redis TTL while generating; well under the registry's 20s expiry. */
 const RUN_HEARTBEAT_MS = 8_000;
@@ -394,6 +405,11 @@ export class AiConversationService {
         session.persona ? `This is a clearly labeled pitch simulation. Role-play only as the simulated investor persona "${session.persona.personaName}" using this investment lens: ${session.persona.description ?? "Ask rigorous, evidence-based investor questions."}. Never claim to be a real investor or have real-world knowledge beyond the supplied context.` : "",
         `Registered presentation types for this request: ${aiCapabilityManifest(access.canReadDocuments ? ["documents:read"] : [], { hasPinnedDocuments: versionIds.length > 0, hasRound: Boolean(session.roundId) }).artifactTypes.join(", ") || "none"}. Never emit an action payload or artifact JSON yourself — those are attached separately by the system.`,
         "Format the response as markdown where it improves readability: headings, bold/italic, bullet or numbered lists, tables, and code blocks are all rendered. For a multi-section answer, give each section a real markdown heading (## or ###) rather than just bolding the first few words of a paragraph or list item — headings render distinctly larger, so they're how a section title should be marked, not bold text. When listing prioritized gaps or issues that each have a severity/status, use a markdown table (columns like Area | Severity | Issue | Recommendation) instead of a bullet list — it renders as an actual table. When giving scores across categories, use a markdown table (Category | Score) too. When giving strengths-and-weaknesses feedback, use the heading \"Strengths\" and a heading from \"Weaknesses\"/\"Gaps\"/\"Areas for Improvement\", each immediately followed by its own bullet list — those exact heading words trigger distinct positive/negative styling on the list that follows. Do not fabricate clickable links or URLs — reference sources only by their supplied labels.",
+        // Placed after the static role/style blocks so it never shortens the
+        // cacheable prompt prefix for the rest of them: this varies by the
+        // caller's role, but is stable for the whole session the cache key
+        // is scoped to. Empty for a role that can read everything.
+        access.accessSummary ? aiAccessInstructions(access.accessSummary) : "",
         // Per-tool usage rules (when to use scope=mine, how list_tasks relates
         // to investors, when to call get_daily_briefing) live on each tool's
         // own `description` in ai-tools.service.ts instead of duplicated here

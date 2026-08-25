@@ -1,5 +1,6 @@
 import { asyncHandler } from "../utils/errors";
-import { fundraisingService } from "../services/fundraising.service";
+import { memberCan } from "../middleware/rbac";
+import { fundraisingService, redactRoundFinancials } from "../services/fundraising.service";
 import type {
   CreateCommitmentInput,
   CreateFundraisingRoundInput,
@@ -10,8 +11,18 @@ import type {
 } from "../validators/fundraising.schemas";
 
 export const fundraisingController = {
+  // Reachable with either financial:read or pipeline:read — the pipeline board
+  // needs the round list as its scope selector. Without the financial grant the
+  // caller gets round identity only; the amounts are stripped here rather than
+  // in the service so every other financial endpoint keeps its single, simple
+  // "you have the grant or you don't" contract.
   listRounds: asyncHandler(async (req, res) => {
-    res.json(await fundraisingService.listRounds(req.params.startupId as string, req.query as unknown as ListFundraisingRoundsQuery));
+    const result = await fundraisingService.listRounds(req.params.startupId as string, req.query as unknown as ListFundraisingRoundsQuery);
+    if (memberCan(req, "financial", "read")) {
+      res.json(result);
+      return;
+    }
+    res.json({ ...result, data: result.data.map(redactRoundFinancials) });
   }),
   getRound: asyncHandler(async (req, res) => {
     res.json({ data: await fundraisingService.getRound(req.params.startupId as string, req.params.roundId as string) });

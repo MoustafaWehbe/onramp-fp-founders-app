@@ -61,6 +61,14 @@ export type FundraisingRound = {
   targetCloseDate: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * True on rounds returned to a caller with pipeline:read but not
+   * financial:read: the round is listed so the pipeline board can scope
+   * itself to it, but every amount above comes back null. Only the round
+   * *list* is reachable that way; round detail, metrics and commitments still
+   * require the financial grant.
+   */
+  financialsRedacted?: boolean;
 };
 
 export type Commitment = {

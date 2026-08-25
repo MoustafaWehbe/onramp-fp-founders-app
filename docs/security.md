@@ -130,6 +130,38 @@ Defined in `packages/api/src/config/permissions.ts`.
 `startup:read` also gates the audit trail. `documents:share` is what creates or
 revokes a reviewer link.
 
+`requireMember` resolves the role's whole grant set in the same query as the
+membership and attaches it as `req.member.permissions`. Every gate below it —
+`requirePermission`, `requireAnyPermission`, `memberCan` — reads from that set,
+so a route carrying several checks still costs one query. `getRolePermissions`
+remains for callers holding only a `roleId` and no request (background jobs,
+deferred AI-action approval).
+
+### Permission dependencies
+
+Some grants are inert without another: `pipeline:update` over a role that
+cannot `pipeline:read` produces a page that renders empty while every read
+behind it 403s. `PERMISSION_DEPENDENCIES` in `config/permissions.ts` declares
+those pairs, and `expandPermissionKeys` closes any requested selection over
+them on **every** role write. A role therefore cannot be persisted in that
+broken shape regardless of which client sent it; the role editor mirrors the
+same map so the checkboxes agree with what will be saved.
+
+### Grants that gate a screen, not a secret
+
+`GET /fundraising-rounds` accepts `financial:read` **or** `pipeline:read`. The
+pipeline board is round-scoped — it cannot pick a scope, denominate an amount,
+or add a deal without knowing which round it is on — but "which rounds exist"
+is not the same secret as "how much we are raising and how much is in". A
+caller without `financial:read` gets round identity with every money and equity
+figure nulled (`redactRoundFinancials`, marked `financialsRedacted: true`).
+Round detail, metrics, funding history, and every commitment endpoint still
+require the financial grant outright.
+
+Before this split, revoking "Rounds & commitments" from a role took the whole
+pipeline board with it — including from the seeded `viewer`, which never had
+`financial:read`.
+
 ### Seeded role templates
 
 | Permission | owner | collaborator | viewer |
@@ -158,9 +190,15 @@ otherwise existing owners silently lack the new grant.
 
 ### The frontend mirror is not a control
 
-`packages/web/src/lib/permissions.ts` duplicates the templates so the UI can
-render the right controls and read-only states. It is presentation only. A UI
-check that is wrong is a UX bug; a missing backend check is a security bug.
+`packages/web/src/lib/permissions.ts` duplicates the catalog, the labels, and
+the dependency map so the UI can render the right controls and read-only
+states; `lib/page-access.ts` maps each route to the one grant it cannot render
+without, and the sidebar and the `RequirePermission` route guard both read it,
+so a hidden nav item is always a guarded route and vice versa.
+
+All of it is presentation only. A UI check that is wrong is a UX bug; a missing
+backend check is a security bug. `src/test/lib/permissions.test.ts` imports the
+API's catalog directly and fails the build the moment the two drift.
 
 ## Reviewer access
 
@@ -280,6 +318,14 @@ actor:
   by startup membership and the caller's resource permissions.
 - Refusals are non-specific, so they do not disclose the existence of a
   protected record or the shape of a role's grants.
+- **The caller is told what their own role cannot reach.** Withholding a tool
+  stops the copilot reading protected data, but leaves the model with no idea
+  why it came up empty — so it guesses, answers from general knowledge, or asks
+  the founder to paste the data in. `describeAiAccess` lists the caller's own
+  denied read domains and `aiAccessInstructions` renders the prompt block that
+  makes the copilot name the missing permission instead. Only the caller's own
+  grants are described, which discloses strictly less than the Team & Roles
+  page they can already open.
 
 Details in [ai.md](ai.md).
 

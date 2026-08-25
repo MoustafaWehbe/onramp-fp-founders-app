@@ -67,3 +67,33 @@ if (!window.matchMedia) {
       dispatchEvent: () => false,
     }) as unknown as MediaQueryList;
 }
+
+// Web Storage is absent under this runner's jsdom build (an opaque-origin
+// document has no localStorage), which is not a browser condition any of this
+// app's code is written for: the workspace/round preferences persist through
+// zustand's storage middleware, so every screen that reads one throws on
+// mount and renders nothing at all. The same in-memory shape jsdom would
+// otherwise install, with the same per-test lifetime as the document.
+function installStorage(key: "localStorage" | "sessionStorage") {
+  if (key in globalThis && globalThis[key]) return;
+
+  let entries = new Map<string, string>();
+  const storage: Storage = {
+    get length() {
+      return entries.size;
+    },
+    key: (index) => [...entries.keys()][index] ?? null,
+    getItem: (name) => entries.get(String(name)) ?? null,
+    setItem: (name, value) => void entries.set(String(name), String(value)),
+    removeItem: (name) => void entries.delete(String(name)),
+    clear: () => {
+      entries = new Map();
+    },
+  };
+
+  Object.defineProperty(globalThis, key, { configurable: true, value: storage });
+  Object.defineProperty(window, key, { configurable: true, value: storage });
+}
+
+installStorage("localStorage");
+installStorage("sessionStorage");

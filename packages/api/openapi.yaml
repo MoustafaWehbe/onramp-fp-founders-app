@@ -1911,6 +1911,13 @@ components:
         updatedAt:
           type: string
           format: date-time
+        financialsRedacted:
+          type: boolean
+          description: >-
+            Present and true only on the round list, when the caller holds
+            pipeline:read but not financial:read. targetAmount,
+            minimumTicketSize and equityOfferedPercentage are null in that
+            case; every other field is the real value.
 
     CreateFundraisingRoundBody:
       type: object
@@ -6476,6 +6483,13 @@ paths:
     get:
       tags: [Fundraising Rounds]
       summary: List fundraising rounds for the current startup
+      description: >-
+        Requires `financial:read` or `pipeline:read`. With only `pipeline:read`
+        the response carries round identity (id, name, status, currency, dates)
+        with every money and equity figure set to null and `financialsRedacted`
+        true, which is what the round-scoped pipeline board needs to pick a
+        scope. Round detail, metrics, funding history and commitments all
+        require `financial:read` outright.
       operationId: listFundraisingRounds
       security:
         - cookieAuth: []

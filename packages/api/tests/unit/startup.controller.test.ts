@@ -39,6 +39,7 @@ jest.mock("../../src/services/startup.service", () => ({
 }));
 
 import { prisma } from "../../src/db/prisma";
+import { activeMember, memberWithout } from "../helpers/member";
 import { startupService } from "../../src/services/startup.service";
 
 const mockService = startupService as jest.Mocked<typeof startupService>;
@@ -56,13 +57,7 @@ function accessCookie(userId = USER_ID, sessionId = "session-1"): string {
   return `accessToken=${token}`;
 }
 
-const ACTIVE_MEMBER = {
-  id: "member-1",
-  userId: USER_ID,
-  startupId: STARTUP_ID,
-  roleId: "role-owner",
-  status: "active",
-};
+const ACTIVE_MEMBER = activeMember({ userId: USER_ID, startupId: STARTUP_ID });
 
 const STARTUP = {
   id: STARTUP_ID,
@@ -79,7 +74,6 @@ const STARTUP = {
 beforeEach(() => {
   jest.clearAllMocks();
   mockPrisma.startupMember.findUnique.mockResolvedValue(ACTIVE_MEMBER as never);
-  mockPrisma.rolePermission.findFirst.mockResolvedValue({ id: "rp-1" } as never);
 });
 
 describe("GET /api/v1/startups/:startupId", () => {
@@ -162,7 +156,9 @@ describe("PATCH /api/v1/startups/:startupId", () => {
   });
 
   it("returns 403 without startup:update permission", async () => {
-    mockPrisma.rolePermission.findFirst.mockResolvedValue(null);
+    mockPrisma.startupMember.findUnique.mockResolvedValue(
+      memberWithout(ACTIVE_MEMBER, "startup:update") as never,
+    );
 
     const res = await request(app)
       .patch(`/api/v1/startups/${STARTUP_ID}`)
@@ -187,7 +183,9 @@ describe("DELETE /api/v1/startups/:startupId", () => {
   });
 
   it("returns 403 without startup:delete permission", async () => {
-    mockPrisma.rolePermission.findFirst.mockResolvedValue(null);
+    mockPrisma.startupMember.findUnique.mockResolvedValue(
+      memberWithout(ACTIVE_MEMBER, "startup:delete") as never,
+    );
 
     const res = await request(app)
       .delete(`/api/v1/startups/${STARTUP_ID}`)
@@ -278,7 +276,9 @@ describe("GET /api/v1/startups/:startupId/roles", () => {
   });
 
   it("returns 403 without team:read permission", async () => {
-    mockPrisma.rolePermission.findFirst.mockResolvedValue(null);
+    mockPrisma.startupMember.findUnique.mockResolvedValue(
+      memberWithout(ACTIVE_MEMBER, "team:read") as never,
+    );
 
     const res = await request(app)
       .get(`/api/v1/startups/${STARTUP_ID}/roles`)
@@ -327,7 +327,9 @@ describe("GET /api/v1/startups/:startupId/members", () => {
   });
 
   it("returns 403 without team:read permission", async () => {
-    mockPrisma.rolePermission.findFirst.mockResolvedValue(null);
+    mockPrisma.startupMember.findUnique.mockResolvedValue(
+      memberWithout(ACTIVE_MEMBER, "team:read") as never,
+    );
 
     const res = await request(app)
       .get(`/api/v1/startups/${STARTUP_ID}/members`)

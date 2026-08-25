@@ -18,7 +18,14 @@ export interface Member {
   userId: string;
   startupId: string;
   roleId: string;
+  roleName: string;
   status: string;
+  /**
+   * Every "resource:action" the caller's role grants, resolved once by
+   * requireMember. Route gates and controllers both read it, so a request
+   * never issues a second permission query.
+   */
+  permissions: ReadonlySet<string>;
 }
 
 // Jobs
