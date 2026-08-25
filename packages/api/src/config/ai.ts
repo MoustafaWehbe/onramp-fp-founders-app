@@ -58,7 +58,12 @@ export function getAiConfig(): AiConfig {
     // personas of real text, which chat's token budget above is far too small for
     // (observed truncating mid-JSON at 2,000 tokens on an 18-chunk deck).
     analysisMaxOutputTokens: optionalPositiveInt("AI_ANALYSIS_MAX_OUTPUT_TOKENS", 8_000),
-    maxToolRounds: optionalPositiveInt("AI_MAX_TOOL_ROUNDS", 4),
+    // A propose_* call can need up to 4 rounds on its own (resolve an id,
+    // propose, and — if that fails on a stale or ambiguous id — resolve and
+    // propose again), which left nothing for the round that answers the user
+    // at the old default of 4. Doubled so that retry path fits alongside the
+    // ordinary read-then-answer chain most turns actually use.
+    maxToolRounds: optionalPositiveInt("AI_MAX_TOOL_ROUNDS", 8),
     retrievalResultCount: optionalPositiveInt("AI_RETRIEVAL_RESULT_COUNT", 8),
     retrievalTokenBudget: optionalPositiveInt("AI_RETRIEVAL_TOKEN_BUDGET", 4_500),
     minimumRetrievalScore: optionalRatio("AI_MIN_RETRIEVAL_SCORE", 0.2),

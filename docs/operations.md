@@ -15,9 +15,10 @@ Minimum production deployment:
 | Redis 7 | One instance shared by every API and worker replica |
 | Object storage | Supabase: a **private** documents bucket and a **public-read** avatars bucket |
 
-**API replicas must share one PostgreSQL and one Redis.** Rate limits, cron
-locks, realtime fan-out, and AI run ownership are all Redis-coordinated; split
-them and each of those silently degrades.
+**API replicas must share one PostgreSQL and one Redis.** Rate limits, BullMQ
+(including scheduled tasks' own Job Scheduler state), realtime fan-out, and AI
+run ownership are all Redis-coordinated; split them and each of those silently
+degrades.
 
 Prefer keeping the web app and API on the **same origin** (a reverse proxy
 routing `/api` to the API). That is what development does, and it keeps
@@ -156,9 +157,11 @@ labels bounded.
 | Pending registration cleanup | Every 30 min | Expired OTP registrations |
 | Stale upload cleanup | Every 30 min | `pending_upload` versions older than an hour |
 
-All run behind the shared Redis cron lock, so exactly one API replica performs
-each logical tick. Windows and defaults: [configuration.md](configuration.md)
-and [reviewer-portal.md](reviewer-portal.md#privacy-retention).
+All run as BullMQ scheduled tasks on the worker, whose Job Scheduler state
+lives in Redis — exactly one job instance is produced per due tick regardless
+of worker replica count. Windows and defaults:
+[configuration.md](configuration.md) and
+[reviewer-portal.md](reviewer-portal.md#privacy-retention).
 
 ## Scaling
 
@@ -170,8 +173,8 @@ and [reviewer-portal.md](reviewer-portal.md#privacy-retention).
 | Slow retrieval | Check pgvector index health and corpus size; see [ai.md](ai.md#retrieval) |
 | Rate limits firing for legitimate users | Verify `TRUST_PROXY` before raising any budget |
 
-Cron adds no scaling constraint — the lock keeps it single-execution however
-many replicas exist.
+Scheduled tasks add no scaling constraint — BullMQ's Job Scheduler keeps each
+one single-execution however many worker replicas exist.
 
 ## Backup and recovery
 
@@ -182,8 +185,10 @@ many replicas exist.
   database rows leaves orphaned objects; restoring the database without storage
   leaves documents whose bytes are gone.
 - **Redis is not durable state.** Losing it drops in-flight jobs, rate-limit
-  counters, cron locks, and AI stream replay buffers. Nothing business-critical
-  is lost, but in-flight jobs should be considered abandoned.
+  counters, and AI stream replay buffers — and the registered scheduled-task
+  schedules themselves, until the worker process restarts and
+  `registerScheduledTasks()` re-registers them. Nothing business-critical is
+  lost, but in-flight jobs should be considered abandoned.
 - Test recovery by restoring into a scratch environment and running
   `npm run db:migrate`.
 

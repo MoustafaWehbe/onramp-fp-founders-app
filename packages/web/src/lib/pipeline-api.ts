@@ -1,6 +1,6 @@
 import { apiClient } from "./api-client";
 import type { CommitmentStatus } from "./fundraising-api";
-import type { PipelineStageId } from "./mock-data";
+import type { PipelineStageId } from "./pipeline-stages";
 import type { Priority } from "./task-api";
 
 export type PipelineContact = {

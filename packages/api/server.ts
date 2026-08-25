@@ -5,7 +5,6 @@ validateEnv();
 
 import { app } from "./app";
 import { prisma } from "./src/db/prisma";
-import { startCronJobs } from "./src/jobs/cron";
 import { closeQueues } from "./src/jobs/queue";
 import { closeRedis } from "./src/db/redis";
 import type { Server } from "node:http";
@@ -41,13 +40,11 @@ async function start(): Promise<void> {
       console.info(`Readiness check: http://localhost:${PORT}/ready`);
     });
 
-    const cronTasks = startCronJobs();
     let shuttingDown = false;
     const shutdown = async (signal: string): Promise<void> => {
       if (shuttingDown) return;
       shuttingDown = true;
       console.info(`Received ${signal}, shutting down gracefully`);
-      cronTasks.forEach((task) => task.stop());
 
       const results = await Promise.allSettled([
         closeHttpServer(server),

@@ -1,6 +1,6 @@
 import { ArrowRight, Clock, PieChart } from "lucide-react";
 import { EmptyState } from "../../../components/shared/EmptyState";
-import { getStage } from "../../../lib/mock-data";
+import { getStage } from "../../../lib/pipeline-stages";
 import type { PipelineAnalytics } from "../../../lib/pipeline-api";
 import { cn } from "../../../lib/utils";
 import { formatDuration } from "./deal-signals";

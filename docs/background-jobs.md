@@ -1,15 +1,11 @@
 # Background jobs
 
-Queues, workers, and scheduled work. Two distinct mechanisms live here and they
-run in **different processes**:
-
-| Mechanism | Runs in | Purpose |
-|---|---|---|
-| BullMQ queues and workers | The **worker** process | Durable, retryable work triggered by a request or a schedule |
-| `node-cron` schedules | Each **API** process | Periodic maintenance, reminders, and enqueueing |
-
-The API enqueues but never processes. The worker processes but never serves
-HTTP.
+Queues, workers, and scheduled work — all of it BullMQ, all of it running in
+the **worker** process. The API enqueues but never processes; the worker
+processes but never serves HTTP. Periodic maintenance (retention sweeps, daily
+reminders, and the like) is not a separate mechanism — it's a BullMQ queue
+like any other, whose jobs happen to be produced on a recurring schedule
+instead of by a request. See [Scheduled tasks](#scheduled-tasks) below.
 
 ## Running them
 
@@ -57,6 +53,7 @@ patterns: replace-then-write instead of append, `upsert` on a natural key,
 | `ai-analysis` | 2 | Run a pitch-deck analysis | Expensive model calls |
 | `calendar-sync` | 3 | Pull Google Calendar events into interaction logs | Google quota is **per project**, not per connection — low concurrency keeps many connections from bursting it |
 | `gmail-log-retry` | 5 | Re-record an interaction log for a sent Gmail message | Light |
+| `scheduled-tasks` | 1 | Runs the six periodic maintenance jobs below | Infrequent (30 min to daily) and never overlap; one at a time is plenty |
 
 ### Idempotency in practice
 
@@ -74,30 +71,27 @@ patterns: replace-then-write instead of append, `upsert` on a natural key,
 `promoteNewestUsableDocumentVersion` on completion, because either can finish
 first. See [documents.md](documents.md#promotion).
 
-## Cron schedules
+## Scheduled tasks
 
-Defined in `src/jobs/cron.ts`, started by `server.ts` in **every** API replica.
+Defined in `src/jobs/workers/scheduled-tasks.worker.ts`. There is no cron
+running anywhere — each schedule is a BullMQ **Job Scheduler**
+(`queue.upsertJobScheduler(...)`), which is Redis-native: the schedule itself
+lives in Redis, not in a timer inside any process. Exactly one job instance is
+produced per due tick regardless of how many API or worker replicas are
+running, and only one worker instance ever claims it. `registerScheduledTasks()`
+is called once, from `workers/index.ts`'s own entrypoint — never from the API
+— and is safe to call again on every worker boot: `upsertJobScheduler` is an
+idempotent upsert, not a create.
 
-### The lock
-
-`startCronJobs()` runs once per API process, and there is no leader election —
-so every replica's `node-cron` fires every schedule independently. `withCronLock`
-closes that gap:
-
-```ts
-const bucket = Math.floor(Date.now() / intervalMs);
-const acquired = await redis.set(`cron-lock:${name}:${bucket}`, "1", "PX", intervalMs, "NX");
-if (!acquired) return;
-```
-
-Bucketing by wall-clock time means every replica computes the **same key for the
-same logical tick** regardless of whose clock fires first. Only the replica that
-wins the `SET NX` runs the body. The lock expires with the bucket, so a crash
-mid-run never blocks the next legitimate tick.
+Each of the six is produced as its own **named job on the shared
+`scheduled-tasks` queue** (see the workers table above); `scheduledTasksJob`'s
+processor switches on `job.name` to dispatch to the right handler. A schedule's
+own name doubles as its job name and its scheduler id — there is exactly one
+of each, so nothing else is needed to keep them apart.
 
 ### The schedules
 
-| Cron | Name | What it does |
+| Pattern | Name | What it does |
 |---|---|---|
 | `*/30 * * * *` | `pending-registration-cleanup` | Deletes `PendingRegistration` rows whose OTP has expired |
 | `*/30 * * * *` | `stale-document-upload-cleanup` | Deletes `pending_upload` versions older than 1 hour, plus documents left with no versions |
@@ -105,6 +99,13 @@ mid-run never blocks the next legitimate tick.
 | `0 9 * * *` | `daily-reminders` | Overdue and due-today task notices, then stale-lead and no-next-step deal notices |
 | `15 3 * * *` | `ai-chat-retention` | Deletes archived AI sessions past `AI_CHAT_RETENTION_DAYS`. **Only registered when that value is > 0** |
 | `45 3 * * *` | `reviewer-data-retention` | Reviewer privacy retention; records success/failure metrics |
+
+The two conditional schedules are skipped at registration when unconfigured,
+so an unconfigured deployment isn't carrying a schedule for nothing — but each
+one's *processor* re-checks its own condition too, since a schedule already
+registered in Redis outlives the deploy that created it. A deployment that
+turns `AI_CHAT_RETENTION_DAYS` back off, for instance, must not leave a stale
+schedule still deleting sessions until someone remembers to unregister it.
 
 Notes on the design:
 
@@ -150,15 +151,22 @@ same rule.
 
 ## Adding a schedule
 
-1. Add `cron.schedule(expr, …)` in `startCronJobs()`.
-2. **Wrap the body in `withCronLock(name, intervalMs, fn)`** with an
-   `intervalMs` that matches the cron expression — a mismatch either allows
-   duplicate runs or blocks legitimate ones.
-3. Wrap the work in `try`/`catch` and log with an `[cron]` prefix; a throwing
-   schedule must not take the process down.
-4. Gate on configuration where relevant, so an unconfigured deployment is not
-   polling for nothing.
+1. Add the task's name to `SCHEDULED_TASK_NAMES` in `scheduled-tasks.worker.ts`.
+2. Write the task body as its own function, wrapped in `try`/`catch` and
+   logging with a `[scheduled-tasks]` prefix — a throwing task must not take
+   the worker down. Add a `case` for it in `scheduledTasksJob.process`'s
+   switch on `job.name`.
+3. Register its schedule with `scheduledTasksQueue.upsertJobScheduler(...)` in
+   `registerScheduledTasks()`, choosing a `pattern` (standard cron syntax).
+4. Gate registration on configuration where relevant, so an unconfigured
+   deployment is not carrying a schedule for nothing — and re-check the same
+   condition inside the task body itself, since a schedule already registered
+   in Redis outlives the deploy that created it (see ai-chat-retention or
+   calendar-sync-enqueue for the pattern).
 5. Document it in the table above.
+6. Add coverage under `tests/unit/scheduled-tasks.worker.test.ts`: the task's
+   own behavior, its dispatch from `job.name`, and its registration gating if
+   it has one.
 
 ## Operating
 

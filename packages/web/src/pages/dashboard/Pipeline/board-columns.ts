@@ -1,5 +1,5 @@
 import { arrayMove } from "@dnd-kit/sortable";
-import { STAGES, type PipelineStageId } from "../../../lib/mock-data";
+import { STAGES, type PipelineStageId } from "../../../lib/pipeline-stages";
 import type { PipelineEntry } from "../../../lib/pipeline-api";
 
 export type BoardColumns = Record<PipelineStageId, string[]>;

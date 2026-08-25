@@ -156,9 +156,12 @@ These gates mirror the manual endpoint's own requirement rather than a lighter
 one. Creating a proposal is not a lesser act than performing the write; it is
 the same act with a human in the loop.
 
-`AI_MAX_TOOL_ROUNDS` (default 4) bounds tool-call rounds per message. Each tool
+`AI_MAX_TOOL_ROUNDS` (default 8) bounds tool-call rounds per message. Each tool
 call has its own timeout — generous relative to a lookup, short enough that a
-wedged tool cannot hold a stream open.
+wedged tool cannot hold a stream open. Exhausting the budget doesn't discard
+what was already gathered: one further round runs with tool use disabled, so
+the model must answer from the results already in context instead of the
+turn ending in a canned apology.
 
 ## Propose-only actions
 
@@ -186,18 +189,15 @@ flood limiter.
 
 ## Artifacts
 
-Structured, renderable results attached to a message. Each type is
-schema-validated and carries its own permission requirement.
-
-| Type | Requires |
-|---|---|
-| `source_answer.v1`, `comparison.v1` | `documents:read` |
-| `forecast.v1` | `financial:read` |
-| `email_draft.v1`, `meeting_brief.v1`, `investor_brief.v1`, `focus_list.v1`, `pipeline_board.v1`, `task_list.v1`, `daily_briefing.v1`, `action_proposal.v1` | none beyond the tool that produced them |
-
-The empty requirements are deliberate, not an oversight: the read or propose
-tool that supplied the data already enforced the gate, and the approve endpoint
-re-checks again before executing anything.
+`action_proposal.v1` is the only artifact type. Every read tool's result (a
+briefing, a task list, an investor's context, a forecast) is answered in the
+model's own natural-language text instead of a structured card — only a
+propose_* tool's result becomes a card, because that one isn't decorative: it's
+the Approve/Discard UI a human needs to review a drafted task, email, meeting,
+or stage change before anything actually happens. It carries no permission
+requirement of its own beyond what already produced it — the propose_* tool
+that created the proposal already enforced the write permission it needs, and
+the approve endpoint re-checks again before executing anything.
 
 ## Pitch-deck analysis
 

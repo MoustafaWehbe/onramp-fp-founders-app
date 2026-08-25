@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "../../../components/ui/dropdown-menu";
 import { Input } from "../../../components/ui/input";
-import { STAGES, type PipelineStageId } from "../../../lib/mock-data";
+import { STAGES, type PipelineStageId } from "../../../lib/pipeline-stages";
 import {
   INVESTOR_TYPES,
   INVESTOR_TYPE_LABELS,

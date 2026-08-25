@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Card } from "../../../components/ui/card";
-import type { PipelineStage, PipelineStageId } from "../../../lib/mock-data";
+import type { PipelineStage, PipelineStageId } from "../../../lib/pipeline-stages";
 import type { FocusReason, PipelineEntry } from "../../../lib/pipeline-api";
 import { cn, formatCompactMoney } from "../../../lib/utils";
 import type { DealSignals } from "./deal-signals";

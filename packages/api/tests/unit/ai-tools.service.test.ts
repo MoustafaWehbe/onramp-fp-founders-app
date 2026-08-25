@@ -8,6 +8,7 @@ import { chatService } from "../../src/services/chat.service";
 import { aiActionsService } from "../../src/services/ai-actions.service";
 import { gmailSendService } from "../../src/services/gmail-send.service";
 import { calendarEventService } from "../../src/services/calendar-event.service";
+import { fundraisingService } from "../../src/services/fundraising.service";
 
 jest.mock("../../src/db/prisma", () => ({
   prisma: {
@@ -29,6 +30,7 @@ jest.mock("../../src/services/chat.service", () => ({ chatService: { listConvers
 jest.mock("../../src/services/ai-actions.service", () => ({ aiActionsService: { proposeAction: jest.fn() } }));
 jest.mock("../../src/services/gmail-send.service", () => ({ gmailSendService: { sendInvestorEmail: jest.fn() } }));
 jest.mock("../../src/services/calendar-event.service", () => ({ calendarEventService: { scheduleMeeting: jest.fn() } }));
+jest.mock("../../src/services/fundraising.service", () => ({ fundraisingService: { getRound: jest.fn(), listRounds: jest.fn(), getRoundMetrics: jest.fn() } }));
 
 describe("AI structured tools", () => {
   beforeEach(() => jest.clearAllMocks());
@@ -162,6 +164,49 @@ describe("AI structured tools", () => {
     expect(pipelineService.getFocus).toHaveBeenCalledWith("startup-a", "00000000-0000-0000-0000-000000000007", "member-7");
     expect(taskService.listTasks).toHaveBeenCalledWith("startup-a", expect.objectContaining({ assigneeId: "member-7", status: "open" }));
     expect(result).toMatchObject({ assignedInvestors: { total: 0 }, tasks: { totalOpen: 0 }, meetings: [], roundHealth: null });
+  });
+
+  it("bounds what reaches the model: capped investor query, and overdue/dueToday/focusDeals trimmed to the artifact's own limits", async () => {
+    (prisma.startupMember.findUnique as jest.Mock).mockResolvedValue({ id: "member-7", status: "active" });
+    (investorService.listInvestors as jest.Mock).mockResolvedValue({ data: [], meta: { total: 0 } });
+    (pipelineService.getFocus as jest.Mock).mockResolvedValue({ data: Array.from({ length: 30 }, (_, i) => ({ investorId: `inv-${i}`, investor: { fullName: `Investor ${i}` }, stage: "sourced", reason: "priority", daysQuiet: 0, nextTaskDueDate: null })) });
+    const overdueDueDate = new Date(Date.now() - 86_400_000);
+    (taskService.listTasks as jest.Mock).mockResolvedValue({
+      data: Array.from({ length: 30 }, (_, i) => ({ id: `task-${i}`, title: `Task ${i}`, status: "open", priority: "medium", dueDate: overdueDueDate, assigneeId: null, assignee: null, investor: { id: "inv-1", fullName: "Ana" }, round: { id: "round-1", roundName: "Seed", status: "active" }, pipelineStage: "sourced" })),
+      meta: { total: 30 },
+    });
+    (prisma.interactionLog.findMany as jest.Mock).mockResolvedValue([]);
+
+    const result = await new AiToolsService().execute(
+      "startup-a", "get_daily_briefing", { roundId: null }, ["get_daily_briefing"],
+      { userId: "user-1", canReadFinancial: false },
+    ) as { assignedInvestors: { data: unknown[] }; focusDeals: { data: unknown[] }; tasks: { overdue: unknown[]; dueToday: unknown[] } };
+
+    expect(investorService.listInvestors).toHaveBeenCalledWith("startup-a", expect.objectContaining({ limit: 20 }));
+    expect(result.focusDeals.data).toHaveLength(15);
+    expect(result.tasks.overdue).toHaveLength(20);
+    expect(result.tasks.dueToday).toHaveLength(0);
+  });
+
+  it("resolves round health alongside the other daily-briefing lookups, not after them, when the caller has financial:read", async () => {
+    (prisma.startupMember.findUnique as jest.Mock).mockResolvedValue({ id: "member-7", status: "active" });
+    (investorService.listInvestors as jest.Mock).mockResolvedValue({ data: [], meta: { total: 0 } });
+    (pipelineService.getFocus as jest.Mock).mockResolvedValue({ data: [] });
+    (taskService.listTasks as jest.Mock).mockResolvedValue({ data: [], meta: { total: 0 } });
+    (prisma.interactionLog.findMany as jest.Mock).mockResolvedValue([]);
+    (fundraisingService.getRound as jest.Mock).mockResolvedValue({ id: "round-1", roundName: "Seed", currency: "USD" });
+    (fundraisingService.getRoundMetrics as jest.Mock).mockResolvedValue({ percentToTarget: 40 });
+
+    const result = await new AiToolsService().execute(
+      "startup-a",
+      "get_daily_briefing",
+      { roundId: "00000000-0000-0000-0000-000000000007" },
+      ["get_daily_briefing"],
+      { userId: "user-1", canReadFinancial: true },
+    ) as { roundHealth: { round: { id: string }; metrics: { percentToTarget: number } } | null };
+
+    expect(fundraisingService.getRound).toHaveBeenCalledWith("startup-a", "00000000-0000-0000-0000-000000000007");
+    expect(result.roundHealth).toMatchObject({ round: { id: "round-1" }, metrics: { percentToTarget: 40 } });
   });
 
   it("groups deals by stage via get_pipeline_by_stage", async () => {
@@ -326,6 +371,57 @@ describe("AI structured tools", () => {
         "startup-a", "session-1", "message-1", "user-1", "update_task_status",
         { taskId: "00000000-0000-0000-0000-000000000004", status: "completed" },
       );
+    });
+
+    describe("investorId resolution", () => {
+      it("passes an already-valid UUID straight through without a lookup", async () => {
+        (aiActionsService.proposeAction as jest.Mock).mockResolvedValue({ id: "action-1", actionType: "send_investor_email", status: "proposed", expiresAt: new Date() });
+        await new AiToolsService().execute("startup-a", "propose_investor_email", {
+          investorId: "00000000-0000-0000-0000-000000000001", pipelineId: null, subject: "Hi", body: "Hello",
+        }, ["propose_investor_email"], CONTEXT);
+
+        expect(investorService.listInvestors).not.toHaveBeenCalled();
+        expect(aiActionsService.proposeAction).toHaveBeenCalledWith(
+          "startup-a", "session-1", "message-1", "user-1", "send_investor_email",
+          expect.objectContaining({ investorId: "00000000-0000-0000-0000-000000000001" }),
+        );
+      });
+
+      it("resolves a name to the one matching investor's id — the Sarah Chen case: 'Sarah Chen from Sequoia Capital' has no exact-substring match anywhere, but the name alone resolves", async () => {
+        (investorService.listInvestors as jest.Mock).mockResolvedValue({ data: [{ id: "inv-sarah", fullName: "Sarah Chen", ventureFirm: "Sequoia Capital" }] });
+        (aiActionsService.proposeAction as jest.Mock).mockResolvedValue({ id: "action-1", actionType: "send_investor_email", status: "proposed", expiresAt: new Date() });
+
+        await new AiToolsService().execute("startup-a", "propose_investor_email", {
+          investorId: "Sarah Chen", pipelineId: null, subject: "Hi", body: "Hello",
+        }, ["propose_investor_email"], CONTEXT);
+
+        expect(investorService.listInvestors).toHaveBeenCalledWith("startup-a", expect.objectContaining({ search: "Sarah Chen" }));
+        expect(aiActionsService.proposeAction).toHaveBeenCalledWith(
+          "startup-a", "session-1", "message-1", "user-1", "send_investor_email",
+          expect.objectContaining({ investorId: "inv-sarah" }),
+        );
+      });
+
+      it("fails with a self-correcting message, never a proposal, when the name matches nobody", async () => {
+        (investorService.listInvestors as jest.Mock).mockResolvedValue({ data: [] });
+        await expect(new AiToolsService().execute("startup-a", "propose_investor_email", {
+          investorId: "Nobody Real", pipelineId: null, subject: "Hi", body: "Hello",
+        }, ["propose_investor_email"], CONTEXT)).rejects.toThrow(/No investor matches "Nobody Real"/);
+        expect(aiActionsService.proposeAction).not.toHaveBeenCalled();
+      });
+
+      it("fails with the candidate list, never guessing, when the name matches more than one investor", async () => {
+        (investorService.listInvestors as jest.Mock).mockResolvedValue({
+          data: [
+            { id: "inv-1", fullName: "Sarah Chen", ventureFirm: "Sequoia Capital" },
+            { id: "inv-2", fullName: "Sarah Chen", ventureFirm: "Benchmark" },
+          ],
+        });
+        await expect(new AiToolsService().execute("startup-a", "propose_meeting", {
+          investorId: "Sarah Chen", pipelineId: null, type: "call", startDateTime: "2026-09-01T10:00:00.000Z", durationMinutes: 30, subject: null, description: null,
+        }, ["propose_meeting"], CONTEXT)).rejects.toThrow(/matches more than one investor/);
+        expect(aiActionsService.proposeAction).not.toHaveBeenCalled();
+      });
     });
   });
 });

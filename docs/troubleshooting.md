@@ -194,10 +194,8 @@ Regenerate them:
 npm run gen:api-types --workspace=@raise/web
 ```
 
-If they still disagree, `openapi.yaml` has drifted from the routes. Note that
-the YAML currently documents five endpoints that do not exist — `/roles`,
-`/roles/{roleId}`, `/roles/{roleId}/permissions`, `/permissions`, and
-`/users/me/password`. Do not build against them.
+If they still disagree, `openapi.yaml` has drifted from the routes — fix the
+YAML to match reality rather than building against the stale contract.
 
 ## Tests
 

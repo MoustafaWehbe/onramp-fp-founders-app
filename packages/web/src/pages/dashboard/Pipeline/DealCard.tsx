@@ -25,7 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "../../../components/ui/dropdown-menu";
 import type { InteractionType } from "../../../lib/interaction-log-api";
-import { STAGES, type PipelineStageId } from "../../../lib/mock-data";
+import { STAGES, type PipelineStageId } from "../../../lib/pipeline-stages";
 import type { FocusReason, PipelineEntry } from "../../../lib/pipeline-api";
 import { cn, formatCompactMoney, getInitials } from "../../../lib/utils";
 import { FOCUS_REASON_LABELS, FOCUS_REASON_TONES, formatDaysAgo, type DealSignals } from "./deal-signals";

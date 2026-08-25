@@ -77,9 +77,10 @@ longer `pending_upload` is returned as-is rather than re-enqueued.
 ### Abandoned uploads
 
 A tab that closes mid-upload leaves a `pending_upload` row nothing else would
-ever revisit — it would show "Uploading…" forever. A cron job every 30 minutes
-deletes `pending_upload` versions older than an hour, plus any `Document` left
-with no versions.
+ever revisit — it would show "Uploading…" forever. A scheduled task
+(`stale-document-upload-cleanup`, every 30 minutes) deletes `pending_upload`
+versions older than an hour, plus any `Document` left with no versions. See
+[background-jobs.md](background-jobs.md#scheduled-tasks).
 
 ## Processing: two independent pipelines
 

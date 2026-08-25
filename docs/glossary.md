@@ -114,7 +114,7 @@ Defined in `config/ai-rubric.ts`.
 | **Composite selector** | `where: { startupId_id: { startupId, id } }` — the standard scoped read |
 | **Session family** | A chain of refresh tokens sharing a `familyId`. Revoking the family kills the session |
 | **Token reuse detection** | Replaying an already-revoked refresh token revokes the whole family |
-| **Cron lock** | A Redis `SET NX` key bucketed by wall-clock interval, so only one API replica runs each tick |
+| **Job Scheduler** | BullMQ's Redis-native repeatable-job mechanism (`upsertJobScheduler`) — the schedule itself lives in Redis, so exactly one job instance is produced per due tick regardless of replica count |
 | **Realtime bus** | Redis pub/sub fan-out for per-user SSE events |
 | **Run registry** | Redis state making an in-flight AI generation visible and cancellable across replicas |
 | **Client nonce** | A per-message id the chat client reuses on retry; the database's uniqueness constraint makes sends idempotent |

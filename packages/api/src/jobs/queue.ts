@@ -1,4 +1,4 @@
-import { Queue, type JobsOptions } from "bullmq";
+import { Queue, type JobsOptions, type RepeatOptions } from "bullmq";
 import type { EmailJobData } from "../types";
 import type { EmbeddingsJobData } from "./workers/embeddings.worker";
 import type { DocumentProcessingJobData } from "./workers/document-processing.worker";
@@ -6,6 +6,7 @@ import type { DocumentRasterizeJobData } from "./workers/document-rasterize.work
 import type { CalendarSyncJobData } from "./workers/calendar-sync.worker";
 import type { GmailLogRetryJobData } from "./workers/gmail-log-retry.worker";
 import type { AiAnalysisJobData } from "./workers/ai-analysis.worker";
+import type { ScheduledTaskJobData } from "./workers/scheduled-tasks.worker";
 import { JOB_NAMES } from "./job-names";
 
 // The Redis singleton now lives in db/redis so non-job callers (the rate
@@ -39,6 +40,17 @@ class LazyQueue<T> {
     return this.getQueue().add(name, data, options);
   }
 
+  /**
+   * Registers (or updates in place — this is an idempotent upsert, safe to
+   * call on every process boot) a recurring job. BullMQ v6 replaced the old
+   * `add(name, data, { repeat })` pattern with this "Job Scheduler" API;
+   * `schedulerId` is this schedule's own stable identity, distinct from the
+   * job name each produced job instance carries.
+   */
+  upsertJobScheduler(schedulerId: string, repeatOptions: Omit<RepeatOptions, "key">, jobName: string, data: T) {
+    return this.getQueue().upsertJobScheduler(schedulerId, repeatOptions, { name: jobName, data });
+  }
+
   async close(): Promise<void> {
     const queue = this.queue;
     this.queue = undefined;
@@ -61,6 +73,7 @@ export const documentRasterizeQueue = makeQueue<DocumentRasterizeJobData>(
 export const calendarSyncQueue = makeQueue<CalendarSyncJobData>(JOB_NAMES.calendarSync);
 export const gmailLogRetryQueue = makeQueue<GmailLogRetryJobData>(JOB_NAMES.gmailLogRetry);
 export const aiAnalysisQueue = makeQueue<AiAnalysisJobData>(JOB_NAMES.aiAnalysis);
+export const scheduledTasksQueue = makeQueue<ScheduledTaskJobData>(JOB_NAMES.scheduledTasks);
 
 const queues = [
   emailQueue,
@@ -70,6 +83,7 @@ const queues = [
   calendarSyncQueue,
   gmailLogRetryQueue,
   aiAnalysisQueue,
+  scheduledTasksQueue,
 ];
 
 export async function closeQueues(): Promise<void> {

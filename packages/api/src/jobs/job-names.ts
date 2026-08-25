@@ -7,4 +7,5 @@ export const JOB_NAMES = {
   calendarSync: "calendar-sync",
   gmailLogRetry: "gmail-log-retry",
   aiAnalysis: "ai-analysis",
+  scheduledTasks: "scheduled-tasks",
 } as const;

@@ -46,6 +46,15 @@ describe("OpenAiProvider", () => {
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ store: false, stream: true, max_output_tokens: 123 }), expect.any(Object));
   });
 
+  it("forwards promptCacheKey to the provider as prompt_cache_key, so repeated calls for the same session can hit OpenAI's prompt cache", async () => {
+    const create = jest.fn().mockResolvedValue(streamOf({ type: "response.completed", response: { id: "resp-1" } }));
+    const provider = new OpenAiProvider(config, { responses: { create }, embeddings: { create: jest.fn() } });
+    const events = [];
+    for await (const event of provider.streamConversation({ instructions: "safe", input: [], promptCacheKey: "session-123" })) events.push(event);
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ prompt_cache_key: "session-123" }), expect.any(Object));
+  });
+
   it("retries a transient failure only before streamed output", async () => {
     const transient = Object.assign(new Error("busy"), { status: 429 });
     const create = jest.fn()
@@ -57,6 +66,52 @@ describe("OpenAiProvider", () => {
 
     expect(create).toHaveBeenCalledTimes(2);
     expect(events).toEqual([{ type: "completed", providerRequestId: "resp-2", usage: undefined, stopReason: "stop" }]);
+  });
+
+  describe("retry backoff", () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it("waits before retrying instead of retrying immediately, so a rate limit isn't hit twice back to back", async () => {
+      const transient = Object.assign(new Error("busy"), { status: 429 });
+      const create = jest.fn()
+        .mockRejectedValueOnce(transient)
+        .mockResolvedValueOnce(streamOf({ type: "response.completed", response: { id: "resp-3" } }));
+      const provider = new OpenAiProvider(config, { responses: { create }, embeddings: { create: jest.fn() } });
+      const iterator = provider.streamConversation({ instructions: "safe", input: [] })[Symbol.asyncIterator]();
+      const pending = iterator.next();
+
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(create).toHaveBeenCalledTimes(1);
+
+      await jest.advanceTimersByTimeAsync(4_000);
+      const result = await pending;
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(result.value).toEqual({ type: "completed", providerRequestId: "resp-3", usage: undefined, stopReason: "stop" });
+    });
+
+    it("honors the provider's Retry-After header over the default backoff cap", async () => {
+      const rateLimited = Object.assign(new Error("rate limited"), {
+        status: 429,
+        headers: { get: (name: string) => (name === "retry-after" ? "10" : null) },
+      });
+      const create = jest.fn()
+        .mockRejectedValueOnce(rateLimited)
+        .mockResolvedValueOnce(streamOf({ type: "response.completed", response: { id: "resp-4" } }));
+      const provider = new OpenAiProvider(config, { responses: { create }, embeddings: { create: jest.fn() } });
+      const iterator = provider.streamConversation({ instructions: "safe", input: [] })[Symbol.asyncIterator]();
+      const pending = iterator.next();
+
+      // The default backoff cap (4s) would have fired a retry by now; Retry-After (10s) has not.
+      await jest.advanceTimersByTimeAsync(4_000);
+      expect(create).toHaveBeenCalledTimes(1);
+
+      await jest.advanceTimersByTimeAsync(6_000);
+      await pending;
+      expect(create).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("does not retry after a meaningful streamed delta", async () => {

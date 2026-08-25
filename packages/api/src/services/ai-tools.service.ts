@@ -33,6 +33,16 @@ function stripNulls<T extends Record<string, unknown>>(value: T): Partial<T> {
   return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== null)) as Partial<T>;
 }
 
+/**
+ * Raised when a propose_* tool's investorId couldn't be resolved from a
+ * caller-supplied name — no match, or more than one. Carries a message the
+ * model can act on directly (unlike a bare ZodError), the same way an
+ * invalid-arguments failure lets it self-correct within the same turn.
+ */
+export class AiToolResolutionError extends Error {}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const toolInputs = {
   get_startup_profile: z.object({}),
   get_round_health: z.object({ roundId: z.string().guid().nullish() }),
@@ -71,7 +81,10 @@ const toolInputs = {
     assigneeId: z.string().guid().nullish(),
   }),
   propose_interaction_log: z.object({
-    investorId: z.string().guid(),
+    // Either the investor's real id or their name accepted so the model can
+    // skip a forced round trip when it already has the name from context;
+    // resolved to a real id in execute() before this ever reaches proposeAction.
+    investorId: z.string().trim().min(1).max(200),
     pipelineId: z.string().guid().nullish(),
     type: z.enum(["call", "email", "meeting", "note", "other"]),
     interactionDate: z.string(),
@@ -79,7 +92,7 @@ const toolInputs = {
     description: z.string().max(2000).nullish(),
   }),
   propose_meeting: z.object({
-    investorId: z.string().guid(),
+    investorId: z.string().trim().min(1).max(200),
     pipelineId: z.string().guid().nullish(),
     type: z.enum(["call", "meeting"]),
     startDateTime: z.string(),
@@ -88,7 +101,7 @@ const toolInputs = {
     description: z.string().max(2000).nullish(),
   }),
   propose_investor_email: z.object({
-    investorId: z.string().guid(),
+    investorId: z.string().trim().min(1).max(200),
     pipelineId: z.string().guid().nullish(),
     subject: z.string().trim().min(1).max(200),
     body: z.string().trim().min(1).max(5000),
@@ -130,11 +143,11 @@ export const AI_TOOL_DEFINITIONS: Record<AiToolName, { description: string; para
     parameters: { type: "object", properties: { roundId: ROUND_ID_PROPERTY }, required: ["roundId"], additionalProperties: false },
   },
   get_daily_briefing: {
-    description: "Get the caller's complete briefing for today in one grounded result: investors they own, their urgent investor deals, their open tasks grouped into overdue/due today/upcoming, today's scheduled investor calls or meetings, and round health when permitted. Use this for broad prompts like 'what do we have today?', 'give me my daily summary', or 'what needs my attention today?' instead of returning only one list.",
+    description: "Get the caller's complete briefing for today in one grounded result: investors they own, their urgent investor deals, their open tasks grouped into overdue/due today/upcoming, today's scheduled investor calls or meetings, and round health when permitted. Use this for broad prompts like 'what do we have today?', 'give me my daily summary', or 'what needs my attention today?' instead of returning only one narrower list. In your answer, account for every section it returns rather than silently skipping one, and mention an empty section compactly rather than omitting it.",
     parameters: { type: "object", properties: { roundId: ROUND_ID_PROPERTY }, required: ["roundId"], additionalProperties: false },
   },
   get_investor_context: {
-    description: "Get full context for one investor: profile, thesis, check size, notes, pipeline deals, and recent interaction history. Requires the investor's id use search_investors first if you only have a name.",
+    description: "Get full context for one investor: profile, thesis, check size, notes, pipeline deals (each including its own tasks), and recent interaction history. Requires the investor's id use search_investors first if you only have a name.",
     parameters: { type: "object", properties: { investorId: { type: "string", description: "UUID of the investor." } }, required: ["investorId"], additionalProperties: false },
   },
   get_reviewer_engagement: {
@@ -146,7 +159,7 @@ export const AI_TOOL_DEFINITIONS: Record<AiToolName, { description: string; para
     parameters: { type: "object", properties: { query: { type: "string", description: "Search text matched against name, firm, sector, and description." } }, required: ["query"], additionalProperties: false },
   },
   list_investors: {
-    description: "List investors who actually have pipeline deals, optionally filtered to one round and/or stage. Use scope=mine for investors whose deal owner is the caller; never describe scope=team results as assigned to the caller.",
+    description: "List investors who actually have pipeline deals (this is not the full directory), optionally filtered to one round and/or stage. For 'my investors', 'assigned to me', or similar ownership language, call with scope=mine — only describe an investor as assigned to the caller when the returned deal was actually filtered to their owner id this way, never for a scope=team result.",
     parameters: {
       type: "object",
       properties: {
@@ -167,7 +180,7 @@ export const AI_TOOL_DEFINITIONS: Record<AiToolName, { description: string; para
     parameters: { type: "object", properties: { investorId: { type: "string", description: "UUID of the investor." } }, required: ["investorId"], additionalProperties: false },
   },
   list_tasks: {
-    description: "List tasks with the investor, fundraising round, current deal stage, and assignee they belong to. Use scope=mine for 'my tasks'; use scope=team when the user asks for all tasks belonging to an investor or the team. Filter by investor after resolving its id with search_investors.",
+    description: "List tasks with the investor, fundraising round, current deal stage, and assignee they belong to. A task always belongs to a pipeline deal and therefore to a specific investor and round — name that investor in your answer and don't confuse the task's assignee with it. Use scope=mine for 'my tasks'; use scope=team when the user asks for all tasks belonging to an investor or the team. Filter by investor after resolving its id with search_investors.",
     parameters: {
       type: "object",
       properties: {
@@ -209,7 +222,7 @@ export const AI_TOOL_DEFINITIONS: Record<AiToolName, { description: string; para
     parameters: {
       type: "object",
       properties: {
-        investorId: { type: "string", description: "UUID of the investor." },
+        investorId: { type: "string", description: "The investor's id if a tool already returned one this conversation, otherwise their name — it is resolved to an id automatically." },
         pipelineId: { type: ["string", "null"], description: "UUID of the specific deal this is about, or null." },
         type: { type: "string", enum: ["call", "email", "meeting", "note", "other"] },
         interactionDate: { type: "string", description: "ISO 8601 datetime the interaction happened." },
@@ -225,7 +238,7 @@ export const AI_TOOL_DEFINITIONS: Record<AiToolName, { description: string; para
     parameters: {
       type: "object",
       properties: {
-        investorId: { type: "string", description: "UUID of the investor." },
+        investorId: { type: "string", description: "The investor's id if a tool already returned one this conversation, otherwise their name — it is resolved to an id automatically." },
         pipelineId: { type: ["string", "null"], description: "UUID of the specific deal this meeting is about, or null." },
         type: { type: "string", enum: ["call", "meeting"] },
         startDateTime: { type: "string", description: "ISO 8601 datetime the meeting starts." },
@@ -242,7 +255,7 @@ export const AI_TOOL_DEFINITIONS: Record<AiToolName, { description: string; para
     parameters: {
       type: "object",
       properties: {
-        investorId: { type: "string", description: "UUID of the investor." },
+        investorId: { type: "string", description: "The investor's id if a tool already returned one this conversation, otherwise their name — it is resolved to an id automatically." },
         pipelineId: { type: ["string", "null"], description: "UUID of the specific deal this email is about, or null." },
         subject: { type: "string" },
         body: { type: "string" },
@@ -285,7 +298,7 @@ export function toolSchemasFor(allowedTools: readonly AiToolName[]): AiToolDefin
 export class AiToolsService {
   async execute(startupId: string, tool: AiToolName, rawInput: unknown, allowedTools: readonly AiToolName[], context: { canReadFinancial?: boolean; userId?: string; sessionId?: string; messageId?: string; roundId?: string | null } = {}) {
     if (!allowedTools.includes(tool)) throw new Error("AI_TOOL_FORBIDDEN");
-    const parsedInput = toolInputs[tool].parse(rawInput) as Record<string, unknown>;
+    let parsedInput = toolInputs[tool].parse(rawInput) as Record<string, unknown>;
     const effectiveRoundId = (requestedRoundId: string | null | undefined) => requestedRoundId ?? context.roundId ?? undefined;
 
     if (tool === "get_startup_profile") {
@@ -320,8 +333,26 @@ export class AiToolsService {
       const dayEnd = new Date(dayStart);
       dayEnd.setHours(23, 59, 59, 999);
 
-      const [investors, focusDeals, tasks, meetings] = await Promise.all([
-        investorService.listInvestors(startupId, { page: 1, limit: 100, ownerId: memberId, pipelineOnly: true, ...(roundId && { roundId }) }),
+      // Resolved alongside the other four below rather than after them: it
+      // was previously two more sequential awaits tacked on past the
+      // Promise.all, pushing this tool's total latency closer to its own
+      // 15s timeout for no reason — it depends on nothing the other four
+      // produce, so there's nothing to serialize it after.
+      const roundHealthPromise: Promise<{ round: { id: string; name: string; currency: string }; metrics: unknown } | null> = context.canReadFinancial
+        ? (async () => {
+            const round = roundId
+              ? await fundraisingService.getRound(startupId, roundId)
+              : (await fundraisingService.listRounds(startupId, { page: 1, limit: 1, status: "active" })).data[0];
+            return round ? { round: { id: round.id, name: round.roundName, currency: round.currency }, metrics: await fundraisingService.getRoundMetrics(startupId, round.id) } : null;
+          })()
+        : Promise.resolve(null);
+
+      const [investors, focusDeals, tasks, meetings, roundHealth] = await Promise.all([
+        // meta.total (the only count-related thing this response's own
+        // consumers actually read) comes from a separate COUNT query
+        // independent of this limit, so shrinking it only trims the `data`
+        // rows fetched and serialized — it was 100 for no functional reason.
+        investorService.listInvestors(startupId, { page: 1, limit: 20, ownerId: memberId, pipelineOnly: true, ...(roundId && { roundId }) }),
         pipelineService.getFocus(startupId, roundId, memberId),
         taskService.listTasks(startupId, { page: 1, limit: 100, assigneeId: memberId, status: "open", ...(roundId && { roundId }) }),
         prisma.interactionLog.findMany({
@@ -340,6 +371,7 @@ export class AiToolsService {
             pipeline: { select: { id: true, roundId: true, stage: true } },
           },
         }),
+        roundHealthPromise,
       ]);
 
       const dueToday = tasks.data.filter((task) => task.dueDate && task.dueDate >= dayStart && task.dueDate <= dayEnd);
@@ -350,14 +382,6 @@ export class AiToolsService {
         assigneeId: task.assigneeId, assignee: task.assignee,
         investor: task.investor, round: task.round, pipelineStage: task.pipelineStage,
       });
-
-      let roundHealth: unknown = null;
-      if (context.canReadFinancial) {
-        const round = roundId
-          ? await fundraisingService.getRound(startupId, roundId)
-          : (await fundraisingService.listRounds(startupId, { page: 1, limit: 1, status: "active" })).data[0];
-        if (round) roundHealth = { round: { id: round.id, name: round.roundName, currency: round.currency }, metrics: await fundraisingService.getRoundMetrics(startupId, round.id) };
-      }
 
       return {
         generatedAt: new Date().toISOString(),
@@ -371,11 +395,17 @@ export class AiToolsService {
             pipeline: investor.pipeline,
           })),
         },
-        focusDeals,
+        // getFocus has no limit parameter of its own (unlike the other three
+        // lookups above), so its cap is applied here instead — keeps this
+        // tool's own token footprint bounded regardless of how many deals
+        // actually need attention.
+        focusDeals: { data: focusDeals.data.slice(0, 15) },
         tasks: {
           totalOpen: tasks.meta.total,
-          overdue: overdue.map(conciseTask),
-          dueToday: dueToday.map(conciseTask),
+          // Bounded so an unusually large overdue/due-today list can't blow
+          // past this tool's own reasonable token footprint.
+          overdue: overdue.slice(0, 20).map(conciseTask),
+          dueToday: dueToday.slice(0, 20).map(conciseTask),
           upcoming: upcoming.slice(0, 10).map(conciseTask),
         },
         meetings,
@@ -480,6 +510,9 @@ export class AiToolsService {
     const actionType = PROPOSE_TOOL_ACTION_TYPES[tool];
     if (!actionType) throw new Error("AI_TOOL_FORBIDDEN");
     if (!context.userId || !context.sessionId || !context.messageId) throw new Error("AI_TOOL_FORBIDDEN");
+    if (typeof parsedInput.investorId === "string") {
+      parsedInput = { ...parsedInput, investorId: await this.resolveInvestorId(startupId, parsedInput.investorId) };
+    }
     const action = await aiActionsService.proposeAction(startupId, context.sessionId, context.messageId, context.userId, actionType, stripNulls(parsedInput));
     return {
       actionId: action.id,
@@ -488,6 +521,26 @@ export class AiToolsService {
       expiresAt: action.expiresAt,
       summary: "Drafted and awaiting the user's review in the card attached to this message. Do not say this was sent, created, scheduled, or logged — say it was drafted and is awaiting approval.",
     };
+  }
+
+  /**
+   * A propose_* tool's investorId is a real id whenever the model already
+   * resolved one (via search_investors or get_investor_context earlier this
+   * turn) — passed through untouched, no extra lookup. Otherwise it's read as
+   * a name so the model doesn't have to make a dedicated round trip just to
+   * turn a name it already has into an id.
+   */
+  private async resolveInvestorId(startupId: string, investorIdOrName: string): Promise<string> {
+    if (UUID_RE.test(investorIdOrName)) return investorIdOrName;
+    const matches = await investorService.listInvestors(startupId, { page: 1, limit: 5, search: investorIdOrName });
+    if (matches.data.length === 0) {
+      throw new AiToolResolutionError(`No investor matches "${investorIdOrName}". Call search_investors to find the right one, or ask the user for the correct name.`);
+    }
+    if (matches.data.length > 1) {
+      const names = matches.data.map((investor) => investor.ventureFirm ? `${investor.fullName} (${investor.ventureFirm})` : investor.fullName).join(", ");
+      throw new AiToolResolutionError(`"${investorIdOrName}" matches more than one investor: ${names}. Ask the user which one they mean, or call search_investors for exact ids.`);
+    }
+    return matches.data[0].id;
   }
 
   private async resolveMemberId(startupId: string, userId: string | undefined): Promise<string> {

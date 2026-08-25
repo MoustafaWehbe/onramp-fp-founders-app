@@ -57,8 +57,8 @@ row that matches what you are trying to do.
   controls, telemetry, and privacy retention.
 - **[AI subsystem](ai.md)** — grounding, tools, propose-only actions,
   streaming, and capacity limits.
-- **[Background jobs](background-jobs.md)** — queues, workers, and cron
-  schedules.
+- **[Background jobs](background-jobs.md)** — queues, workers, and scheduled
+  tasks.
 
 ### Running it
 

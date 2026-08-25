@@ -23,7 +23,7 @@ import { apiErrorMessage } from "../../lib/api-error";
 import { useAppStore } from "../../lib/app-store";
 import { listFundraisingRounds, getRoundMetrics, type FundraisingRound } from "../../lib/fundraising-api";
 import { fetchAllPages } from "../../lib/pagination";
-import { STAGES } from "../../lib/mock-data";
+import { STAGES } from "../../lib/pipeline-stages";
 import { getPipelineFocus, listPipelineEntries, type PipelineEntry, type PipelineFocusEntry } from "../../lib/pipeline-api";
 import { invalidateTaskData, qk } from "../../lib/query-keys";
 import { listMembers } from "../../lib/team-api";
