@@ -381,11 +381,15 @@ describe("Team", () => {
     await user.click(screen.getByLabelText("Invite"));
     await user.click(screen.getByRole("button", { name: "Create role" }));
 
+    // "Invite" is inert without "View members" — a role holding one and not
+    // the other lands on a Team page that renders empty while its reads 403.
+    // Ticking the write ticks the read it depends on, and the role is saved
+    // in the shape it will actually work in.
     await waitFor(() =>
       expect(createRole).toHaveBeenCalledWith("startup-1", {
         name: "recruiter",
         description: undefined,
-        permissions: ["team:create"],
+        permissions: ["team:read", "team:create"],
       }),
     );
     expect(toast.success).toHaveBeenCalledWith("recruiter role created");
@@ -413,7 +417,10 @@ describe("Team", () => {
     await waitFor(() =>
       expect(updateRole).toHaveBeenCalledWith("startup-1", "role-collab", {
         description: "Can edit",
-        permissions: ["startup:read", "team:create", "pipeline:read", "pipeline:create"],
+        // team:read is added on the way out: this fixture role predates the
+        // dependency rule and held team:create without it. Saving a role is
+        // where that gets repaired, on the client and again on the server.
+        permissions: ["startup:read", "team:read", "team:create", "pipeline:read", "pipeline:create"],
       }),
     );
     expect(toast.success).toHaveBeenCalledWith("Collaborator permissions updated");

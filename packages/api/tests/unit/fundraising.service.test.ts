@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { FundraisingService } from "../../src/services/fundraising.service";
+import { FundraisingService, redactRoundFinancials } from "../../src/services/fundraising.service";
 
 jest.mock("../../src/db/prisma", () => {
   const client: Record<string, unknown> = {
@@ -357,5 +357,39 @@ describe("FundraisingService.deleteCommitment", () => {
 
     expect(mockPrisma.commitment.delete).toHaveBeenCalledWith({ where: { id: commitment.id } });
     expect(mockPrisma.pipeline.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ stage: "term_sheet" }) }));
+  });
+});
+
+describe("redactRoundFinancials", () => {
+  const round = {
+    id: ROUND_ID,
+    startupId: STARTUP_ID,
+    roundName: "Seed",
+    targetAmount: 2_000_000,
+    minimumTicketSize: 25_000,
+    equityOfferedPercentage: 12.5,
+    currency: "EUR",
+    status: "active",
+    firstCloseDate: null,
+    targetCloseDate: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  it("keeps everything the pipeline board needs to scope itself", () => {
+    // The board cannot render a column, a total, or an "add deal" form without
+    // knowing which round it is on and what currency its amounts are in.
+    const redacted = redactRoundFinancials(round);
+
+    expect(redacted).toMatchObject({ id: ROUND_ID, roundName: "Seed", status: "active", currency: "EUR" });
+  });
+
+  it("drops every money and equity figure", () => {
+    const redacted = redactRoundFinancials(round);
+
+    expect(redacted.targetAmount).toBeNull();
+    expect(redacted.minimumTicketSize).toBeNull();
+    expect(redacted.equityOfferedPercentage).toBeNull();
+    expect(redacted.financialsRedacted).toBe(true);
   });
 });

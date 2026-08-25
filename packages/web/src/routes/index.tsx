@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { RequireWorkspace } from "./RequireWorkspace";
+import { RequirePermission } from "./RequirePermission";
 import { AppLayout } from "../layouts/AppLayout";
 import { AuthLayout } from "../layouts/AuthLayout";
 
@@ -79,19 +80,26 @@ export function AppRoutes() {
 
           {/* Everything below needs a startup id to render at all. */}
           <Route element={<RequireWorkspace />}>
-            <Route path="/pipeline" element={<Pipeline />} />
-            <Route path="/investors" element={<Investors />} />
-            <Route path="/chat" element={<Chat />} />
-            <Route path="/fundraising" element={<Fundraising />} />
-            <Route path="/documents" element={<Documents />} />
-            <Route path="/ai" element={<Ai />} />
+            {/* ...and everything inside RequirePermission needs the grant
+                PAGE_ACCESS lists for its path, so a deep link into a page the
+                role cannot open explains itself instead of rendering a shell
+                that fills with 403s. Redirects and the always-reachable
+                Settings/Startup pages sit outside it. */}
+            <Route element={<RequirePermission />}>
+              <Route path="/pipeline" element={<Pipeline />} />
+              <Route path="/investors" element={<Investors />} />
+              <Route path="/chat" element={<Chat />} />
+              <Route path="/fundraising" element={<Fundraising />} />
+              <Route path="/documents" element={<Documents />} />
+              <Route path="/ai" element={<Ai />} />
+              <Route path="/team" element={<Team />} />
+              <Route path="/reviewers" element={<Reviewers />} />
+              <Route path="/audit" element={<Audit />} />
+            </Route>
             <Route path="/ai/chat" element={<Navigate to="/ai" replace />} />
             <Route path="/ai/analysis" element={<Navigate to="/ai" replace />} />
             <Route path="/ai-insights" element={<Navigate to="/ai" replace />} />
-            <Route path="/team" element={<Team />} />
-            <Route path="/reviewers" element={<Reviewers />} />
             <Route path="/startup" element={<Startup />} />
-            <Route path="/audit" element={<Audit />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Route>

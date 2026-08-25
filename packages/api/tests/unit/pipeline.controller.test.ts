@@ -38,6 +38,7 @@ jest.mock("../../src/services/pipeline.service", () => ({
 }));
 
 import { prisma } from "../../src/db/prisma";
+import { activeMember, memberWithout } from "../helpers/member";
 import { pipelineService } from "../../src/services/pipeline.service";
 
 const mockService = pipelineService as jest.Mocked<typeof pipelineService>;
@@ -58,18 +59,11 @@ function accessCookie(userId = USER_ID, sessionId = "session-1"): string {
   return `accessToken=${token}`;
 }
 
-const ACTIVE_MEMBER = {
-  id: "member-1",
-  userId: USER_ID,
-  startupId: STARTUP_ID,
-  roleId: "role-owner",
-  status: "active",
-};
+const ACTIVE_MEMBER = activeMember({ userId: USER_ID, startupId: STARTUP_ID });
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockPrisma.startupMember.findUnique.mockResolvedValue(ACTIVE_MEMBER as never);
-  mockPrisma.rolePermission.findFirst.mockResolvedValue({ id: "rp-1" } as never);
 });
 
 describe("POST /api/v1/startups/:startupId/pipeline", () => {
@@ -122,7 +116,9 @@ describe("POST /api/v1/startups/:startupId/pipeline", () => {
   });
 
   it("returns 403 when the role lacks pipeline:create", async () => {
-    mockPrisma.rolePermission.findFirst.mockResolvedValue(null);
+    mockPrisma.startupMember.findUnique.mockResolvedValue(
+      memberWithout(ACTIVE_MEMBER, "pipeline:create") as never,
+    );
 
     const res = await request(app)
       .post(BASE)
@@ -220,7 +216,9 @@ describe("DELETE /api/v1/startups/:startupId/pipeline/:pipelineId", () => {
   });
 
   it("returns 403 when the role lacks pipeline:delete", async () => {
-    mockPrisma.rolePermission.findFirst.mockResolvedValue(null);
+    mockPrisma.startupMember.findUnique.mockResolvedValue(
+      memberWithout(ACTIVE_MEMBER, "pipeline:delete") as never,
+    );
 
     const res = await request(app)
       .delete(`${BASE}/${PIPELINE_ID}`)

@@ -1,4 +1,4 @@
-import { getRolePermissions, requireMember, requirePermission } from "../../src/middleware/rbac";
+import { getRolePermissions, memberCan, requireAnyPermission, requireMember, requirePermission } from "../../src/middleware/rbac";
 import { prisma } from "../../src/db/prisma";
 
 jest.mock("../../src/db/prisma", () => ({
@@ -35,13 +35,38 @@ function makeRes() {
   return res;
 }
 
+/** Shapes a role the way requireMember's `include` returns it. */
+function roleWith(...keys: string[]) {
+  return {
+    name: "custom",
+    rolePermissions: keys.map((key) => {
+      const [resource, action] = key.split(":");
+      return permissionRow(resource!, action!);
+    }),
+  };
+}
+
 const ACTIVE_MEMBER = {
   id: "member-1",
   userId: "user-1",
   startupId: "startup-1",
   roleId: "role-1",
   status: "active",
+  role: roleWith("startup:read", "pipeline:read"),
 };
+
+/** The req.member requireMember would have attached for the given grants. */
+function memberContext(...keys: string[]) {
+  return {
+    id: "member-1",
+    userId: "user-1",
+    startupId: "startup-1",
+    roleId: "role-1",
+    roleName: "custom",
+    status: "active",
+    permissions: new Set(keys),
+  };
+}
 
 // ─── requireMember ────────────────────────────────────────────────────────────
 
@@ -101,7 +126,9 @@ describe("requireMember", () => {
       userId: "user-1",
       startupId: "startup-1",
       roleId: "role-1",
+      roleName: "custom",
       status: "active",
+      permissions: new Set(["startup:read", "pipeline:read"]),
     });
     expect(next).toHaveBeenCalledWith();
     expect(res.status).not.toHaveBeenCalled();
@@ -112,11 +139,14 @@ describe("requireMember", () => {
 
     await requireMember(makeReq(), res, next);
 
-    expect(mockFindUnique).toHaveBeenCalledWith({
-      where: {
-        startupId_userId: { startupId: "startup-1", userId: "user-1" },
-      },
-    });
+    // The role's grants ride along with the membership so no route gate ever
+    // needs a second query, however many permissions it checks.
+    expect(mockFindUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { startupId_userId: { startupId: "startup-1", userId: "user-1" } },
+        include: expect.objectContaining({ role: expect.anything() }),
+      }),
+    );
   });
 
   it("calls next(err) on a database error", async () => {
@@ -130,7 +160,7 @@ describe("requireMember", () => {
   });
 });
 
-// ─── requirePermission ────────────────────────────────────────────────────────
+// ─── requirePermission / requireAnyPermission ────────────────────────────────
 
 describe("requirePermission", () => {
   let res: ReturnType<typeof makeRes>;
@@ -142,72 +172,89 @@ describe("requirePermission", () => {
     jest.clearAllMocks();
   });
 
-  function makeAuthedReq() {
-    return makeReq({ member: { ...ACTIVE_MEMBER } });
-  }
-
-  it("returns 403 when no matching role-permission row exists", async () => {
-    mockFindFirst.mockResolvedValue(null);
-
-    await requirePermission("startup", "read")(makeAuthedReq(), res, next);
+  it("returns 403 when the request has no member context at all", () => {
+    requirePermission("startup", "read")(makeReq(), res, next);
 
     expect(res.status).toHaveBeenCalledWith(403);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: "FORBIDDEN" }));
     expect(next).not.toHaveBeenCalled();
   });
 
-  it("calls next() when the permission is granted", async () => {
-    mockFindFirst.mockResolvedValue({
-      id: "rp-1",
-      roleId: "role-1",
-      permissionId: "perm-1",
-      permission: { id: "perm-1", resource: "startup", action: "read" },
-    });
+  it("returns 403 when the role does not hold the grant", () => {
+    requirePermission("documents", "share")(makeReq({ member: memberContext("documents:read") }), res, next);
 
-    await requirePermission("startup", "read")(makeAuthedReq(), res, next);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: "FORBIDDEN" }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("calls next() when the permission is granted", () => {
+    requirePermission("startup", "read")(makeReq({ member: memberContext("startup:read") }), res, next);
 
     expect(next).toHaveBeenCalledWith();
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  it("queries prisma with the correct roleId, resource, and action", async () => {
-    mockFindFirst.mockResolvedValue(null);
+  it("enforces distinct resource+action pairs independently", () => {
+    // Holding "team:read" must never satisfy a check for "team:delete".
+    requirePermission("team", "delete")(makeReq({ member: memberContext("team:read") }), res, next);
 
-    await requirePermission("documents", "share")(makeAuthedReq(), res, next);
-
-    expect(mockFindFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          roleId: "role-1",
-          permission: { resource: "documents", action: "share" },
-        },
-        include: { permission: true },
-      }),
-    );
-  });
-
-  it("enforces distinct resource+action pairs independently", async () => {
-    mockFindFirst.mockResolvedValue(null);
-    const req = makeAuthedReq();
-
-    await requirePermission("team", "delete")(req, res, next);
-
-    expect(mockFindFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { roleId: "role-1", permission: { resource: "team", action: "delete" } },
-      }),
-    );
     expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
   });
 
-  it("calls next(err) on a database error", async () => {
-    const dbError = new Error("Query failed");
-    mockFindFirst.mockRejectedValue(dbError);
+  it("issues no database query of its own", () => {
+    requirePermission("startup", "read")(makeReq({ member: memberContext("startup:read") }), res, next);
 
-    await requirePermission("startup", "read")(makeAuthedReq(), res, next);
+    // requireMember already resolved the whole grant set; a route carrying two
+    // gates used to cost two extra round trips for the same answer.
+    expect(mockFindFirst).not.toHaveBeenCalled();
+    expect(mockFindMany).not.toHaveBeenCalled();
+  });
+});
 
-    expect(next).toHaveBeenCalledWith(dbError);
-    expect(res.status).not.toHaveBeenCalled();
+describe("requireAnyPermission", () => {
+  let res: ReturnType<typeof makeRes>;
+  let next: jest.Mock;
+
+  beforeEach(() => {
+    res = makeRes();
+    next = jest.fn();
+    jest.clearAllMocks();
+  });
+
+  it("passes on the stronger grant", () => {
+    requireAnyPermission("financial:read", "pipeline:read")(makeReq({ member: memberContext("financial:read") }), res, next);
+
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  it("passes on the weaker grant", () => {
+    // The pipeline board needs the round list purely as a scope selector, so
+    // pipeline:read alone reaches it; the handler redacts the amounts.
+    requireAnyPermission("financial:read", "pipeline:read")(makeReq({ member: memberContext("pipeline:read") }), res, next);
+
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  it("returns 403 when the role holds neither", () => {
+    requireAnyPermission("financial:read", "pipeline:read")(makeReq({ member: memberContext("documents:read") }), res, next);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
+  });
+});
+
+describe("memberCan", () => {
+  it("reads a grant off the request requireMember resolved", () => {
+    const req = makeReq({ member: memberContext("pipeline:read") });
+
+    expect(memberCan(req, "pipeline", "read")).toBe(true);
+    expect(memberCan(req, "financial", "read")).toBe(false);
+  });
+
+  it("is false when there is no member context", () => {
+    expect(memberCan(makeReq(), "pipeline", "read")).toBe(false);
   });
 });
 

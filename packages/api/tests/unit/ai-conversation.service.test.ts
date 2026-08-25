@@ -3,6 +3,8 @@ import { prisma } from "../../src/db/prisma";
 import { AiConversationService, buildRetrievalQuery, extractResolvedEntities, buildResultSummaryForStorage } from "../../src/services/ai-conversation.service";
 import { FakeAiProvider } from "../../src/services/ai-provider.service";
 import { aiToolsService } from "../../src/services/ai-tools.service";
+import { describeAiAccess } from "../../src/services/ai-capabilities.service";
+import { ROLE_TEMPLATES } from "../../src/config/permissions";
 
 describe("buildRetrievalQuery", () => {
   it("folds the last few user turns into the query, so a bare follow-up still carries its subject", () => {
@@ -515,6 +517,50 @@ describe("AI conversation agent loop", () => {
 
     const artifactTypes = (prisma.aiArtifact.create as jest.Mock).mock.calls.map((call) => call[0].data.artifactType);
     expect(artifactTypes).toEqual(["action_proposal"]);
+  });
+
+  it("tells the model which data areas the caller's role cannot reach, so a missing tool does not become a guess", async () => {
+    // A viewer has no financial:read, so "how much have we raised?" has no
+    // tool behind it. Left unexplained, the model fills the gap — it guesses,
+    // answers from general knowledge, or asks the founder to paste the
+    // numbers in. Naming the permission lets it say the true thing instead.
+    const provider = new FakeAiProvider();
+    provider.streamEventsByTurn = [[{ type: "delta", text: "Sure." }, { type: "completed", stopReason: "stop" }]];
+    const viewerAccess = {
+      canReadDocuments: false,
+      canReadFinancial: false,
+      tools: [],
+      accessSummary: describeAiAccess(["pipeline:read", "startup:read", "ai_reports:read"]),
+    };
+    const service = new AiConversationService(provider);
+
+    await (service as any).runGeneration(session, "assistant-message", "user-1", viewerAccess);
+
+    const instructions = (provider.requests[0].input as { instructions: string }).instructions;
+    expect(instructions).toContain("Rounds & commitments");
+    expect(instructions).toContain("Documents");
+    expect(instructions).toContain("do not guess");
+    expect(instructions).toContain("Team & Roles page");
+    // What the role *can* read is never disclaimed.
+    expect(instructions).not.toContain("Investors & pipeline");
+  });
+
+  it("adds no permission disclaimer for a role that can read everything", async () => {
+    const provider = new FakeAiProvider();
+    provider.streamEventsByTurn = [[{ type: "delta", text: "Sure." }, { type: "completed", stopReason: "stop" }]];
+    const ownerAccess = {
+      canReadDocuments: true,
+      canReadFinancial: true,
+      tools: [],
+      accessSummary: describeAiAccess(ROLE_TEMPLATES.owner),
+    };
+    const retrieval = { retrieveDocumentContext: jest.fn().mockResolvedValue([]) };
+    const service = new AiConversationService(provider, retrieval as never);
+
+    await (service as any).runGeneration(session, "assistant-message", "user-1", ownerAccess);
+
+    const instructions = (provider.requests[0].input as { instructions: string }).instructions;
+    expect(instructions).not.toContain("does not grant access to the following");
   });
 
   it("tells the model the real sender's name and title to sign drafts with, instead of leaving it to invent a placeholder", async () => {

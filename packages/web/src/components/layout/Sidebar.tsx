@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -21,7 +21,9 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
+import { usePermissions } from "../../hooks/usePermissions";
 import { useWorkspace } from "../../hooks/useWorkspace";
+import { PAGE_ACCESS } from "../../lib/page-access";
 import { CreateStartupDialog } from "../startup/CreateStartupDialog";
 import { cn, getInitials } from "../../lib/utils";
 import {
@@ -78,6 +80,25 @@ type SidebarProps = {
 
 export function Sidebar({ className, onNavigate, onClose }: SidebarProps) {
   const location = useLocation();
+  const { can } = usePermissions();
+
+  // Filtered from the same PAGE_ACCESS map the route guard reads, so a hidden
+  // item is always a guarded route and vice versa. A group whose every item is
+  // out of reach drops its heading too, rather than leaving a label over
+  // nothing.
+  const visibleGroups = useMemo(
+    () =>
+      navGroups
+        .map((group) => ({
+          ...group,
+          items: group.items.filter((item) => {
+            const requirement = PAGE_ACCESS[item.to];
+            return !requirement || can(requirement.resource, requirement.action);
+          }),
+        }))
+        .filter((group) => group.items.length > 0),
+    [can],
+  );
 
   return (
     <aside
@@ -108,7 +129,7 @@ export function Sidebar({ className, onNavigate, onClose }: SidebarProps) {
       </div>
 
       <nav className="scrollbar-slim min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4">
-        {navGroups.map((group) => (
+        {visibleGroups.map((group) => (
           <div key={group.label} className="mb-4">
             <div className="mb-1 px-2 font-mono text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
               {group.label}

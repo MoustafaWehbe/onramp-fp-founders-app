@@ -25,7 +25,13 @@ import { Label } from "../../../components/ui/label";
 import { Textarea } from "../../../components/ui/textarea";
 import type { StartupRole } from "../../../lib/team-api";
 import { cn } from "../../../lib/utils";
-import { PERMISSION_CATALOG } from "./permission-catalog";
+import {
+  PERMISSION_CATALOG,
+  PERMISSION_DEPENDENCIES,
+  expandPermissionKeys,
+  permissionLabel,
+  permissionsRequiring,
+} from "../../../lib/permissions";
 
 export type RolePermissionsFormValues = {
   name?: string;
@@ -71,11 +77,23 @@ export function RolePermissionsDialog({
     setPermissions(new Set(role?.permissions ?? []));
   }, [open, mode, role]);
 
+  /**
+   * Some grants are inert without another one: "Edit" over a resource whose
+   * "View" is off produces a page that renders empty while every read behind
+   * it 403s. The server closes the selection over those dependencies on save
+   * regardless, so the only question here is whether the checkboxes tell the
+   * truth about what is being saved — ticking a write ticks its read, and
+   * un-ticking a read un-ticks the writes that needed it.
+   */
   function toggle(key: string) {
     setPermissions((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(key)) {
+        next.delete(key);
+        for (const dependent of permissionsRequiring(key)) next.delete(dependent);
+      } else {
+        for (const implied of expandPermissionKeys([key])) next.add(implied);
+      }
       return next;
     });
   }
@@ -87,10 +105,15 @@ export function RolePermissionsDialog({
       const next = new Set(prev);
       for (const key of keys) {
         if (allSelected) next.delete(key);
-        else next.add(key);
+        else for (const implied of expandPermissionKeys([key])) next.add(implied);
       }
       return next;
     });
+  }
+
+  /** A read grant that is currently propping up a selected write grant. */
+  function requiredBy(key: string): string[] {
+    return permissionsRequiring(key).filter((dependent) => permissions.has(dependent));
   }
 
   const canSubmit =
@@ -102,7 +125,9 @@ export function RolePermissionsDialog({
     onSubmit({
       ...(mode === "create" ? { name: name.trim() } : {}),
       description: description.trim(),
-      permissions: [...permissions],
+      // Already closed over dependencies by `toggle`; expanding again here
+      // covers a role loaded from an older save that predates the rule.
+      permissions: expandPermissionKeys(permissions),
     });
   }
 
@@ -214,12 +239,23 @@ export function RolePermissionsDialog({
                         {group.actions.map((action) => {
                           const key = `${group.resource}:${action.action}`;
                           const selected = permissions.has(key);
+                          // Named on the control itself so the linked toggle
+                          // is understood before it happens, not discovered
+                          // as a checkbox moving on its own.
+                          const dependencies = PERMISSION_DEPENDENCIES[key] ?? [];
+                          const propping = selected ? requiredBy(key) : [];
+                          const hint = propping.length > 0
+                            ? `Turning this off also turns off ${propping.map(permissionLabel).join(", ")}`
+                            : dependencies.length > 0 && !selected
+                              ? `Also turns on ${dependencies.map(permissionLabel).join(", ")}`
+                              : undefined;
                           return (
                             <button
                               key={key}
                               type="button"
                               aria-label={action.label}
                               aria-pressed={selected}
+                              title={hint}
                               disabled={isSubmitting}
                               onClick={() => toggle(key)}
                               className={cn(

@@ -8,7 +8,6 @@ const readyForRemoteStreamEvents = jest.fn();
 const isGenerationActive = jest.fn();
 const unsubscribe = jest.fn();
 
-jest.mock("../../src/middleware/rbac", () => ({ getRolePermissions: jest.fn().mockResolvedValue(new Set(["ai_reports:read"])) }));
 jest.mock("../../src/services/ai-conversation.service", () => ({
   aiConversationService: {
     openStream,
@@ -31,7 +30,8 @@ function requestAndResponse() {
   const req = Object.assign(new EventEmitter(), {
     params: { startupId: "startup-1", sessionId: "session-1", messageId: "message-1" },
     user: { userId: "user-1" },
-    member: { roleId: "role-1" },
+    // requireMember resolves the role's grants before the handler runs.
+    member: { roleId: "role-1", permissions: new Set(["ai_reports:read"]) },
     header: jest.fn().mockReturnValue(undefined),
   });
   const written: string[] = [];
