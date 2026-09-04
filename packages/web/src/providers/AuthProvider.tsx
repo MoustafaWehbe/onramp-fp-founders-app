@@ -35,6 +35,15 @@ function clearSessionHint() {
   localStorage.removeItem(SESSION_KEY);
 }
 
+/** A rejected request only proves the session is gone when the server said so.
+ * Anything without a response (offline, DNS, connection refused mid-restart) or
+ * any non-auth status is a transport/server problem, not a signed-out user. */
+function isUnauthenticated(err: unknown): boolean {
+  if (!axios.isAxiosError(err)) return false;
+  const status = err.response?.status;
+  return status === 401 || status === 403;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const hasSessionHint = Boolean(readSessionHint());
   const queryClient = useQueryClient();
@@ -79,8 +88,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(data.data);
       })
       .catch((err) => {
-        if (mounted && !axios.isCancel(err)) {
-          // Session is gone (cookies expired/cleared) remove the hint.
+        if (!mounted || axios.isCancel(err)) return;
+        // Only the server saying "you are not authenticated" means the session
+        // is actually gone. A network error or a 5xx/429 says nothing about the
+        // cookie — dropping the hint there signs the user out over a dev-server
+        // restart or a momentary blip, and the cookie they still hold is then
+        // never retried.
+        if (isUnauthenticated(err)) {
           clearSessionHint();
         }
       })

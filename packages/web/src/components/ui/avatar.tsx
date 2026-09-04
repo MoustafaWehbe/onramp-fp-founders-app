@@ -54,6 +54,16 @@ const AvatarImage = React.forwardRef<HTMLImageElement, React.ImgHTMLAttributes<H
     const { status, setStatus } = useAvatarContext("AvatarImage");
     const attemptsRef = React.useRef(0);
     const [retryKey, setRetryKey] = React.useState(0);
+    const imgRef = React.useRef<HTMLImageElement | null>(null);
+
+    const attachRef = React.useCallback(
+      (node: HTMLImageElement | null) => {
+        imgRef.current = node;
+        if (typeof ref === "function") ref(node);
+        else if (ref) ref.current = node;
+      },
+      [ref],
+    );
 
     React.useEffect(() => {
       attemptsRef.current = 0;
@@ -61,13 +71,26 @@ const AvatarImage = React.forwardRef<HTMLImageElement, React.ImgHTMLAttributes<H
       setStatus(src ? "loading" : "error");
     }, [src, setStatus]);
 
+    /**
+     * A cached image can finish decoding before React attaches onLoad, so that
+     * event never fires and the avatar stays invisible behind its fallback for
+     * the rest of the page — the reason a plain <img> of the same URL rendered
+     * while this one showed initials. The element knows it is done even when we
+     * missed the event, so ask it after every commit rather than trusting the
+     * event alone.
+     */
+    React.useEffect(() => {
+      const img = imgRef.current;
+      if (img?.complete && img.naturalWidth > 0) setStatus("loaded");
+    });
+
     // Keep it mounted while loading so the load/error events can still fire.
     if (!src || status === "error") return null;
 
     return (
       <img
         key={retryKey}
-        ref={ref}
+        ref={attachRef}
         src={src}
         className={cn(
           "aspect-square h-full w-full",

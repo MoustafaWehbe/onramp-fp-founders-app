@@ -192,4 +192,49 @@ describe("identity-scoped cache", () => {
     await waitFor(() => expect(screen.getByTestId("user")).toHaveTextContent("alice@acme.io"));
     expect(useAppStore.getState().preferredStartupId).toBe("s-alice");
   });
+
+  it("keeps the session hint when the restore fails without a response", async () => {
+    // Reloading while the API is restarting (or offline) rejects with no
+    // response. That says nothing about the cookie — discarding the hint here
+    // signed the user out over a blip and never retried the session they held.
+    localStorage.setItem(SESSION_KEY, ALICE.id);
+    get.mockRejectedValueOnce(
+      Object.assign(new Error("Network Error"), { isAxiosError: true, response: undefined }),
+    );
+
+    renderApp();
+
+    await waitFor(() => expect(screen.getByTestId("user")).toHaveTextContent("signed out"));
+    expect(localStorage.getItem(SESSION_KEY)).toBe(ALICE.id);
+  });
+
+  it("keeps the session hint when the restore is rate limited", async () => {
+    localStorage.setItem(SESSION_KEY, ALICE.id);
+    get.mockRejectedValueOnce(
+      Object.assign(new Error("Too Many Requests"), {
+        isAxiosError: true,
+        response: { status: 429 },
+      }),
+    );
+
+    renderApp();
+
+    await waitFor(() => expect(screen.getByTestId("user")).toHaveTextContent("signed out"));
+    expect(localStorage.getItem(SESSION_KEY)).toBe(ALICE.id);
+  });
+
+  it("drops the session hint only when the server rejects the credentials", async () => {
+    localStorage.setItem(SESSION_KEY, ALICE.id);
+    get.mockRejectedValueOnce(
+      Object.assign(new Error("Unauthorized"), {
+        isAxiosError: true,
+        response: { status: 401 },
+      }),
+    );
+
+    renderApp();
+
+    await waitFor(() => expect(localStorage.getItem(SESSION_KEY)).toBeNull());
+    expect(screen.getByTestId("user")).toHaveTextContent("signed out");
+  });
 });
