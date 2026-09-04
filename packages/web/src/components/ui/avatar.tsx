@@ -41,11 +41,23 @@ const Avatar = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElem
 );
 Avatar.displayName = "Avatar";
 
+// A third-party avatar URL (e.g. Google's `picture` claim) competes with the
+// page's own initial-load burst and can drop a request that would have
+// succeeded a moment later. One retry (a fresh <img> via `key`, since a
+// browser won't re-fire load/error for an unchanged src on the same node)
+// absorbs that instead of getting stuck on the initials fallback for the
+// rest of the session.
+const MAX_LOAD_ATTEMPTS = 2;
+
 const AvatarImage = React.forwardRef<HTMLImageElement, React.ImgHTMLAttributes<HTMLImageElement>>(
   ({ className, src, onLoad, onError, ...props }, ref) => {
     const { status, setStatus } = useAvatarContext("AvatarImage");
+    const attemptsRef = React.useRef(0);
+    const [retryKey, setRetryKey] = React.useState(0);
 
     React.useEffect(() => {
+      attemptsRef.current = 0;
+      setRetryKey(0);
       setStatus(src ? "loading" : "error");
     }, [src, setStatus]);
 
@@ -54,6 +66,7 @@ const AvatarImage = React.forwardRef<HTMLImageElement, React.ImgHTMLAttributes<H
 
     return (
       <img
+        key={retryKey}
         ref={ref}
         src={src}
         className={cn(
@@ -66,6 +79,11 @@ const AvatarImage = React.forwardRef<HTMLImageElement, React.ImgHTMLAttributes<H
           onLoad?.(event);
         }}
         onError={(event) => {
+          attemptsRef.current += 1;
+          if (attemptsRef.current < MAX_LOAD_ATTEMPTS) {
+            setRetryKey((key) => key + 1);
+            return;
+          }
           setStatus("error");
           onError?.(event);
         }}

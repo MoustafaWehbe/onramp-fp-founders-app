@@ -518,6 +518,21 @@ export class AuthService {
 
     if (!user) throw createError("Invalid or expired Google token", 401, "INVALID_GOOGLE_TOKEN");
 
+    // First time we see this account's Google photo: pull it into our own
+    // bucket so it stops being a hotlinked third-party URL. Only runs once
+    // an avatarStorageKey already present (self-uploaded, or a prior mirror)
+    // always wins and is left alone.
+    if (!user.avatarStorageKey && payload.picture) {
+      const storageKey = await storageService.mirrorExternalAvatar(user.id, payload.picture);
+      if (storageKey) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: { avatarStorageKey: storageKey },
+          select: USER_SELECT,
+        });
+      }
+    }
+
     const familyId = crypto.randomUUID();
     const { raw: rawRefresh, hash: refreshHash } = generateRefreshToken();
     const accessToken = generateAccessToken(user.id, familyId, user.email);

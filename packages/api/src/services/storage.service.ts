@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createHash, randomBytes } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
+import sharp from "sharp";
 import { getRedis } from "../db/redis";
 import { createError } from "../utils/errors";
 
@@ -410,6 +411,31 @@ export class StorageService {
     await fs.mkdir(path.dirname(fullPath), { recursive: true });
     await fs.writeFile(fullPath, buffer);
     return { storageKey, url: this.resolveAvatarUrl(storageKey, null)! };
+  }
+
+  /**
+   * Best-effort: cache a third-party avatar (Google's `picture` claim) into our
+   * own bucket the first time we see it, so the sidebar never depends on that
+   * CDN being fast or reachable during the page's initial load burst. Any
+   * failure here just leaves the caller's raw URL fallback in place — this
+   * must never block sign-in.
+   */
+  async mirrorExternalAvatar(userId: string, pictureUrl: string): Promise<string | null> {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch(pictureUrl, { signal: controller.signal }).finally(() =>
+        clearTimeout(timeout),
+      );
+      if (!res.ok) return null;
+
+      const source = Buffer.from(await res.arrayBuffer());
+      const webp = await sharp(source).resize(512, 512, { fit: "cover" }).webp({ quality: 85 }).toBuffer();
+      const { storageKey } = await this.uploadAvatar(userId, webp, "image/webp");
+      return storageKey;
+    } catch {
+      return null;
+    }
   }
 
   /** Best-effort: a leftover object left behind in storage is a storage cost, not a correctness bug. */
