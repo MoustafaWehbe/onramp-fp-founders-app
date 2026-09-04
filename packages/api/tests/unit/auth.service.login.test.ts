@@ -23,6 +23,13 @@ jest.mock("google-auth-library", () => ({
   })),
 }));
 
+jest.mock("../../src/services/storage.service", () => ({
+  storageService: {
+    resolveAvatarUrl: jest.fn((_storageKey: string | null, fallbackUrl: string | null) => fallbackUrl),
+    mirrorExternalAvatar: jest.fn().mockResolvedValue(null),
+  },
+}));
+
 import { prisma } from "../../src/db/prisma";
 import { OAuth2Client } from "google-auth-library";
 

@@ -20,7 +20,28 @@ describe("Avatar", () => {
     expect(screen.getByRole("img", { name: "Ada" })).toBeVisible();
   });
 
-  it("keeps the fallback when the image fails to load", () => {
+  it("retries once on a transient load failure instead of giving up immediately", () => {
+    render(
+      <Avatar>
+        <AvatarImage src="/flaky.png" alt="Ada" />
+        <AvatarFallback>AD</AvatarFallback>
+      </Avatar>,
+    );
+
+    fireEvent.error(screen.getByRole("img", { name: "Ada" }));
+
+    // A single error a real-world blip loading a third-party avatar URL
+    // gets a fresh <img> retry, not an immediate, permanent fallback.
+    expect(screen.getByRole("img", { name: "Ada" })).toBeInTheDocument();
+    expect(screen.getByText("AD")).toBeInTheDocument();
+
+    fireEvent.load(screen.getByRole("img", { name: "Ada" }));
+
+    expect(screen.queryByText("AD")).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Ada" })).toBeVisible();
+  });
+
+  it("keeps the fallback once the retry also fails to load", () => {
     render(
       <Avatar>
         <AvatarImage src="/missing.png" alt="Ada" />
@@ -28,6 +49,7 @@ describe("Avatar", () => {
       </Avatar>,
     );
 
+    fireEvent.error(screen.getByRole("img", { name: "Ada" }));
     fireEvent.error(screen.getByRole("img", { name: "Ada" }));
 
     expect(screen.getByText("AD")).toBeInTheDocument();
